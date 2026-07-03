@@ -11,39 +11,84 @@ NewsRead is a source-available news reader built around a simple idea: **sharing
 
 Traditional readers like Feedly treat sharing as an afterthought — you get a raw link. Chat tools like Slack are where articles actually get shared today, but the context gets lost in the scroll. NewsRead makes the share itself the product: every article travels with your commentary, so the recipient knows *why* you sent it and *what* to focus on.
 
-## Features (Planned)
+## Features
 
-- **📡 RSS Feed Aggregation** — Subscribe to any RSS/Atom feed and read everything in a unified inbox
-- **📢 Social Sharing** *(the flagship feature)* — @mention users, attach personal notes, and share curated collections
+**In v0.1 (working today):**
+
+- **📡 Feed Aggregation** — Subscribe to RSS, Atom, and JSON feeds; a background worker keeps them fresh
+- **📢 Social Sharing** *(the flagship feature)* — @mention users and attach a note; recipients see your commentary front and center in "Shared with me"
+- **📖 Read Continuity** — Per-user read/unread tracking, save-for-later, mark-all-read
+- **⌨️ Power-user keyboard** — `j`/`k` navigate, `enter` opens, `s` saves, `m` toggles read
+- **🔍 Search** — Full-text search across titles and excerpts
+
+**Planned:**
+
 - **🤖 AI Summaries** — Instant summaries using your own API key, or local models via Ollama
-- **💬 Article Q&A** — Ask an LLM questions about any article and get answers grounded in its full text
-- **🏷️ Tagging** — Organize articles with color-coded, searchable tags
-- **📖 Read Continuity** — Read/unread tracking, save-for-later, and cross-device sync
-- **🔔 Push Notifications** — Native mobile alerts for @mentions and new articles
+- **💬 Article Q&A** — Ask an LLM questions about any article, grounded in its full text
+- **🏷️ Tagging** — Color-coded, searchable tags and shareable collections
+- **🔔 Push Notifications** — Native mobile alerts for @mentions (React Native app)
 - **📚 Learning Experiences** — Plugin-based integrations (NotebookLM first) for podcasts and study guides
+
+## Quick Start
+
+Run everything (web app, API, worker, Postgres, Redis) with Docker:
+
+```bash
+docker compose up -d --build
+```
+
+Then open [http://localhost:3000](http://localhost:3000), create an account, and add a feed — for example:
+
+```
+https://hnrss.org/newest.jsonfeed?points=100
+```
+
+To try the social loop, register a second account in a private browser window and share an article at it with a note.
+
+### Local development
+
+```bash
+# Postgres + Redis only
+docker compose up -d db redis
+
+# Backend (http://localhost:8000, docs at /docs)
+cd backend
+uv venv .venv && uv pip install -p .venv/bin/python -r requirements.txt
+.venv/bin/uvicorn app.main:app --reload
+
+# Feed-polling worker (optional in dev; the API fetches on subscribe)
+.venv/bin/arq app.worker.WorkerSettings
+
+# Frontend (http://localhost:3000)
+cd frontend
+npm install && npm run dev
+```
 
 ## Tech Stack
 
 | Component | Technology |
 |-----------|-----------|
-| Web Frontend | React / Next.js |
-| Mobile App | React Native (Expo) |
-| Backend API | Python / FastAPI |
-| Database | PostgreSQL + Redis |
-| LLM | User-provided API key (OpenAI/Anthropic), with Ollama as a local fallback |
-| Auth | Auth.js (web) + backend-issued JWT (mobile) |
-| Notifications | Expo Push Notifications |
+| Web Frontend | Next.js (App Router) + Tailwind CSS + SWR |
+| Backend API | Python / FastAPI (async SQLAlchemy) |
+| Background Jobs | ARQ worker on Redis (feed polling) |
+| Database | PostgreSQL |
+| Auth | Backend-issued JWT (email/username + password) |
+| Mobile App *(planned)* | React Native (Expo) + push notifications |
+| LLM *(planned)* | User-provided API key (OpenAI/Anthropic), Ollama fallback |
 
-## Project Structure (Planned)
+## Project Structure
 
 ```
 newsread/
-├── docs/              # Documentation (PRD, API, architecture)
+├── docs/              # Documentation (PRD)
 ├── frontend/          # Next.js web application
-├── mobile/            # React Native (Expo) mobile app
-├── backend/           # FastAPI REST API
-├── docker-compose.yml # Local development environment
-└── .github/           # CI/CD workflows
+├── backend/           # FastAPI REST API + ARQ feed-polling worker
+│   └── app/
+│       ├── routers/   # auth, users, feeds, articles, shares
+│       ├── fetcher.py # RSS/Atom/JSON Feed parsing + sanitization
+│       └── worker.py  # periodic feed refresh
+├── docker-compose.yml # Full stack: web, api, worker, Postgres, Redis
+└── mobile/            # React Native (Expo) app — planned, Phase 3
 ```
 
 ## License

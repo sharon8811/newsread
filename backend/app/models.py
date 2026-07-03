@@ -1,0 +1,124 @@
+from datetime import datetime
+
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from .db import Base
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    username: Mapped[str] = mapped_column(String(30), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(120))
+    password_hash: Mapped[str] = mapped_column(String(128))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class Feed(Base):
+    """Global: one row per feed URL, fetched once no matter how many subscribers."""
+
+    __tablename__ = "feeds"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    url: Mapped[str] = mapped_column(String(2048), unique=True, index=True)
+    title: Mapped[str] = mapped_column(String(512), default="")
+    site_url: Mapped[str | None] = mapped_column(String(2048))
+    description: Mapped[str | None] = mapped_column(Text)
+    last_fetched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    refresh_interval_minutes: Mapped[int] = mapped_column(Integer, default=15)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    articles: Mapped[list["Article"]] = relationship(back_populates="feed", cascade="all, delete-orphan")
+
+
+class Subscription(Base):
+    __tablename__ = "subscriptions"
+    __table_args__ = (UniqueConstraint("user_id", "feed_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    feed_id: Mapped[int] = mapped_column(ForeignKey("feeds.id", ondelete="CASCADE"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    feed: Mapped[Feed] = relationship()
+
+
+class Article(Base):
+    """Global: one row per (feed, guid); per-user state lives in UserArticleState."""
+
+    __tablename__ = "articles"
+    __table_args__ = (
+        UniqueConstraint("feed_id", "guid"),
+        Index("ix_articles_feed_published", "feed_id", "published_at"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    feed_id: Mapped[int] = mapped_column(ForeignKey("feeds.id", ondelete="CASCADE"), index=True)
+    guid: Mapped[str] = mapped_column(String(1024))
+    url: Mapped[str] = mapped_column(String(2048))
+    comments_url: Mapped[str | None] = mapped_column(String(2048))
+    title: Mapped[str] = mapped_column(Text)
+    author: Mapped[str | None] = mapped_column(String(255))
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    content_html: Mapped[str] = mapped_column(Text, default="")
+    excerpt: Mapped[str] = mapped_column(Text, default="")
+    image_url: Mapped[str | None] = mapped_column(String(2048))
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    feed: Mapped[Feed] = relationship(back_populates="articles")
+
+
+class UserArticleState(Base):
+    __tablename__ = "user_article_states"
+    __table_args__ = (UniqueConstraint("user_id", "article_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    article_id: Mapped[int] = mapped_column(ForeignKey("articles.id", ondelete="CASCADE"), index=True)
+    is_read: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_saved: Mapped[bool] = mapped_column(Boolean, default=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class Share(Base):
+    __tablename__ = "shares"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    from_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    article_id: Mapped[int] = mapped_column(ForeignKey("articles.id", ondelete="CASCADE"), index=True)
+    note: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    from_user: Mapped[User] = relationship()
+    article: Mapped[Article] = relationship()
+    recipients: Mapped[list["ShareRecipient"]] = relationship(
+        back_populates="share", cascade="all, delete-orphan"
+    )
+
+
+class ShareRecipient(Base):
+    __tablename__ = "share_recipients"
+    __table_args__ = (UniqueConstraint("share_id", "to_user_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    share_id: Mapped[int] = mapped_column(ForeignKey("shares.id", ondelete="CASCADE"), index=True)
+    to_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    share: Mapped[Share] = relationship(back_populates="recipients")
+    to_user: Mapped[User] = relationship()

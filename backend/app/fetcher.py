@@ -1,0 +1,223 @@
+"""Feed fetching and parsing: JSON Feed + RSS/Atom, sanitized on ingest."""
+
+import logging
+import re
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+
+import feedparser
+import httpx
+import nh3
+from dateutil import parser as dateparser
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from .models import Article, Feed
+
+logger = logging.getLogger(__name__)
+
+USER_AGENT = "NewsRead/0.1 (+https://github.com/newsread)"
+
+# hnrss-style boilerplate, e.g. "Points: 186" / "# Comments: 124"
+_HN_POINTS_RE = re.compile(r"Points:\s*(\d+)")
+_HN_COMMENTS_RE = re.compile(r"#\s*Comments:\s*(\d+)")
+
+
+@dataclass
+class ParsedArticle:
+    guid: str
+    url: str
+    title: str
+    content_html: str = ""
+    author: str | None = None
+    published_at: datetime | None = None
+    image_url: str | None = None
+    comments_url: str | None = None
+
+
+@dataclass
+class ParsedFeed:
+    title: str
+    site_url: str | None = None
+    description: str | None = None
+    articles: list[ParsedArticle] = field(default_factory=list)
+
+
+def _to_utc(dt: datetime | None) -> datetime | None:
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def _parse_date(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return _to_utc(dateparser.parse(value))
+    except (ValueError, OverflowError):
+        return None
+
+
+def sanitize_html(html: str) -> str:
+    return nh3.clean(html or "")
+
+
+def strip_html(html: str) -> str:
+    text = nh3.clean(html or "", tags=set())
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def derive_excerpt(content_html: str, max_len: int = 320) -> str:
+    text = strip_html(content_html)
+    points = _HN_POINTS_RE.search(text)
+    comments = _HN_COMMENTS_RE.search(text)
+    if points and "Comments URL:" in text:
+        parts = [f"{points.group(1)} points"]
+        if comments:
+            parts.append(f"{comments.group(1)} comments")
+        return " · ".join(parts) + " · via Hacker News"
+    if len(text) > max_len:
+        return text[: max_len - 1].rstrip() + "…"
+    return text
+
+
+def parse_json_feed(data: dict) -> ParsedFeed:
+    articles: list[ParsedArticle] = []
+    for item in data.get("items", []):
+        url = item.get("url") or item.get("external_url") or ""
+        guid = str(item.get("id") or url)
+        if not guid:
+            continue
+        content = item.get("content_html") or item.get("content_text") or ""
+        author = None
+        if isinstance(item.get("author"), dict):
+            author = item["author"].get("name")
+        elif item.get("authors"):
+            author = item["authors"][0].get("name")
+        external = item.get("external_url")
+        articles.append(
+            ParsedArticle(
+                guid=guid,
+                url=url,
+                title=item.get("title") or strip_html(content)[:120] or url,
+                content_html=content,
+                author=author,
+                published_at=_parse_date(item.get("date_published") or item.get("date_modified")),
+                image_url=item.get("image") or item.get("banner_image"),
+                # hnrss puts the article in `url` and the HN thread in `external_url`
+                comments_url=external if external and external != url else None,
+            )
+        )
+    return ParsedFeed(
+        title=data.get("title") or "",
+        site_url=data.get("home_page_url"),
+        description=data.get("description"),
+        articles=articles,
+    )
+
+
+def parse_xml_feed(text: str) -> ParsedFeed:
+    parsed = feedparser.parse(text)
+    articles: list[ParsedArticle] = []
+    for entry in parsed.entries:
+        url = entry.get("link") or ""
+        guid = entry.get("id") or url
+        if not guid:
+            continue
+        content = ""
+        if entry.get("content"):
+            content = entry.content[0].get("value", "")
+        elif entry.get("summary"):
+            content = entry.summary
+        published = None
+        for key in ("published_parsed", "updated_parsed"):
+            if entry.get(key):
+                published = datetime(*entry[key][:6], tzinfo=timezone.utc)
+                break
+        image_url = None
+        for media in entry.get("media_content", []) or []:
+            if media.get("url"):
+                image_url = media["url"]
+                break
+        articles.append(
+            ParsedArticle(
+                guid=guid,
+                url=url,
+                title=entry.get("title") or url,
+                content_html=content,
+                author=entry.get("author"),
+                published_at=published,
+                image_url=image_url,
+                comments_url=entry.get("comments"),
+            )
+        )
+    feed_info = parsed.feed
+    return ParsedFeed(
+        title=feed_info.get("title") or "",
+        site_url=feed_info.get("link"),
+        description=feed_info.get("subtitle"),
+        articles=articles,
+    )
+
+
+async def fetch_feed_data(url: str) -> ParsedFeed:
+    async with httpx.AsyncClient(
+        follow_redirects=True, timeout=25, headers={"User-Agent": USER_AGENT}
+    ) as client:
+        response = await client.get(url)
+        response.raise_for_status()
+    content_type = response.headers.get("content-type", "")
+    body = response.text
+    if "json" in content_type or body.lstrip().startswith("{"):
+        return parse_json_feed(response.json())
+    return parse_xml_feed(body)
+
+
+async def refresh_feed(session: AsyncSession, feed: Feed) -> int:
+    """Fetch a feed and insert new articles. Returns the number of new articles."""
+    parsed = await fetch_feed_data(feed.url)
+
+    if parsed.title and not feed.title:
+        feed.title = parsed.title
+    if parsed.site_url and not feed.site_url:
+        feed.site_url = parsed.site_url
+    if parsed.description and not feed.description:
+        feed.description = parsed.description
+
+    guids = [a.guid for a in parsed.articles]
+    existing = set()
+    if guids:
+        rows = await session.execute(
+            select(Article.guid).where(Article.feed_id == feed.id, Article.guid.in_(guids))
+        )
+        existing = {row[0] for row in rows}
+
+    new_count = 0
+    seen: set[str] = set()
+    for item in parsed.articles:
+        if item.guid in existing or item.guid in seen:
+            continue
+        seen.add(item.guid)
+        clean = sanitize_html(item.content_html)
+        session.add(
+            Article(
+                feed_id=feed.id,
+                guid=item.guid[:1024],
+                url=item.url[:2048],
+                comments_url=item.comments_url[:2048] if item.comments_url else None,
+                title=strip_html(item.title) or item.url,
+                author=item.author[:255] if item.author else None,
+                published_at=item.published_at,
+                content_html=clean,
+                excerpt=derive_excerpt(clean),
+                image_url=item.image_url[:2048] if item.image_url else None,
+            )
+        )
+        new_count += 1
+
+    feed.last_fetched_at = datetime.now(timezone.utc)
+    await session.commit()
+    logger.info("Refreshed feed %s (%s): %d new articles", feed.id, feed.url, new_count)
+    return new_count

@@ -1,0 +1,68 @@
+name: newsread
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: newsread
+      POSTGRES_PASSWORD: newsread
+      POSTGRES_DB: newsread
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U newsread"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  backend:
+    build: ./backend
+    environment:
+      NEWSREAD_DATABASE_URL: postgresql+asyncpg://newsread:newsread@db:5432/newsread
+      NEWSREAD_REDIS_URL: redis://redis:6379/0
+      NEWSREAD_JWT_SECRET: ${NEWSREAD_JWT_SECRET:-dev-secret-change-me}
+      NEWSREAD_CORS_ORIGINS: http://localhost:3000
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    build: ./backend
+    command: arq app.worker.WorkerSettings
+    environment:
+      NEWSREAD_DATABASE_URL: postgresql+asyncpg://newsread:newsread@db:5432/newsread
+      NEWSREAD_REDIS_URL: redis://redis:6379/0
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
