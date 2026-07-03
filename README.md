@@ -13,18 +13,18 @@ Traditional readers like Feedly treat sharing as an afterthought — you get a r
 
 ## Features
 
-**In v0.1 (working today):**
+**Working today:**
 
 - **📡 Feed Aggregation** — Subscribe to RSS, Atom, and JSON feeds; a background worker keeps them fresh
 - **📢 Social Sharing** *(the flagship feature)* — @mention users and attach a note; recipients see your commentary front and center in "Shared with me"
+- **🤖 AI Summaries** — Full article text fetched via [Scrapling](https://github.com/D4Vinci/Scrapling) + trafilatura, summarized by any OpenAI-compatible LLM (OpenAI, vLLM, LiteLLM, Ollama); cached per article
+- **💬 Ask the Article** — A Q&A agent grounded in the article's full text, with per-article conversation history — and honest "the article doesn't say" answers
 - **📖 Read Continuity** — Per-user read/unread tracking, save-for-later, mark-all-read
 - **⌨️ Power-user keyboard** — `j`/`k` navigate, `enter` opens, `s` saves, `m` toggles read
 - **🔍 Search** — Full-text search across titles and excerpts
 
 **Planned:**
 
-- **🤖 AI Summaries** — Instant summaries using your own API key, or local models via Ollama
-- **💬 Article Q&A** — Ask an LLM questions about any article, grounded in its full text
 - **🏷️ Tagging** — Color-coded, searchable tags and shareable collections
 - **🔔 Push Notifications** — Native mobile alerts for @mentions (React Native app)
 - **📚 Learning Experiences** — Plugin-based integrations (NotebookLM first) for podcasts and study guides
@@ -34,6 +34,7 @@ Traditional readers like Feedly treat sharing as an afterthought — you get a r
 Run everything (web app, API, worker, Postgres, Redis) with Docker:
 
 ```bash
+cp .env.example .env   # optional — enables AI summaries and Q&A
 docker compose up -d --build
 ```
 
@@ -73,8 +74,9 @@ npm install && npm run dev
 | Background Jobs | ARQ worker on Redis (feed polling) |
 | Database | PostgreSQL |
 | Auth | Backend-issued JWT (email/username + password) |
+| Full-text Extraction | Scrapling (fetch) + trafilatura (article extraction) |
+| LLM | Any OpenAI-compatible endpoint (OpenAI, vLLM, LiteLLM, Ollama) |
 | Mobile App *(planned)* | React Native (Expo) + push notifications |
-| LLM *(planned)* | User-provided API key (OpenAI/Anthropic), Ollama fallback |
 
 ## Project Structure
 

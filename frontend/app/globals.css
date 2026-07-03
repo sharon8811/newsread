@@ -311,3 +311,21 @@ body::after {
 .spinning {
   animation: spin 0.9s linear infinite;
 }
+
+@keyframes blinkDot {
+  0%,
+  80%,
+  100% {
+    opacity: 0.25;
+  }
+  40% {
+    opacity: 1;
+  }
+}
+.typing-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--ink-dim);
+  animation: blinkDot 1.2s ease-in-out infinite;
+}

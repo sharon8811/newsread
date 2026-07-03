@@ -56,12 +56,24 @@ export default function ArticleRow({
           {article.author ? ` · ${article.author}` : ""}
           {article.published_at ? ` · ${timeAgo(article.published_at)}` : ""}
         </p>
-        {article.excerpt && (
+        {(article.summary || article.excerpt) && (
           <p
             className="mt-1.5 line-clamp-2 text-[13px] leading-relaxed"
             style={{ color: "var(--ink-dim)" }}
           >
-            {article.excerpt}
+            {article.summary ? (
+              <>
+                <span
+                  className="font-mono-nr mr-1.5 text-[10px]"
+                  style={{ color: "var(--accent)" }}
+                >
+                  ✦
+                </span>
+                {article.summary.split("\n")[0]}
+              </>
+            ) : (
+              article.excerpt
+            )}
           </p>
         )}
       </div>

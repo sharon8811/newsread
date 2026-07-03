@@ -29,6 +29,7 @@ def to_list_item(
         image_url=article.image_url,
         is_read=bool(state and state.is_read),
         is_saved=bool(state and state.is_saved),
+        summary=article.summary,
     )
 
 
@@ -109,7 +110,11 @@ async def get_article(
         )
     )
     item = to_list_item(article, feed.title or feed.url, state)
-    return ArticleDetail(**item.model_dump(), content_html=article.content_html)
+    return ArticleDetail(
+        **item.model_dump(),
+        content_html=article.content_html,
+        summary_model=article.summary_model,
+    )
 
 
 @router.post("/{article_id}/state", response_model=ArticleListItem)

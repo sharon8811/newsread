@@ -72,10 +72,12 @@ class ArticleListItem(BaseModel):
     image_url: str | None
     is_read: bool
     is_saved: bool
+    summary: str = ""
 
 
 class ArticleDetail(ArticleListItem):
     content_html: str
+    summary_model: str | None = None
 
 
 class ArticleStateIn(BaseModel):
@@ -107,3 +109,29 @@ class ShareOut(BaseModel):
 
 class UnseenCountOut(BaseModel):
     count: int
+
+
+# --- AI ---
+
+class AiStatusOut(BaseModel):
+    configured: bool
+    model: str | None
+
+
+class SummaryOut(BaseModel):
+    summary: str
+    model: str | None
+    generated_at: datetime | None
+
+
+class AskIn(BaseModel):
+    content: str = Field(min_length=1, max_length=4000)
+
+
+class MessageOut(BaseModel):
+    id: int
+    role: str
+    content: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}

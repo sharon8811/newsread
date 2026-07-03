@@ -3,7 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import useSWR, { mutate } from "swr";
+import AiSummary from "@/components/AiSummary";
 import { mutateArticleLists } from "@/components/ArticleList";
+import QAPanel from "@/components/QAPanel";
 import ShareModal from "@/components/ShareModal";
 import {
   BookmarkIcon,
@@ -123,6 +125,8 @@ export default function ArticlePage() {
         </div>
       </div>
 
+      <AiSummary article={article} />
+
       {article.content_html ? (
         <div
           className="reader mt-8"
@@ -133,6 +137,8 @@ export default function ArticlePage() {
           This feed only provides a headline — use “Read original” above.
         </p>
       )}
+
+      <QAPanel article={article} />
 
       {sharing && <ShareModal article={article} onClose={() => setSharing(false)} />}
     </article>

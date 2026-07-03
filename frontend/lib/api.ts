@@ -89,9 +89,22 @@ export type Article = {
   image_url: string | null;
   is_read: boolean;
   is_saved: boolean;
+  summary: string;
 };
 
-export type ArticleDetail = Article & { content_html: string };
+export type ArticleDetail = Article & {
+  content_html: string;
+  summary_model: string | null;
+};
+
+export type AiStatus = { configured: boolean; model: string | null };
+
+export type ChatMessage = {
+  id: number;
+  role: "user" | "assistant";
+  content: string;
+  created_at: string;
+};
 
 export type Share = {
   id: number;

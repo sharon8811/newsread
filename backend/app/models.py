@@ -77,6 +77,11 @@ class Article(Base):
     excerpt: Mapped[str] = mapped_column(Text, default="")
     image_url: Mapped[str | None] = mapped_column(String(2048))
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    full_text: Mapped[str] = mapped_column(Text, default="", server_default="")
+    full_text_fetched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    summary: Mapped[str] = mapped_column(Text, default="", server_default="")
+    summary_model: Mapped[str | None] = mapped_column(String(120))
+    summary_generated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     feed: Mapped[Feed] = relationship(back_populates="articles")
 
@@ -109,6 +114,36 @@ class Share(Base):
     recipients: Mapped[list["ShareRecipient"]] = relationship(
         back_populates="share", cascade="all, delete-orphan"
     )
+
+
+class Conversation(Base):
+    """One Q&A thread per (article, user)."""
+
+    __tablename__ = "conversations"
+    __table_args__ = (UniqueConstraint("article_id", "user_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    article_id: Mapped[int] = mapped_column(ForeignKey("articles.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    messages: Mapped[list["Message"]] = relationship(
+        back_populates="conversation", cascade="all, delete-orphan", order_by="Message.id"
+    )
+
+
+class Message(Base):
+    __tablename__ = "messages"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    conversation_id: Mapped[int] = mapped_column(
+        ForeignKey("conversations.id", ondelete="CASCADE"), index=True
+    )
+    role: Mapped[str] = mapped_column(String(12))  # "user" | "assistant"
+    content: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    conversation: Mapped[Conversation] = relationship(back_populates="messages")
 
 
 class ShareRecipient(Base):
