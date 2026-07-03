@@ -90,6 +90,8 @@ export type Article = {
   is_read: boolean;
   is_saved: boolean;
   summary: string;
+  summary_short: string;
+  summary_medium: string;
 };
 
 export type ArticleDetail = Article & {

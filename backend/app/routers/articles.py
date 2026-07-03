@@ -30,6 +30,8 @@ def to_list_item(
         is_read=bool(state and state.is_read),
         is_saved=bool(state and state.is_saved),
         summary=article.summary,
+        summary_short=article.summary_short,
+        summary_medium=article.summary_medium,
     )
 
 

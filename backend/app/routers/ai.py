@@ -1,5 +1,4 @@
 import logging
-from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
@@ -13,6 +12,7 @@ from ..extractor import clip_for_llm, ensure_full_text, is_thin
 from ..models import Article, Conversation, Message, User
 from ..schemas import AiStatusOut, AskIn, MessageOut, SummaryOut
 from ..security import get_current_user
+from ..summarizer import ThinContentError, generate_summaries
 from .articles import user_can_access
 
 logger = logging.getLogger(__name__)
@@ -52,36 +52,29 @@ async def summarize_article(
     session: AsyncSession = Depends(get_session),
 ):
     article = await _accessible_article(session, user, article_id)
-    if article.summary and not force:
-        return SummaryOut(
-            summary=article.summary,
-            model=article.summary_model,
-            generated_at=article.summary_generated_at,
-        )
+    if article.summary and article.summary_short and not force:
+        return _summary_out(article)
     _require_llm()
 
-    text = await ensure_full_text(session, article)
-    if is_thin(text):
+    try:
+        await generate_summaries(session, article)
+    except ThinContentError:
         # Summarizing a headline stub just makes the model invent details.
         raise HTTPException(
             status_code=422,
             detail="Couldn't fetch the article's full text — the site may block automated readers. Open the original instead.",
         )
-
-    try:
-        summary = await llm.summarize(article.title, clip_for_llm(text))
     except Exception as exc:
         logger.warning("Summarization failed for article %s: %s", article.id, exc)
         raise HTTPException(status_code=502, detail="The LLM request failed")
-    if not summary:
-        raise HTTPException(status_code=502, detail="The LLM returned an empty summary")
+    return _summary_out(article)
 
-    article.summary = summary
-    article.summary_model = settings.openai_model
-    article.summary_generated_at = datetime.now(timezone.utc)
-    await session.commit()
+
+def _summary_out(article: Article) -> SummaryOut:
     return SummaryOut(
         summary=article.summary,
+        summary_short=article.summary_short,
+        summary_medium=article.summary_medium,
         model=article.summary_model,
         generated_at=article.summary_generated_at,
     )

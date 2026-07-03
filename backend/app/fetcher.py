@@ -137,10 +137,15 @@ def parse_xml_feed(text: str) -> ParsedFeed:
                 published = datetime(*entry[key][:6], tzinfo=timezone.utc)
                 break
         image_url = None
-        for media in entry.get("media_content", []) or []:
+        for media in (entry.get("media_content") or []) + (entry.get("media_thumbnail") or []):
             if media.get("url"):
                 image_url = media["url"]
                 break
+        if not image_url:
+            for enclosure in entry.get("enclosures", []) or []:
+                if str(enclosure.get("type", "")).startswith("image/") and enclosure.get("href"):
+                    image_url = enclosure["href"]
+                    break
         articles.append(
             ParsedArticle(
                 guid=guid,

@@ -73,6 +73,8 @@ class ArticleListItem(BaseModel):
     is_read: bool
     is_saved: bool
     summary: str = ""
+    summary_short: str = ""
+    summary_medium: str = ""
 
 
 class ArticleDetail(ArticleListItem):
@@ -120,6 +122,8 @@ class AiStatusOut(BaseModel):
 
 class SummaryOut(BaseModel):
     summary: str
+    summary_short: str = ""
+    summary_medium: str = ""
     model: str | None
     generated_at: datetime | None
 

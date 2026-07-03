@@ -79,6 +79,8 @@ class Article(Base):
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     full_text: Mapped[str] = mapped_column(Text, default="", server_default="")
     full_text_fetched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    summary_short: Mapped[str] = mapped_column(Text, default="", server_default="")
+    summary_medium: Mapped[str] = mapped_column(Text, default="", server_default="")
     summary: Mapped[str] = mapped_column(Text, default="", server_default="")
     summary_model: Mapped[str | None] = mapped_column(String(120))
     summary_generated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

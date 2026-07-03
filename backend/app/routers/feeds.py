@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db import get_session
 from ..fetcher import refresh_feed
+from ..queue import enqueue
 from ..models import Article, Feed, Share, Subscription, User, UserArticleState
 from ..schemas import AddFeedIn, FeedOut
 from ..security import get_current_user
@@ -105,6 +106,9 @@ async def add_feed(
         session.add(Subscription(user_id=user.id, feed_id=feed.id))
         await session.commit()
 
+    # Background: fetch og:images + full text, then pre-generate summaries.
+    await enqueue("enrich_feed", feed.id)
+
     row = (
         await session.execute(_feed_list_stmt(user.id).where(Feed.id == feed.id))
     ).one()
@@ -124,6 +128,7 @@ async def refresh(
         await session.rollback()
         logger.warning("Failed to refresh feed %s: %s", feed.url, exc)
         raise HTTPException(status_code=502, detail="Could not refresh this feed right now")
+    await enqueue("enrich_feed", feed.id)
     row = (
         await session.execute(_feed_list_stmt(user.id).where(Feed.id == feed.id))
     ).one()

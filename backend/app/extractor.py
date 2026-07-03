@@ -1,7 +1,7 @@
-"""Full article text: Scrapling fetches the page, trafilatura extracts the prose."""
+"""Original-page enrichment: Scrapling fetches once, we take prose + og:image."""
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import trafilatura
 from scrapling.fetchers import AsyncFetcher
@@ -18,8 +18,73 @@ MIN_USEFUL_CHARS = 800
 
 MAX_LLM_CHARS = 24_000
 
+# Don't re-hit a page that recently failed to yield text (site likely blocks bots).
+REFETCH_COOLDOWN = timedelta(hours=6)
 
-async def ensure_full_text(session: AsyncSession, article: Article) -> str:
+
+async def fetch_page(url: str) -> tuple[str, str | None]:
+    """Fetch a page; return (extracted prose, lead image URL)."""
+    try:
+        page = await AsyncFetcher.get(url, impersonate="chrome")
+    except Exception as exc:
+        logger.warning("Page fetch of %s failed: %s", url, exc)
+        return "", None
+    if page.status != 200:
+        logger.warning("Page fetch of %s returned %s", url, page.status)
+        return "", None
+
+    html = page.html_content
+    text = trafilatura.extract(html, include_comments=False) or ""
+
+    image: str | None = None
+    try:
+        meta = trafilatura.extract_metadata(html)
+        if meta and meta.image:
+            image = meta.image
+    except Exception:
+        pass
+    if not image:
+        for selector in (
+            'meta[property="og:image"]::attr(content)',
+            'meta[name="twitter:image"]::attr(content)',
+        ):
+            for found in page.css(selector):
+                value = str(found).strip()
+                if value:
+                    image = value
+                    break
+            if image:
+                break
+    if image and not image.startswith(("http://", "https://")):
+        image = None
+    return text, image
+
+
+async def enrich_article(session: AsyncSession, article: Article) -> None:
+    """Fill full_text and image_url from the original page, fetching it at most once."""
+    need_text = not article.full_text and is_thin(strip_html(article.content_html))
+    need_image = not article.image_url
+    if not (need_text or need_image):
+        return
+
+    text, image = await fetch_page(article.url)
+    if need_text:
+        article.full_text = text
+        article.full_text_fetched_at = datetime.now(timezone.utc)
+    if need_image and image:
+        article.image_url = image[:2048]
+    await session.commit()
+
+
+def _recently_attempted(article: Article) -> bool:
+    if article.full_text_fetched_at is None:
+        return False
+    return datetime.now(timezone.utc) - article.full_text_fetched_at < REFETCH_COOLDOWN
+
+
+async def ensure_full_text(
+    session: AsyncSession, article: Article, allow_refetch: bool = True
+) -> str:
     """Return the best available article text, fetching and caching it if needed."""
     if article.full_text:
         return article.full_text
@@ -28,25 +93,11 @@ async def ensure_full_text(session: AsyncSession, article: Article) -> str:
     if len(fallback) >= MIN_USEFUL_CHARS:
         return fallback
 
-    extracted = ""
-    try:
-        page = await AsyncFetcher.get(article.url, impersonate="chrome")
-        if page.status == 200:
-            extracted = (
-                trafilatura.extract(page.html_content, include_comments=False) or ""
-            )
-        else:
-            logger.warning("Full-text fetch of %s returned %s", article.url, page.status)
-    except Exception as exc:
-        logger.warning("Full-text fetch of %s failed: %s", article.url, exc)
+    if not allow_refetch and _recently_attempted(article):
+        return fallback
 
-    if extracted:
-        article.full_text = extracted
-        article.full_text_fetched_at = datetime.now(timezone.utc)
-        await session.commit()
-        return extracted
-
-    return fallback
+    await enrich_article(session, article)
+    return article.full_text or fallback
 
 
 def clip_for_llm(text: str) -> str:

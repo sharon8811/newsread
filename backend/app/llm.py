@@ -43,24 +43,47 @@ async def _complete(messages: list[dict], max_tokens: int) -> str:
     return _clean(response.choices[0].message.content or "")
 
 
-SUMMARY_SYSTEM = """You summarize news articles for a busy reader.
+SUMMARY_SYSTEM = """You summarize news articles for a busy reader, at three levels of depth.
 
-Output format (plain text, no markdown headers):
-- One or two sentences with the core takeaway.
-- A blank line.
-- Three to five key points, each on its own line starting with "• ".
+Output EXACTLY this structure (plain text, no markdown):
+
+ONELINER: one sentence of at most 20 words with the gist
+PARAGRAPH: two to four sentences with the essential information
+FULL:
+One or two sentences with the core takeaway.
+
+Three to five key points, each on its own line starting with "• ".
 
 Be concrete and specific. Never pad, never editorialize, never mention that you are summarizing."""
 
+_ONELINER_RE = re.compile(r"ONELINER:\s*(.+)")
+_PARAGRAPH_RE = re.compile(r"PARAGRAPH:\s*(.+?)(?=\n\s*FULL:|\Z)", re.DOTALL)
+_FULL_RE = re.compile(r"FULL:\s*\n?(.+)", re.DOTALL)
 
-async def summarize(title: str, text: str) -> str:
-    return await _complete(
+
+def _parse_levels(raw: str) -> tuple[str, str, str]:
+    short = medium = full = ""
+    if match := _ONELINER_RE.search(raw):
+        short = match.group(1).strip()
+    if match := _PARAGRAPH_RE.search(raw):
+        medium = " ".join(match.group(1).split())
+    if match := _FULL_RE.search(raw):
+        full = match.group(1).strip()
+    if not full:
+        full = raw.strip()
+    return short, medium, full
+
+
+async def summarize(title: str, text: str) -> tuple[str, str, str]:
+    """Return (one-liner, paragraph, full) summaries from a single completion."""
+    raw = await _complete(
         [
             {"role": "system", "content": SUMMARY_SYSTEM},
             {"role": "user", "content": f"Article title: {title}\n\nArticle text:\n{text}"},
         ],
-        max_tokens=1200,
+        max_tokens=1500,
     )
+    return _parse_levels(raw)
 
 
 QA_SYSTEM = """You are NewsRead's reading assistant. The user is reading the article below and asking questions about it.

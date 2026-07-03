@@ -86,21 +86,36 @@ Features 5.1–5.7 constitute the MVP. Feature 5.8 is post-MVP and is included h
 
 ---
 
-### 5.2 AI-Powered Summarization
+### 5.2 AI-Powered Summarization — Three Reading Levels
 
 **Priority:** P0 (Core)
 
-- Each article gets an AI-generated summary of configurable length
-- The summary appears alongside the article preview; the full article is readable in-app (reader view), with a link to the original source
-- Multiple summary styles: bullet points, paragraph, key takeaways
-- **LLM backend:** user-provided API key (OpenAI/Anthropic) by default, local models via Ollama as the free fallback
-- Configurable model selection per user
-- Summarization is optional — the reader is fully functional without an LLM configured
+Reading depth is progressive. Every article offers three levels, so the reader
+chooses how much attention to spend:
+
+| Level | What | Where |
+|-------|------|-------|
+| **1 — Glance** | Title + a one-line description | Article row in the feed |
+| **2 — Read more** | A few sentences — still a summary | Expands inline in the feed, no navigation |
+| **3 — Full summary** | Core takeaway + key points | Article view |
+
+- All three levels are generated in a **single LLM call** and cached on the article
+- **Full-text grounding:** feeds that only ship a headline stub (e.g. Hacker News) get the original page fetched (Scrapling) and the prose extracted (trafilatura); summaries are always grounded in the real article text
+- **Honesty policy:** if the full text cannot be fetched (site blocks automated readers), the system refuses to summarize rather than inventing details from the headline, and the Q&A agent discloses the limitation
+- The background worker auto-generates levels for newly fetched articles (bounded batch per cycle), so the feed view has one-liners without user action
+- **LLM backend:** any OpenAI-compatible endpoint (OpenAI, vLLM, LiteLLM, Ollama) — instance-level env config today, per-user keys later
+- Summarization is optional — the reader is fully functional without an LLM configured (rows fall back to the feed excerpt)
 
 **Technical notes:**
-- Summaries are cached per article to avoid re-processing
-- Per-summary cost tracking, visible to the user
+- Summaries cached per article; explicit regenerate available
+- Per-summary cost tracking, visible to the user *(future)*
 - Fallback to the article excerpt if summarization fails or no LLM is configured
+
+### 5.2.1 Article Images
+
+- Images are taken from the feed when provided (RSS `media:*` / enclosures, JSON Feed `image`)
+- When the feed has no image, the article's **og:image / twitter:image** is extracted during the same page fetch used for full text
+- Thumbnails appear in the feed view; missing images degrade gracefully (no placeholder boxes)
 
 ---
 
@@ -308,10 +323,11 @@ Subscription               -- a user's membership of a feed
 
 Article                    -- global, deduplicated by canonical URL
   id, feed_id, canonical_url, title, author, published_at,
-  content (full text), excerpt, image_url, fetched_at
-
-ArticleSummary             -- cached per article (+ style/model variant)
-  id, article_id, style, model, content, cost, created_at
+  content_html (from feed), excerpt, image_url (feed or og:image),
+  full_text (extracted from original page), full_text_fetched_at,
+  summary_short (one-liner), summary_medium (a few sentences),
+  summary (full: takeaway + key points),
+  summary_model, summary_generated_at, fetched_at
 
 UserArticleState           -- per-user read state, incl. shared articles
   id, user_id, article_id, is_read, is_saved_for_later,
@@ -394,7 +410,7 @@ CollectionArticle
 - **Sharing is one tap** — the share button is always visible; @mentioning is instant
 - **Notes are prominent** — when someone shares with you, their note is the first thing you see
 - **Speed-first** — summaries visible at a glance, no loading spinners
-- **Progressive disclosure** — summary → expand → full article → Q&A
+- **Progressive disclosure** — three reading levels: one-liner → "read more" paragraph (inline) → full summary → full article → Q&A
 - **Native mobile** — React Native for a real mobile UX, not a web wrapper
 - **Dark mode** — dark theme by default, with a light option
 - **Keyboard shortcuts** — power-user support (j/k navigation, mark read, share)
