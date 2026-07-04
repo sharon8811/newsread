@@ -158,7 +158,7 @@ function Chip({ entity }: { entity: EntityFull }) {
       href={entity.url}
       target="_blank"
       rel="noreferrer"
-      className="font-mono-nr inline-flex max-w-full items-center gap-2 rounded-lg border px-2.5 py-1 text-[11px] transition-colors"
+      className="font-mono-nr inline-flex max-w-full items-center gap-2 rounded-md border px-2.5 py-1 text-[11px] transition-colors"
       style={{ borderColor: "var(--line)", color: "var(--ink-dim)", background: "var(--bg-inset)" }}
       title={title(entity)}
     >
@@ -180,7 +180,7 @@ export default function EntityCard({ entities }: { entities: EntityFull[] }) {
   return (
     <div className="mt-6">
       <div
-        className="rounded-xl border p-4"
+        className="rounded-md border p-4"
         style={{ borderColor: "var(--line)", background: "var(--bg-raised)" }}
       >
         <div className="flex items-start justify-between gap-4">

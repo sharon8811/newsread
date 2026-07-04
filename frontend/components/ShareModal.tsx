@@ -77,15 +77,15 @@ export default function ShareModal({
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-6"
-      style={{ background: "rgba(8, 6, 4, 0.72)", backdropFilter: "blur(4px)" }}
+      style={{ background: "var(--bg-scrim)", backdropFilter: "blur(4px)" }}
       onClick={onClose}
     >
       <div
-        className="fade-up w-full max-w-[480px] rounded-2xl border p-6"
+        className="fade-up w-full max-w-[480px] rounded-lg border p-6"
         style={{
           background: "var(--bg-raised)",
           borderColor: "var(--line)",
-          boxShadow: "0 24px 80px rgba(0,0,0,0.55)",
+          boxShadow: "var(--shadow-modal)",
         }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -97,7 +97,7 @@ export default function ShareModal({
             >
               <CheckIcon size={22} />
             </span>
-            <p className="font-serif-nr text-[18px] italic">Shared.</p>
+            <p className="text-[16px] font-semibold tracking-tight">Shared.</p>
           </div>
         ) : (
           <>
@@ -149,7 +149,7 @@ export default function ShareModal({
               />
               {results.length > 0 && (
                 <div
-                  className="absolute left-0 right-0 top-full z-10 mt-1.5 overflow-hidden rounded-lg border"
+                  className="absolute left-0 right-0 top-full z-10 mt-1.5 overflow-hidden rounded-md border"
                   style={{ background: "var(--bg-raised)", borderColor: "var(--line)" }}
                 >
                   {results.map((u) => (
@@ -159,7 +159,7 @@ export default function ShareModal({
                       onClick={() => addRecipient(u)}
                     >
                       <span
-                        className="flex h-7 w-7 items-center justify-center rounded-full font-serif-nr text-[12px] italic"
+                        className="flex h-7 w-7 items-center justify-center rounded-full text-[12px] font-semibold"
                         style={{ background: "var(--accent-soft)", color: "var(--accent)" }}
                       >
                         {u.name[0]?.toUpperCase()}

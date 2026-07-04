@@ -95,7 +95,7 @@ export default function QAPanel({ article }: { article: ArticleDetail }) {
           m.role === "user" ? (
             <div key={m.id} className="flex justify-end">
               <p
-                className="max-w-[85%] rounded-2xl rounded-br-md px-4 py-2.5 text-[13.5px]"
+                className="max-w-[85%] rounded-lg rounded-br-sm px-4 py-2.5 text-[13.5px]"
                 style={{ background: "var(--accent-soft)", color: "var(--ink)" }}
               >
                 {m.content}
@@ -115,7 +115,7 @@ export default function QAPanel({ article }: { article: ArticleDetail }) {
           <>
             <div className="flex justify-end">
               <p
-                className="max-w-[85%] rounded-2xl rounded-br-md px-4 py-2.5 text-[13.5px]"
+                className="max-w-[85%] rounded-lg rounded-br-sm px-4 py-2.5 text-[13.5px]"
                 style={{ background: "var(--accent-soft)", color: "var(--ink)" }}
               >
                 {pending}

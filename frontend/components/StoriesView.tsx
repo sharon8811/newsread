@@ -10,7 +10,7 @@ import EntityBadges from "./EntityBadges";
 import { BookmarkIcon, ChevronUpIcon, XIcon } from "./icons";
 
 const FALLBACK_BG =
-  "radial-gradient(120% 100% at 20% 0%, var(--accent-soft), transparent 60%), linear-gradient(160deg, #1d1913, var(--bg-inset))";
+  "radial-gradient(120% 100% at 20% 0%, var(--accent-soft), transparent 60%), linear-gradient(160deg, #1b2130, var(--bg-inset))";
 
 export default function StoriesView({
   feedId,
@@ -130,9 +130,9 @@ export default function StoriesView({
 
   if (isLoading || queue === null) {
     return (
-      <div className="fixed inset-0 z-50 p-6" style={{ background: "var(--bg)" }}>
+      <div className="stories-scope fixed inset-0 z-50 p-6" style={{ background: "var(--bg)" }}>
         <div
-          className="h-full w-full animate-pulse rounded-2xl"
+          className="h-full w-full animate-pulse rounded-lg"
           style={{ background: "var(--bg-raised)" }}
         />
       </div>
@@ -142,10 +142,10 @@ export default function StoriesView({
   if (queue.length === 0 || done) {
     return (
       <div
-        className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-2 text-center"
+        className="stories-scope fixed inset-0 z-50 flex flex-col items-center justify-center gap-2 text-center"
         style={{ background: "var(--bg)" }}
       >
-        <p className="font-serif-nr text-[26px] italic" style={{ color: "var(--ink-dim)" }}>
+        <p className="text-[19px] font-semibold tracking-tight" style={{ color: "var(--ink-dim)" }}>
           {queue.length === 0 ? "All caught up." : "You're up to date."}
         </p>
         <p className="font-mono-nr text-[11px]" style={{ color: "var(--ink-faint)" }}>
@@ -176,7 +176,7 @@ export default function StoriesView({
 
   return (
     <div
-      className="fixed inset-0 z-50 select-none overflow-hidden"
+      className="stories-scope fixed inset-0 z-50 select-none overflow-hidden"
       style={{ background: "var(--bg)" }}
       onTouchStart={(e) => (touchY.current = e.touches[0].clientY)}
       onTouchEnd={(e) => {
@@ -194,7 +194,7 @@ export default function StoriesView({
         className="fade-up absolute inset-0 bg-cover bg-center"
         style={{
           backgroundImage: a.image_url
-            ? `linear-gradient(to bottom, rgba(15,13,10,0.35), rgba(15,13,10,0.55) 55%, rgba(15,13,10,0.96)), url(${JSON.stringify(a.image_url)})`
+            ? `linear-gradient(to bottom, rgba(10,11,15,0.35), rgba(10,11,15,0.55) 55%, rgba(10,11,15,0.96)), url(${JSON.stringify(a.image_url)})`
             : FALLBACK_BG,
         }}
       />
@@ -205,7 +205,7 @@ export default function StoriesView({
           <>
             <div
               className="h-[2.5px] flex-1 overflow-hidden rounded-full"
-              style={{ background: "rgba(234,227,211,0.25)" }}
+              style={{ background: "rgba(255,255,255,0.28)" }}
             >
               <div
                 className="h-full rounded-full transition-[width] duration-200"
@@ -229,7 +229,7 @@ export default function StoriesView({
               className="h-[2.5px] flex-1 rounded-full transition-colors duration-200"
               style={{
                 background:
-                  i <= index ? "var(--accent)" : "rgba(234,227,211,0.25)",
+                  i <= index ? "var(--accent)" : "rgba(255,255,255,0.28)",
               }}
             />
           ))

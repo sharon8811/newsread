@@ -1,22 +1,22 @@
 import type { Metadata } from "next";
-import { Newsreader, Spline_Sans, Spline_Sans_Mono } from "next/font/google";
+import { Geist, Geist_Mono, Source_Serif_4 } from "next/font/google";
 import { AuthProvider } from "@/lib/auth";
 import "./globals.css";
 
-const newsreader = Newsreader({
+const sourceSerif = Source_Serif_4({
   subsets: ["latin"],
   style: ["normal", "italic"],
-  variable: "--font-newsreader",
+  variable: "--font-serif",
 });
 
-const splineSans = Spline_Sans({
+const geist = Geist({
   subsets: ["latin"],
-  variable: "--font-spline-sans",
+  variable: "--font-sans",
 });
 
-const splineMono = Spline_Sans_Mono({
+const geistMono = Geist_Mono({
   subsets: ["latin"],
-  variable: "--font-spline-mono",
+  variable: "--font-mono",
 });
 
 export const metadata: Metadata = {
@@ -31,7 +31,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${newsreader.variable} ${splineSans.variable} ${splineMono.variable}`}
+      className={`${sourceSerif.variable} ${geist.variable} ${geistMono.variable}`}
     >
       <body>
         <AuthProvider>{children}</AuthProvider>

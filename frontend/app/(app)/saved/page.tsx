@@ -29,13 +29,13 @@ function Saved() {
       <header
         className="sticky top-0 z-20 border-b px-6 pb-4 pt-5"
         style={{
-          background: "rgba(15, 13, 10, 0.88)",
+          background: "var(--bg-header)",
           backdropFilter: "blur(10px)",
           borderColor: "var(--line-soft)",
         }}
       >
         <div className="flex items-center gap-3">
-          <h1 className="font-serif-nr text-[24px] italic leading-none">Saved</h1>
+          <h1 className="text-[20px] font-semibold leading-none tracking-tight">Saved</h1>
           <div className="ml-auto">
             <ViewSwitcher view={view} feed={null} onSwitch={setLocalView} />
           </div>

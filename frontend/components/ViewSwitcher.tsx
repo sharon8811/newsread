@@ -73,7 +73,7 @@ export default function ViewSwitcher({
   return (
     <div className="flex items-center gap-2">
       <div
-        className="flex rounded-lg border p-0.5"
+        className="flex rounded-md border p-0.5"
         style={{ borderColor: "var(--line)", background: "var(--bg-inset)" }}
       >
         {MODES.map(({ mode, label, Icon }) => (
@@ -82,10 +82,11 @@ export default function ViewSwitcher({
             onClick={() => pick(mode)}
             title={label}
             aria-label={label}
-            className="rounded-md px-2.5 py-1 transition-colors"
+            className="rounded px-2.5 py-1 transition-colors"
             style={{
-              background: view === mode ? "var(--bg-hover)" : "transparent",
+              background: view === mode ? "var(--bg-raised)" : "transparent",
               color: view === mode ? "var(--ink)" : "var(--ink-faint)",
+              boxShadow: view === mode ? "0 1px 2px rgba(28,30,34,0.08)" : "none",
             }}
           >
             <Icon size={14} />

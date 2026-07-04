@@ -36,7 +36,7 @@ function NavLink({
   return (
     <Link
       href={href}
-      className="flex items-center gap-2.5 rounded-lg px-3 py-[7px] text-[13.5px] transition-colors"
+      className="flex items-center gap-2.5 rounded-md px-3 py-[7px] text-[13.5px] transition-colors"
       style={{
         background: active ? "var(--bg-hover)" : "transparent",
         color: active ? "var(--ink)" : "var(--ink-dim)",
@@ -51,7 +51,7 @@ function NavLink({
           className="font-mono-nr rounded-full px-1.5 text-[10.5px] leading-[18px]"
           style={
             badgeAccent
-              ? { background: "var(--accent)", color: "#17110a", fontWeight: 600 }
+              ? { background: "var(--accent)", color: "var(--accent-ink)", fontWeight: 600 }
               : { color: "var(--ink-faint)" }
           }
         >
@@ -202,7 +202,7 @@ export default function Sidebar() {
             <div key={feed.id} className="group relative">
               <Link
                 href={`/?feed=${feed.id}`}
-                className="flex items-center gap-2.5 rounded-lg px-3 py-[7px] text-[13px] transition-colors"
+                className="flex items-center gap-2.5 rounded-md px-3 py-[7px] text-[13px] transition-colors"
                 style={{
                   background: active ? "var(--bg-hover)" : "transparent",
                   color: active ? "var(--ink)" : "var(--ink-dim)",
@@ -239,7 +239,7 @@ export default function Sidebar() {
         style={{ borderColor: "var(--line-soft)" }}
       >
         <div
-          className="flex h-8 w-8 items-center justify-center rounded-full font-serif-nr text-[14px] italic"
+          className="flex h-8 w-8 items-center justify-center rounded-full text-[13px] font-semibold"
           style={{ background: "var(--accent-soft)", color: "var(--accent)" }}
         >
           {user?.name?.[0]?.toUpperCase() ?? "?"}

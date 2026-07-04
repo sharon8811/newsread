@@ -51,7 +51,7 @@ export default function ArticlePage() {
   if (error) {
     return (
       <div className="flex flex-col items-center px-8 py-28 text-center">
-        <p className="font-serif-nr text-[22px] italic" style={{ color: "var(--ink-dim)" }}>
+        <p className="text-[17px] font-medium" style={{ color: "var(--ink-dim)" }}>
           This article is out of reach.
         </p>
         <button className="btn mt-5" onClick={() => router.push("/")}>
@@ -64,8 +64,8 @@ export default function ArticlePage() {
   if (!article) {
     return (
       <div className="mx-auto max-w-[680px] px-8 py-14">
-        <div className="h-9 w-3/4 rounded-lg" style={{ background: "var(--bg-raised)" }} />
-        <div className="mt-4 h-4 w-1/3 rounded" style={{ background: "var(--bg-raised)" }} />
+        <div className="h-9 w-3/4 rounded-md" style={{ background: "var(--bg-hover)" }} />
+        <div className="mt-4 h-4 w-1/3 rounded" style={{ background: "var(--bg-hover)" }} />
       </div>
     );
   }

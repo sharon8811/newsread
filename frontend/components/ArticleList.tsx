@@ -120,9 +120,9 @@ export default function ArticleList({
         {[...Array(6)].map((_, i) => (
           <div
             key={i}
-            className="h-[72px] rounded-xl"
+            className="h-[72px] rounded-md"
             style={{
-              background: "var(--bg-raised)",
+              background: "var(--bg-hover)",
               opacity: 1 - i * 0.13,
             }}
           />
@@ -134,7 +134,7 @@ export default function ArticleList({
   if (!articles || articles.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center px-8 py-28 text-center">
-        <p className="font-serif-nr text-[22px] italic" style={{ color: "var(--ink-dim)" }}>
+        <p className="text-[17px] font-medium" style={{ color: "var(--ink-dim)" }}>
           {emptyTitle}
         </p>
         {emptySubtitle && (

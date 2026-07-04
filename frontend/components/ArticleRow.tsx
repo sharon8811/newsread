@@ -149,7 +149,7 @@ export default function ArticleRow({
           src={article.image_url}
           alt=""
           loading="lazy"
-          className="h-[72px] w-[108px] shrink-0 rounded-lg border object-cover"
+          className="h-[72px] w-[108px] shrink-0 rounded-md border object-cover"
           style={{ borderColor: "var(--line-soft)", opacity: article.is_read ? 0.6 : 1 }}
           onError={(e) => {
             e.currentTarget.style.display = "none";

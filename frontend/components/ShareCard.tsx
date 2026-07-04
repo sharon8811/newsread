@@ -34,7 +34,7 @@ export default function ShareCard({
     >
       <div className="flex items-center gap-2.5">
         <span
-          className="flex h-7 w-7 items-center justify-center rounded-full font-serif-nr text-[12px] italic"
+          className="flex h-7 w-7 items-center justify-center rounded-full text-[12px] font-semibold"
           style={{ background: "var(--accent-soft)", color: "var(--accent)" }}
         >
           {(direction === "received"
@@ -80,7 +80,7 @@ export default function ShareCard({
 
       {share.note && <blockquote className="note-quote mt-3.5">{share.note}</blockquote>}
 
-      <div className="mt-3.5 rounded-lg border p-3.5" style={{ borderColor: "var(--line)" }}>
+      <div className="mt-3.5 rounded-md border p-3.5" style={{ borderColor: "var(--line)" }}>
         <h3 className="font-serif-nr text-[16px] leading-snug">{share.article.title}</h3>
         <p
           className="font-mono-nr mt-1 text-[11px]"

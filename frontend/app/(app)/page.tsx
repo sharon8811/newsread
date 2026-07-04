@@ -76,13 +76,13 @@ function Inbox() {
       <header
         className="sticky top-0 z-20 border-b px-6 pb-3.5 pt-5"
         style={{
-          background: "rgba(15, 13, 10, 0.88)",
+          background: "var(--bg-header)",
           backdropFilter: "blur(10px)",
           borderColor: "var(--line-soft)",
         }}
       >
         <div className="flex items-center gap-3">
-          <h1 className="font-serif-nr text-[24px] italic leading-none">
+          <h1 className="text-[20px] font-semibold leading-none tracking-tight">
             {feed ? feed.title : "Inbox"}
           </h1>
           {feed && (
@@ -107,17 +107,18 @@ function Inbox() {
         <div className="mt-3.5 flex items-center gap-2">
           {view !== "stories" && (
             <div
-              className="flex rounded-lg border p-0.5"
+              className="flex rounded-md border p-0.5"
               style={{ borderColor: "var(--line)", background: "var(--bg-inset)" }}
             >
               {(["unread", "all"] as const).map((t) => (
                 <button
                   key={t}
                   onClick={() => setTab(t)}
-                  className="rounded-md px-3.5 py-1 text-[12.5px] font-medium capitalize transition-colors"
+                  className="rounded px-3.5 py-1 text-[12.5px] font-medium capitalize transition-colors"
                   style={{
-                    background: tab === t ? "var(--bg-hover)" : "transparent",
+                    background: tab === t ? "var(--bg-raised)" : "transparent",
                     color: tab === t ? "var(--ink)" : "var(--ink-faint)",
+                    boxShadow: tab === t ? "0 1px 2px rgba(28,30,34,0.08)" : "none",
                   }}
                 >
                   {t}

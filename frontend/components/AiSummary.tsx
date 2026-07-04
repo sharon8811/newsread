@@ -37,7 +37,7 @@ export default function AiSummary({ article }: { article: ArticleDetail }) {
 
   return (
     <section
-      className="fade-up mt-7 rounded-xl border p-5"
+      className="fade-up mt-7 rounded-md border p-5"
       style={{ borderColor: "var(--accent-border)", background: "var(--accent-soft)" }}
     >
       <div className="flex items-center gap-2">
