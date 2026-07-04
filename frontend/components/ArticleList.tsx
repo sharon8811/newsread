@@ -6,6 +6,7 @@ import useSWR, { mutate } from "swr";
 import { api, fetcher, type Article } from "@/lib/api";
 import ArticleRow from "./ArticleRow";
 import ShareModal from "./ShareModal";
+import ZenRow from "./ZenRow";
 
 export function articlesKey(opts: {
   filter: "all" | "unread" | "saved";
@@ -29,20 +30,26 @@ export default function ArticleList({
   q,
   emptyTitle,
   emptySubtitle,
+  variant = "list",
 }: {
   filter: "all" | "unread" | "saved";
   feedId?: string | null;
   q?: string;
   emptyTitle: string;
   emptySubtitle?: string;
+  variant?: "list" | "zen";
 }) {
   const router = useRouter();
   const key = articlesKey({ filter, feedId, q });
   const { data: articles, isLoading } = useSWR<Article[]>(key, fetcher);
   const [selected, setSelected] = useState(0);
+  const [revealed, setRevealed] = useState<number | null>(null);
   const [sharing, setSharing] = useState<Article | null>(null);
 
-  useEffect(() => setSelected(0), [key]);
+  useEffect(() => {
+    setSelected(0);
+    setRevealed(null);
+  }, [key]);
 
   const toggleSaved = useCallback(
     async (article: Article) => {
@@ -77,8 +84,12 @@ export default function ArticleList({
 
       if (e.key === "j") {
         setSelected((s) => Math.min(s + 1, articles.length - 1));
+        setRevealed(null);
       } else if (e.key === "k") {
         setSelected((s) => Math.max(s - 1, 0));
+        setRevealed(null);
+      } else if (e.key === "a" && variant === "zen") {
+        setRevealed((r) => (r === selected ? null : selected));
       } else if (e.key === "Enter") {
         const article = articles[selected];
         if (article) router.push(`/article/${article.id}`);
@@ -95,7 +106,7 @@ export default function ArticleList({
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [articles, selected, sharing, router, toggleSaved, toggleRead]);
+  }, [articles, selected, sharing, router, toggleSaved, toggleRead, variant]);
 
   useEffect(() => {
     document
@@ -138,21 +149,33 @@ export default function ArticleList({
   return (
     <>
       <div className="fade-up">
-        {articles.map((article, i) => (
-          <ArticleRow
-            key={article.id}
-            article={article}
-            index={i}
-            selected={i === selected}
-            onToggleSaved={toggleSaved}
-            onShare={setSharing}
-          />
-        ))}
+        {articles.map((article, i) =>
+          variant === "zen" ? (
+            <ZenRow
+              key={article.id}
+              article={article}
+              index={i}
+              selected={i === selected}
+              revealed={i === revealed}
+            />
+          ) : (
+            <ArticleRow
+              key={article.id}
+              article={article}
+              index={i}
+              selected={i === selected}
+              onToggleSaved={toggleSaved}
+              onShare={setSharing}
+            />
+          ),
+        )}
         <p
           className="font-mono-nr px-5 py-6 text-center text-[11px]"
           style={{ color: "var(--ink-faint)" }}
         >
-          j / k to navigate · enter to open · s to save · m to toggle read
+          {variant === "zen"
+            ? "j / k navigate · enter open · a peek summary · s save · m read"
+            : "j / k to navigate · enter to open · s to save · m to toggle read"}
         </p>
       </div>
       {sharing && <ShareModal article={sharing} onClose={() => setSharing(null)} />}

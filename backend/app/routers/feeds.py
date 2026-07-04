@@ -8,7 +8,7 @@ from ..db import get_session
 from ..fetcher import refresh_feed
 from ..queue import enqueue
 from ..models import Article, Feed, Share, Subscription, User, UserArticleState
-from ..schemas import AddFeedIn, FeedOut
+from ..schemas import AddFeedIn, FeedOut, SubscriptionViewIn
 from ..security import get_current_user
 
 logger = logging.getLogger(__name__)
@@ -42,6 +42,7 @@ def _feed_list_stmt(user_id: int):
             func.count(Article.id)
             .filter(or_(UserArticleState.id.is_(None), UserArticleState.is_read.is_(False)))
             .label("unread_count"),
+            Subscription.view_override,
         )
         .join(Subscription, and_(Subscription.feed_id == Feed.id, Subscription.user_id == user_id))
         .outerjoin(Article, Article.feed_id == Feed.id)
@@ -49,12 +50,14 @@ def _feed_list_stmt(user_id: int):
             UserArticleState,
             and_(UserArticleState.article_id == Article.id, UserArticleState.user_id == user_id),
         )
-        .group_by(Feed.id)
+        .group_by(Feed.id, Subscription.view_override)
         .order_by(Feed.title)
     )
 
 
-def _to_feed_out(feed: Feed, article_count: int, unread_count: int) -> FeedOut:
+def _to_feed_out(
+    feed: Feed, article_count: int, unread_count: int, view_override: str | None
+) -> FeedOut:
     return FeedOut(
         id=feed.id,
         url=feed.url,
@@ -64,6 +67,7 @@ def _to_feed_out(feed: Feed, article_count: int, unread_count: int) -> FeedOut:
         last_fetched_at=feed.last_fetched_at,
         article_count=article_count,
         unread_count=unread_count,
+        view_override=view_override,
     )
 
 
@@ -72,7 +76,7 @@ async def list_feeds(
     user: User = Depends(get_current_user), session: AsyncSession = Depends(get_session)
 ):
     rows = await session.execute(_feed_list_stmt(user.id))
-    return [_to_feed_out(feed, article_count, unread_count) for feed, article_count, unread_count in rows]
+    return [_to_feed_out(*row) for row in rows]
 
 
 @router.post("", response_model=FeedOut, status_code=201)
@@ -112,7 +116,7 @@ async def add_feed(
     row = (
         await session.execute(_feed_list_stmt(user.id).where(Feed.id == feed.id))
     ).one()
-    return _to_feed_out(row[0], row[1], row[2])
+    return _to_feed_out(*row)
 
 
 @router.post("/{feed_id}/refresh", response_model=FeedOut)
@@ -132,7 +136,28 @@ async def refresh(
     row = (
         await session.execute(_feed_list_stmt(user.id).where(Feed.id == feed.id))
     ).one()
-    return _to_feed_out(row[0], row[1], row[2])
+    return _to_feed_out(*row)
+
+
+@router.patch("/{feed_id}/view", response_model=FeedOut)
+async def set_feed_view(
+    feed_id: int,
+    body: SubscriptionViewIn,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    feed = await _get_subscribed_feed(session, user, feed_id)
+    subscription = await session.scalar(
+        select(Subscription).where(
+            Subscription.user_id == user.id, Subscription.feed_id == feed.id
+        )
+    )
+    subscription.view_override = body.view_override
+    await session.commit()
+    row = (
+        await session.execute(_feed_list_stmt(user.id).where(Feed.id == feed.id))
+    ).one()
+    return _to_feed_out(*row)
 
 
 @router.delete("/{feed_id}", status_code=204)

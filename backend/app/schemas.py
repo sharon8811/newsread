@@ -1,6 +1,9 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, EmailStr, Field
+
+ViewMode = Literal["list", "stories", "zen"]
 
 
 # --- Auth ---
@@ -22,8 +25,13 @@ class UserOut(BaseModel):
     email: EmailStr
     username: str
     name: str
+    default_view: ViewMode = "list"
 
     model_config = {"from_attributes": True}
+
+
+class UserUpdateIn(BaseModel):
+    default_view: ViewMode | None = None  # PATCH semantics: omitted/None = unchanged
 
 
 class UserPublic(BaseModel):
@@ -55,6 +63,11 @@ class FeedOut(BaseModel):
     last_fetched_at: datetime | None
     article_count: int
     unread_count: int
+    view_override: ViewMode | None = None
+
+
+class SubscriptionViewIn(BaseModel):
+    view_override: ViewMode | None  # required field; explicit null clears the override
 
 
 # --- Articles ---

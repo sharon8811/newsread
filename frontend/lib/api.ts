@@ -52,11 +52,14 @@ export const fetcher = <T,>(path: string) => api<T>(path);
 
 // ——— types (mirror backend schemas) ———
 
+export type ViewMode = "list" | "stories" | "zen";
+
 export type User = {
   id: number;
   email: string;
   username: string;
   name: string;
+  default_view: ViewMode;
 };
 
 export type UserPublic = {
@@ -74,6 +77,7 @@ export type Feed = {
   last_fetched_at: string | null;
   article_count: number;
   unread_count: number;
+  view_override: ViewMode | null;
 };
 
 export type Article = {

@@ -4,14 +4,41 @@ import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import useSWR from "swr";
 import ArticleList, { mutateArticleLists } from "@/components/ArticleList";
+import StoriesView from "@/components/StoriesView";
+import ViewSwitcher from "@/components/ViewSwitcher";
 import { CheckAllIcon, RefreshIcon, SearchIcon } from "@/components/icons";
-import { api, fetcher, type Feed } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
+import { api, fetcher, type Feed, type ViewMode } from "@/lib/api";
+
+const VIEW_MODES = ["list", "stories", "zen"] as const;
 
 function Inbox() {
   const searchParams = useSearchParams();
   const feedId = searchParams.get("feed");
+  const { user } = useAuth();
   const { data: feeds } = useSWR<Feed[]>("/feeds", fetcher);
   const feed = feedId ? feeds?.find((f) => String(f.id) === feedId) : null;
+
+  // In-session switches and stories-exit are plain state (this Next build's
+  // router.replace can revert query-only navigations mid-transition, so the
+  // URL is only read, never written). ?view= acts as a read-only deep link.
+  const [localView, setLocalView] = useState<ViewMode | null>(null);
+  const [viewFeedId, setViewFeedId] = useState(feedId);
+  if (feedId !== viewFeedId) {
+    // Adjust during render: a feed change discards the in-session view switch.
+    setViewFeedId(feedId);
+    setLocalView(null);
+  }
+
+  const rawParamView = searchParams.get("view");
+  const paramView = VIEW_MODES.includes(rawParamView as ViewMode)
+    ? (rawParamView as ViewMode)
+    : null;
+  const view: ViewMode =
+    localView ??
+    paramView ??
+    (feed ? (feed.view_override ?? user?.default_view) : user?.default_view) ??
+    "list";
 
   const [tab, setTab] = useState<"unread" | "all">("unread");
   const [search, setSearch] = useState("");
@@ -78,24 +105,27 @@ function Inbox() {
         </div>
 
         <div className="mt-3.5 flex items-center gap-2">
-          <div
-            className="flex rounded-lg border p-0.5"
-            style={{ borderColor: "var(--line)", background: "var(--bg-inset)" }}
-          >
-            {(["unread", "all"] as const).map((t) => (
-              <button
-                key={t}
-                onClick={() => setTab(t)}
-                className="rounded-md px-3.5 py-1 text-[12.5px] font-medium capitalize transition-colors"
-                style={{
-                  background: tab === t ? "var(--bg-hover)" : "transparent",
-                  color: tab === t ? "var(--ink)" : "var(--ink-faint)",
-                }}
-              >
-                {t}
-              </button>
-            ))}
-          </div>
+          {view !== "stories" && (
+            <div
+              className="flex rounded-lg border p-0.5"
+              style={{ borderColor: "var(--line)", background: "var(--bg-inset)" }}
+            >
+              {(["unread", "all"] as const).map((t) => (
+                <button
+                  key={t}
+                  onClick={() => setTab(t)}
+                  className="rounded-md px-3.5 py-1 text-[12.5px] font-medium capitalize transition-colors"
+                  style={{
+                    background: tab === t ? "var(--bg-hover)" : "transparent",
+                    color: tab === t ? "var(--ink)" : "var(--ink-faint)",
+                  }}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+          )}
+          <ViewSwitcher view={view} feed={feed ?? null} onSwitch={setLocalView} />
           <div className="relative ml-auto w-[240px]">
             <SearchIcon
               size={13}
@@ -112,25 +142,30 @@ function Inbox() {
         </div>
       </header>
 
-      <ArticleList
-        filter={tab === "unread" ? "unread" : "all"}
-        feedId={feedId}
-        q={q}
-        emptyTitle={
-          q
-            ? "Nothing matches your search."
-            : tab === "unread"
-              ? "All caught up."
-              : "No articles yet."
-        }
-        emptySubtitle={
-          q
-            ? undefined
-            : tab === "unread"
-              ? "New articles land here as your feeds refresh."
-              : "Subscribe to a feed from the sidebar to start reading."
-        }
-      />
+      {view === "stories" ? (
+        <StoriesView feedId={feedId} onExit={() => setLocalView("list")} />
+      ) : (
+        <ArticleList
+          variant={view === "zen" ? "zen" : "list"}
+          filter={tab === "unread" ? "unread" : "all"}
+          feedId={feedId}
+          q={q}
+          emptyTitle={
+            q
+              ? "Nothing matches your search."
+              : tab === "unread"
+                ? "All caught up."
+                : "No articles yet."
+          }
+          emptySubtitle={
+            q
+              ? undefined
+              : tab === "unread"
+                ? "New articles land here as your feeds refresh."
+                : "Subscribe to a feed from the sidebar to start reading."
+          }
+        />
+      )}
     </>
   );
 }

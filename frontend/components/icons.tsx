@@ -158,6 +158,43 @@ export function SparkleIcon(p: IconProps) {
   );
 }
 
+export function ListIcon(p: IconProps) {
+  return (
+    <svg {...base(p)}>
+      <path d="M4 6h16" />
+      <path d="M4 12h16" />
+      <path d="M4 18h16" />
+    </svg>
+  );
+}
+
+export function StoriesIcon(p: IconProps) {
+  return (
+    <svg {...base(p)}>
+      <rect x="7" y="4" width="10" height="16" rx="2" />
+      <path d="M3 8v8" />
+      <path d="M21 8v8" />
+    </svg>
+  );
+}
+
+export function ZenIcon(p: IconProps) {
+  return (
+    <svg {...base(p)}>
+      <path d="M5 9h14" />
+      <path d="M5 15h8" />
+    </svg>
+  );
+}
+
+export function ChevronUpIcon(p: IconProps) {
+  return (
+    <svg {...base(p)}>
+      <path d="m18 15-6-6-6 6" />
+    </svg>
+  );
+}
+
 export function TrashIcon(p: IconProps) {
   return (
     <svg {...base(p)}>

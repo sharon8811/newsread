@@ -4,10 +4,24 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db import get_session
 from ..models import User
-from ..schemas import UserPublic
+from ..schemas import UserOut, UserPublic, UserUpdateIn
 from ..security import get_current_user
 
 router = APIRouter(prefix="/users", tags=["users"])
+
+
+@router.patch("/me", response_model=UserOut)
+async def update_me(
+    body: UserUpdateIn,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    if body.default_view is not None:
+        user.default_view = body.default_view
+    session.add(user)
+    await session.commit()
+    await session.refresh(user)
+    return UserOut.model_validate(user)
 
 
 @router.get("/search", response_model=list[UserPublic])
