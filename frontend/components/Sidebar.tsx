@@ -112,7 +112,7 @@ export default function Sidebar() {
 
   return (
     <aside
-      className="flex h-screen w-[250px] shrink-0 flex-col border-r"
+      className="flex h-dvh w-[250px] shrink-0 flex-col border-r"
       style={{ borderColor: "var(--line-soft)", background: "var(--bg-inset)" }}
     >
       <div className="px-5 pb-4 pt-6">

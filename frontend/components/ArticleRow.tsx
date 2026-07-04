@@ -31,7 +31,7 @@ export default function ArticleRow({
     <div
       data-row-index={index}
       onClick={() => router.push(`/article/${article.id}`)}
-      className="group flex cursor-pointer items-start gap-3.5 border-b px-5 py-[15px] transition-colors"
+      className="group flex cursor-pointer items-start gap-3 border-b px-4 py-[15px] transition-colors sm:gap-3.5 sm:px-5"
       style={{
         borderColor: "var(--line-soft)",
         background: selected ? "var(--bg-hover)" : "transparent",
@@ -110,7 +110,7 @@ export default function ArticleRow({
         )}
       </div>
 
-      <div className="flex items-center gap-0.5 self-center opacity-0 transition-opacity group-hover:opacity-100">
+      <div className="hidden items-center gap-0.5 self-center opacity-0 transition-opacity group-hover:opacity-100 sm:flex">
         <button
           className={`icon-btn ${article.is_saved ? "active" : ""}`}
           title={article.is_saved ? "Unsave" : "Save for later"}
@@ -149,7 +149,7 @@ export default function ArticleRow({
           src={article.image_url}
           alt=""
           loading="lazy"
-          className="h-[72px] w-[108px] shrink-0 rounded-md border object-cover"
+          className="h-[54px] w-[80px] shrink-0 rounded-md border object-cover sm:h-[72px] sm:w-[108px]"
           style={{ borderColor: "var(--line-soft)", opacity: article.is_read ? 0.6 : 1 }}
           onError={(e) => {
             e.currentTarget.style.display = "none";

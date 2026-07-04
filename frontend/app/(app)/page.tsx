@@ -74,7 +74,7 @@ function Inbox() {
   return (
     <>
       <header
-        className="sticky top-0 z-20 border-b px-6 pb-3.5 pt-5"
+        className="sticky top-0 z-20 border-b px-4 pb-3.5 pt-4 sm:px-6 sm:pt-5"
         style={{
           background: "var(--bg-header)",
           backdropFilter: "blur(10px)",
@@ -82,29 +82,32 @@ function Inbox() {
         }}
       >
         <div className="flex items-center gap-3">
-          <h1 className="text-[20px] font-semibold leading-none tracking-tight">
+          <h1 className="min-w-0 truncate text-[20px] font-semibold leading-none tracking-tight">
             {feed ? feed.title : "Inbox"}
           </h1>
           {feed && (
-            <span className="font-mono-nr text-[11px]" style={{ color: "var(--ink-faint)" }}>
+            <span
+              className="font-mono-nr whitespace-nowrap text-[11px]"
+              style={{ color: "var(--ink-faint)" }}
+            >
               {feed.unread_count} unread
             </span>
           )}
-          <div className="ml-auto flex items-center gap-1.5">
+          <div className="ml-auto flex shrink-0 items-center gap-1.5">
             {feed && (
               <button className="btn btn-ghost" onClick={refresh} title="Refresh feed">
                 <RefreshIcon size={14} className={refreshing ? "spinning" : undefined} />
-                Refresh
+                <span className="hidden sm:inline">Refresh</span>
               </button>
             )}
             <button className="btn btn-ghost" onClick={markAllRead} title="Mark all as read">
               <CheckAllIcon size={15} />
-              Mark all read
+              <span className="hidden sm:inline">Mark all read</span>
             </button>
           </div>
         </div>
 
-        <div className="mt-3.5 flex items-center gap-2">
+        <div className="mt-3.5 flex flex-wrap items-center gap-2">
           {view !== "stories" && (
             <div
               className="flex rounded-md border p-0.5"
@@ -127,7 +130,7 @@ function Inbox() {
             </div>
           )}
           <ViewSwitcher view={view} feed={feed ?? null} onSwitch={setLocalView} />
-          <div className="relative ml-auto w-[240px]">
+          <div className="relative w-full sm:ml-auto sm:w-[240px]">
             <SearchIcon
               size={13}
               className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2"

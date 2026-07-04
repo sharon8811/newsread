@@ -71,7 +71,7 @@ export default function ArticlePage() {
   }
 
   return (
-    <article className="fade-up mx-auto max-w-[680px] px-8 pb-24 pt-10">
+    <article className="fade-up mx-auto max-w-[680px] px-5 pb-24 pt-6 sm:px-8 sm:pt-10">
       <button
         className="font-mono-nr text-[11.5px] transition-colors"
         style={{ color: "var(--ink-faint)" }}
@@ -83,7 +83,7 @@ export default function ArticlePage() {
       </button>
 
       <p className="mono-label mt-7">{article.feed_title}</p>
-      <h1 className="font-serif-nr mt-2.5 text-[34px] font-medium leading-[1.18]">
+      <h1 className="font-serif-nr mt-2.5 text-[27px] font-medium leading-[1.18] sm:text-[34px]">
         {article.title}
       </h1>
       <p className="font-mono-nr mt-3 text-[12px]" style={{ color: "var(--ink-faint)" }}>

@@ -10,7 +10,7 @@ export default function SharedPage() {
   return (
     <>
       <header
-        className="sticky top-0 z-20 border-b px-6 pb-4 pt-5"
+        className="sticky top-0 z-20 border-b px-4 pb-4 pt-4 sm:px-6 sm:pt-5"
         style={{
           background: "var(--bg-header)",
           backdropFilter: "blur(10px)",
