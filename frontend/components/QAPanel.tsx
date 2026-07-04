@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import useSWR, { mutate } from "swr";
 import {
   api,
@@ -104,10 +106,10 @@ export default function QAPanel({ article }: { article: ArticleDetail }) {
           ) : (
             <div
               key={m.id}
-              className="font-serif-nr max-w-[95%] whitespace-pre-line border-l pl-4 text-[15.5px] leading-relaxed"
-              style={{ borderColor: "var(--line)" }}
+              className="reader max-w-[95%] border-l pl-4"
+              style={{ borderColor: "var(--line)", fontSize: 15.5 }}
             >
-              {m.content}
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.content}</ReactMarkdown>
             </div>
           ),
         )}

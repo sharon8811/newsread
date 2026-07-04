@@ -304,8 +304,17 @@ body {
   padding-left: 1.4em;
   margin: 0 0 1.1em;
 }
+.reader ul {
+  list-style: disc;
+}
+.reader ol {
+  list-style: decimal;
+}
 .reader li {
   margin-bottom: 0.35em;
+}
+.reader > :last-child {
+  margin-bottom: 0;
 }
 
 /* ——— marginalia (share notes) ——— */
