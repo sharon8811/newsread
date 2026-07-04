@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import useSWR, { mutate } from "swr";
 import AiSummary from "@/components/AiSummary";
 import { mutateArticleLists } from "@/components/ArticleList";
+import EntityCard from "@/components/EntityCard";
 import QAPanel from "@/components/QAPanel";
 import ShareModal from "@/components/ShareModal";
 import {
@@ -124,6 +125,8 @@ export default function ArticlePage() {
           </button>
         </div>
       </div>
+
+      <EntityCard entities={article.entities} />
 
       <AiSummary article={article} />
 

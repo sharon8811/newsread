@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta, timezone
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -6,15 +7,42 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db import get_session
-from ..models import Article, Feed, Share, ShareRecipient, Subscription, User, UserArticleState
-from ..schemas import ArticleDetail, ArticleListItem, ArticleStateIn, MarkAllReadIn
+from ..enrichers import badge_for
+from ..models import (
+    Article,
+    ArticleEntity,
+    Entity,
+    EntitySnapshot,
+    Feed,
+    Share,
+    ShareRecipient,
+    Subscription,
+    User,
+    UserArticleState,
+)
+from ..schemas import (
+    ArticleDetail,
+    ArticleListItem,
+    ArticleStateIn,
+    EntityBadge,
+    EntityFull,
+    EntitySnapshotOut,
+    MarkAllReadIn,
+)
 from ..security import get_current_user
 
 router = APIRouter(prefix="/articles", tags=["articles"])
 
+# Which numeric field in entity.data carries the "trend" per kind.
+DELTA_METRICS = {"github": "stargazers_count", "hf_model": "downloads", "hf_dataset": "downloads"}
+SNAPSHOT_CAP = 30
+
 
 def to_list_item(
-    article: Article, feed_title: str, state: UserArticleState | None
+    article: Article,
+    feed_title: str,
+    state: UserArticleState | None,
+    entities: list[EntityBadge] | None = None,
 ) -> ArticleListItem:
     return ArticleListItem(
         id=article.id,
@@ -32,7 +60,58 @@ def to_list_item(
         summary=article.summary,
         summary_short=article.summary_short,
         summary_medium=article.summary_medium,
+        entities=entities or [],
     )
+
+
+def _to_badge(link: ArticleEntity, entity: Entity) -> EntityBadge:
+    return EntityBadge(
+        id=entity.id,
+        kind=entity.kind,
+        key=entity.canonical_key,
+        url=entity.url,
+        source=link.source,
+        badge=badge_for(entity.kind, entity.data or {}),
+    )
+
+
+async def _entities_for_articles(
+    session: AsyncSession, article_ids: list[int]
+) -> dict[int, list[tuple[ArticleEntity, Entity]]]:
+    """One query for a whole page of articles; grouped, primary-first."""
+    if not article_ids:
+        return {}
+    rows = await session.execute(
+        select(ArticleEntity, Entity)
+        .join(Entity, Entity.id == ArticleEntity.entity_id)
+        .where(ArticleEntity.article_id.in_(article_ids))
+    )
+    grouped: dict[int, list[tuple[ArticleEntity, Entity]]] = {}
+    for link, entity in rows:
+        grouped.setdefault(link.article_id, []).append((link, entity))
+    for pairs in grouped.values():
+        pairs.sort(key=lambda pair: (pair[0].source != "primary", pair[0].position))
+    return grouped
+
+
+def _compute_deltas(entity: Entity, snapshots: list[EntitySnapshot]) -> dict:
+    metric = DELTA_METRICS.get(entity.kind)
+    if not metric or not snapshots:
+        return {}
+    current = (entity.data or {}).get(metric)
+    if not isinstance(current, (int, float)):
+        return {}
+    cutoff = datetime.now(timezone.utc) - timedelta(days=7)
+    baseline = None
+    for snapshot in snapshots:  # newest-first
+        if snapshot.captured_at <= cutoff:
+            baseline = (snapshot.data or {}).get(metric)
+            break
+    if baseline is None and entity.created_at <= cutoff:
+        baseline = (snapshots[-1].data or {}).get(metric)
+    if not isinstance(baseline, (int, float)) or baseline == current:
+        return {}
+    return {f"{metric}_delta_7d": current - baseline}
 
 
 async def user_can_access(session: AsyncSession, user_id: int, article: Article) -> bool:
@@ -92,8 +171,17 @@ async def list_articles(
         Article.published_at.desc().nulls_last(), Article.id.desc()
     ).limit(limit).offset(offset)
 
-    rows = await session.execute(stmt)
-    return [to_list_item(article, feed_title, state) for article, feed_title, state in rows]
+    rows = (await session.execute(stmt)).all()
+    entity_map = await _entities_for_articles(session, [a.id for a, _, _ in rows])
+    return [
+        to_list_item(
+            article,
+            feed_title,
+            state,
+            [_to_badge(link, entity) for link, entity in entity_map.get(article.id, [])],
+        )
+        for article, feed_title, state in rows
+    ]
 
 
 @router.get("/{article_id}", response_model=ArticleDetail)
@@ -111,11 +199,37 @@ async def get_article(
             UserArticleState.user_id == user.id, UserArticleState.article_id == article.id
         )
     )
+    pairs = (await _entities_for_articles(session, [article.id])).get(article.id, [])
+    full_entities: list[EntityFull] = []
+    if pairs:
+        snapshot_rows = await session.scalars(
+            select(EntitySnapshot)
+            .where(EntitySnapshot.entity_id.in_([e.id for _, e in pairs]))
+            .order_by(EntitySnapshot.entity_id, EntitySnapshot.captured_at.desc())
+        )
+        by_entity: dict[int, list[EntitySnapshot]] = {}
+        for snapshot in snapshot_rows:
+            bucket = by_entity.setdefault(snapshot.entity_id, [])
+            if len(bucket) < SNAPSHOT_CAP:
+                bucket.append(snapshot)
+        for link, entity in pairs:
+            snapshots = by_entity.get(entity.id, [])
+            full_entities.append(
+                EntityFull(
+                    **_to_badge(link, entity).model_dump(),
+                    data=entity.data or {},
+                    fetched_at=entity.fetched_at,
+                    deltas=_compute_deltas(entity, snapshots),
+                    snapshots=[EntitySnapshotOut.model_validate(s) for s in snapshots],
+                )
+            )
+
     item = to_list_item(article, feed.title or feed.url, state)
     return ArticleDetail(
-        **item.model_dump(),
+        **item.model_dump(exclude={"entities"}),
         content_html=article.content_html,
         summary_model=article.summary_model,
+        entities=full_entities,
     )
 
 

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { type Article } from "@/lib/api";
 import { domainOf, timeAgo } from "@/lib/format";
+import EntityBadges from "./EntityBadges";
 import { BookmarkIcon, ExternalIcon, ShareIcon } from "./icons";
 
 export default function ArticleRow({
@@ -62,6 +63,12 @@ export default function ArticleRow({
           {article.author ? ` · ${article.author}` : ""}
           {article.published_at ? ` · ${timeAgo(article.published_at)}` : ""}
         </p>
+
+        {article.entities.length > 0 && (
+          <p className="mt-1">
+            <EntityBadges entities={article.entities} />
+          </p>
+        )}
 
         {oneLiner && (
           <p

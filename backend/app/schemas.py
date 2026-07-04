@@ -70,6 +70,31 @@ class SubscriptionViewIn(BaseModel):
     view_override: ViewMode | None  # required field; explicit null clears the override
 
 
+# --- Entities (smart link enrichment) ---
+
+class EntityBadge(BaseModel):
+    id: int
+    kind: str
+    key: str
+    url: str
+    source: str  # 'primary' | 'inline'
+    badge: dict  # per-kind display fields, see enrichers.badge_for
+
+
+class EntitySnapshotOut(BaseModel):
+    captured_at: datetime
+    data: dict
+
+    model_config = {"from_attributes": True}
+
+
+class EntityFull(EntityBadge):
+    data: dict
+    fetched_at: datetime | None
+    deltas: dict = {}
+    snapshots: list[EntitySnapshotOut] = []  # newest-first, capped
+
+
 # --- Articles ---
 
 class ArticleListItem(BaseModel):
@@ -88,11 +113,13 @@ class ArticleListItem(BaseModel):
     summary: str = ""
     summary_short: str = ""
     summary_medium: str = ""
+    entities: list[EntityBadge] = []
 
 
 class ArticleDetail(ArticleListItem):
     content_html: str
     summary_model: str | None = None
+    entities: list[EntityFull] = []
 
 
 class ArticleStateIn(BaseModel):

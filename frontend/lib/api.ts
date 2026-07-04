@@ -80,6 +80,27 @@ export type Feed = {
   view_override: ViewMode | null;
 };
 
+export type EntityBadge = {
+  id: number;
+  kind: string; // github | hf_model | hf_dataset | arxiv | pypi | npm | youtube
+  key: string;
+  url: string;
+  source: "primary" | "inline";
+  badge: Record<string, string | number | null | undefined>;
+};
+
+export type EntitySnapshot = {
+  captured_at: string;
+  data: Record<string, unknown>;
+};
+
+export type EntityFull = EntityBadge & {
+  data: Record<string, unknown>;
+  fetched_at: string | null;
+  deltas: Record<string, number>;
+  snapshots: EntitySnapshot[]; // newest-first
+};
+
 export type Article = {
   id: number;
   feed_id: number;
@@ -96,11 +117,13 @@ export type Article = {
   summary: string;
   summary_short: string;
   summary_medium: string;
+  entities: EntityBadge[];
 };
 
-export type ArticleDetail = Article & {
+export type ArticleDetail = Omit<Article, "entities"> & {
   content_html: string;
   summary_model: string | null;
+  entities: EntityFull[];
 };
 
 export type AiStatus = { configured: boolean; model: string | null };

@@ -11,6 +11,7 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .db import Base
@@ -86,8 +87,48 @@ class Article(Base):
     summary: Mapped[str] = mapped_column(Text, default="", server_default="")
     summary_model: Mapped[str | None] = mapped_column(String(120))
     summary_generated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    entities_extracted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     feed: Mapped[Feed] = relationship(back_populates="articles")
+
+
+class Entity(Base):
+    """Global: one row per external resource (repo, model, paper…), shared by
+    every article that links to it. `data` holds the latest normalized payload."""
+
+    __tablename__ = "entities"
+    __table_args__ = (UniqueConstraint("kind", "canonical_key"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    kind: Mapped[str] = mapped_column(String(32), index=True)
+    canonical_key: Mapped[str] = mapped_column(String(512))
+    url: Mapped[str] = mapped_column(String(2048))
+    data: Mapped[dict] = mapped_column(JSONB, default=dict)
+    fetched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class EntitySnapshot(Base):
+    """Append-only history: written on first fetch and whenever `data` changes."""
+
+    __tablename__ = "entity_snapshots"
+    __table_args__ = (Index("ix_entity_snapshots_entity_captured", "entity_id", "captured_at"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entity_id: Mapped[int] = mapped_column(ForeignKey("entities.id", ondelete="CASCADE"), index=True)
+    data: Mapped[dict] = mapped_column(JSONB)
+    captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ArticleEntity(Base):
+    __tablename__ = "article_entities"
+    __table_args__ = (UniqueConstraint("article_id", "entity_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    article_id: Mapped[int] = mapped_column(ForeignKey("articles.id", ondelete="CASCADE"), index=True)
+    entity_id: Mapped[int] = mapped_column(ForeignKey("entities.id", ondelete="CASCADE"), index=True)
+    source: Mapped[str] = mapped_column(String(8))  # 'primary' | 'inline'
+    position: Mapped[int] = mapped_column(Integer, default=0)
 
 
 class UserArticleState(Base):

@@ -12,6 +12,14 @@ export function timeAgo(iso: string | null): string {
   return `${Math.floor(days / 365)}y ago`;
 }
 
+export function humanCount(value: number | null | undefined): string {
+  if (value == null) return "";
+  if (value < 1000) return String(value);
+  if (value < 1_000_000) return `${(value / 1000).toFixed(value < 10_000 ? 1 : 0)}k`;
+  if (value < 1_000_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
+  return `${(value / 1_000_000_000).toFixed(1)}B`;
+}
+
 export function domainOf(url: string): string {
   try {
     return new URL(url).hostname.replace(/^www\./, "");

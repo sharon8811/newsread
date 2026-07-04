@@ -15,6 +15,7 @@ from sqlalchemy import func, or_, select
 from . import llm
 from .config import settings
 from .db import SessionLocal, init_db
+from .enrichers.pipeline import extract_entities, refresh_stale_entities
 from .extractor import enrich_article
 from .fetcher import refresh_feed
 from .models import Article, Feed
@@ -71,7 +72,15 @@ async def enrich_and_summarize(ctx: dict | None = None, feed_id: int | None = No
     semaphore = asyncio.Semaphore(ENRICH_CONCURRENCY)
     await asyncio.gather(*(_enrich_one(aid, semaphore) for aid in enrich_ids))
 
+    try:
+        extracted = await extract_entities(feed_id=feed_id)
+    except Exception as exc:
+        extracted = 0
+        logger.warning("Entity extraction stage failed: %s", exc)
+
     if not llm.is_configured():
+        if enrich_ids or extracted:
+            logger.info("Enriched %d articles, extracted entities for %d", len(enrich_ids), extracted)
         return
 
     async with SessionLocal() as session:
@@ -107,6 +116,13 @@ async def enrich_feed(ctx: dict, feed_id: int) -> None:
     await enrich_and_summarize(ctx, feed_id=feed_id)
 
 
+async def refresh_entities(ctx: dict) -> None:
+    try:
+        await refresh_stale_entities()
+    except Exception as exc:
+        logger.warning("Entity refresh failed: %s", exc)
+
+
 async def poll_feeds(ctx: dict) -> None:
     now = datetime.now(timezone.utc)
     async with SessionLocal() as session:
@@ -133,4 +149,7 @@ class WorkerSettings:
     redis_settings = RedisSettings.from_dsn(settings.redis_url)
     on_startup = startup
     functions = [enrich_feed]
-    cron_jobs = [cron(poll_feeds, minute=set(range(0, 60, 3)), run_at_startup=True)]
+    cron_jobs = [
+        cron(poll_feeds, minute=set(range(0, 60, 3)), run_at_startup=True),
+        cron(refresh_entities, minute={7, 37}),
+    ]

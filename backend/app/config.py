@@ -17,6 +17,10 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:3000"
     feed_refresh_minutes: int = 15
 
+    # Optional API tokens for link enrichers (raise rate limits, never required).
+    github_token: str = ""  # NEWSREAD_GITHUB_TOKEN: 60/hr -> 5000/hr
+    hf_token: str = ""  # NEWSREAD_HF_TOKEN: 500 -> 1000 req/5min
+
     # Any OpenAI-compatible endpoint (OpenAI, vLLM, LiteLLM, Ollama).
     # Read from NEWSREAD_OPENAI_* or the standard OPENAI_* names.
     openai_api_key: str = Field(

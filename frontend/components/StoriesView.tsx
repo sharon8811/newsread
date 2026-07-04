@@ -6,6 +6,7 @@ import useSWR from "swr";
 import { api, fetcher, type Article } from "@/lib/api";
 import { timeAgo } from "@/lib/format";
 import { articlesKey, mutateArticleLists } from "./ArticleList";
+import EntityBadges from "./EntityBadges";
 import { BookmarkIcon, ChevronUpIcon, XIcon } from "./icons";
 
 const FALLBACK_BG =
@@ -273,6 +274,11 @@ export default function StoriesView({
           >
             {a.title}
           </h2>
+          {a.entities.length > 0 && (
+            <p className="mt-2">
+              <EntityBadges entities={a.entities} max={2} />
+            </p>
+          )}
           {summaryText && (
             <p
               className="mt-3 line-clamp-6 text-[15px] leading-relaxed"
