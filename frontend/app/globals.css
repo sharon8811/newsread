@@ -235,6 +235,22 @@ body {
   font-size: 17px;
   line-height: 1.75;
   color: var(--ink);
+  /* Feed HTML is untrusted layout: never let it force horizontal scroll. */
+  overflow-wrap: break-word;
+}
+.reader iframe,
+.reader video,
+.reader embed,
+.reader object,
+.reader figure {
+  max-width: 100%;
+  margin-left: 0;
+  margin-right: 0;
+}
+.reader table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
 }
 .reader p {
   margin: 0 0 1.1em;

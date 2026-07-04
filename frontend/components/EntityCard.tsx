@@ -190,7 +190,7 @@ export default function EntityCard({ entities }: { entities: EntityFull[] }) {
               href={primary.url}
               target="_blank"
               rel="noreferrer"
-              className="mt-1 inline-flex items-center gap-1.5 text-[16px] font-medium hover:underline"
+              className="mt-1 flex max-w-full items-center gap-1.5 text-[16px] font-medium hover:underline"
               style={{ color: "var(--ink)" }}
             >
               <span className="truncate">{title(primary)}</span>
@@ -205,7 +205,9 @@ export default function EntityCard({ entities }: { entities: EntityFull[] }) {
               </p>
             )}
           </div>
-          <Sparkline entity={primary} />
+          <span className="hidden sm:block">
+            <Sparkline entity={primary} />
+          </span>
         </div>
         {stats.length > 0 && (
           <p className="font-mono-nr mt-3 text-[12px]" style={{ color: "var(--ink)" }}>
