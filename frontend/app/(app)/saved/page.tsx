@@ -1,10 +1,11 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import ArticleList from "@/components/ArticleList";
 import StoriesView from "@/components/StoriesView";
 import ViewSwitcher from "@/components/ViewSwitcher";
+import { SearchIcon } from "@/components/icons";
 import { useAuth } from "@/lib/auth";
 import { type ViewMode } from "@/lib/api";
 
@@ -24,6 +25,14 @@ function Saved() {
     : null;
   const view: ViewMode = localView ?? paramView ?? user?.default_view ?? "list";
 
+  const [search, setSearch] = useState("");
+  const [q, setQ] = useState("");
+
+  useEffect(() => {
+    const t = setTimeout(() => setQ(search.trim()), 250);
+    return () => clearTimeout(t);
+  }, [search]);
+
   return (
     <>
       <header
@@ -40,6 +49,23 @@ function Saved() {
             <ViewSwitcher view={view} feed={null} onSwitch={setLocalView} />
           </div>
         </div>
+        {view !== "stories" && (
+          <div className="mt-3.5 flex">
+            <div className="relative w-full sm:ml-auto sm:w-[240px]">
+              <SearchIcon
+                size={13}
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2"
+              />
+              <input
+                className="input"
+                style={{ paddingLeft: 32, fontSize: 13, paddingTop: 6, paddingBottom: 6 }}
+                placeholder="Search saved articles…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+          </div>
+        )}
       </header>
       {view === "stories" ? (
         <StoriesView
@@ -51,8 +77,11 @@ function Saved() {
         <ArticleList
           variant={view === "zen" ? "zen" : "list"}
           filter="saved"
-          emptyTitle="Nothing saved yet."
-          emptySubtitle="Bookmark an article to keep it here for later."
+          q={q}
+          emptyTitle={q ? "Nothing matches your search." : "Nothing saved yet."}
+          emptySubtitle={
+            q ? undefined : "Bookmark an article to keep it here for later."
+          }
         />
       )}
     </>

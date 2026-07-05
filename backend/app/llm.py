@@ -18,7 +18,8 @@ def is_configured() -> bool:
     return bool(settings.openai_api_key and settings.openai_model)
 
 
-def _get_client() -> AsyncOpenAI:
+def get_client() -> AsyncOpenAI:
+    """Shared client for the endpoint; also used by embeddings.py."""
     global _client
     if _client is None:
         _client = AsyncOpenAI(
@@ -34,7 +35,7 @@ def _clean(content: str) -> str:
 
 
 async def _complete(messages: list[dict], max_tokens: int) -> str:
-    response = await _get_client().chat.completions.create(
+    response = await get_client().chat.completions.create(
         model=settings.openai_model,
         messages=messages,
         max_tokens=max_tokens,

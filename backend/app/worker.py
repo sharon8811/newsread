@@ -12,19 +12,20 @@ from arq import cron
 from arq.connections import RedisSettings
 from sqlalchemy import func, or_, select
 
-from . import llm
+from . import embeddings, llm
 from .config import settings
 from .db import SessionLocal, init_db
 from .enrichers.pipeline import extract_entities, refresh_stale_entities
 from .extractor import enrich_article
 from .fetcher import refresh_feed
-from .models import Article, Feed
+from .models import Article, ArticleEmbedding, Feed
 from .summarizer import ThinContentError, generate_summaries
 
 logger = logging.getLogger(__name__)
 
 ENRICH_BATCH = 20
 SUMMARIZE_BATCH = 10
+EMBED_BATCH = 50
 ENRICH_CONCURRENCY = 4
 SUMMARIZE_CONCURRENCY = 2
 
@@ -105,10 +106,45 @@ async def enrich_and_summarize(ctx: dict | None = None, feed_id: int | None = No
 
     semaphore = asyncio.Semaphore(SUMMARIZE_CONCURRENCY)
     await asyncio.gather(*(_summarize_one(aid, semaphore) for aid in summarize_ids))
-    if enrich_ids or summarize_ids:
+
+    embedded = await embed_articles_batch(feed_id=feed_id)
+
+    if enrich_ids or summarize_ids or embedded:
         logger.info(
-            "Enriched %d articles, summarized up to %d", len(enrich_ids), len(summarize_ids)
+            "Enriched %d articles, summarized up to %d, embedded %d",
+            len(enrich_ids),
+            len(summarize_ids),
+            embedded,
         )
+
+
+async def embed_articles_batch(feed_id: int | None = None) -> int:
+    """Embed articles that have no vector yet (or one from a different model,
+    e.g. after an OPENAI_EMBEDDING_MODEL switch), newest first. Runs after the
+    summarize stage so fresh articles usually embed their summary."""
+    if not embeddings.is_configured():
+        return 0
+    async with SessionLocal() as session:
+        embed_query = (
+            select(Article)
+            .outerjoin(ArticleEmbedding, ArticleEmbedding.article_id == Article.id)
+            .where(
+                or_(
+                    ArticleEmbedding.article_id.is_(None),
+                    ArticleEmbedding.model != settings.openai_embedding_model,
+                )
+            )
+            .order_by(Article.id.desc())
+            .limit(EMBED_BATCH)
+        )
+        if feed_id is not None:
+            embed_query = embed_query.where(Article.feed_id == feed_id)
+        articles = (await session.scalars(embed_query)).all()
+        try:
+            return await embeddings.embed_articles(session, list(articles))
+        except Exception as exc:
+            logger.warning("Embedding stage failed: %s", exc)
+            return 0
 
 
 async def enrich_feed(ctx: dict, feed_id: int) -> None:

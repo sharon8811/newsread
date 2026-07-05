@@ -11,6 +11,7 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
+from pgvector.sqlalchemy import Vector
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -90,6 +91,26 @@ class Article(Base):
     entities_extracted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     feed: Mapped[Feed] = relationship(back_populates="articles")
+
+
+class ArticleEmbedding(Base):
+    """One vector per article for semantic search, embedded from title +
+    summary/excerpt. `model` records the embedding model so a model switch
+    re-embeds; queries must filter on it (dimensions may differ across models).
+    The vector column is dimension-less on purpose: search does exact scans
+    (no ANN index needed at this scale), and the dimension follows whatever
+    model the OpenAI-compatible endpoint serves."""
+
+    __tablename__ = "article_embeddings"
+
+    article_id: Mapped[int] = mapped_column(
+        ForeignKey("articles.id", ondelete="CASCADE"), primary_key=True
+    )
+    model: Mapped[str] = mapped_column(String(120))
+    embedding: Mapped[list] = mapped_column(Vector())
+    embedded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
 
 
 class Entity(Base):
