@@ -66,6 +66,8 @@ def to_list_item(
         published_at=article.published_at,
         excerpt=article.excerpt,
         image_url=article.image_url,
+        enriching=article.full_text_fetched_at is None
+        and (article.full_text == "" or article.image_url is None),
         is_read=bool(state and state.is_read),
         is_saved=bool(state and state.is_saved),
         summary=article.summary,

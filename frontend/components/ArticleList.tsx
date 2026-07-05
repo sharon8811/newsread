@@ -31,6 +31,7 @@ export default function ArticleList({
   emptyTitle,
   emptySubtitle,
   variant = "list",
+  refreshInterval = 0,
 }: {
   filter: "all" | "unread" | "saved";
   feedId?: string | null;
@@ -38,10 +39,13 @@ export default function ArticleList({
   emptyTitle: string;
   emptySubtitle?: string;
   variant?: "list" | "zen";
+  refreshInterval?: number;
 }) {
   const router = useRouter();
   const key = articlesKey({ filter, feedId, q });
-  const { data: articles, isLoading } = useSWR<Article[]>(key, fetcher);
+  const { data: articles, isLoading } = useSWR<Article[]>(key, fetcher, {
+    refreshInterval,
+  });
   const [selected, setSelected] = useState(0);
   const [revealed, setRevealed] = useState<number | null>(null);
   const [sharing, setSharing] = useState<Article | null>(null);

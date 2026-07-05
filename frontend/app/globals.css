@@ -365,6 +365,25 @@ body {
   animation: pulseDot 2.2s ease-in-out infinite;
 }
 
+@keyframes shimmerSweep {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+.shimmer {
+  background-image: linear-gradient(
+    100deg,
+    transparent 30%,
+    var(--bg-raised) 50%,
+    transparent 70%
+  );
+  background-size: 200% 100%;
+  animation: shimmerSweep 1.8s ease-in-out infinite;
+}
+
 @keyframes spin {
   to {
     transform: rotate(360deg);
@@ -396,6 +415,7 @@ body {
   .fade-up,
   .dot-new,
   .spinning,
+  .shimmer,
   .typing-dot {
     animation: none;
   }

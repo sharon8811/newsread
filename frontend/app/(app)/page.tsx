@@ -12,12 +12,24 @@ import { api, fetcher, type Feed, type ViewMode } from "@/lib/api";
 
 const VIEW_MODES = ["list", "stories", "zen"] as const;
 
+function pendingCountOf(feeds: Feed[] | undefined, feedId: string | null): number {
+  if (!feeds) return 0;
+  if (feedId) return feeds.find((f) => String(f.id) === feedId)?.pending_count ?? 0;
+  return feeds.reduce((sum, f) => sum + f.pending_count, 0);
+}
+
 function Inbox() {
   const searchParams = useSearchParams();
   const feedId = searchParams.get("feed");
   const { user } = useAuth();
-  const { data: feeds } = useSWR<Feed[]>("/feeds", fetcher);
+  // Poll while any visible feed still has articles awaiting enrichment
+  // (images/full text backfilled by the worker), so updates flow in smoothly
+  // instead of landing in a burst on the next focus revalidation.
+  const { data: feeds } = useSWR<Feed[]>("/feeds", fetcher, {
+    refreshInterval: (data) => (pendingCountOf(data, feedId) > 0 ? 5000 : 0),
+  });
   const feed = feedId ? feeds?.find((f) => String(f.id) === feedId) : null;
+  const pendingCount = pendingCountOf(feeds, feedId);
 
   // In-session switches and stories-exit are plain state (this Next build's
   // router.replace can revert query-only navigations mid-transition, so the
@@ -93,6 +105,16 @@ function Inbox() {
               {feed.unread_count} unread
             </span>
           )}
+          {pendingCount > 0 && (
+            <span
+              className="font-mono-nr flex items-center gap-1.5 whitespace-nowrap text-[11px]"
+              style={{ color: "var(--accent)" }}
+              title="Images and summaries are being fetched in the background"
+            >
+              <RefreshIcon size={11} className="spinning" />
+              enriching {pendingCount} article{pendingCount === 1 ? "" : "s"}…
+            </span>
+          )}
           <div className="ml-auto flex shrink-0 items-center gap-1.5">
             {feed && (
               <button className="btn btn-ghost" onClick={refresh} title="Refresh feed">
@@ -154,6 +176,7 @@ function Inbox() {
           filter={tab === "unread" ? "unread" : "all"}
           feedId={feedId}
           q={q}
+          refreshInterval={pendingCount > 0 ? 4000 : 0}
           emptyTitle={
             q
               ? "Nothing matches your search."

@@ -42,6 +42,16 @@ def _feed_list_stmt(user_id: int):
             func.count(Article.id)
             .filter(or_(UserArticleState.id.is_(None), UserArticleState.is_read.is_(False)))
             .label("unread_count"),
+            # Mirrors the worker's enrich query: full_text_fetched_at is stamped
+            # even on failure, so this always converges to 0.
+            func.count(Article.id)
+            .filter(
+                and_(
+                    Article.full_text_fetched_at.is_(None),
+                    or_(Article.full_text == "", Article.image_url.is_(None)),
+                )
+            )
+            .label("pending_count"),
             Subscription.view_override,
         )
         .join(Subscription, and_(Subscription.feed_id == Feed.id, Subscription.user_id == user_id))
@@ -56,7 +66,11 @@ def _feed_list_stmt(user_id: int):
 
 
 def _to_feed_out(
-    feed: Feed, article_count: int, unread_count: int, view_override: str | None
+    feed: Feed,
+    article_count: int,
+    unread_count: int,
+    pending_count: int,
+    view_override: str | None,
 ) -> FeedOut:
     return FeedOut(
         id=feed.id,
@@ -67,6 +81,7 @@ def _to_feed_out(
         last_fetched_at=feed.last_fetched_at,
         article_count=article_count,
         unread_count=unread_count,
+        pending_count=pending_count,
         view_override=view_override,
     )
 
