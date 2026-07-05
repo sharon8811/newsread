@@ -1,0 +1,15 @@
+# Minimal SearXNG config for NewsRead's Q&A web_search tool.
+use_default_settings: true
+
+server:
+  # Only the NewsRead backend talks to this instance, so no bot-detection
+  # limiter (it would 429 server-side JSON clients).
+  limiter: false
+  # Overridden by the SEARXNG_SECRET env var set in docker-compose.yml.
+  secret_key: "dev-secret-change-me"
+
+search:
+  # The JSON API is what the backend consumes; it's disabled upstream by default.
+  formats:
+    - html
+    - json

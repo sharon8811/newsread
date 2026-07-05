@@ -46,6 +46,7 @@ async def ai_status(user: User = Depends(get_current_user)):
         configured=llm.is_configured(),
         model=settings.openai_model or None,
         search=qa_agent.search_enabled(),
+        search_provider=qa_agent.search_provider(),
     )
 
 

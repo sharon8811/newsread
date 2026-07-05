@@ -179,7 +179,12 @@ export type ArticleDetail = Omit<Article, "entities"> & {
   entities: EntityFull[];
 };
 
-export type AiStatus = { configured: boolean; model: string | null; search: boolean };
+export type AiStatus = {
+  configured: boolean;
+  model: string | null;
+  search: boolean;
+  search_provider: "searxng" | "tavily" | null;
+};
 
 export type ToolEvent = {
   name: string;

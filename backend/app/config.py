@@ -33,10 +33,15 @@ class Settings(BaseSettings):
         default="", validation_alias=AliasChoices("NEWSREAD_OPENAI_MODEL", "OPENAI_MODEL")
     )
 
-    # Tavily web search/extract for the Q&A agent. Without it the agent still
-    # works, just without web tools.
+    # Web tools for the Q&A agent. Without either, the agent still works,
+    # just without web search/extract. SearXNG (self-hosted metasearch) wins
+    # when both are configured — it's the local-deployment option.
     tavily_api_key: str = Field(
         default="", validation_alias=AliasChoices("NEWSREAD_TAVILY_API_KEY", "TAVILY_API_KEY")
+    )
+    searxng_base_url: str = Field(
+        default="",
+        validation_alias=AliasChoices("NEWSREAD_SEARXNG_BASE_URL", "SEARXNG_BASE_URL"),
     )
 
 

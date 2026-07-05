@@ -1,12 +1,19 @@
 """Article Q&A agent: pydantic_ai over any OpenAI-compatible endpoint, with
-optional Tavily web search/extract tools when TAVILY_API_KEY is set."""
+optional web search/extract tools.
+
+Two search providers: Tavily (hosted, TAVILY_API_KEY) or SearXNG (self-hosted
+metasearch, SEARXNG_BASE_URL). With SearXNG, page extraction runs locally via
+the same scrapling + trafilatura pipeline the article enricher uses."""
 
 import logging
+import re
 from collections.abc import AsyncIterator
 from datetime import datetime, timezone
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
+import httpx
+import trafilatura
 from pydantic_ai import (
     Agent,
     AgentRunResultEvent,
@@ -29,24 +36,36 @@ from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.openai import OpenAIProvider
 from pydantic_ai.settings import ModelSettings
 from pydantic_ai.usage import UsageLimits
+from scrapling.fetchers import AsyncFetcher
 from tavily import AsyncTavilyClient
 
 from .config import settings
 
 logger = logging.getLogger(__name__)
 
-# Hard cap on model round-trips per question; bounds latency and Tavily spend.
+# Hard cap on model round-trips per question; bounds latency and search spend.
 _LIMITS = UsageLimits(request_limit=6)
 
 _EXTRACT_MAX_CHARS = 8_000
+
+_SEARCH_MAX_RESULTS = 5
 
 
 def is_configured() -> bool:
     return bool(settings.openai_api_key and settings.openai_model)
 
 
+def search_provider() -> str | None:
+    """Which web-tool backend is configured: 'searxng', 'tavily', or None."""
+    if settings.searxng_base_url:
+        return "searxng"
+    if settings.tavily_api_key:
+        return "tavily"
+    return None
+
+
 def search_enabled() -> bool:
-    return bool(settings.tavily_api_key)
+    return search_provider() is not None
 
 
 QA_INSTRUCTIONS = """You are NewsRead's reading assistant. The user is reading the article below and asking questions about it.
@@ -64,12 +83,51 @@ Article text:
 {text}{entities}"""
 
 
+async def web_search(query: str) -> list[dict] | str:
+    """Search the web. Returns results with title, url and a content snippet."""
+    base = settings.searxng_base_url.rstrip("/")
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            response = await client.get(
+                f"{base}/search",
+                params={"q": query, "format": "json"},
+                # SearXNG expects a reverse proxy to set this; without it,
+                # botdetection logs an ERROR on every request.
+                headers={"X-Forwarded-For": "127.0.0.1"},
+            )
+            response.raise_for_status()
+            data = response.json()
+    except Exception as exc:
+        logger.warning("web_search failed for %r: %s", query, exc)
+        return f"Search failed: {exc}"
+    return [
+        {
+            "title": item.get("title") or "",
+            "url": item.get("url") or "",
+            "content": item.get("content") or "",
+        }
+        for item in (data.get("results") or [])[:_SEARCH_MAX_RESULTS]
+    ]
+
+
 async def web_extract(url: str) -> str:
     """Fetch a web page and return its main content as text.
 
     Use when a specific page likely contains the answer but you only have its
     URL or a short snippet.
     """
+    if search_provider() == "searxng":
+        content = await _extract_local(url)
+    else:
+        content = await _extract_tavily(url)
+    if content.startswith("Could not extract"):
+        return content
+    if len(content) > _EXTRACT_MAX_CHARS:
+        content = content[:_EXTRACT_MAX_CHARS] + "\n\n[page truncated]"
+    return content
+
+
+async def _extract_tavily(url: str) -> str:
     try:
         response = await AsyncTavilyClient(settings.tavily_api_key).extract(
             url, format="markdown", timeout=20
@@ -80,16 +138,51 @@ async def web_extract(url: str) -> str:
     results = response.get("results") or []
     if not results:
         return f"Could not extract {url}: the page returned no content."
-    content = results[0].get("raw_content") or ""
-    if len(content) > _EXTRACT_MAX_CHARS:
-        content = content[:_EXTRACT_MAX_CHARS] + "\n\n[page truncated]"
-    return content
+    return results[0].get("raw_content") or ""
+
+
+async def _extract_local(url: str) -> str:
+    """Extraction without Tavily: scrapling fetch (browser impersonation, like
+    the article enricher) + trafilatura, as markdown so links survive for
+    the agent's inline citations."""
+    try:
+        page = await AsyncFetcher.get(url, impersonate="chrome")
+    except Exception as exc:
+        logger.warning("web_extract failed for %s: %s", url, exc)
+        return f"Could not extract {url}: {exc}"
+    if page.status != 200:
+        return f"Could not extract {url}: the page returned HTTP {page.status}."
+    text = trafilatura.extract(
+        page.html_content,
+        output_format="markdown",
+        include_links=True,
+        include_comments=False,
+    ) or ""
+    if not text:
+        return f"Could not extract {url}: the page returned no content."
+    return _absolutize_links(text, url)
+
+
+_MD_LINK_TARGET = re.compile(r"\]\(([^)\s]+)\)")
+
+
+def _absolutize_links(markdown: str, base_url: str) -> str:
+    """Resolve relative link targets so the agent can cite them verbatim."""
+    return _MD_LINK_TARGET.sub(
+        lambda m: f"]({urljoin(base_url, m.group(1))})", markdown
+    )
 
 
 def _tools() -> list:
-    if not search_enabled():
-        return []
-    return [tavily_search_tool(settings.tavily_api_key, max_results=5), web_extract]
+    provider = search_provider()
+    if provider == "searxng":
+        return [web_search, web_extract]
+    if provider == "tavily":
+        return [
+            tavily_search_tool(settings.tavily_api_key, max_results=_SEARCH_MAX_RESULTS),
+            web_extract,
+        ]
+    return []
 
 
 def _model() -> OpenAIChatModel:
@@ -164,7 +257,7 @@ def _domain(url: Any) -> str:
 
 def _summarize_tool_result(name: str, content: Any) -> str:
     """One line for the UI chip, not for the model (which gets the full content)."""
-    if name == "tavily_search" and isinstance(content, list):
+    if name in ("tavily_search", "web_search") and isinstance(content, list):
         domains = []
         for item in content:
             if isinstance(item, dict) and item.get("url"):

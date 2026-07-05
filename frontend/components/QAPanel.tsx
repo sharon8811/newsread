@@ -45,7 +45,8 @@ function hostOf(url: unknown): string {
 }
 
 function toolLabel(name: string, args: Record<string, unknown>): string {
-  if (name === "tavily_search") return `Searching the web: “${args.query ?? ""}”`;
+  if (name === "tavily_search") return `Searching the web (Tavily): “${args.query ?? ""}”`;
+  if (name === "web_search") return `Searching the web (SearXNG): “${args.query ?? ""}”`;
   if (name === "web_extract") return `Reading ${hostOf(args.url)}`;
   return `Running ${name}`;
 }

@@ -159,6 +159,7 @@ class AiStatusOut(BaseModel):
     configured: bool
     model: str | None
     search: bool = False  # web search/extract tools available to the Q&A agent
+    search_provider: str | None = None  # "searxng" | "tavily" | None
 
 
 class SummaryOut(BaseModel):

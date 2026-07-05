@@ -37,6 +37,10 @@ services:
       NEWSREAD_REDIS_URL: redis://redis:6379/0
       NEWSREAD_JWT_SECRET: ${NEWSREAD_JWT_SECRET:-dev-secret-change-me}
       NEWSREAD_CORS_ORIGINS: http://localhost:3000
+      # A set SEARXNG_BASE_URL in .env points at the host (localhost:8080),
+      # but inside the compose network the instance lives at searxng:8080 —
+      # rewrite it. Set NEWSREAD_SEARXNG_BASE_URL to use an external instance.
+      NEWSREAD_SEARXNG_BASE_URL: ${NEWSREAD_SEARXNG_BASE_URL:-${SEARXNG_BASE_URL:+http://searxng:8080}}
     ports:
       - "8000:8000"
     depends_on:
@@ -56,6 +60,19 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+
+  # Self-hosted web search for the Q&A agent (local alternative to Tavily).
+  # Opt-in: docker compose --profile search up -d searxng
+  # Then set SEARXNG_BASE_URL in .env (see .env.example).
+  searxng:
+    image: searxng/searxng:latest
+    profiles: ["search"]
+    environment:
+      SEARXNG_SECRET: ${SEARXNG_SECRET:-dev-secret-change-me}
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./searxng/settings.yml:/etc/searxng/settings.yml:ro
 
   frontend:
     build:
