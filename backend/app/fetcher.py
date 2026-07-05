@@ -3,7 +3,7 @@
 import logging
 import re
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import feedparser
 import httpx
@@ -201,11 +201,16 @@ async def refresh_feed(session: AsyncSession, feed: Feed) -> int:
 
     new_count = 0
     seen: set[str] = set()
-    for item in parsed.articles:
+    now = datetime.now(timezone.utc)
+    for position, item in enumerate(parsed.articles):
         if item.guid in existing or item.guid in seen:
             continue
         seen.add(item.guid)
         clean = sanitize_html(item.content_html)
+        # Undated entries get a fetch-time fallback (offset by feed position so
+        # feed order survives the sort) instead of NULL, which would pin them
+        # below every dated article and let them shift on later refreshes.
+        published_at = item.published_at or now - timedelta(seconds=position)
         session.add(
             Article(
                 feed_id=feed.id,
@@ -214,7 +219,7 @@ async def refresh_feed(session: AsyncSession, feed: Feed) -> int:
                 comments_url=item.comments_url[:2048] if item.comments_url else None,
                 title=strip_html(item.title) or item.url,
                 author=item.author[:255] if item.author else None,
-                published_at=item.published_at,
+                published_at=published_at,
                 content_html=clean,
                 excerpt=derive_excerpt(clean),
                 image_url=item.image_url[:2048] if item.image_url else None,

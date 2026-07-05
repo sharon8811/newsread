@@ -143,18 +143,29 @@ export default function ArticleRow({
         </a>
       </div>
 
-      {article.image_url && (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={article.image_url}
-          alt=""
-          loading="lazy"
-          className="h-[54px] w-[80px] shrink-0 rounded-md border object-cover sm:h-[72px] sm:w-[108px]"
-          style={{ borderColor: "var(--line-soft)", opacity: article.is_read ? 0.6 : 1 }}
-          onError={(e) => {
-            e.currentTarget.style.display = "none";
-          }}
-        />
+      {/* Fixed-size frame: reserved while enrichment may still backfill an
+          image, so thumbnails popping in never reflow the row. */}
+      {(article.image_url || article.enriching) && (
+        <div
+          className={`h-[54px] w-[80px] shrink-0 overflow-hidden rounded-md border sm:h-[72px] sm:w-[108px] ${
+            article.image_url ? "" : "shimmer"
+          }`}
+          style={{ borderColor: "var(--line-soft)", background: "var(--bg-hover)" }}
+        >
+          {article.image_url && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={article.image_url}
+              alt=""
+              loading="lazy"
+              className="h-full w-full object-cover"
+              style={{ opacity: article.is_read ? 0.6 : 1 }}
+              onError={(e) => {
+                e.currentTarget.style.display = "none";
+              }}
+            />
+          )}
+        </div>
       )}
     </div>
   );

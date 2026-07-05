@@ -63,6 +63,8 @@ class FeedOut(BaseModel):
     last_fetched_at: datetime | None
     article_count: int
     unread_count: int
+    # Articles still awaiting background enrichment (full text / lead image).
+    pending_count: int = 0
     view_override: ViewMode | None = None
 
 
@@ -108,6 +110,9 @@ class ArticleListItem(BaseModel):
     published_at: datetime | None
     excerpt: str
     image_url: str | None
+    # Background enrichment hasn't visited this article yet; an image may
+    # still be backfilled, so the UI keeps the thumbnail slot reserved.
+    enriching: bool = False
     is_read: bool
     is_saved: bool
     summary: str = ""
