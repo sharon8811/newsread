@@ -21,3 +21,4 @@ out/
 
 # Agents
 .agents/
+skills-lock.json
