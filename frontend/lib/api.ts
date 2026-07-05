@@ -50,6 +50,59 @@ export async function api<T>(
 
 export const fetcher = <T,>(path: string) => api<T>(path);
 
+// ——— Q&A streaming (SSE over fetch; EventSource can't POST or send auth) ———
+
+export type QAStreamEvent =
+  | { type: "status"; state: string }
+  | { type: "tool_call"; id: string; name: string; args: Record<string, unknown> }
+  | { type: "tool_result"; id: string; summary: string }
+  | { type: "delta"; text: string }
+  | { type: "done"; message: ChatMessage }
+  | { type: "error"; detail: string };
+
+export async function streamQA(
+  articleId: number,
+  content: string,
+  onEvent: (event: QAStreamEvent) => void,
+): Promise<void> {
+  const token = getToken();
+  const res = await fetch(`${API_URL}/api/articles/${articleId}/qa/stream`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ content }),
+  });
+  if (!res.ok || !res.body) {
+    const data = await res.json().catch(() => null);
+    throw new ApiError(
+      typeof data?.detail === "string" ? data.detail : res.statusText,
+      res.status,
+    );
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let frameEnd;
+    while ((frameEnd = buffer.indexOf("\n\n")) !== -1) {
+      const frame = buffer.slice(0, frameEnd);
+      buffer = buffer.slice(frameEnd + 2);
+      for (const line of frame.split("\n")) {
+        if (!line.startsWith("data: ")) continue;
+        const event = JSON.parse(line.slice(6)) as QAStreamEvent;
+        if (event.type === "error") throw new ApiError(event.detail, 502);
+        onEvent(event);
+      }
+    }
+  }
+}
+
 // ——— types (mirror backend schemas) ———
 
 export type ViewMode = "list" | "stories" | "zen";
@@ -126,12 +179,19 @@ export type ArticleDetail = Omit<Article, "entities"> & {
   entities: EntityFull[];
 };
 
-export type AiStatus = { configured: boolean; model: string | null };
+export type AiStatus = { configured: boolean; model: string | null; search: boolean };
+
+export type ToolEvent = {
+  name: string;
+  args: Record<string, unknown>;
+  summary: string | null;
+};
 
 export type ChatMessage = {
   id: number;
   role: "user" | "assistant";
   content: string;
+  tool_events?: ToolEvent[] | null;
   created_at: string;
 };
 

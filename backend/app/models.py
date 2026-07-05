@@ -186,6 +186,9 @@ class Message(Base):
     )
     role: Mapped[str] = mapped_column(String(12))  # "user" | "assistant"
     content: Mapped[str] = mapped_column(Text)
+    # Web tool calls made while answering: [{name, args, summary}], null for user
+    # messages and tool-less answers.
+    tool_events: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     conversation: Mapped[Conversation] = relationship(back_populates="messages")

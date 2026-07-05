@@ -5,19 +5,22 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import useSWR, { mutate } from "swr";
 import {
-  api,
   fetcher,
+  streamQA,
   type AiStatus,
   type ArticleDetail,
   type ChatMessage,
+  type ToolEvent,
 } from "@/lib/api";
-import { CommentIcon, ShareIcon } from "./icons";
+import { CheckIcon, CommentIcon, ExternalIcon, RefreshIcon, SearchIcon, ShareIcon } from "./icons";
 
 const SUGGESTIONS = [
   "What are the key points?",
   "Why does this matter?",
   "What is the counterargument?",
 ];
+
+type LiveToolCall = ToolEvent & { id: string; done: boolean };
 
 function TypingDots() {
   return (
@@ -33,6 +36,63 @@ function TypingDots() {
   );
 }
 
+function hostOf(url: unknown): string {
+  try {
+    return new URL(String(url)).hostname.replace(/^www\./, "");
+  } catch {
+    return String(url ?? "");
+  }
+}
+
+function toolLabel(name: string, args: Record<string, unknown>): string {
+  if (name === "tavily_search") return `Searching the web: “${args.query ?? ""}”`;
+  if (name === "web_extract") return `Reading ${hostOf(args.url)}`;
+  return `Running ${name}`;
+}
+
+function ToolChip({
+  name,
+  args,
+  summary,
+  done,
+}: {
+  name: string;
+  args: Record<string, unknown>;
+  summary: string | null;
+  done: boolean;
+}) {
+  const Icon = name === "web_extract" ? ExternalIcon : SearchIcon;
+  return (
+    <div
+      className="flex items-center gap-2 text-[12.5px]"
+      style={{ color: "var(--ink-faint)" }}
+    >
+      {done ? (
+        <CheckIcon size={12} />
+      ) : (
+        <RefreshIcon size={12} className="spinning" />
+      )}
+      <Icon size={12} />
+      <span>{toolLabel(name, args)}</span>
+      {done && summary && <span style={{ opacity: 0.65 }}>· {summary}</span>}
+    </div>
+  );
+}
+
+function ToolTrace({ calls }: { calls: (ToolEvent & { done: boolean })[] }) {
+  if (calls.length === 0) return null;
+  return (
+    <div
+      className="mb-3 flex flex-col gap-1.5 border-b pb-3"
+      style={{ borderColor: "var(--line-soft)" }}
+    >
+      {calls.map((c, i) => (
+        <ToolChip key={i} name={c.name} args={c.args} summary={c.summary} done={c.done} />
+      ))}
+    </div>
+  );
+}
+
 export default function QAPanel({ article }: { article: ArticleDetail }) {
   const { data: status } = useSWR<AiStatus>("/ai/status", fetcher);
   const key = `/articles/${article.id}/qa`;
@@ -42,6 +102,8 @@ export default function QAPanel({ article }: { article: ArticleDetail }) {
   );
   const [input, setInput] = useState("");
   const [pending, setPending] = useState<string | null>(null);
+  const [toolCalls, setToolCalls] = useState<LiveToolCall[]>([]);
+  const [liveText, setLiveText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -49,7 +111,7 @@ export default function QAPanel({ article }: { article: ArticleDetail }) {
     if ((messages && messages.length > 0) || pending) {
       bottomRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
     }
-  }, [messages, pending]);
+  }, [messages, pending, toolCalls.length, liveText]);
 
   if (!status?.configured) return null;
 
@@ -57,16 +119,41 @@ export default function QAPanel({ article }: { article: ArticleDetail }) {
     const q = question.trim();
     if (!q || pending) return;
     setPending(q);
+    setToolCalls([]);
+    setLiveText("");
     setInput("");
     setError(null);
     try {
-      await api(key, { method: "POST", body: { content: q } });
+      let finished = false;
+      await streamQA(article.id, q, (event) => {
+        if (event.type === "tool_call") {
+          // Any text so far was pre-tool-call preamble, not the answer.
+          setLiveText("");
+          setToolCalls((calls) => [
+            ...calls,
+            { id: event.id, name: event.name, args: event.args, summary: null, done: false },
+          ]);
+        } else if (event.type === "tool_result") {
+          setToolCalls((calls) =>
+            calls.map((c) =>
+              c.id === event.id ? { ...c, summary: event.summary, done: true } : c,
+            ),
+          );
+        } else if (event.type === "delta") {
+          setLiveText((text) => text + event.text);
+        } else if (event.type === "done") {
+          finished = true;
+        }
+      });
+      if (!finished) throw new Error("The assistant's reply was interrupted");
       await mutate(key);
     } catch (err) {
       setError(err instanceof Error ? err.message : "The assistant could not answer");
       setInput(q);
     } finally {
       setPending(null);
+      setToolCalls([]);
+      setLiveText("");
     }
   }
 
@@ -75,6 +162,11 @@ export default function QAPanel({ article }: { article: ArticleDetail }) {
       <div className="flex items-center gap-2">
         <CommentIcon size={13} />
         <span className="mono-label">Ask the article</span>
+        {status.search && (
+          <span className="mono-label" style={{ opacity: 0.55 }}>
+            · web-aware
+          </span>
+        )}
       </div>
 
       {(!messages || messages.length === 0) && !pending && (
@@ -106,10 +198,15 @@ export default function QAPanel({ article }: { article: ArticleDetail }) {
           ) : (
             <div
               key={m.id}
-              className="reader max-w-[95%] border-l pl-4"
-              style={{ borderColor: "var(--line)", fontSize: 15.5 }}
+              className="max-w-[95%] border-l pl-4"
+              style={{ borderColor: "var(--line)" }}
             >
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.content}</ReactMarkdown>
+              <ToolTrace
+                calls={(m.tool_events ?? []).map((t) => ({ ...t, done: true }))}
+              />
+              <div className="reader" style={{ fontSize: 15.5 }}>
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.content}</ReactMarkdown>
+              </div>
             </div>
           ),
         )}
@@ -123,8 +220,15 @@ export default function QAPanel({ article }: { article: ArticleDetail }) {
                 {pending}
               </p>
             </div>
-            <div className="border-l pl-4" style={{ borderColor: "var(--line)" }}>
-              <TypingDots />
+            <div className="max-w-[95%] border-l pl-4" style={{ borderColor: "var(--line)" }}>
+              <ToolTrace calls={toolCalls} />
+              {liveText ? (
+                <div className="reader" style={{ fontSize: 15.5 }}>
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{liveText}</ReactMarkdown>
+                </div>
+              ) : (
+                <TypingDots />
+              )}
             </div>
           </>
         )}

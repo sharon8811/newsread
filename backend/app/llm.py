@@ -1,4 +1,4 @@
-"""LLM access via any OpenAI-compatible endpoint (OpenAI, vLLM, LiteLLM, Ollama)."""
+"""Summarization LLM access via any OpenAI-compatible endpoint (OpenAI, vLLM, LiteLLM, Ollama)."""
 
 import logging
 import re
@@ -86,23 +86,4 @@ async def summarize(title: str, text: str) -> tuple[str, str, str]:
     return _parse_levels(raw)
 
 
-QA_SYSTEM = """You are NewsRead's reading assistant. The user is reading the article below and asking questions about it.
-
-Ground your answers in the article text. If the article does not contain the answer, say so plainly before adding any general knowledge, and keep that clearly separated. Be concise; plain text only.
-
-Article title: {title}
-
-Article text:
-{text}"""
-
-
-async def answer(
-    title: str, text: str, history: list[tuple[str, str]], question: str
-) -> str:
-    messages: list[dict] = [
-        {"role": "system", "content": QA_SYSTEM.format(title=title, text=text)}
-    ]
-    for role, content in history[-20:]:
-        messages.append({"role": role, "content": content})
-    messages.append({"role": "user", "content": question})
-    return await _complete(messages, max_tokens=1500)
+# Article Q&A lives in qa_agent.py (pydantic_ai, tool-calling, streaming).

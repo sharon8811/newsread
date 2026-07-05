@@ -158,6 +158,7 @@ class UnseenCountOut(BaseModel):
 class AiStatusOut(BaseModel):
     configured: bool
     model: str | None
+    search: bool = False  # web search/extract tools available to the Q&A agent
 
 
 class SummaryOut(BaseModel):
@@ -176,6 +177,7 @@ class MessageOut(BaseModel):
     id: int
     role: str
     content: str
+    tool_events: list[dict] | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

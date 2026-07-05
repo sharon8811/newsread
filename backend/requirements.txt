@@ -12,5 +12,6 @@ PyJWT>=2.9
 arq>=0.26
 nh3>=0.2
 openai>=1.50
+pydantic-ai-slim[openai,tavily]>=2.0,<3
 scrapling[fetchers]>=0.4
 trafilatura>=1.12

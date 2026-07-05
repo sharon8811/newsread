@@ -33,5 +33,11 @@ class Settings(BaseSettings):
         default="", validation_alias=AliasChoices("NEWSREAD_OPENAI_MODEL", "OPENAI_MODEL")
     )
 
+    # Tavily web search/extract for the Q&A agent. Without it the agent still
+    # works, just without web tools.
+    tavily_api_key: str = Field(
+        default="", validation_alias=AliasChoices("NEWSREAD_TAVILY_API_KEY", "TAVILY_API_KEY")
+    )
+
 
 settings = Settings()
