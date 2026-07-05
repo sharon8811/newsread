@@ -32,6 +32,14 @@ class Settings(BaseSettings):
     openai_model: str = Field(
         default="", validation_alias=AliasChoices("NEWSREAD_OPENAI_MODEL", "OPENAI_MODEL")
     )
+    # Embedding model for semantic search over articles; served by the same
+    # endpoint as openai_model. Unset -> search falls back to keyword matching.
+    openai_embedding_model: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "NEWSREAD_OPENAI_EMBEDDING_MODEL", "OPENAI_EMBEDDING_MODEL"
+        ),
+    )
 
     # Web tools for the Q&A agent. Without either, the agent still works,
     # just without web search/extract. SearXNG (self-hosted metasearch) wins

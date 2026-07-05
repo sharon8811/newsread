@@ -1,15 +1,19 @@
+import logging
 from datetime import datetime, timedelta, timezone
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, func, literal_column, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from .. import embeddings
+from ..config import settings
 from ..db import get_session
 from ..enrichers import badge_for
 from ..models import (
     Article,
+    ArticleEmbedding,
     ArticleEntity,
     Entity,
     EntitySnapshot,
@@ -31,11 +35,18 @@ from ..schemas import (
 )
 from ..security import get_current_user
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/articles", tags=["articles"])
 
 # Which numeric field in entity.data carries the "trend" per kind.
 DELTA_METRICS = {"github": "stargazers_count", "hf_model": "downloads", "hf_dataset": "downloads"}
 SNAPSHOT_CAP = 30
+
+# Hybrid search: candidates per leg (vector / keyword) and the standard
+# reciprocal-rank-fusion constant.
+SEARCH_POOL = 60
+RRF_K = 60
 
 
 def to_list_item(
@@ -130,6 +141,72 @@ async def user_can_access(session: AsyncSession, user_id: int, article: Article)
     return shared is not None
 
 
+def _scoped_article_ids(user_id: int, feed_id: int | None, filter: str):
+    """Article.id select with the same subscription/filter scope as the list."""
+    stmt = (
+        select(Article.id)
+        .join(
+            Subscription,
+            and_(Subscription.feed_id == Article.feed_id, Subscription.user_id == user_id),
+        )
+        .outerjoin(
+            UserArticleState,
+            and_(
+                UserArticleState.article_id == Article.id,
+                UserArticleState.user_id == user_id,
+            ),
+        )
+    )
+    if feed_id is not None:
+        stmt = stmt.where(Article.feed_id == feed_id)
+    if filter == "unread":
+        stmt = stmt.where(or_(UserArticleState.id.is_(None), UserArticleState.is_read.is_(False)))
+    elif filter == "saved":
+        stmt = stmt.where(UserArticleState.is_saved.is_(True))
+    return stmt
+
+
+async def _hybrid_search_ids(
+    session: AsyncSession, user_id: int, feed_id: int | None, filter: str, q: str
+) -> list[int] | None:
+    """Semantic + keyword search fused with RRF; article ids, best match first.
+    None means embeddings are unavailable — caller falls back to ILIKE."""
+    if not embeddings.is_configured():
+        return None
+    try:
+        [query_vector] = await embeddings.embed_texts([q])
+    except Exception as exc:
+        logger.warning("Query embedding failed, falling back to keyword search: %s", exc)
+        return None
+
+    vector_stmt = (
+        _scoped_article_ids(user_id, feed_id, filter)
+        .join(ArticleEmbedding, ArticleEmbedding.article_id == Article.id)
+        # Model filter keeps dimensions consistent mid re-embed after a model switch.
+        .where(ArticleEmbedding.model == settings.openai_embedding_model)
+        .order_by(ArticleEmbedding.embedding.cosine_distance(query_vector))
+        .limit(SEARCH_POOL)
+    )
+    # search_tsv is a generated column added by migration (see db.MIGRATIONS),
+    # intentionally unmapped so create_all never emits a conflicting plain column.
+    tsv = literal_column("articles.search_tsv")
+    tsquery = func.websearch_to_tsquery("english", q)
+    keyword_stmt = (
+        _scoped_article_ids(user_id, feed_id, filter)
+        .where(tsv.op("@@")(tsquery))
+        .order_by(func.ts_rank(tsv, tsquery).desc())
+        .limit(SEARCH_POOL)
+    )
+    vector_ids = list(await session.scalars(vector_stmt))
+    keyword_ids = list(await session.scalars(keyword_stmt))
+
+    scores: dict[int, float] = {}
+    for leg in (vector_ids, keyword_ids):
+        for rank, article_id in enumerate(leg):
+            scores[article_id] = scores.get(article_id, 0.0) + 1.0 / (RRF_K + rank + 1)
+    return sorted(scores, key=lambda article_id: (-scores[article_id], -article_id))
+
+
 @router.get("", response_model=list[ArticleListItem])
 async def list_articles(
     feed_id: int | None = None,
@@ -163,15 +240,28 @@ async def list_articles(
         )
     elif filter == "saved":
         stmt = stmt.where(UserArticleState.is_saved.is_(True))
-    if q:
-        pattern = f"%{q}%"
-        stmt = stmt.where(or_(Article.title.ilike(pattern), Article.excerpt.ilike(pattern)))
 
-    stmt = stmt.order_by(
-        Article.published_at.desc().nulls_last(), Article.id.desc()
-    ).limit(limit).offset(offset)
-
-    rows = (await session.execute(stmt)).all()
+    ranked_ids = (
+        await _hybrid_search_ids(session, user.id, feed_id, filter, q) if q else None
+    )
+    if ranked_ids is not None:
+        page_ids = ranked_ids[offset : offset + limit]
+        if not page_ids:
+            return []
+        stmt = stmt.where(Article.id.in_(page_ids))
+        rows = (await session.execute(stmt)).all()
+        position = {article_id: index for index, article_id in enumerate(page_ids)}
+        rows.sort(key=lambda row: position[row[0].id])
+    else:
+        if q:
+            pattern = f"%{q}%"
+            stmt = stmt.where(
+                or_(Article.title.ilike(pattern), Article.excerpt.ilike(pattern))
+            )
+        stmt = stmt.order_by(
+            Article.published_at.desc().nulls_last(), Article.id.desc()
+        ).limit(limit).offset(offset)
+        rows = (await session.execute(stmt)).all()
     entity_map = await _entities_for_articles(session, [a.id for a, _, _ in rows])
     return [
         to_list_item(

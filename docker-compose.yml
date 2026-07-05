@@ -2,7 +2,9 @@ name: newsread
 
 services:
   db:
-    image: postgres:16-alpine
+    # pgvector build of Postgres 16 (same major, existing pgdata volume keeps working);
+    # the vector extension powers semantic article search.
+    image: pgvector/pgvector:pg16
     environment:
       POSTGRES_USER: newsread
       POSTGRES_PASSWORD: newsread
@@ -52,6 +54,11 @@ services:
   worker:
     build: ./backend
     command: arq app.worker.WorkerSettings
+    # Same .env as the backend: the worker is what actually calls the LLM
+    # (summaries + embeddings), so it needs the OPENAI_* credentials too.
+    env_file:
+      - path: .env
+        required: false
     environment:
       NEWSREAD_DATABASE_URL: postgresql+asyncpg://newsread:newsread@db:5432/newsread
       NEWSREAD_REDIS_URL: redis://redis:6379/0
