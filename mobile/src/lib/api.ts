@@ -18,6 +18,11 @@ export function configureApi(config: { serverUrl?: string | null; token?: string
   if ("token" in config) authToken = config.token ?? null;
 }
 
+/** For callers that need raw fetch access (e.g. Q&A streaming). */
+export function getApiConfig(): { baseUrl: string | null; token: string | null } {
+  return { baseUrl, token: authToken };
+}
+
 async function request(path: string, opts: { method?: string; body?: unknown } = {}) {
   if (!baseUrl) throw new ApiError("No server configured", 0);
   const res = await fetch(`${baseUrl}/api${path}`, {

@@ -56,3 +56,24 @@ export type ArticleDetail = Omit<Article, "entities"> & {
   content_html: string;
   summary_model: string | null;
 };
+
+export type AiStatus = {
+  configured: boolean;
+  model: string | null;
+  search: boolean;
+  search_provider: "searxng" | "tavily" | null;
+};
+
+export type ToolEvent = {
+  name: string;
+  args: Record<string, unknown>;
+  summary: string | null;
+};
+
+export type ChatMessage = {
+  id: number;
+  role: "user" | "assistant";
+  content: string;
+  tool_events?: ToolEvent[] | null;
+  created_at: string;
+};
