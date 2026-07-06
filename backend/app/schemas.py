@@ -49,6 +49,22 @@ class TokenOut(BaseModel):
     user: UserOut
 
 
+# --- Devices (mobile push) ---
+
+class DeviceIn(BaseModel):
+    push_token: str = Field(min_length=1, max_length=512)
+    platform: Literal["ios", "android"]
+
+
+class DeviceOut(BaseModel):
+    id: int
+    push_token: str
+    platform: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
 # --- Feeds ---
 
 class AddFeedIn(BaseModel):

@@ -11,14 +11,15 @@ from datetime import datetime, timedelta, timezone
 from arq import cron
 from arq.connections import RedisSettings
 from sqlalchemy import func, or_, select
+from sqlalchemy.orm import selectinload
 
-from . import embeddings, llm
+from . import embeddings, llm, push
 from .config import settings
 from .db import SessionLocal, init_db
 from .enrichers.pipeline import extract_entities, refresh_stale_entities
 from .extractor import enrich_article
 from .fetcher import refresh_feed
-from .models import Article, ArticleEmbedding, Feed
+from .models import Article, ArticleEmbedding, Feed, Share
 from .summarizer import ThinContentError, generate_summaries
 
 logger = logging.getLogger(__name__)
@@ -156,6 +157,31 @@ async def enrich_feed(ctx: dict, feed_id: int) -> None:
     await enrich_and_summarize(ctx, feed_id=feed_id)
 
 
+async def send_share_push(ctx: dict, share_id: int) -> None:
+    """Enqueued by the API when a share is created; notifies each recipient's
+    registered mobile devices."""
+    async with SessionLocal() as session:
+        share = await session.scalar(
+            select(Share)
+            .where(Share.id == share_id)
+            .options(
+                selectinload(Share.recipients),
+                selectinload(Share.from_user),
+                selectinload(Share.article),
+            )
+        )
+    if share is None:
+        return
+    sent = await push.send_push(
+        [r.to_user_id for r in share.recipients],
+        title=f"@{share.from_user.username} shared an article",
+        body=share.note or share.article.title,
+        data={"type": "share", "share_id": share.id, "article_id": share.article_id},
+    )
+    if sent:
+        logger.info("Share %d: sent %d push notifications", share_id, sent)
+
+
 async def refresh_entities(ctx: dict) -> None:
     try:
         await refresh_stale_entities()
@@ -188,7 +214,7 @@ async def startup(ctx: dict) -> None:
 class WorkerSettings:
     redis_settings = RedisSettings.from_dsn(settings.redis_url)
     on_startup = startup
-    functions = [enrich_feed]
+    functions = [enrich_feed, send_share_push]
     cron_jobs = [
         cron(poll_feeds, minute=set(range(0, 60, 3)), run_at_startup=True),
         cron(refresh_entities, minute={7, 37}),

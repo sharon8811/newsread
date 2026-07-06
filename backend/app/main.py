@@ -6,9 +6,14 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
 from .db import init_db
-from .routers import ai, articles, auth, feeds, shares, users
+from .routers import ai, articles, auth, devices, feeds, shares, users
 
 logging.basicConfig(level=logging.INFO)
+
+API_VERSION = "0.1.0"
+# Bumped only when the API changes incompatibly; mobile clients compare it
+# against the newest version they understand and prompt for an app update.
+MIN_CLIENT_VERSION = "0.1.0"
 
 
 @asynccontextmanager
@@ -17,7 +22,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="NewsRead API", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="NewsRead API", version=API_VERSION, lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -25,6 +30,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Next-Cursor"],
 )
 
 app.include_router(auth.router, prefix="/api")
@@ -33,8 +39,16 @@ app.include_router(feeds.router, prefix="/api")
 app.include_router(articles.router, prefix="/api")
 app.include_router(shares.router, prefix="/api")
 app.include_router(ai.router, prefix="/api")
+app.include_router(devices.router, prefix="/api")
 
 
 @app.get("/api/health")
 async def health():
-    return {"status": "ok"}
+    """Unauthenticated probe; mobile onboarding uses `app` to confirm the URL
+    points at a NewsRead server before asking for credentials."""
+    return {
+        "status": "ok",
+        "app": "newsread",
+        "version": API_VERSION,
+        "min_client_version": MIN_CLIENT_VERSION,
+    }

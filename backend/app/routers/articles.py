@@ -1,8 +1,9 @@
+import base64
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import and_, func, literal_column, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -128,6 +129,45 @@ def _compute_deltas(entity: Entity, snapshots: list[EntitySnapshot]) -> dict:
     return {f"{metric}_delta_7d": current - baseline}
 
 
+def _encode_cursor(article: Article) -> str:
+    """Opaque keyset cursor over (published_at, id) — the list's sort key."""
+    published = article.published_at.isoformat() if article.published_at else ""
+    return base64.urlsafe_b64encode(f"{published}|{article.id}".encode()).decode()
+
+
+def _decode_cursor(cursor: str) -> tuple[datetime | None, int]:
+    try:
+        raw = base64.urlsafe_b64decode(cursor.encode()).decode()
+        published_raw, separator, id_raw = raw.rpartition("|")
+        if not separator:
+            raise ValueError(raw)
+        published = datetime.fromisoformat(published_raw) if published_raw else None
+        return published, int(id_raw)
+    except (ValueError, UnicodeDecodeError):
+        raise HTTPException(status_code=422, detail="Invalid cursor")
+
+
+def _cursor_filter(published: datetime | None, article_id: int, *, oldest: bool):
+    """Keyset condition for rows strictly after the cursor. Articles without a
+    published_at sort last in both directions (nulls_last), so a non-null
+    cursor still has the whole null tail ahead of it."""
+    if oldest:
+        if published is None:
+            return and_(Article.published_at.is_(None), Article.id > article_id)
+        return or_(
+            Article.published_at > published,
+            and_(Article.published_at == published, Article.id > article_id),
+            Article.published_at.is_(None),
+        )
+    if published is None:
+        return and_(Article.published_at.is_(None), Article.id < article_id)
+    return or_(
+        Article.published_at < published,
+        and_(Article.published_at == published, Article.id < article_id),
+        Article.published_at.is_(None),
+    )
+
+
 async def user_can_access(session: AsyncSession, user_id: int, article: Article) -> bool:
     subscribed = await session.scalar(
         select(Subscription.id).where(
@@ -218,14 +258,22 @@ async def _hybrid_search_ids(
 
 @router.get("", response_model=list[ArticleListItem])
 async def list_articles(
+    response: Response,
     feed_id: int | None = None,
     filter: Literal["all", "unread", "saved"] = "all",
     q: str | None = Query(default=None, max_length=200),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
+    cursor: str | None = Query(default=None, max_length=200),
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
+    """Chronological listings support keyset pagination: pass the previous
+    response's `X-Next-Cursor` header as `cursor` (which then overrides
+    `offset`). Cursors stay stable while new articles arrive, unlike offsets.
+    Search results are ranked, not chronological, so `q` keeps using offsets."""
+    if cursor is not None and q:
+        raise HTTPException(status_code=422, detail="cursor cannot be combined with q")
     stmt = (
         select(Article, Feed.title, UserArticleState)
         .join(Feed, Article.feed_id == Feed.id)
@@ -277,12 +325,24 @@ async def list_articles(
                     Subscription.user_id == user.id, Subscription.feed_id == feed_id
                 )
             )
-        if sort_order == "oldest":
+        oldest = sort_order == "oldest"
+        if oldest:
             stmt = stmt.order_by(Article.published_at.asc().nulls_last(), Article.id.asc())
         else:
             stmt = stmt.order_by(Article.published_at.desc().nulls_last(), Article.id.desc())
-        stmt = stmt.limit(limit).offset(offset)
+        if cursor is not None:
+            published, cursor_id = _decode_cursor(cursor)
+            stmt = stmt.where(_cursor_filter(published, cursor_id, oldest=oldest))
+        else:
+            stmt = stmt.offset(offset)
+        # One extra row tells us whether a next page exists.
+        stmt = stmt.limit(limit + 1)
         rows = (await session.execute(stmt)).all()
+        if len(rows) > limit:
+            rows = rows[:limit]
+            # Ranked/ILIKE search stays offset-based, so no cursor for q.
+            if not q:
+                response.headers["X-Next-Cursor"] = _encode_cursor(rows[-1][0])
     entity_map = await _entities_for_articles(session, [a.id for a, _, _ in rows])
     return [
         to_list_item(

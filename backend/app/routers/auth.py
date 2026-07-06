@@ -55,3 +55,10 @@ async def login(body: LoginIn, session: AsyncSession = Depends(get_session)):
 @router.get("/me", response_model=UserOut)
 async def me(user: User = Depends(get_current_user)):
     return UserOut.model_validate(user)
+
+
+@router.post("/refresh", response_model=TokenOut)
+async def refresh(user: User = Depends(get_current_user)):
+    """Sliding session: trade a still-valid token for a fresh one. Mobile
+    clients call this on app launch so users never hit the 30-day expiry."""
+    return TokenOut(access_token=create_access_token(user.id), user=UserOut.model_validate(user))
