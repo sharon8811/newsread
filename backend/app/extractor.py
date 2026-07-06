@@ -64,15 +64,17 @@ async def enrich_article(session: AsyncSession, article: Article) -> None:
     """Fill full_text and image_url from the original page, fetching it at most once."""
     need_text = not article.full_text and is_thin(strip_html(article.content_html))
     need_image = not article.image_url
-    if not (need_text or need_image):
-        return
-
-    text, image = await fetch_page(article.url)
-    if need_text:
-        article.full_text = text
-        article.full_text_fetched_at = datetime.now(timezone.utc)
-    if need_image and image:
-        article.image_url = image[:2048]
+    if need_text or need_image:
+        text, image = await fetch_page(article.url)
+        if need_text:
+            article.full_text = text
+        if need_image and image:
+            article.image_url = image[:2048]
+    # Stamp unconditionally: the worker's batch query and the feeds
+    # pending_count treat a NULL stamp as "still pending", so an article that
+    # needs nothing (rich feed body, image already set) or whose page yields
+    # no image would otherwise stay pending — and be re-fetched — forever.
+    article.full_text_fetched_at = datetime.now(timezone.utc)
     await session.commit()
 
 

@@ -163,6 +163,40 @@ async def test_enrich_article_skips_when_nothing_needed(session, monkeypatch):
     monkeypatch.setattr(extractor, "fetch_page", fake_fetch_page)
     await enrich_article(session, art)
     assert not called
+    assert art.full_text_fetched_at is not None
+
+
+async def test_enrich_article_stamps_rich_body_with_image(session, monkeypatch):
+    # Regression: the worker batch query and feeds pending_count select on
+    # full_text == '' OR image_url IS NULL with a NULL stamp. A rich feed body
+    # (need_text false) with an image already set fetches nothing — but it must
+    # still be stamped, or it stays "enriching…" forever.
+    rich = "<p>" + ("word " * 200) + "</p>"
+    art = await _make_article(session, content_html=rich, image_url="https://x/i.png")
+
+    async def fake_fetch_page(url):
+        raise AssertionError("should not fetch")
+
+    monkeypatch.setattr(extractor, "fetch_page", fake_fetch_page)
+    await enrich_article(session, art)
+    assert art.full_text == ""
+    assert art.full_text_fetched_at is not None
+
+
+async def test_enrich_article_stamps_when_no_image_found(session, monkeypatch):
+    # Regression: rich body, missing image, page yields no image — the attempt
+    # must be stamped so the article is not re-selected (and re-fetched) forever.
+    rich = "<p>" + ("word " * 200) + "</p>"
+    art = await _make_article(session, content_html=rich)
+
+    async def fake_fetch_page(url):
+        return "", None
+
+    monkeypatch.setattr(extractor, "fetch_page", fake_fetch_page)
+    await enrich_article(session, art)
+    assert art.image_url is None
+    assert art.full_text == ""
+    assert art.full_text_fetched_at is not None
 
 
 async def test_ensure_full_text_returns_existing(session):

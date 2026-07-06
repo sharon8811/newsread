@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 import pytest
 from sqlalchemy import select
 
@@ -49,6 +51,23 @@ async def test_list_feeds_with_counts(client, users, data):
     assert len(body) == 1
     assert body[0]["article_count"] == 2
     assert body[0]["unread_count"] == 1
+
+
+async def test_pending_count_counts_only_unstamped_articles(client, users, data):
+    user = await users.create()
+    feed = await data.feed(title="Tech")
+    await data.subscribe(user, feed)
+    # Never attempted, full_text empty -> pending.
+    await data.article(feed)
+    # Attempt stamped -> settled, even though the image is still missing.
+    await data.article(feed, full_text_fetched_at=datetime.now(timezone.utc))
+    # Fully enriched -> settled.
+    await data.article(feed, full_text="body", image_url="https://x/i.png",
+                       full_text_fetched_at=datetime.now(timezone.utc))
+
+    resp = await client.get("/api/feeds", headers=users.auth(user))
+    body = resp.json()
+    assert body[0]["pending_count"] == 1
 
 
 async def test_add_new_feed(client, users):
