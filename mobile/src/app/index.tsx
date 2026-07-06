@@ -27,11 +27,11 @@ const FILTERS: { key: ArticleFilter; label: string }[] = [
   { key: "saved", label: "Saved" },
 ];
 
-const MODE_ORDER: ViewMode[] = ["list", "stories", "zen"];
+const MODE_ORDER: ViewMode[] = ["cards", "list", "stories"];
 const MODE_ICON: Record<ViewMode, keyof typeof Ionicons.glyphMap> = {
+  cards: "grid-outline",
   list: "list-outline",
   stories: "albums-outline",
-  zen: "reorder-two-outline",
 };
 
 function ListRow({ article, colors, onPress }: {
@@ -79,7 +79,7 @@ function ListRow({ article, colors, onPress }: {
   );
 }
 
-function ZenRow({ article, colors, onPress }: {
+function CardRow({ article, colors, onPress }: {
   article: Article;
   colors: Palette;
   onPress: () => void;
@@ -88,21 +88,42 @@ function ZenRow({ article, colors, onPress }: {
   return (
     <Pressable
       style={({ pressed }) => [
-        styles.zenRow,
-        { borderBottomColor: colors.border, opacity: pressed ? 0.7 : 1 },
+        styles.card,
+        {
+          backgroundColor: colors.card,
+          borderColor: colors.border,
+          opacity: pressed ? 0.7 : 1,
+        },
       ]}
       onPress={onPress}
     >
-      {!dim && <View style={[styles.zenDot, { backgroundColor: colors.tint }]} />}
-      <Text
-        style={[styles.zenTitle, { color: dim ? colors.muted : colors.text }]}
-        numberOfLines={1}
-      >
-        {article.title}
-      </Text>
-      <Text style={[styles.zenMeta, { color: colors.muted }]}>
-        {timeAgo(article.published_at)}
-      </Text>
+      {article.image_url && (
+        <Image
+          source={{ uri: article.image_url }}
+          style={[styles.cardImage, dim && { opacity: 0.55 }]}
+          contentFit="cover"
+          transition={150}
+        />
+      )}
+      <View style={styles.cardBody}>
+        <Text style={[styles.rowMeta, { color: colors.muted }]} numberOfLines={1}>
+          {!dim && <Text style={{ color: colors.tint }}>● </Text>}
+          {article.feed_title}
+          {article.published_at ? ` · ${timeAgo(article.published_at)}` : ""}
+          {article.is_saved ? " · Saved" : ""}
+        </Text>
+        <Text
+          style={[styles.cardTitle, { color: dim ? colors.muted : colors.text }]}
+          numberOfLines={3}
+        >
+          {article.title}
+        </Text>
+        {(article.summary_short || article.excerpt) !== "" && (
+          <Text style={[styles.cardExcerpt, { color: colors.muted }]} numberOfLines={3}>
+            {article.summary_short || article.excerpt}
+          </Text>
+        )}
+      </View>
     </Pressable>
   );
 }
@@ -226,10 +247,10 @@ export default function ArticleListScreen() {
           data={articles}
           keyExtractor={(article) => String(article.id)}
           renderItem={({ item }) =>
-            mode === "zen" ? (
-              <ZenRow article={item} colors={colors} onPress={() => openArticle(item)} />
-            ) : (
+            mode === "list" ? (
               <ListRow article={item} colors={colors} onPress={() => openArticle(item)} />
+            ) : (
+              <CardRow article={item} colors={colors} onPress={() => openArticle(item)} />
             )
           }
           refreshControl={
@@ -285,17 +306,17 @@ const styles = StyleSheet.create({
   rowExcerpt: { fontSize: 14, lineHeight: 19 },
   rowMeta: { fontSize: 13, marginTop: 2 },
   thumb: { width: 72, height: 72, borderRadius: 8, alignSelf: "center" },
-  zenRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 11,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+  card: {
+    marginHorizontal: 16,
+    marginTop: 14,
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: "hidden",
   },
-  zenDot: { width: 6, height: 6, borderRadius: 3 },
-  zenTitle: { flex: 1, fontSize: 15 },
-  zenMeta: { fontSize: 13 },
+  cardImage: { width: "100%", aspectRatio: 16 / 9 },
+  cardBody: { gap: 5, paddingHorizontal: 14, paddingVertical: 12 },
+  cardTitle: { fontSize: 18, fontWeight: "600", lineHeight: 24 },
+  cardExcerpt: { fontSize: 14.5, lineHeight: 20 },
   center: { flex: 1, alignItems: "center", justifyContent: "center", padding: 32 },
   fill: { flexGrow: 1 },
   footer: { paddingVertical: 20 },

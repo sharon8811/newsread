@@ -1,0 +1,157 @@
+"use client";
+
+import { useRouter } from "next/navigation";
+import { type Article } from "@/lib/api";
+import { domainOf, timeAgo } from "@/lib/format";
+import EntityBadges from "./EntityBadges";
+import { BookmarkIcon, ExternalIcon, ShareIcon } from "./icons";
+
+export default function ArticleCard({
+  article,
+  selected,
+  index,
+  onToggleSaved,
+  onShare,
+}: {
+  article: Article;
+  selected?: boolean;
+  index: number;
+  onToggleSaved: (article: Article) => void;
+  onShare: (article: Article) => void;
+}) {
+  const router = useRouter();
+  const summary = article.summary_short || article.excerpt;
+
+  return (
+    <article
+      data-row-index={index}
+      onClick={() => router.push(`/article/${article.id}`)}
+      className="group flex cursor-pointer flex-col overflow-hidden rounded-lg border transition-all duration-150 hover:-translate-y-0.5"
+      style={{
+        borderColor: selected ? "var(--accent-border)" : "var(--line-soft)",
+        background: "var(--bg-raised)",
+        boxShadow: selected
+          ? "0 0 0 3px var(--accent-soft), 0 2px 12px rgba(28,30,34,0.08)"
+          : "0 1px 3px rgba(28,30,34,0.05)",
+      }}
+      onMouseEnter={(e) => {
+        if (!selected) e.currentTarget.style.boxShadow = "0 6px 24px rgba(28,30,34,0.12)";
+      }}
+      onMouseLeave={(e) => {
+        if (!selected) e.currentTarget.style.boxShadow = "0 1px 3px rgba(28,30,34,0.05)";
+      }}
+    >
+      {/* The media frame only exists when there is (or may soon be) an image:
+          text-only articles stay compact instead of carrying an empty banner. */}
+      {(article.image_url || article.enriching) && (
+        <div
+          className={`relative aspect-[2/1] w-full shrink-0 overflow-hidden ${
+            article.image_url ? "" : "shimmer"
+          }`}
+          style={{ background: "var(--bg-hover)" }}
+        >
+          {article.image_url && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={article.image_url}
+              alt=""
+              loading="lazy"
+              className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+              style={{ opacity: article.is_read ? 0.55 : 1 }}
+              onError={(e) => {
+                e.currentTarget.style.display = "none";
+              }}
+            />
+          )}
+        </div>
+      )}
+
+      <div className="flex flex-1 flex-col px-5 pb-4 pt-4 sm:px-7 sm:pt-5">
+        <p
+          className="font-mono-nr flex items-center gap-2 truncate text-[11px]"
+          style={{ color: "var(--ink-faint)" }}
+        >
+          <span className="dot-unread" style={{ opacity: article.is_read ? 0 : 1 }} />
+          <span className="truncate">
+            {domainOf(article.url)}
+            {article.published_at ? ` · ${timeAgo(article.published_at)}` : ""}
+          </span>
+        </p>
+
+        <h3
+          className="font-serif-nr mt-2 text-[19px] leading-snug sm:text-[21px]"
+          style={{
+            color: article.is_read ? "var(--ink-dim)" : "var(--ink)",
+            fontWeight: article.is_read ? 400 : 500,
+          }}
+        >
+          {article.title}
+        </h3>
+
+        {summary && (
+          <p
+            className="mt-2 line-clamp-3 text-[14px] leading-relaxed"
+            style={{ color: "var(--ink-dim)" }}
+          >
+            {article.summary_short && (
+              <span
+                className="font-mono-nr mr-1.5 text-[10px]"
+                style={{ color: "var(--accent)" }}
+              >
+                ✦
+              </span>
+            )}
+            {summary}
+          </p>
+        )}
+
+        {article.entities.length > 0 && (
+          <p className="mt-2">
+            <EntityBadges entities={article.entities} />
+          </p>
+        )}
+
+        <div className="mt-auto flex items-center gap-2 pt-3">
+          <span
+            className="font-mono-nr min-w-0 truncate text-[11px]"
+            style={{ color: "var(--ink-faint)" }}
+          >
+            {article.author ?? article.feed_title}
+          </span>
+          <div className="ml-auto flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+            <button
+              className={`icon-btn ${article.is_saved ? "active" : ""}`}
+              title={article.is_saved ? "Unsave" : "Save for later"}
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleSaved(article);
+              }}
+            >
+              <BookmarkIcon size={15} filled={article.is_saved} />
+            </button>
+            <button
+              className="icon-btn"
+              title="Share with a note"
+              onClick={(e) => {
+                e.stopPropagation();
+                onShare(article);
+              }}
+            >
+              <ShareIcon size={15} />
+            </button>
+            <a
+              className="icon-btn"
+              title="Open original"
+              href={article.url}
+              target="_blank"
+              rel="noreferrer"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <ExternalIcon size={15} />
+            </a>
+          </div>
+        </div>
+      </div>
+    </article>
+  );
+}

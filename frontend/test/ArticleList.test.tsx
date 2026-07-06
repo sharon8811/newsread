@@ -79,11 +79,22 @@ describe("<ArticleList>", () => {
     expect(screen.getByText(/j \/ k to navigate/)).toBeInTheDocument();
   });
 
-  it("renders zen rows in zen mode", () => {
-    stub([makeArticle({ id: 1, title: "Zenful" })]);
-    render(<ArticleList filter="all" emptyTitle="Empty" variant="zen" />);
-    expect(screen.getByText("Zenful")).toBeInTheDocument();
-    expect(screen.getByText(/peek summary/)).toBeInTheDocument();
+  it("renders cards in cards mode", () => {
+    stub([makeArticle({ id: 1, title: "Card One" }), makeArticle({ id: 2, title: "Card Two" })]);
+    const { container } = render(
+      <ArticleList filter="all" emptyTitle="Empty" variant="cards" />,
+    );
+    expect(screen.getByText("Card One")).toBeInTheDocument();
+    expect(screen.getByText("Card Two")).toBeInTheDocument();
+    expect(container.querySelectorAll("article").length).toBe(2);
+  });
+
+  it("renders card-shaped skeletons while loading in cards mode", () => {
+    stub(undefined, true);
+    const { container } = render(
+      <ArticleList filter="all" emptyTitle="Empty" variant="cards" />,
+    );
+    expect(container.querySelectorAll(".rounded-lg").length).toBe(4);
   });
 
   it("navigates selection with j and k", () => {
@@ -127,17 +138,6 @@ describe("<ArticleList>", () => {
     const [url, opts] = fetchMock.mock.calls[0];
     expect(String(url)).toContain("/articles/6/state");
     expect(JSON.parse(opts.body)).toEqual({ is_read: true });
-  });
-
-  it("peeks the summary with the a key in zen mode", () => {
-    stub([makeArticle({ id: 1, title: "Z", summary_short: "the peek text" })]);
-    render(<ArticleList filter="all" emptyTitle="Empty" variant="zen" />);
-    const summary = screen.getByText(/the peek text/);
-    expect(summary.className).not.toContain("fade-up");
-    fireEvent.keyDown(window, { key: "a" });
-    expect(screen.getByText(/the peek text/).className).toContain("fade-up");
-    fireEvent.keyDown(window, { key: "a" }); // toggle back off
-    expect(screen.getByText(/the peek text/).className).not.toContain("fade-up");
   });
 
   it("ignores unhandled keys", () => {

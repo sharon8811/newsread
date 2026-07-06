@@ -199,11 +199,13 @@ export function StoriesIcon(p: IconProps) {
   );
 }
 
-export function ZenIcon(p: IconProps) {
+export function CardsIcon(p: IconProps) {
   return (
     <svg {...base(p)}>
-      <path d="M5 9h14" />
-      <path d="M5 15h8" />
+      <rect x="3" y="3" width="7.5" height="7.5" rx="1.5" />
+      <rect x="13.5" y="3" width="7.5" height="7.5" rx="1.5" />
+      <rect x="3" y="13.5" width="7.5" height="7.5" rx="1.5" />
+      <rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.5" />
     </svg>
   );
 }

@@ -3,7 +3,7 @@ from typing import Literal
 
 from pydantic import BaseModel, EmailStr, Field
 
-ViewMode = Literal["list", "stories", "zen"]
+ViewMode = Literal["cards", "list", "stories"]
 SortOrder = Literal["newest", "oldest"]
 
 
@@ -26,7 +26,7 @@ class UserOut(BaseModel):
     email: EmailStr
     username: str
     name: str
-    default_view: ViewMode = "list"
+    default_view: ViewMode = "cards"
 
     model_config = {"from_attributes": True}
 

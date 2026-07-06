@@ -51,6 +51,10 @@ MIGRATIONS = [
     "(to_tsvector('english', coalesce(title, '') || ' ' || coalesce(excerpt, '') || ' ' "
     "|| coalesce(summary_medium, ''))) STORED",
     "CREATE INDEX IF NOT EXISTS ix_articles_search_tsv ON articles USING gin (search_tsv)",
+    # The zen view was replaced by the cards view; remap stored preferences.
+    "ALTER TABLE users ALTER COLUMN default_view SET DEFAULT 'cards'",
+    "UPDATE users SET default_view = 'cards' WHERE default_view = 'zen'",
+    "UPDATE subscriptions SET view_override = 'cards' WHERE view_override = 'zen'",
 ]
 
 

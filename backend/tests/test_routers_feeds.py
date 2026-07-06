@@ -149,10 +149,10 @@ async def test_set_feed_view(client, users, data):
     user = await users.create()
     feed = await data.feed()
     await data.subscribe(user, feed)
-    resp = await client.patch(f"/api/feeds/{feed.id}/settings", json={"view_override": "zen"},
+    resp = await client.patch(f"/api/feeds/{feed.id}/settings", json={"view_override": "cards"},
                               headers=users.auth(user))
     assert resp.status_code == 200
-    assert resp.json()["view_override"] == "zen"
+    assert resp.json()["view_override"] == "cards"
 
 
 async def test_set_feed_view_clear(client, users, data):
@@ -168,7 +168,7 @@ async def test_set_feed_view_clear(client, users, data):
 async def test_settings_not_subscribed(client, users, data):
     user = await users.create()
     feed = await data.feed()
-    resp = await client.patch(f"/api/feeds/{feed.id}/settings", json={"view_override": "zen"},
+    resp = await client.patch(f"/api/feeds/{feed.id}/settings", json={"view_override": "cards"},
                               headers=users.auth(user))
     assert resp.status_code == 404
 

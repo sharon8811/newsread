@@ -1,6 +1,6 @@
 // Mirrors backend schemas (subset the mobile app uses); keep field names snake_case.
 
-export type ViewMode = "list" | "stories" | "zen";
+export type ViewMode = "cards" | "list" | "stories";
 
 export type User = {
   id: number;

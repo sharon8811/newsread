@@ -41,10 +41,10 @@ describe("SavedPage", () => {
     expect(screen.getByTestId("article-list")).toHaveTextContent("list:saved");
   });
 
-  it("uses the zen variant when the default view is zen", () => {
-    authState.user = makeUser({ default_view: "zen" });
+  it("uses the cards variant when the default view is cards", () => {
+    authState.user = makeUser({ default_view: "cards" });
     render(<SavedPage />);
-    expect(screen.getByTestId("article-list")).toHaveTextContent("zen:saved");
+    expect(screen.getByTestId("article-list")).toHaveTextContent("cards:saved");
   });
 
   it("honors the ?view=stories deep link", () => {
@@ -66,10 +66,10 @@ describe("SavedPage", () => {
     await waitFor(() => expect(listProps.current?.q).toBe("vim"), { timeout: 1000 });
   });
 
-  it("falls back to list when the user has no default view", () => {
+  it("falls back to cards when the user has no default view", () => {
     authState.user = null;
     render(<SavedPage />);
-    expect(screen.getByTestId("article-list")).toHaveTextContent("list:saved");
+    expect(screen.getByTestId("article-list")).toHaveTextContent("cards:saved");
   });
 
   it("stories onExit switches back to the list view", async () => {
