@@ -9,6 +9,13 @@ node_modules/
 .next/
 out/
 
+# Test / coverage artifacts
+.coverage
+coverage/
+htmlcov/
+.pytest_cache/
+.vitest/
+
 # Env & local
 .env
 .env.local

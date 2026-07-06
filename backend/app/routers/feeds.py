@@ -144,8 +144,10 @@ async def refresh(
     try:
         await refresh_feed(session, feed)
     except Exception as exc:
-        await session.rollback()
+        # Log before rollback: rollback expires `feed`, so touching feed.url
+        # afterwards would trigger a lazy load the async session can't service.
         logger.warning("Failed to refresh feed %s: %s", feed.url, exc)
+        await session.rollback()
         raise HTTPException(status_code=502, detail="Could not refresh this feed right now")
     await enqueue("enrich_feed", feed.id)
     row = (
