@@ -1,0 +1,234 @@
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import Sidebar from "@/components/Sidebar";
+import { makeFeed, makeUser } from "./fixtures";
+
+const { pushMock, pathState, searchState } = vi.hoisted(() => ({
+  pushMock: vi.fn(),
+  pathState: { value: "/" },
+  searchState: { feed: null as string | null },
+}));
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: pushMock }),
+  usePathname: () => pathState.value,
+  useSearchParams: () => ({
+    get: (k: string) => (k === "feed" ? searchState.feed : null),
+  }),
+}));
+
+const { swrMock, mutateMock } = vi.hoisted(() => ({
+  swrMock: vi.fn(),
+  mutateMock: vi.fn(),
+}));
+vi.mock("swr", () => ({ default: swrMock, mutate: mutateMock }));
+
+const { authState } = vi.hoisted(() => ({
+  authState: { user: null as unknown, logout: vi.fn() },
+}));
+vi.mock("@/lib/auth", () => ({ useAuth: () => authState }));
+
+type SwrData = { feeds?: unknown; unseen?: unknown };
+function setSwr({ feeds, unseen }: SwrData) {
+  swrMock.mockImplementation((key: string) => {
+    if (key === "/feeds") return { data: feeds };
+    if (key === "/shares/unseen-count") return { data: unseen };
+    return { data: undefined };
+  });
+}
+
+function okFetch(body: unknown = {}) {
+  return vi.fn().mockResolvedValue({ status: 200, ok: true, json: async () => body });
+}
+
+describe("<Sidebar>", () => {
+  beforeEach(() => {
+    pushMock.mockClear();
+    mutateMock.mockClear();
+    pathState.value = "/";
+    searchState.feed = null;
+    authState.user = makeUser();
+    authState.logout = vi.fn();
+    setSwr({ feeds: [], unseen: { count: 0 } });
+  });
+
+  it("renders nav links and the user card", () => {
+    render(<Sidebar />);
+    expect(screen.getByText("Inbox")).toBeInTheDocument();
+    expect(screen.getByText("Shared with me")).toBeInTheDocument();
+    expect(screen.getByText("Sent")).toBeInTheDocument();
+    expect(screen.getByText("Saved")).toBeInTheDocument();
+    expect(screen.getByText("Alice")).toBeInTheDocument();
+    expect(screen.getByText("@alice")).toBeInTheDocument();
+    // avatar initial
+    expect(screen.getByText("A")).toBeInTheDocument();
+    // empty feeds message
+    expect(screen.getByText(/No feeds yet/)).toBeInTheDocument();
+  });
+
+  it("shows the total unread badge and per-feed unread counts", () => {
+    setSwr({
+      feeds: [
+        makeFeed({ id: 1, title: "Feed One", unread_count: 3 }),
+        makeFeed({ id: 2, title: "Feed Two", unread_count: 2 }),
+      ],
+      unseen: { count: 5 },
+    });
+    render(<Sidebar />);
+    // total unread = 5 (Inbox badge) and shared unseen = 5
+    expect(screen.getAllByText("5").length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByText("Feed One")).toBeInTheDocument();
+    expect(screen.getByText("Feed Two")).toBeInTheDocument();
+    // per-feed unread counts
+    expect(screen.getByText("3")).toBeInTheDocument();
+    expect(screen.getByText("2")).toBeInTheDocument();
+  });
+
+  it("marks a feed active when the feed query param matches", () => {
+    searchState.feed = "1";
+    setSwr({
+      feeds: [makeFeed({ id: 1, title: "Active Feed", unread_count: 0 })],
+      unseen: { count: 0 },
+    });
+    render(<Sidebar />);
+    const link = screen.getByText("Active Feed").closest("a")!;
+    expect(link).toHaveStyle({ background: "var(--bg-hover)" });
+    // unread_count 0 -> no count span rendered inside
+  });
+
+  it("marks Shared active when on the /shared path", () => {
+    pathState.value = "/shared";
+    render(<Sidebar />);
+    const link = screen.getByText("Shared with me").closest("a")!;
+    expect(link).toHaveStyle({ background: "var(--bg-hover)" });
+  });
+
+  it("toggles the add-feed form open and closed", async () => {
+    render(<Sidebar />);
+    expect(screen.queryByPlaceholderText(/example.com\/feed/)).not.toBeInTheDocument();
+    await userEvent.click(screen.getByTitle("Add feed"));
+    expect(screen.getByPlaceholderText(/example.com\/feed/)).toBeInTheDocument();
+    await userEvent.click(screen.getByTitle("Add feed"));
+    expect(screen.queryByPlaceholderText(/example.com\/feed/)).not.toBeInTheDocument();
+  });
+
+  it("does nothing when submitting an empty url", async () => {
+    const fetchMock = okFetch();
+    vi.stubGlobal("fetch", fetchMock);
+    render(<Sidebar />);
+    await userEvent.click(screen.getByTitle("Add feed"));
+    await userEvent.click(screen.getByRole("button", { name: "Subscribe" }));
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("adds a feed and navigates to it on success", async () => {
+    const fetchMock = okFetch(makeFeed({ id: 42, title: "New Feed" }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<Sidebar />);
+    await userEvent.click(screen.getByTitle("Add feed"));
+    await userEvent.type(
+      screen.getByPlaceholderText(/example.com\/feed/),
+      "https://new.example/rss",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Subscribe" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    expect(fetchMock.mock.calls[0][0]).toContain("/feeds");
+    await waitFor(() => expect(pushMock).toHaveBeenCalledWith("/?feed=42"));
+    expect(mutateMock).toHaveBeenCalledWith("/feeds");
+    // form closed after success
+    await waitFor(() =>
+      expect(screen.queryByPlaceholderText(/example.com\/feed/)).not.toBeInTheDocument(),
+    );
+  });
+
+  it("shows an error message when adding a feed fails (ApiError)", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue({ status: 400, ok: false, json: async () => ({ detail: "Bad feed URL" }) });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<Sidebar />);
+    await userEvent.click(screen.getByTitle("Add feed"));
+    await userEvent.type(
+      screen.getByPlaceholderText(/example.com\/feed/),
+      "https://bad.example/rss",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Subscribe" }));
+    await waitFor(() => expect(screen.getByText("Bad feed URL")).toBeInTheDocument());
+    expect(pushMock).not.toHaveBeenCalled();
+  });
+
+  it("falls back to a generic message on a non-Error rejection", async () => {
+    const fetchMock = vi.fn().mockRejectedValue("boom");
+    vi.stubGlobal("fetch", fetchMock);
+    render(<Sidebar />);
+    await userEvent.click(screen.getByTitle("Add feed"));
+    await userEvent.type(
+      screen.getByPlaceholderText(/example.com\/feed/),
+      "https://x.example/rss",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Subscribe" }));
+    await waitFor(() => expect(screen.getByText("Could not add feed")).toBeInTheDocument());
+  });
+
+  it("unsubscribes a feed and navigates home when it was active", async () => {
+    searchState.feed = "7";
+    setSwr({
+      feeds: [makeFeed({ id: 7, title: "Doomed Feed", unread_count: 0 })],
+      unseen: { count: 0 },
+    });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue({ status: 204, ok: true, json: async () => ({}) });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<Sidebar />);
+    await userEvent.click(screen.getByTitle("Unsubscribe"));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    expect(fetchMock.mock.calls[0][0]).toContain("/feeds/7");
+    expect(mutateMock).toHaveBeenCalledWith("/feeds");
+    await waitFor(() => expect(pushMock).toHaveBeenCalledWith("/"));
+  });
+
+  it("unsubscribes a non-active feed without navigating", async () => {
+    searchState.feed = null;
+    setSwr({
+      feeds: [makeFeed({ id: 9, title: "Other Feed", unread_count: 1 })],
+      unseen: { count: 0 },
+    });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue({ status: 204, ok: true, json: async () => ({}) });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<Sidebar />);
+    await userEvent.click(screen.getByTitle("Unsubscribe"));
+    await waitFor(() => expect(mutateMock).toHaveBeenCalledWith("/feeds"));
+    expect(pushMock).not.toHaveBeenCalled();
+  });
+
+  it("logs out and redirects to /login", async () => {
+    render(<Sidebar />);
+    await userEvent.click(screen.getByTitle("Sign out"));
+    expect(authState.logout).toHaveBeenCalled();
+    expect(pushMock).toHaveBeenCalledWith("/login");
+  });
+
+  it("shows a fallback avatar and no name when the user is absent", () => {
+    authState.user = null;
+    render(<Sidebar />);
+    expect(screen.getByText("?")).toBeInTheDocument();
+  });
+
+  it("handles undefined SWR data gracefully (loading state)", () => {
+    setSwr({ feeds: undefined, unseen: undefined });
+    render(<Sidebar />);
+    // Inbox renders with no unread badge (totalUnread falls back to 0)
+    expect(screen.getByText("Inbox")).toBeInTheDocument();
+    // no empty-feeds message either, since feeds?.length is undefined
+    expect(screen.queryByText(/No feeds yet/)).not.toBeInTheDocument();
+  });
+
+  it("does not show the empty-feeds message while the add form is open", async () => {
+    render(<Sidebar />);
+    await userEvent.click(screen.getByTitle("Add feed"));
+    expect(screen.queryByText(/No feeds yet/)).not.toBeInTheDocument();
+  });
+});

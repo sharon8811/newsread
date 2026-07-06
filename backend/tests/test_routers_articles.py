@@ -1,0 +1,425 @@
+from datetime import datetime, timedelta, timezone
+
+import pytest
+from sqlalchemy import select
+
+from app import embeddings
+from app.models import (
+    Article,
+    ArticleEmbedding,
+    ArticleEntity,
+    Entity,
+    EntitySnapshot,
+    UserArticleState,
+)
+from app.routers import articles as articles_router
+from app.routers.articles import _compute_deltas, to_list_item
+
+
+# --- to_list_item helper ---
+
+def test_to_list_item_enriching_flag():
+    art = Article(id=1, feed_id=1, title="T", url="u", comments_url=None, author=None,
+                  published_at=None, excerpt="e", image_url=None,
+                  full_text_fetched_at=None, full_text="", summary="", summary_short="",
+                  summary_medium="")
+    item = to_list_item(art, "Feed", None)
+    assert item.enriching is True
+    assert item.is_read is False
+    assert item.is_saved is False
+
+
+def test_to_list_item_not_enriching_with_image():
+    art = Article(id=1, feed_id=1, title="T", url="u", comments_url=None, author=None,
+                  published_at=None, excerpt="e", image_url="https://x/i.png",
+                  full_text_fetched_at=datetime.now(timezone.utc), full_text="body",
+                  summary="", summary_short="", summary_medium="")
+    state = UserArticleState(is_read=True, is_saved=True)
+    item = to_list_item(art, "Feed", state)
+    assert item.enriching is False
+    assert item.is_read is True
+
+
+# --- _compute_deltas ---
+
+def _entity(kind="github", data=None, created_days_ago=30):
+    return Entity(
+        id=1, kind=kind, canonical_key="a/b", url="u", data=data or {},
+        created_at=datetime.now(timezone.utc) - timedelta(days=created_days_ago),
+    )
+
+
+def _snapshot(value, days_ago, metric="stargazers_count"):
+    return EntitySnapshot(
+        entity_id=1, data={metric: value},
+        captured_at=datetime.now(timezone.utc) - timedelta(days=days_ago),
+    )
+
+
+def test_compute_deltas_no_metric_for_kind():
+    assert _compute_deltas(_entity(kind="pypi"), [_snapshot(1, 10)]) == {}
+
+
+def test_compute_deltas_no_snapshots():
+    assert _compute_deltas(_entity(data={"stargazers_count": 100}), []) == {}
+
+
+def test_compute_deltas_current_not_numeric():
+    assert _compute_deltas(_entity(data={"stargazers_count": "x"}), [_snapshot(1, 10)]) == {}
+
+
+def test_compute_deltas_from_old_snapshot():
+    entity = _entity(data={"stargazers_count": 150})
+    snapshots = [_snapshot(150, 1), _snapshot(100, 10)]  # newest-first
+    assert _compute_deltas(entity, snapshots) == {"stargazers_count_delta_7d": 50}
+
+
+def test_compute_deltas_baseline_from_oldest_when_entity_old():
+    entity = _entity(data={"stargazers_count": 150}, created_days_ago=30)
+    snapshots = [_snapshot(120, 1), _snapshot(100, 3)]  # none older than 7d
+    # entity created > 7d ago -> baseline is the oldest snapshot (100)
+    assert _compute_deltas(entity, snapshots) == {"stargazers_count_delta_7d": 50}
+
+
+def test_compute_deltas_no_change():
+    entity = _entity(data={"stargazers_count": 100})
+    assert _compute_deltas(entity, [_snapshot(100, 10)]) == {}
+
+
+def test_compute_deltas_recent_entity_no_baseline():
+    entity = _entity(data={"stargazers_count": 150}, created_days_ago=1)
+    snapshots = [_snapshot(120, 1)]  # no snapshot older than 7d, entity is new
+    assert _compute_deltas(entity, snapshots) == {}
+
+
+# --- list / get / state routes ---
+
+async def _setup(users, data, *, subscribe=True):
+    user = await users.create()
+    feed = await data.feed(title="Tech")
+    if subscribe:
+        await data.subscribe(user, feed)
+    return user, feed
+
+
+async def test_list_articles_empty(client, users, data):
+    user, feed = await _setup(users, data)
+    resp = await client.get("/api/articles", headers=users.auth(user))
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
+async def test_list_articles_orders_newest_first(client, users, data):
+    user, feed = await _setup(users, data)
+    old = await data.article(feed, title="Old",
+                             published_at=datetime(2020, 1, 1, tzinfo=timezone.utc))
+    new = await data.article(feed, title="New",
+                             published_at=datetime(2024, 1, 1, tzinfo=timezone.utc))
+    resp = await client.get("/api/articles", headers=users.auth(user))
+    titles = [a["title"] for a in resp.json()]
+    assert titles == ["New", "Old"]
+
+
+async def test_list_articles_filter_unread(client, users, data):
+    user, feed = await _setup(users, data)
+    a1 = await data.article(feed, title="Read")
+    a2 = await data.article(feed, title="Unread")
+    await data.state(user, a1, is_read=True)
+    resp = await client.get("/api/articles", params={"filter": "unread"},
+                            headers=users.auth(user))
+    assert [a["title"] for a in resp.json()] == ["Unread"]
+
+
+async def test_list_articles_filter_saved(client, users, data):
+    user, feed = await _setup(users, data)
+    a1 = await data.article(feed, title="Saved")
+    await data.article(feed, title="Plain")
+    await data.state(user, a1, is_saved=True)
+    resp = await client.get("/api/articles", params={"filter": "saved"},
+                            headers=users.auth(user))
+    assert [a["title"] for a in resp.json()] == ["Saved"]
+
+
+async def test_list_articles_by_feed(client, users, data):
+    user, feed = await _setup(users, data)
+    other = await data.feed(title="Other")
+    await data.subscribe(user, other)
+    await data.article(feed, title="InFeed")
+    await data.article(other, title="InOther")
+    resp = await client.get("/api/articles", params={"feed_id": feed.id},
+                            headers=users.auth(user))
+    assert [a["title"] for a in resp.json()] == ["InFeed"]
+
+
+async def test_list_articles_keyword_fallback(client, users, data, monkeypatch):
+    monkeypatch.setattr(embeddings, "is_configured", lambda: False)
+    user, feed = await _setup(users, data)
+    await data.article(feed, title="Python release", excerpt="news")
+    await data.article(feed, title="Rust update", excerpt="news")
+    resp = await client.get("/api/articles", params={"q": "python"},
+                            headers=users.auth(user))
+    assert [a["title"] for a in resp.json()] == ["Python release"]
+
+
+async def test_list_articles_pagination(client, users, data):
+    user, feed = await _setup(users, data)
+    for i in range(5):
+        await data.article(feed, title=f"A{i}",
+                           published_at=datetime(2024, 1, i + 1, tzinfo=timezone.utc))
+    resp = await client.get("/api/articles", params={"limit": 2, "offset": 0},
+                            headers=users.auth(user))
+    assert len(resp.json()) == 2
+
+
+async def test_list_articles_includes_entities(client, users, data, session):
+    user, feed = await _setup(users, data)
+    art = await data.article(feed)
+    entity = Entity(kind="github", canonical_key="a/b", url="https://github.com/a/b",
+                    data={"full_name": "a/b", "stargazers_count": 10})
+    session.add(entity)
+    await session.flush()
+    session.add(ArticleEntity(article_id=art.id, entity_id=entity.id, source="primary", position=0))
+    await session.commit()
+    resp = await client.get("/api/articles", headers=users.auth(user))
+    ents = resp.json()[0]["entities"]
+    assert ents[0]["kind"] == "github"
+    assert ents[0]["badge"]["stars"] == 10
+
+
+# --- hybrid search (embeddings configured) ---
+
+async def test_list_articles_hybrid_search(client, users, data, session, monkeypatch):
+    user, feed = await _setup(users, data)
+    a1 = await data.article(feed, title="Neural nets", excerpt="deep learning",
+                            summary_medium="about neural networks")
+    a2 = await data.article(feed, title="Cooking", excerpt="recipes")
+
+    monkeypatch.setattr(embeddings, "is_configured", lambda: True)
+    monkeypatch.setattr(articles_router.settings, "openai_embedding_model", "emb")
+
+    async def fake_embed(texts):
+        return [[1.0, 0.0, 0.0]]
+
+    monkeypatch.setattr(embeddings, "embed_texts", fake_embed)
+    # give a1 a close vector, a2 a far one
+    session.add(ArticleEmbedding(article_id=a1.id, model="emb", embedding=[1.0, 0.0, 0.0]))
+    session.add(ArticleEmbedding(article_id=a2.id, model="emb", embedding=[0.0, 1.0, 0.0]))
+    await session.commit()
+
+    resp = await client.get("/api/articles", params={"q": "neural"},
+                            headers=users.auth(user))
+    titles = [a["title"] for a in resp.json()]
+    assert titles[0] == "Neural nets"
+
+
+async def test_list_articles_hybrid_search_scoped_by_feed_and_filter(
+    client, users, data, session, monkeypatch
+):
+    user, feed = await _setup(users, data)
+    a1 = await data.article(feed, title="Neural nets unread")
+    a2 = await data.article(feed, title="Neural read")
+    await data.state(user, a2, is_read=True)
+
+    monkeypatch.setattr(embeddings, "is_configured", lambda: True)
+    monkeypatch.setattr(articles_router.settings, "openai_embedding_model", "emb")
+
+    async def fake_embed(texts):
+        return [[1.0, 0.0]]
+
+    monkeypatch.setattr(embeddings, "embed_texts", fake_embed)
+    session.add(ArticleEmbedding(article_id=a1.id, model="emb", embedding=[1.0, 0.0]))
+    session.add(ArticleEmbedding(article_id=a2.id, model="emb", embedding=[1.0, 0.0]))
+    await session.commit()
+
+    resp = await client.get(
+        "/api/articles",
+        params={"q": "neural", "feed_id": feed.id, "filter": "unread"},
+        headers=users.auth(user),
+    )
+    titles = [a["title"] for a in resp.json()]
+    assert titles == ["Neural nets unread"]
+
+
+async def test_list_articles_hybrid_search_saved_filter(
+    client, users, data, session, monkeypatch
+):
+    user, feed = await _setup(users, data)
+    a1 = await data.article(feed, title="Saved neural")
+    await data.article(feed, title="Unsaved neural")
+    await data.state(user, a1, is_saved=True)
+
+    monkeypatch.setattr(embeddings, "is_configured", lambda: True)
+    monkeypatch.setattr(articles_router.settings, "openai_embedding_model", "emb")
+
+    async def fake_embed(texts):
+        return [[1.0, 0.0]]
+
+    monkeypatch.setattr(embeddings, "embed_texts", fake_embed)
+    session.add(ArticleEmbedding(article_id=a1.id, model="emb", embedding=[1.0, 0.0]))
+    await session.commit()
+
+    resp = await client.get("/api/articles", params={"q": "neural", "filter": "saved"},
+                            headers=users.auth(user))
+    assert [a["title"] for a in resp.json()] == ["Saved neural"]
+
+
+async def test_list_articles_hybrid_search_embed_failure_falls_back(
+    client, users, data, monkeypatch
+):
+    user, feed = await _setup(users, data)
+    await data.article(feed, title="Python news", excerpt="x")
+
+    monkeypatch.setattr(embeddings, "is_configured", lambda: True)
+
+    async def boom(texts):
+        raise RuntimeError("embed down")
+
+    monkeypatch.setattr(embeddings, "embed_texts", boom)
+    resp = await client.get("/api/articles", params={"q": "python"},
+                            headers=users.auth(user))
+    assert resp.status_code == 200
+    assert [a["title"] for a in resp.json()] == ["Python news"]
+
+
+async def test_list_articles_hybrid_search_empty_page(client, users, data, monkeypatch):
+    user, feed = await _setup(users, data)
+    await data.article(feed, title="Something")
+    monkeypatch.setattr(embeddings, "is_configured", lambda: True)
+    monkeypatch.setattr(articles_router.settings, "openai_embedding_model", "emb")
+
+    async def fake_embed(texts):
+        return [[1.0, 0.0]]
+
+    monkeypatch.setattr(embeddings, "embed_texts", fake_embed)
+    # No embeddings rows + a query term absent from tsv -> empty ranked set
+    resp = await client.get("/api/articles", params={"q": "zzznomatch", "offset": 100},
+                            headers=users.auth(user))
+    assert resp.json() == []
+
+
+# --- get single article ---
+
+async def test_get_article(client, users, data):
+    user, feed = await _setup(users, data)
+    art = await data.article(feed, content_html="<p>full body</p>")
+    resp = await client.get(f"/api/articles/{art.id}", headers=users.auth(user))
+    assert resp.status_code == 200
+    assert resp.json()["content_html"] == "<p>full body</p>"
+
+
+async def test_get_article_with_entity_snapshots(client, users, data, session):
+    user, feed = await _setup(users, data)
+    art = await data.article(feed)
+    entity = Entity(kind="github", canonical_key="a/b", url="https://github.com/a/b",
+                    data={"full_name": "a/b", "stargazers_count": 200},
+                    fetched_at=datetime.now(timezone.utc),
+                    created_at=datetime.now(timezone.utc) - timedelta(days=30))
+    session.add(entity)
+    await session.flush()
+    session.add(ArticleEntity(article_id=art.id, entity_id=entity.id, source="primary", position=0))
+    session.add(EntitySnapshot(entity_id=entity.id, data={"stargazers_count": 100},
+                               captured_at=datetime.now(timezone.utc) - timedelta(days=10)))
+    await session.commit()
+    resp = await client.get(f"/api/articles/{art.id}", headers=users.auth(user))
+    ent = resp.json()["entities"][0]
+    assert ent["deltas"] == {"stargazers_count_delta_7d": 100}
+    assert len(ent["snapshots"]) == 1
+
+
+async def test_get_article_not_found(client, users, data):
+    user, feed = await _setup(users, data)
+    resp = await client.get("/api/articles/99999", headers=users.auth(user))
+    assert resp.status_code == 404
+
+
+async def test_get_article_no_access(client, users, data):
+    user, feed = await _setup(users, data, subscribe=False)
+    art = await data.article(feed)
+    resp = await client.get(f"/api/articles/{art.id}", headers=users.auth(user))
+    assert resp.status_code == 404
+
+
+async def test_get_article_access_via_share(client, users, data, session):
+    from app.models import Share, ShareRecipient
+
+    owner, feed = await _setup(users, data)
+    recipient = await users.create(username="recip")
+    art = await data.article(feed)
+    share = Share(from_user_id=owner.id, article_id=art.id)
+    share.recipients = [ShareRecipient(to_user_id=recipient.id)]
+    session.add(share)
+    await session.commit()
+    resp = await client.get(f"/api/articles/{art.id}", headers=users.auth(recipient))
+    assert resp.status_code == 200
+
+
+# --- set state ---
+
+async def test_set_state_mark_read(client, users, data, session):
+    user, feed = await _setup(users, data)
+    art = await data.article(feed)
+    resp = await client.post(f"/api/articles/{art.id}/state", json={"is_read": True},
+                             headers=users.auth(user))
+    assert resp.status_code == 200
+    assert resp.json()["is_read"] is True
+
+
+async def test_set_state_upsert_existing(client, users, data):
+    user, feed = await _setup(users, data)
+    art = await data.article(feed)
+    await data.state(user, art, is_read=True)
+    resp = await client.post(f"/api/articles/{art.id}/state", json={"is_saved": True},
+                             headers=users.auth(user))
+    assert resp.json()["is_saved"] is True
+    assert resp.json()["is_read"] is True  # preserved
+
+
+async def test_set_state_nothing_to_update(client, users, data):
+    user, feed = await _setup(users, data)
+    art = await data.article(feed)
+    resp = await client.post(f"/api/articles/{art.id}/state", json={},
+                             headers=users.auth(user))
+    assert resp.status_code == 422
+
+
+async def test_set_state_not_found(client, users, data):
+    user, feed = await _setup(users, data)
+    resp = await client.post("/api/articles/99999/state", json={"is_read": True},
+                             headers=users.auth(user))
+    assert resp.status_code == 404
+
+
+# --- mark all read ---
+
+async def test_mark_all_read(client, users, data, session):
+    user, feed = await _setup(users, data)
+    a1 = await data.article(feed)
+    a2 = await data.article(feed)
+    resp = await client.post("/api/articles/mark-all-read", json={},
+                             headers=users.auth(user))
+    assert resp.status_code == 204
+    states = (await session.scalars(
+        select(UserArticleState).where(UserArticleState.user_id == user.id))).all()
+    assert all(s.is_read for s in states)
+    assert len(states) == 2
+
+
+async def test_mark_all_read_by_feed(client, users, data, session):
+    user, feed = await _setup(users, data)
+    other = await data.feed(title="Other")
+    await data.subscribe(user, other)
+    a1 = await data.article(feed)
+    a2 = await data.article(other)
+    await client.post("/api/articles/mark-all-read", json={"feed_id": feed.id},
+                      headers=users.auth(user))
+    states = (await session.scalars(
+        select(UserArticleState).where(UserArticleState.user_id == user.id))).all()
+    assert len(states) == 1
+    assert states[0].article_id == a1.id
+
+
+async def test_mark_all_read_nothing(client, users, data):
+    user, feed = await _setup(users, data)
+    resp = await client.post("/api/articles/mark-all-read", json={},
+                             headers=users.auth(user))
+    assert resp.status_code == 204

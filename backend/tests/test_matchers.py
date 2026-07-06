@@ -60,6 +60,10 @@ NON_MATCHES = [
 ]
 
 
+def test_matchers() -> None:
+    main()
+
+
 def main() -> None:
     for raw, kind, key in MATCHES:
         result = match_url(raw)
