@@ -23,11 +23,12 @@ Traditional readers like Feedly treat sharing as an afterthought — you get a r
 - **📖 Read Continuity** — Per-user read/unread tracking, save-for-later, mark-all-read
 - **⌨️ Power-user keyboard** — `j`/`k` navigate, `enter` opens, `s` saves, `m` toggles read
 - **🔍 Search** — Full-text search across titles and excerpts
+- **📱 iOS & Android app** — Expo-based reader that connects to your own server: point it at your NewsRead URL, sign in, and read — unread/all/saved lists, AI summaries, save and share
 
 **Planned:**
 
 - **🏷️ Tagging** — Color-coded, searchable tags and shareable collections
-- **🔔 Push Notifications** — Native mobile alerts for @mentions (React Native app; the API side — device registration, Expo push delivery, cursor pagination, token refresh, server handshake — is already in place)
+- **🔔 Push Notifications** — Native alerts for @mention shares. The full server side is in place and the mobile app registers automatically; it needs a development build with an EAS project id (not Expo Go)
 - **📚 Learning Experiences** — Plugin-based integrations (NotebookLM first) for podcasts and study guides
 
 ## Quick Start
@@ -64,7 +65,17 @@ uv venv .venv && uv pip install -p .venv/bin/python -r requirements.txt
 # Frontend (http://localhost:3000)
 cd frontend
 npm install && npm run dev
+
+# Mobile app (Expo — scan the QR with Expo Go, or press i/a for a simulator)
+cd mobile
+npm install && npx expo start
 ```
+
+The mobile app asks for your server address on first launch — NewsRead is
+self-hosted, so each install points at its owner's server. For local dev use
+your machine's LAN IP (e.g. `http://192.168.1.20:8000`), not `localhost`
+(which would be the phone itself). Push notifications need a development
+build with an EAS project id; in Expo Go the app simply skips registration.
 
 ## Tech Stack
 
@@ -77,7 +88,7 @@ npm install && npm run dev
 | Auth | Backend-issued JWT (email/username + password) |
 | Full-text Extraction | Scrapling (fetch) + trafilatura (article extraction) |
 | LLM | Any OpenAI-compatible endpoint (OpenAI, vLLM, LiteLLM, Ollama) |
-| Mobile App *(planned)* | React Native (Expo) + push notifications |
+| Mobile App | React Native (Expo Router) + SWR, bring-your-own-server onboarding |
 
 ## Project Structure
 
@@ -91,7 +102,7 @@ newsread/
 │       ├── fetcher.py # RSS/Atom/JSON Feed parsing + sanitization
 │       └── worker.py  # periodic feed refresh
 ├── docker-compose.yml # Full stack: web, api, worker, Postgres, Redis
-└── mobile/            # React Native (Expo) app — planned, Phase 3
+└── mobile/            # React Native (Expo) app for iOS & Android
 ```
 
 ## License
