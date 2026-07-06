@@ -177,6 +177,53 @@ async def test_enrich_and_summarize_scoped_to_feed(session, monkeypatch):
     assert enriched == [feed1.id]
 
 
+async def test_enrich_and_summarize_skips_ai_disabled_feed(session, monkeypatch):
+    feed = await _feed(session, url="noai")
+    feed.ai_enabled = False
+    await session.commit()
+    # Already enriched so only the summarize stage would pick it up.
+    art = await _article(session, feed, full_text="text", summary_short="",
+                         full_text_fetched_at=datetime.now(timezone.utc),
+                         image_url="https://x/i.png")
+
+    async def fake_extract(feed_id=None):
+        return 0
+
+    summarized = []
+
+    async def fake_summarize(s, article, allow_refetch=False):
+        summarized.append(article.id)
+
+    async def fake_embed(feed_id=None):
+        return 0
+
+    monkeypatch.setattr(worker, "extract_entities", fake_extract)
+    monkeypatch.setattr(worker, "generate_summaries", fake_summarize)
+    monkeypatch.setattr(worker, "embed_articles_batch", fake_embed)
+    monkeypatch.setattr(worker.llm, "is_configured", lambda: True)
+
+    await worker.enrich_and_summarize(feed_id=feed.id)
+    assert summarized == []
+
+
+async def test_embed_articles_batch_skips_ai_disabled_feed(session, monkeypatch):
+    feed = await _feed(session, url="noai-embed")
+    feed.ai_enabled = False
+    await session.commit()
+    await _article(session, feed, excerpt="body")
+    monkeypatch.setattr(worker.embeddings, "is_configured", lambda: True)
+
+    captured = {}
+
+    async def fake_embed(s, articles):
+        captured["n"] = len(articles)
+        return len(articles)
+
+    monkeypatch.setattr(worker.embeddings, "embed_articles", fake_embed)
+    await worker.embed_articles_batch()
+    assert captured["n"] == 0
+
+
 # --- embed_articles_batch ---
 
 async def test_embed_articles_batch_not_configured(monkeypatch):

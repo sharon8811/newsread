@@ -87,6 +87,8 @@ async def enrich_and_summarize(ctx: dict | None = None, feed_id: int | None = No
     async with SessionLocal() as session:
         summarize_query = (
             select(Article.id)
+            .join(Feed, Feed.id == Article.feed_id)
+            .where(Feed.ai_enabled.is_(True))
             .where(Article.summary_short == "")
             # Skip articles whose page fetch already failed and whose feed
             # content is a stub — they'd be ThinContent-skipped every cycle.
@@ -127,7 +129,9 @@ async def embed_articles_batch(feed_id: int | None = None) -> int:
     async with SessionLocal() as session:
         embed_query = (
             select(Article)
+            .join(Feed, Feed.id == Article.feed_id)
             .outerjoin(ArticleEmbedding, ArticleEmbedding.article_id == Article.id)
+            .where(Feed.ai_enabled.is_(True))
             .where(
                 or_(
                     ArticleEmbedding.article_id.is_(None),

@@ -4,6 +4,7 @@ from typing import Literal
 from pydantic import BaseModel, EmailStr, Field
 
 ViewMode = Literal["list", "stories", "zen"]
+SortOrder = Literal["newest", "oldest"]
 
 
 # --- Auth ---
@@ -57,7 +58,7 @@ class AddFeedIn(BaseModel):
 class FeedOut(BaseModel):
     id: int
     url: str
-    title: str
+    title: str  # effective: the user's rename if set, else the feed's own title
     site_url: str | None
     description: str | None
     last_fetched_at: datetime | None
@@ -66,10 +67,31 @@ class FeedOut(BaseModel):
     # Articles still awaiting background enrichment (full text / lead image).
     pending_count: int = 0
     view_override: ViewMode | None = None
+    # Per-subscription settings (NULL = default).
+    title_override: str | None = None
+    sort_order: SortOrder | None = None
+    retention_days: int | None = None
+    is_muted: bool = False
+    # Global per-feed settings (shared by all subscribers).
+    ai_enabled: bool = True
+    refresh_interval_minutes: int = 15
 
 
 class SubscriptionViewIn(BaseModel):
     view_override: ViewMode | None  # required field; explicit null clears the override
+
+
+class FeedSettingsIn(BaseModel):
+    """PATCH semantics: only fields present in the request are applied;
+    an explicit null clears the override back to its default."""
+
+    view_override: ViewMode | None = None
+    title_override: str | None = Field(default=None, max_length=512)
+    sort_order: SortOrder | None = None
+    retention_days: int | None = Field(default=None, ge=1, le=3650)
+    is_muted: bool | None = None
+    ai_enabled: bool | None = None
+    refresh_interval_minutes: int | None = Field(default=None, ge=5, le=10080)
 
 
 # --- Entities (smart link enrichment) ---

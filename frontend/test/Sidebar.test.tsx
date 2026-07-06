@@ -28,6 +28,16 @@ const { authState } = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/auth", () => ({ useAuth: () => authState }));
 
+const { settingsProps } = vi.hoisted(() => ({
+  settingsProps: { current: null as Record<string, unknown> | null },
+}));
+vi.mock("@/components/FeedSettingsModal", () => ({
+  default: (props: Record<string, unknown>) => {
+    settingsProps.current = props;
+    return <div data-testid="feed-settings-modal" />;
+  },
+}));
+
 type SwrData = { feeds?: unknown; unseen?: unknown };
 function setSwr({ feeds, unseen }: SwrData) {
   swrMock.mockImplementation((key: string) => {
@@ -170,38 +180,53 @@ describe("<Sidebar>", () => {
     await waitFor(() => expect(screen.getByText("Could not add feed")).toBeInTheDocument());
   });
 
-  it("unsubscribes a feed and navigates home when it was active", async () => {
+  it("opens feed settings and navigates home when the active feed unsubscribes", async () => {
+    const { act } = await import("@testing-library/react");
     searchState.feed = "7";
     setSwr({
       feeds: [makeFeed({ id: 7, title: "Doomed Feed", unread_count: 0 })],
       unseen: { count: 0 },
     });
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue({ status: 204, ok: true, json: async () => ({}) });
-    vi.stubGlobal("fetch", fetchMock);
     render(<Sidebar />);
-    await userEvent.click(screen.getByTitle("Unsubscribe"));
-    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-    expect(fetchMock.mock.calls[0][0]).toContain("/feeds/7");
-    expect(mutateMock).toHaveBeenCalledWith("/feeds");
-    await waitFor(() => expect(pushMock).toHaveBeenCalledWith("/"));
+    expect(screen.queryByTestId("feed-settings-modal")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByTitle("Feed settings"));
+    expect(screen.getByTestId("feed-settings-modal")).toBeInTheDocument();
+    act(() => (settingsProps.current!.onUnsubscribed as () => void)());
+    expect(pushMock).toHaveBeenCalledWith("/");
+    act(() => (settingsProps.current!.onClose as () => void)());
+    await waitFor(() =>
+      expect(screen.queryByTestId("feed-settings-modal")).not.toBeInTheDocument(),
+    );
   });
 
-  it("unsubscribes a non-active feed without navigating", async () => {
+  it("does not navigate when a non-active feed unsubscribes", async () => {
+    const { act } = await import("@testing-library/react");
     searchState.feed = null;
     setSwr({
       feeds: [makeFeed({ id: 9, title: "Other Feed", unread_count: 1 })],
       unseen: { count: 0 },
     });
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue({ status: 204, ok: true, json: async () => ({}) });
-    vi.stubGlobal("fetch", fetchMock);
     render(<Sidebar />);
-    await userEvent.click(screen.getByTitle("Unsubscribe"));
-    await waitFor(() => expect(mutateMock).toHaveBeenCalledWith("/feeds"));
+    await userEvent.click(screen.getByTitle("Feed settings"));
+    act(() => (settingsProps.current!.onUnsubscribed as () => void)());
     expect(pushMock).not.toHaveBeenCalled();
+  });
+
+  it("mutes: dims the feed, hides its count, and excludes it from the Inbox total", () => {
+    setSwr({
+      feeds: [
+        makeFeed({ id: 1, title: "Loud", unread_count: 4 }),
+        makeFeed({ id: 2, title: "Quiet", unread_count: 9, is_muted: true }),
+      ],
+      unseen: { count: 0 },
+    });
+    render(<Sidebar />);
+    // "4" renders twice: the Inbox badge (muted excluded) and Loud's own count.
+    expect(screen.getAllByText("4")).toHaveLength(2);
+    expect(screen.queryByText("9")).not.toBeInTheDocument();
+    expect(screen.queryByText("13")).not.toBeInTheDocument();
+    expect(screen.getByTitle("Muted")).toBeInTheDocument();
+    expect(screen.getByText("Quiet")).toHaveStyle({ color: "var(--ink-faint)" });
   });
 
   it("logs out and redirects to /login", async () => {

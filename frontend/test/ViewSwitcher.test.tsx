@@ -60,7 +60,7 @@ describe("<ViewSwitcher>", () => {
     render(<ViewSwitcher view="list" feed={makeFeed({ id: 1 })} onSwitch={vi.fn()} />);
     await userEvent.click(screen.getByLabelText(/Zen view/));
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-    expect(fetchMock.mock.calls[0][0]).toContain("/feeds/1/view");
+    expect(fetchMock.mock.calls[0][0]).toContain("/feeds/1/settings");
     expect(mutateMock).toHaveBeenCalled();
   });
 

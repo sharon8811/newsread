@@ -6,14 +6,16 @@ import { useState } from "react";
 import useSWR, { mutate } from "swr";
 import { api, fetcher, type Feed } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import FeedSettingsModal from "./FeedSettingsModal";
 import {
   BookmarkIcon,
+  GearIcon,
   InboxIcon,
   LogoutIcon,
+  MuteIcon,
   PlusIcon,
   RssIcon,
   ShareIcon,
-  TrashIcon,
   UsersIcon,
   XIcon,
 } from "./icons";
@@ -80,8 +82,10 @@ export default function Sidebar() {
   const [newUrl, setNewUrl] = useState("");
   const [addError, setAddError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [settingsFeed, setSettingsFeed] = useState<Feed | null>(null);
 
-  const totalUnread = feeds?.reduce((sum, f) => sum + f.unread_count, 0) ?? 0;
+  const totalUnread =
+    feeds?.reduce((sum, f) => (f.is_muted ? sum : sum + f.unread_count), 0) ?? 0;
 
   async function addFeed(e: React.FormEvent) {
     e.preventDefault();
@@ -104,11 +108,6 @@ export default function Sidebar() {
     }
   }
 
-  async function removeFeed(feedId: number) {
-    await api(`/feeds/${feedId}`, { method: "DELETE" });
-    mutate("/feeds");
-    if (activeFeed === String(feedId)) router.push("/");
-  }
 
   return (
     <aside
@@ -211,28 +210,55 @@ export default function Sidebar() {
                 <span style={{ color: active ? "var(--accent)" : "var(--ink-faint)" }}>
                   <RssIcon size={13} />
                 </span>
-                <span className="flex-1 truncate">{feed.title}</span>
-                {feed.unread_count > 0 && (
+                <span
+                  className="flex-1 truncate"
+                  style={feed.is_muted ? { color: "var(--ink-faint)" } : undefined}
+                >
+                  {feed.title}
+                </span>
+                {feed.is_muted ? (
                   <span
-                    className="font-mono-nr text-[10.5px] group-hover:opacity-0"
+                    className="group-hover:opacity-0"
                     style={{ color: "var(--ink-faint)" }}
+                    title="Muted"
                   >
-                    {feed.unread_count}
+                    <MuteIcon size={11} />
                   </span>
+                ) : (
+                  feed.unread_count > 0 && (
+                    <span
+                      className="font-mono-nr text-[10.5px] group-hover:opacity-0"
+                      style={{ color: "var(--ink-faint)" }}
+                    >
+                      {feed.unread_count}
+                    </span>
+                  )
                 )}
               </Link>
+              {/* Visibility via opacity, not `hidden`: .icon-btn is unlayered
+                  CSS whose display:inline-flex outranks the layered utility. */}
               <button
-                className="icon-btn absolute right-1.5 top-1/2 hidden -translate-y-1/2 group-hover:inline-flex"
+                className="icon-btn pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover:pointer-events-auto group-hover:opacity-100"
                 style={{ width: 24, height: 24 }}
-                title="Unsubscribe"
-                onClick={() => removeFeed(feed.id)}
+                title="Feed settings"
+                onClick={() => setSettingsFeed(feed)}
               >
-                <TrashIcon size={12} />
+                <GearIcon size={12} />
               </button>
             </div>
           );
         })}
       </div>
+
+      {settingsFeed && (
+        <FeedSettingsModal
+          feed={settingsFeed}
+          onClose={() => setSettingsFeed(null)}
+          onUnsubscribed={() => {
+            if (activeFeed === String(settingsFeed.id)) router.push("/");
+          }}
+        />
+      )}
 
       <div
         className="flex items-center gap-2.5 border-t px-4 py-3.5"

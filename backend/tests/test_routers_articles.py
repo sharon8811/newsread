@@ -151,6 +151,76 @@ async def test_list_articles_by_feed(client, users, data):
     assert [a["title"] for a in resp.json()] == ["InFeed"]
 
 
+async def test_list_articles_sort_oldest_override(client, users, data, session):
+    user, feed = await _setup(users, data)
+    sub = await session.scalar(select(articles_router.Subscription).where(
+        articles_router.Subscription.user_id == user.id))
+    sub.sort_order = "oldest"
+    await session.commit()
+    await data.article(feed, title="Old",
+                       published_at=datetime(2020, 1, 1, tzinfo=timezone.utc))
+    await data.article(feed, title="New",
+                       published_at=datetime(2024, 1, 1, tzinfo=timezone.utc))
+    resp = await client.get("/api/articles", params={"feed_id": feed.id},
+                            headers=users.auth(user))
+    assert [a["title"] for a in resp.json()] == ["Old", "New"]
+    # The aggregate inbox ignores per-feed sort and stays newest-first.
+    resp = await client.get("/api/articles", headers=users.auth(user))
+    assert [a["title"] for a in resp.json()] == ["New", "Old"]
+
+
+async def test_list_articles_retention_hides_expired(client, users, data, session):
+    user, feed = await _setup(users, data)
+    sub = await session.scalar(select(articles_router.Subscription).where(
+        articles_router.Subscription.user_id == user.id))
+    sub.retention_days = 7
+    await session.commit()
+    now = datetime.now(timezone.utc)
+    await data.article(feed, title="Expired", published_at=now - timedelta(days=30))
+    await data.article(feed, title="Fresh", published_at=now - timedelta(days=1))
+    saved = await data.article(feed, title="SavedOld", published_at=now - timedelta(days=30))
+    await data.state(user, saved, is_saved=True)
+
+    resp = await client.get("/api/articles", headers=users.auth(user))
+    titles = {a["title"] for a in resp.json()}
+    assert titles == {"Fresh", "SavedOld"}
+
+
+async def test_list_articles_retention_uses_fetched_at_when_unpublished(
+    client, users, data, session
+):
+    user, feed = await _setup(users, data)
+    sub = await session.scalar(select(articles_router.Subscription).where(
+        articles_router.Subscription.user_id == user.id))
+    sub.retention_days = 7
+    await session.commit()
+    # No published_at: falls back to fetched_at (just inserted → visible).
+    await data.article(feed, title="Undated")
+    resp = await client.get("/api/articles", headers=users.auth(user))
+    assert [a["title"] for a in resp.json()] == ["Undated"]
+
+
+async def test_list_articles_muted_feed_excluded_from_inbox(client, users, data):
+    user, feed = await _setup(users, data)
+    muted = await data.feed(title="Muted")
+    await data.subscribe(user, muted, is_muted=True)
+    await data.article(feed, title="Loud")
+    quiet = await data.article(muted, title="Quiet")
+    await data.state(user, quiet, is_saved=True)
+
+    # Aggregate inbox: muted feed's articles hidden.
+    resp = await client.get("/api/articles", headers=users.auth(user))
+    assert [a["title"] for a in resp.json()] == ["Loud"]
+    # The muted feed's own page still shows them.
+    resp = await client.get("/api/articles", params={"feed_id": muted.id},
+                            headers=users.auth(user))
+    assert [a["title"] for a in resp.json()] == ["Quiet"]
+    # Saved list still includes saved articles from muted feeds.
+    resp = await client.get("/api/articles", params={"filter": "saved"},
+                            headers=users.auth(user))
+    assert [a["title"] for a in resp.json()] == ["Quiet"]
+
+
 async def test_list_articles_keyword_fallback(client, users, data, monkeypatch):
     monkeypatch.setattr(embeddings, "is_configured", lambda: False)
     user, feed = await _setup(users, data)

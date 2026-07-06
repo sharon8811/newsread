@@ -159,10 +159,10 @@ class DataFactory:
         await self.session.refresh(feed)
         return feed
 
-    async def subscribe(self, user, feed, view_override=None):
+    async def subscribe(self, user, feed, view_override=None, **kwargs):
         from app.models import Subscription
 
-        sub = Subscription(user_id=user.id, feed_id=feed.id, view_override=view_override)
+        sub = Subscription(user_id=user.id, feed_id=feed.id, view_override=view_override, **kwargs)
         self.session.add(sub)
         await self.session.commit()
         await self.session.refresh(sub)

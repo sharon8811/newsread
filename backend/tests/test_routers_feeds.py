@@ -130,7 +130,7 @@ async def test_set_feed_view(client, users, data):
     user = await users.create()
     feed = await data.feed()
     await data.subscribe(user, feed)
-    resp = await client.patch(f"/api/feeds/{feed.id}/view", json={"view_override": "zen"},
+    resp = await client.patch(f"/api/feeds/{feed.id}/settings", json={"view_override": "zen"},
                               headers=users.auth(user))
     assert resp.status_code == 200
     assert resp.json()["view_override"] == "zen"
@@ -140,18 +140,128 @@ async def test_set_feed_view_clear(client, users, data):
     user = await users.create()
     feed = await data.feed()
     await data.subscribe(user, feed, view_override="stories")
-    resp = await client.patch(f"/api/feeds/{feed.id}/view", json={"view_override": None},
+    resp = await client.patch(f"/api/feeds/{feed.id}/settings", json={"view_override": None},
                               headers=users.auth(user))
     assert resp.status_code == 200
     assert resp.json()["view_override"] is None
 
 
-async def test_set_feed_view_not_subscribed(client, users, data):
+async def test_settings_not_subscribed(client, users, data):
     user = await users.create()
     feed = await data.feed()
-    resp = await client.patch(f"/api/feeds/{feed.id}/view", json={"view_override": "zen"},
+    resp = await client.patch(f"/api/feeds/{feed.id}/settings", json={"view_override": "zen"},
                               headers=users.auth(user))
     assert resp.status_code == 404
+
+
+async def test_settings_empty_patch_rejected(client, users, data):
+    user = await users.create()
+    feed = await data.feed()
+    await data.subscribe(user, feed)
+    resp = await client.patch(f"/api/feeds/{feed.id}/settings", json={},
+                              headers=users.auth(user))
+    assert resp.status_code == 422
+
+
+async def test_settings_subscription_fields(client, users, data):
+    user = await users.create()
+    feed = await data.feed(title="Original")
+    await data.subscribe(user, feed)
+    resp = await client.patch(
+        f"/api/feeds/{feed.id}/settings",
+        json={"title_override": "  My Name  ", "sort_order": "oldest",
+              "retention_days": 30, "is_muted": True},
+        headers=users.auth(user),
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["title"] == "My Name"          # effective title
+    assert body["title_override"] == "My Name"
+    assert body["sort_order"] == "oldest"
+    assert body["retention_days"] == 30
+    assert body["is_muted"] is True
+
+
+async def test_settings_clear_overrides(client, users, data):
+    user = await users.create()
+    feed = await data.feed(title="Original")
+    await data.subscribe(user, feed)
+    await client.patch(f"/api/feeds/{feed.id}/settings",
+                       json={"title_override": "X", "sort_order": "oldest", "retention_days": 7},
+                       headers=users.auth(user))
+    resp = await client.patch(
+        f"/api/feeds/{feed.id}/settings",
+        json={"title_override": "", "sort_order": "newest", "retention_days": None},
+        headers=users.auth(user),
+    )
+    body = resp.json()
+    assert body["title"] == "Original"
+    assert body["title_override"] is None
+    assert body["sort_order"] is None  # "newest" is stored as the default
+    assert body["retention_days"] is None
+
+
+async def test_settings_global_feed_fields(client, users, data, session):
+    user = await users.create()
+    feed = await data.feed()
+    await data.subscribe(user, feed)
+    resp = await client.patch(
+        f"/api/feeds/{feed.id}/settings",
+        json={"ai_enabled": False, "refresh_interval_minutes": 60},
+        headers=users.auth(user),
+    )
+    body = resp.json()
+    assert body["ai_enabled"] is False
+    assert body["refresh_interval_minutes"] == 60
+    session.expunge_all()
+    stored = await session.get(Feed, feed.id)
+    assert stored.ai_enabled is False
+    assert stored.refresh_interval_minutes == 60
+
+
+async def test_settings_validation_bounds(client, users, data):
+    user = await users.create()
+    feed = await data.feed()
+    await data.subscribe(user, feed)
+    for payload in ({"retention_days": 0}, {"refresh_interval_minutes": 1},
+                    {"sort_order": "sideways"}):
+        resp = await client.patch(f"/api/feeds/{feed.id}/settings", json=payload,
+                                  headers=users.auth(user))
+        assert resp.status_code == 422, payload
+
+
+async def test_retention_hides_old_articles_from_counts(client, users, data):
+    from datetime import datetime, timedelta, timezone
+
+    user = await users.create()
+    feed = await data.feed()
+    await data.subscribe(user, feed)
+    now = datetime.now(timezone.utc)
+    old = await data.article(feed, published_at=now - timedelta(days=40))
+    fresh = await data.article(feed, published_at=now - timedelta(days=1))
+    saved_old = await data.article(feed, published_at=now - timedelta(days=40))
+    await data.state(user, saved_old, is_saved=True)
+
+    await client.patch(f"/api/feeds/{feed.id}/settings", json={"retention_days": 7},
+                       headers=users.auth(user))
+    resp = await client.get("/api/feeds", headers=users.auth(user))
+    body = resp.json()[0]
+    # fresh + saved_old are visible; plain old article is not.
+    assert body["article_count"] == 2
+    assert body["unread_count"] == 2
+
+
+async def test_muted_feed_title_sorting_uses_override(client, users, data):
+    user = await users.create()
+    feed_a = await data.feed(title="AAA")
+    feed_z = await data.feed(title="ZZZ")
+    await data.subscribe(user, feed_a)
+    await data.subscribe(user, feed_z)
+    await client.patch(f"/api/feeds/{feed_z.id}/settings", json={"title_override": "000 First"},
+                       headers=users.auth(user))
+    resp = await client.get("/api/feeds", headers=users.auth(user))
+    titles = [f["title"] for f in resp.json()]
+    assert titles == ["000 First", "AAA"]
 
 
 async def test_unsubscribe_deletes_orphan_feed(client, users, data, session):
@@ -202,6 +312,8 @@ async def test_unsubscribe_not_subscribed(client, users, data):
 
 async def test_to_feed_out_title_fallback_to_url():
     feed = Feed(id=1, url="https://x.com/feed", title="", site_url=None,
-                description=None, last_fetched_at=None)
-    out = feeds_router._to_feed_out(feed, 0, 0, 0, None)
+                description=None, last_fetched_at=None, ai_enabled=True,
+                refresh_interval_minutes=15)
+    sub = Subscription(id=1, user_id=1, feed_id=1, is_muted=False)
+    out = feeds_router._to_feed_out(feed, 0, 0, 0, sub)
     assert out.title == "https://x.com/feed"

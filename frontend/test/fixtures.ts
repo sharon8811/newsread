@@ -29,6 +29,12 @@ export function makeFeed(over: Partial<Feed> = {}): Feed {
     unread_count: 3,
     pending_count: 0,
     view_override: null,
+    title_override: null,
+    sort_order: null,
+    retention_days: null,
+    is_muted: false,
+    ai_enabled: true,
+    refresh_interval_minutes: 15,
     ...over,
   };
 }

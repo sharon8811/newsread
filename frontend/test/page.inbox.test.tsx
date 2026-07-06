@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import InboxPage from "@/app/(app)/page";
 import { makeFeed, makeUser } from "./fixtures";
 
-const { swrMock, authState, searchState, listProps, viewSwitcherProps, mutateListsMock } =
+const { swrMock, authState, searchState, listProps, viewSwitcherProps, mutateListsMock, pushMock, settingsProps } =
   vi.hoisted(() => ({
     swrMock: vi.fn(),
     authState: { user: null as unknown },
@@ -12,11 +12,20 @@ const { swrMock, authState, searchState, listProps, viewSwitcherProps, mutateLis
     listProps: { current: null as Record<string, unknown> | null },
     viewSwitcherProps: { current: null as Record<string, unknown> | null },
     mutateListsMock: vi.fn(),
+    pushMock: vi.fn(),
+    settingsProps: { current: null as Record<string, unknown> | null },
   }));
 
 vi.mock("swr", () => ({ default: swrMock, mutate: vi.fn() }));
 vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: pushMock }),
   useSearchParams: () => searchState.params,
+}));
+vi.mock("@/components/FeedSettingsModal", () => ({
+  default: (props: Record<string, unknown>) => {
+    settingsProps.current = props;
+    return <div data-testid="feed-settings-modal" />;
+  },
 }));
 vi.mock("@/lib/auth", () => ({ useAuth: () => authState }));
 vi.mock("@/components/ArticleList", () => ({
@@ -51,6 +60,8 @@ describe("InboxPage", () => {
     searchState.params = new URLSearchParams();
     listProps.current = null;
     mutateListsMock.mockClear();
+    pushMock.mockClear();
+    settingsProps.current = null;
   });
 
   it("renders the Inbox header with no feed selected", () => {
@@ -154,6 +165,28 @@ describe("InboxPage", () => {
     expect(screen.getByTestId("stories-view")).toBeInTheDocument();
     act(() => (storiesProps.current!.onExit as () => void)());
     await waitFor(() => expect(screen.getByTestId("article-list")).toBeInTheDocument());
+  });
+
+  it("opens feed settings from the header and navigates home after unsubscribe", async () => {
+    const { act } = await import("@testing-library/react");
+    searchState.params = new URLSearchParams("feed=1");
+    swrMock.mockReturnValue({ data: [makeFeed({ id: 1, title: "Tech" })] });
+    render(<InboxPage />);
+    expect(screen.queryByTestId("feed-settings-modal")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByTitle("Feed settings"));
+    expect(screen.getByTestId("feed-settings-modal")).toBeInTheDocument();
+    act(() => (settingsProps.current!.onUnsubscribed as () => void)());
+    expect(pushMock).toHaveBeenCalledWith("/");
+    act(() => (settingsProps.current!.onClose as () => void)());
+    await waitFor(() =>
+      expect(screen.queryByTestId("feed-settings-modal")).not.toBeInTheDocument(),
+    );
+  });
+
+  it("shows no settings button without a selected feed", () => {
+    swrMock.mockReturnValue({ data: [makeFeed()] });
+    render(<InboxPage />);
+    expect(screen.queryByTitle("Feed settings")).not.toBeInTheDocument();
   });
 
   it("discards the in-session view when the feed changes", async () => {

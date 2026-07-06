@@ -19,7 +19,7 @@ function setFeedOverride(feedId: number, override: ViewMode | null) {
       feeds?.map((f) => (f.id === feedId ? { ...f, view_override: override } : f)),
     { revalidate: false },
   );
-  return api<Feed>(`/feeds/${feedId}/view`, {
+  return api<Feed>(`/feeds/${feedId}/settings`, {
     method: "PATCH",
     body: { view_override: override },
   }).finally(() => mutate("/feeds"));
