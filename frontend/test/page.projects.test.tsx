@@ -48,6 +48,15 @@ describe("ProjectsPage", () => {
     expect(solo.textContent).toContain("1 member");
   });
 
+  it("shows an unseen badge on projects with new shared articles", () => {
+    swrMock.mockReturnValue({
+      data: [makeProject({ id: 3, name: "AI", unseen_count: 4 })],
+      isLoading: false,
+    });
+    render(<ProjectsPage />);
+    expect(screen.getByText("4")).toBeInTheDocument();
+  });
+
   it("creates a project and revalidates", async () => {
     const fetchMock = okFetch();
     vi.stubGlobal("fetch", fetchMock);

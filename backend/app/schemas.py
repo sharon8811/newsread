@@ -241,7 +241,15 @@ class ProjectOut(BaseModel):
     members: list[ProjectMemberOut]
     # Only counts articles the viewer can see (others' private pins excluded).
     article_count: int
+    # Articles others published since the viewer last opened the project.
+    unseen_count: int = 0
+    # The viewer's per-project push mute.
+    is_muted: bool = False
     created_at: datetime
+
+
+class ProjectMembershipIn(BaseModel):
+    is_muted: bool
 
 
 class ProjectMemberAddIn(BaseModel):

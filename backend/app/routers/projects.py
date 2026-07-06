@@ -9,6 +9,7 @@ from sqlalchemy.orm import selectinload
 from typing import Literal
 
 from ..db import get_session
+from ..queue import enqueue
 from ..models import (
     Article,
     Feed,
@@ -26,6 +27,7 @@ from ..schemas import (
     ProjectCreateIn,
     ProjectMemberAddIn,
     ProjectMemberOut,
+    ProjectMembershipIn,
     ProjectOut,
     ProjectUpdateIn,
     UserPublic,
@@ -81,31 +83,64 @@ async def _visible_counts(session: AsyncSession, project_ids: list[int], user_id
     return dict(rows.all())
 
 
-def _project_out(project: Project, my_role: str, article_count: int) -> ProjectOut:
+async def _unseen_counts(
+    session: AsyncSession, project_ids: list[int], user_id: int
+) -> dict[int, int]:
+    """Articles other members published after the viewer's last visit."""
+    if not project_ids:
+        return {}
+    rows = await session.execute(
+        select(ProjectArticle.project_id, func.count(func.distinct(ProjectArticle.article_id)))
+        .join(
+            ProjectMember,
+            and_(
+                ProjectMember.project_id == ProjectArticle.project_id,
+                ProjectMember.user_id == user_id,
+            ),
+        )
+        .where(
+            ProjectArticle.project_id.in_(project_ids),
+            ProjectArticle.is_shared.is_(True),
+            ProjectArticle.added_by_user_id != user_id,
+            or_(
+                ProjectMember.last_visited_at.is_(None),
+                ProjectArticle.shared_at > ProjectMember.last_visited_at,
+            ),
+        )
+        .group_by(ProjectArticle.project_id)
+    )
+    return dict(rows.all())
+
+
+def _project_out(
+    project: Project, membership: ProjectMember, article_count: int, unseen_count: int
+) -> ProjectOut:
     return ProjectOut(
         id=project.id,
         name=project.name,
         description=project.description,
         owner=UserPublic.model_validate(project.owner),
-        my_role=my_role,
+        my_role=membership.role,
         members=[
             ProjectMemberOut(user=UserPublic.model_validate(m.user), role=m.role)
             for m in sorted(project.members, key=lambda m: (m.role != "owner", m.created_at, m.id))
         ],
         article_count=article_count,
+        unseen_count=unseen_count,
+        is_muted=membership.is_muted,
         created_at=project.created_at,
     )
 
 
-async def _project_response(
-    session: AsyncSession, project_id: int, user_id: int, my_role: str
-) -> ProjectOut:
-    """Standard epilogue: reload with members/owner and viewer-visible count."""
+async def _project_response(session: AsyncSession, project_id: int, user_id: int) -> ProjectOut:
+    """Standard epilogue: reload with members/owner plus the viewer's counts."""
     project = await session.scalar(
         select(Project).where(Project.id == project_id).options(*_project_load_options)
     )
+    membership = next(m for m in project.members if m.user_id == user_id)
     counts = await _visible_counts(session, [project_id], user_id)
-    return _project_out(project, my_role, counts.get(project_id, 0))
+    unseen = await _unseen_counts(session, [project_id], user_id)
+    return _project_out(project, membership, counts.get(project_id, 0), unseen.get(project_id, 0))
 
 
 def _pin_out(pin: ProjectArticle, feed_title: str, state, entities=None) -> ProjectArticleOut:
@@ -131,7 +166,7 @@ async def create_project(
     project.members = [ProjectMember(user_id=user.id, role="owner")]
     session.add(project)
     await session.commit()
-    return await _project_response(session, project.id, user.id, "owner")
+    return await _project_response(session, project.id, user.id)
 
 
 @router.get("", response_model=list[ProjectOut])
@@ -141,7 +176,7 @@ async def list_projects(
 ):
     rows = (
         await session.execute(
-            select(Project, ProjectMember.role)
+            select(Project, ProjectMember)
             .join(
                 ProjectMember,
                 and_(ProjectMember.project_id == Project.id, ProjectMember.user_id == user.id),
@@ -150,8 +185,13 @@ async def list_projects(
             .order_by(Project.created_at.desc())
         )
     ).all()
-    counts = await _visible_counts(session, [p.id for p, _ in rows], user.id)
-    return [_project_out(p, role, counts.get(p.id, 0)) for p, role in rows]
+    project_ids = [p.id for p, _ in rows]
+    counts = await _visible_counts(session, project_ids, user.id)
+    unseen = await _unseen_counts(session, project_ids, user.id)
+    return [
+        _project_out(p, membership, counts.get(p.id, 0), unseen.get(p.id, 0))
+        for p, membership in rows
+    ]
 
 
 # Literal path defined before /{project_id} so "article" never parses as an id.
@@ -211,8 +251,8 @@ async def get_project(
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
-    membership = await _member_or_404(session, project_id, user.id)
-    return await _project_response(session, project_id, user.id, membership.role)
+    await _member_or_404(session, project_id, user.id)
+    return await _project_response(session, project_id, user.id)
 
 
 @router.patch("/{project_id}", response_model=ProjectOut)
@@ -232,7 +272,7 @@ async def update_project(
     if updates.get("description") is not None:
         project.description = updates["description"].strip()
     await session.commit()
-    return await _project_response(session, project_id, user.id, "owner")
+    return await _project_response(session, project_id, user.id)
 
 
 @router.delete("/{project_id}", status_code=204)
@@ -268,7 +308,7 @@ async def add_member(
         raise HTTPException(status_code=409, detail="Already a member")
     session.add(ProjectMember(project_id=project_id, user_id=invitee.id, role="member"))
     await session.commit()
-    return await _project_response(session, project_id, user.id, "owner")
+    return await _project_response(session, project_id, user.id)
 
 
 @router.delete("/{project_id}/members/{member_user_id}", status_code=204)
@@ -296,6 +336,32 @@ async def remove_member(
             raise HTTPException(status_code=404, detail="Member not found")
     await session.delete(target)
     await session.commit()
+
+
+@router.post("/{project_id}/visit", status_code=204)
+async def visit_project(
+    project_id: int,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """The project page reports each open; unseen counts measure against it."""
+    membership = await _member_or_404(session, project_id, user.id)
+    membership.last_visited_at = datetime.now(timezone.utc)
+    await session.commit()
+
+
+@router.patch("/{project_id}/membership", response_model=ProjectOut)
+async def update_membership(
+    project_id: int,
+    body: ProjectMembershipIn,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """The viewer's own per-project settings (currently just the push mute)."""
+    membership = await _member_or_404(session, project_id, user.id)
+    membership.is_muted = body.is_muted
+    await session.commit()
+    return await _project_response(session, project_id, user.id)
 
 
 _pin_load_options = (
@@ -370,6 +436,8 @@ async def add_project_article(
     if pin_id is None:
         raise HTTPException(status_code=409, detail="You already added this article")
     await session.commit()
+    if body.is_shared:
+        await enqueue("send_project_pin_push", pin_id)
     pin = await session.scalar(
         select(ProjectArticle).where(ProjectArticle.id == pin_id).options(*_pin_load_options)
     )
@@ -405,9 +473,11 @@ async def update_project_article(
     if pin.added_by_user_id != user.id:
         raise HTTPException(status_code=403, detail="Only the adder can edit this")
     updates = body.model_dump(exclude_unset=True)
+    published = False
     if "is_shared" in updates and updates["is_shared"] is not None:
         if updates["is_shared"] and not pin.is_shared:
             pin.shared_at = datetime.now(timezone.utc)
+            published = True
         elif not updates["is_shared"]:
             pin.shared_at = None
         pin.is_shared = updates["is_shared"]
@@ -415,6 +485,8 @@ async def update_project_article(
         note = updates["note"].strip() if updates["note"] else None
         pin.note = note or None
     await session.commit()
+    if published:
+        await enqueue("send_project_pin_push", pin.id)
     states = await _states_for(session, user.id, [pin.article_id])
     return _pin_out(pin, pin.article.feed.title or pin.article.feed.url, states.get(pin.article_id))
 

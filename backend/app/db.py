@@ -51,6 +51,8 @@ MIGRATIONS = [
     "(to_tsvector('english', coalesce(title, '') || ' ' || coalesce(excerpt, '') || ' ' "
     "|| coalesce(summary_medium, ''))) STORED",
     "CREATE INDEX IF NOT EXISTS ix_articles_search_tsv ON articles USING gin (search_tsv)",
+    # Per-member project push mute (project_members predates the column).
+    "ALTER TABLE project_members ADD COLUMN IF NOT EXISTS is_muted BOOLEAN NOT NULL DEFAULT FALSE",
     # The zen view was replaced by the cards view; remap stored preferences.
     "ALTER TABLE users ALTER COLUMN default_view SET DEFAULT 'cards'",
     "UPDATE users SET default_view = 'cards' WHERE default_view = 'zen'",

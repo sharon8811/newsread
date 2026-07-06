@@ -38,11 +38,12 @@ vi.mock("@/components/FeedSettingsModal", () => ({
   },
 }));
 
-type SwrData = { feeds?: unknown; unseen?: unknown };
-function setSwr({ feeds, unseen }: SwrData) {
+type SwrData = { feeds?: unknown; unseen?: unknown; projects?: unknown };
+function setSwr({ feeds, unseen, projects }: SwrData) {
   swrMock.mockImplementation((key: string) => {
     if (key === "/feeds") return { data: feeds };
     if (key === "/shares/unseen-count") return { data: unseen };
+    if (key === "/projects") return { data: projects };
     return { data: undefined };
   });
 }
@@ -112,6 +113,21 @@ describe("<Sidebar>", () => {
     render(<Sidebar />);
     const link = screen.getByText("Shared with me").closest("a")!;
     expect(link).toHaveStyle({ background: "var(--bg-hover)" });
+  });
+
+  it("sums project unseen counts into the Projects badge", async () => {
+    const { makeProject } = await import("./fixtures");
+    setSwr({
+      feeds: [],
+      unseen: { count: 0 },
+      projects: [
+        makeProject({ id: 1, unseen_count: 2 }),
+        makeProject({ id: 2, unseen_count: 5 }),
+      ],
+    });
+    render(<Sidebar />);
+    const link = screen.getByText("Projects").closest("a")!;
+    expect(link.textContent).toContain("7");
   });
 
   it("marks Projects active on any /projects path", () => {

@@ -1,5 +1,7 @@
 from datetime import datetime, timezone
 
+from sqlalchemy import select
+
 from app.models import Project, ProjectArticle, ProjectMember
 
 
@@ -620,6 +622,139 @@ async def test_remove_by_article_member_cannot_remove_others_shared(client, user
         headers=users.auth(member),
     )
     assert resp.status_code == 403
+
+
+# --- unseen counts, visits, mute ---
+
+async def test_unseen_counts_others_published_since_visit(client, users, data, session):
+    owner, member, feed, article = await _team(users, data)
+    second = await data.article(feed, title="Newer")
+    project = await _project(session, owner, member)
+    # Member visited between the two publishes.
+    await _pin(session, project, article, owner, is_shared=True,
+               shared_at=datetime(2026, 7, 1, tzinfo=timezone.utc))
+    membership = await session.scalar(
+        select(ProjectMember).where(ProjectMember.project_id == project.id,
+                                    ProjectMember.user_id == member.id)
+    )
+    membership.last_visited_at = datetime(2026, 7, 2, tzinfo=timezone.utc)
+    await session.commit()
+    await _pin(session, project, second, owner, is_shared=True,
+               shared_at=datetime(2026, 7, 3, tzinfo=timezone.utc))
+
+    resp = await client.get("/api/projects", headers=users.auth(member))
+    assert resp.json()[0]["unseen_count"] == 1
+
+
+async def test_unseen_counts_everything_before_first_visit(client, users, data, session):
+    owner, member, feed, article = await _team(users, data)
+    project = await _project(session, owner, member)
+    await _pin(session, project, article, owner, is_shared=True,
+               shared_at=datetime.now(timezone.utc))
+    resp = await client.get("/api/projects", headers=users.auth(member))
+    assert resp.json()[0]["unseen_count"] == 1
+
+
+async def test_unseen_ignores_own_and_private_pins(client, users, data, session):
+    owner, member, feed, article = await _team(users, data)
+    second = await data.article(feed, title="Private One")
+    project = await _project(session, owner, member)
+    await _pin(session, project, article, member, is_shared=True,
+               shared_at=datetime.now(timezone.utc))  # member's own publish
+    await _pin(session, project, second, owner)  # owner's private pin
+    resp = await client.get("/api/projects", headers=users.auth(member))
+    assert resp.json()[0]["unseen_count"] == 0
+
+
+async def test_visit_resets_unseen(client, users, data, session):
+    owner, member, feed, article = await _team(users, data)
+    project = await _project(session, owner, member)
+    await _pin(session, project, article, owner, is_shared=True,
+               shared_at=datetime.now(timezone.utc))
+    resp = await client.post(f"/api/projects/{project.id}/visit", headers=users.auth(member))
+    assert resp.status_code == 204
+    resp = await client.get("/api/projects", headers=users.auth(member))
+    assert resp.json()[0]["unseen_count"] == 0
+
+
+async def test_visit_non_member_404(client, users, session):
+    owner = await users.create()
+    outsider = await users.create()
+    project = await _project(session, owner)
+    resp = await client.post(f"/api/projects/{project.id}/visit", headers=users.auth(outsider))
+    assert resp.status_code == 404
+
+
+async def test_membership_mute_toggle(client, users, session):
+    owner = await users.create()
+    member = await users.create()
+    project = await _project(session, owner, member)
+    resp = await client.patch(f"/api/projects/{project.id}/membership",
+                              json={"is_muted": True}, headers=users.auth(member))
+    assert resp.status_code == 200
+    assert resp.json()["is_muted"] is True
+    # The other member's view is unaffected.
+    resp = await client.get(f"/api/projects/{project.id}", headers=users.auth(owner))
+    assert resp.json()["is_muted"] is False
+
+
+async def test_membership_non_member_404(client, users, session):
+    owner = await users.create()
+    outsider = await users.create()
+    project = await _project(session, owner)
+    resp = await client.patch(f"/api/projects/{project.id}/membership",
+                              json={"is_muted": True}, headers=users.auth(outsider))
+    assert resp.status_code == 404
+
+
+# --- publish push enqueues ---
+
+async def test_add_shared_pin_enqueues_push(client, users, data, session, monkeypatch):
+    owner, member, feed, article = await _team(users, data)
+    project = await _project(session, owner, member)
+    jobs = []
+
+    async def record(job_name, *args):
+        jobs.append((job_name, args))
+
+    monkeypatch.setattr("app.routers.projects.enqueue", record)
+    resp = await client.post(f"/api/projects/{project.id}/articles",
+                             json={"article_id": article.id, "is_shared": True},
+                             headers=users.auth(owner))
+    assert resp.status_code == 201
+    assert jobs == [("send_project_pin_push", (resp.json()["id"],))]
+
+
+async def test_add_private_pin_enqueues_nothing(client, users, data, session, monkeypatch):
+    owner, member, feed, article = await _team(users, data)
+    project = await _project(session, owner, member)
+    jobs = []
+
+    async def record(job_name, *args):
+        jobs.append((job_name, args))
+
+    monkeypatch.setattr("app.routers.projects.enqueue", record)
+    await client.post(f"/api/projects/{project.id}/articles",
+                      json={"article_id": article.id}, headers=users.auth(owner))
+    assert jobs == []
+
+
+async def test_publish_flip_enqueues_push_once(client, users, data, session, monkeypatch):
+    owner, member, feed, article = await _team(users, data)
+    project = await _project(session, owner, member)
+    pin = await _pin(session, project, article, owner)
+    jobs = []
+
+    async def record(job_name, *args):
+        jobs.append((job_name, args))
+
+    monkeypatch.setattr("app.routers.projects.enqueue", record)
+    await client.patch(f"/api/projects/{project.id}/articles/{pin.id}",
+                       json={"is_shared": True}, headers=users.auth(owner))
+    # Re-publishing an already-shared pin must not notify again.
+    await client.patch(f"/api/projects/{project.id}/articles/{pin.id}",
+                       json={"is_shared": True}, headers=users.auth(owner))
+    assert jobs == [("send_project_pin_push", (pin.id,))]
 
 
 # --- picker status ---

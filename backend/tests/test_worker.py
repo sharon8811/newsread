@@ -409,7 +409,9 @@ async def test_startup(monkeypatch):
 
 
 def test_worker_settings_shape():
-    assert worker.WorkerSettings.functions == [worker.enrich_feed, worker.send_share_push]
+    assert worker.WorkerSettings.functions == [
+        worker.enrich_feed, worker.send_share_push, worker.send_project_pin_push,
+    ]
     assert len(worker.WorkerSettings.cron_jobs) == 2
 
 
@@ -472,3 +474,96 @@ async def test_send_share_push_note_becomes_body(session, users, monkeypatch):
     monkeypatch.setattr(worker.push, "send_push", fake_send)
     await worker.send_share_push({}, share.id)
     assert captured["body"] == "check this out"
+
+
+# --- send_project_pin_push ---
+
+async def _pinned_project(session, users, *, muted=False, shared=True):
+    from datetime import datetime, timezone
+
+    from app.models import Project, ProjectArticle, ProjectMember
+
+    adder = await users.create(username="pinner")
+    member = await users.create(username="watcher")
+    feed = await _feed(session, url=f"pin-push-{muted}-{shared}")
+    art = await _article(session, feed, title="Pinned News")
+    project = Project(owner_id=adder.id, name="Push Proj")
+    project.members = [
+        ProjectMember(user_id=adder.id, role="owner"),
+        ProjectMember(user_id=member.id, role="member", is_muted=muted),
+    ]
+    session.add(project)
+    await session.commit()
+    await session.refresh(project)
+    pin = ProjectArticle(
+        project_id=project.id, article_id=art.id, added_by_user_id=adder.id,
+        is_shared=shared,
+        shared_at=datetime.now(timezone.utc) if shared else None,
+        note=None,
+    )
+    session.add(pin)
+    await session.commit()
+    await session.refresh(pin)
+    return adder, member, pin
+
+
+async def test_send_project_pin_push_missing_pin(monkeypatch):
+    async def boom(*args, **kwargs):
+        raise AssertionError("should not send for a missing pin")
+
+    monkeypatch.setattr(worker.push, "send_push", boom)
+    await worker.send_project_pin_push({}, 99999)
+
+
+async def test_send_project_pin_push_notifies_other_members(session, users, monkeypatch):
+    adder, member, pin = await _pinned_project(session, users)
+    sent = {}
+
+    async def fake_send(user_ids, title, body, data=None):
+        sent.update(user_ids=user_ids, title=title, body=body, data=data)
+        return len(user_ids)
+
+    monkeypatch.setattr(worker.push, "send_push", fake_send)
+    await worker.send_project_pin_push({}, pin.id)
+    assert sent["user_ids"] == [member.id]  # never the adder
+    assert "@pinner" in sent["title"] and "Push Proj" in sent["title"]
+    assert sent["body"] == "Pinned News"
+    assert sent["data"]["project_id"] == pin.project_id
+
+
+async def test_send_project_pin_push_skips_muted_members(session, users, monkeypatch):
+    adder, member, pin = await _pinned_project(session, users, muted=True)
+    sent = {}
+
+    async def fake_send(user_ids, title, body, data=None):
+        sent["user_ids"] = user_ids
+        return len(user_ids)
+
+    monkeypatch.setattr(worker.push, "send_push", fake_send)
+    await worker.send_project_pin_push({}, pin.id)
+    assert sent["user_ids"] == []
+
+
+async def test_send_project_pin_push_skips_unpublished_pin(session, users, monkeypatch):
+    adder, member, pin = await _pinned_project(session, users, shared=False)
+
+    async def boom(*args, **kwargs):
+        raise AssertionError("should not send for a private pin")
+
+    monkeypatch.setattr(worker.push, "send_push", boom)
+    await worker.send_project_pin_push({}, pin.id)
+
+
+async def test_send_project_pin_push_note_becomes_body(session, users, monkeypatch):
+    adder, member, pin = await _pinned_project(session, users)
+    pin.note = "must read"
+    await session.commit()
+    captured = {}
+
+    async def fake_send(user_ids, title, body, data=None):
+        captured["body"] = body
+        return 1
+
+    monkeypatch.setattr(worker.push, "send_push", fake_send)
+    await worker.send_project_pin_push({}, pin.id)
+    assert captured["body"] == "must read"

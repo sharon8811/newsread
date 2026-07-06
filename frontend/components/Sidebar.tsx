@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import useSWR, { mutate } from "swr";
-import { api, fetcher, type Feed } from "@/lib/api";
+import { api, fetcher, type Feed, type Project } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import FeedSettingsModal from "./FeedSettingsModal";
 import {
@@ -78,6 +78,10 @@ export default function Sidebar() {
     fetcher,
     { refreshInterval: 30_000 },
   );
+  const { data: projects } = useSWR<Project[]>("/projects", fetcher, {
+    refreshInterval: 30_000,
+  });
+  const projectUnseen = projects?.reduce((sum, p) => sum + p.unseen_count, 0) ?? 0;
 
   const [adding, setAdding] = useState(false);
   const [newUrl, setNewUrl] = useState("");
@@ -154,6 +158,8 @@ export default function Sidebar() {
           active={pathname.startsWith("/projects")}
           icon={<FolderIcon />}
           label="Projects"
+          badge={projectUnseen}
+          badgeAccent
         />
       </nav>
 
