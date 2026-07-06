@@ -40,6 +40,12 @@ MIGRATIONS = [
     "ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS view_override VARCHAR(16)",
     "ALTER TABLE articles ADD COLUMN IF NOT EXISTS entities_extracted_at TIMESTAMPTZ",
     "ALTER TABLE messages ADD COLUMN IF NOT EXISTS tool_events JSONB",
+    # Per-subscription feed settings + the global per-feed AI switch.
+    "ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS title_override VARCHAR(512)",
+    "ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS sort_order VARCHAR(16)",
+    "ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS retention_days INTEGER",
+    "ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS is_muted BOOLEAN NOT NULL DEFAULT FALSE",
+    "ALTER TABLE feeds ADD COLUMN IF NOT EXISTS ai_enabled BOOLEAN NOT NULL DEFAULT TRUE",
     # Keyword leg of hybrid article search (the semantic leg is article_embeddings).
     "ALTER TABLE articles ADD COLUMN IF NOT EXISTS search_tsv tsvector GENERATED ALWAYS AS "
     "(to_tsvector('english', coalesce(title, '') || ' ' || coalesce(excerpt, '') || ' ' "

@@ -8,7 +8,7 @@ from ..db import get_session
 from ..fetcher import refresh_feed
 from ..queue import enqueue
 from ..models import Article, Feed, Share, Subscription, User, UserArticleState
-from ..schemas import AddFeedIn, FeedOut, SubscriptionViewIn
+from ..schemas import AddFeedIn, FeedOut, FeedSettingsIn
 from ..security import get_current_user
 
 logger = logging.getLogger(__name__)
@@ -34,25 +34,42 @@ async def _get_subscribed_feed(session: AsyncSession, user: User, feed_id: int) 
     return feed
 
 
+def retention_visible():
+    """Articles the subscriber can still see: no retention set, young enough,
+    or saved (saved articles are exempt from retention). Requires Subscription
+    and UserArticleState to be (outer-)joined in the enclosing statement."""
+    return or_(
+        Subscription.retention_days.is_(None),
+        func.coalesce(Article.published_at, Article.fetched_at)
+        >= func.now() - func.make_interval(0, 0, 0, Subscription.retention_days),
+        UserArticleState.is_saved.is_(True),
+    )
+
+
 def _feed_list_stmt(user_id: int):
+    visible = retention_visible()
     return (
         select(
             Feed,
-            func.count(Article.id).label("article_count"),
+            func.count(Article.id).filter(visible).label("article_count"),
             func.count(Article.id)
-            .filter(or_(UserArticleState.id.is_(None), UserArticleState.is_read.is_(False)))
+            .filter(
+                visible,
+                or_(UserArticleState.id.is_(None), UserArticleState.is_read.is_(False)),
+            )
             .label("unread_count"),
             # Mirrors the worker's enrich query: full_text_fetched_at is stamped
             # even on failure, so this always converges to 0.
             func.count(Article.id)
             .filter(
+                visible,
                 and_(
                     Article.full_text_fetched_at.is_(None),
                     or_(Article.full_text == "", Article.image_url.is_(None)),
-                )
+                ),
             )
             .label("pending_count"),
-            Subscription.view_override,
+            Subscription,
         )
         .join(Subscription, and_(Subscription.feed_id == Feed.id, Subscription.user_id == user_id))
         .outerjoin(Article, Article.feed_id == Feed.id)
@@ -60,8 +77,8 @@ def _feed_list_stmt(user_id: int):
             UserArticleState,
             and_(UserArticleState.article_id == Article.id, UserArticleState.user_id == user_id),
         )
-        .group_by(Feed.id, Subscription.view_override)
-        .order_by(Feed.title)
+        .group_by(Feed.id, Subscription.id)
+        .order_by(func.coalesce(Subscription.title_override, Feed.title))
     )
 
 
@@ -70,19 +87,25 @@ def _to_feed_out(
     article_count: int,
     unread_count: int,
     pending_count: int,
-    view_override: str | None,
+    subscription: Subscription,
 ) -> FeedOut:
     return FeedOut(
         id=feed.id,
         url=feed.url,
-        title=feed.title or feed.url,
+        title=subscription.title_override or feed.title or feed.url,
         site_url=feed.site_url,
         description=feed.description,
         last_fetched_at=feed.last_fetched_at,
         article_count=article_count,
         unread_count=unread_count,
         pending_count=pending_count,
-        view_override=view_override,
+        view_override=subscription.view_override,
+        title_override=subscription.title_override,
+        sort_order=subscription.sort_order,
+        retention_days=subscription.retention_days,
+        is_muted=subscription.is_muted,
+        ai_enabled=feed.ai_enabled,
+        refresh_interval_minutes=feed.refresh_interval_minutes,
     )
 
 
@@ -156,10 +179,10 @@ async def refresh(
     return _to_feed_out(*row)
 
 
-@router.patch("/{feed_id}/view", response_model=FeedOut)
-async def set_feed_view(
+@router.patch("/{feed_id}/settings", response_model=FeedOut)
+async def update_feed_settings(
     feed_id: int,
-    body: SubscriptionViewIn,
+    body: FeedSettingsIn,
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
@@ -169,7 +192,30 @@ async def set_feed_view(
             Subscription.user_id == user.id, Subscription.feed_id == feed.id
         )
     )
-    subscription.view_override = body.view_override
+    updates = body.model_dump(exclude_unset=True)
+    if not updates:
+        raise HTTPException(status_code=422, detail="Nothing to update")
+
+    # Per-subscription overrides: explicit null clears back to the default.
+    if "view_override" in updates:
+        subscription.view_override = updates["view_override"]
+    if "title_override" in updates:
+        subscription.title_override = (updates["title_override"] or "").strip() or None
+    if "sort_order" in updates:
+        # "newest" is the default; store it as NULL so it never diverges.
+        sort = updates["sort_order"]
+        subscription.sort_order = None if sort == "newest" else sort
+    if "retention_days" in updates:
+        subscription.retention_days = updates["retention_days"]
+    if updates.get("is_muted") is not None:
+        subscription.is_muted = updates["is_muted"]
+
+    # Global feed settings, shared by every subscriber.
+    if updates.get("ai_enabled") is not None:
+        feed.ai_enabled = updates["ai_enabled"]
+    if updates.get("refresh_interval_minutes") is not None:
+        feed.refresh_interval_minutes = updates["refresh_interval_minutes"]
+
     await session.commit()
     row = (
         await session.execute(_feed_list_stmt(user.id).where(Feed.id == feed.id))

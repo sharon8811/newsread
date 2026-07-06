@@ -121,10 +121,12 @@ export type UserPublic = {
   name: string;
 };
 
+export type SortOrder = "newest" | "oldest";
+
 export type Feed = {
   id: number;
   url: string;
-  title: string;
+  title: string; // effective: rename applied server-side
   site_url: string | null;
   description: string | null;
   last_fetched_at: string | null;
@@ -132,7 +134,24 @@ export type Feed = {
   unread_count: number;
   pending_count: number;
   view_override: ViewMode | null;
+  title_override: string | null;
+  sort_order: SortOrder | null;
+  retention_days: number | null;
+  is_muted: boolean;
+  ai_enabled: boolean;
+  refresh_interval_minutes: number;
 };
+
+// PATCH /feeds/{id}/settings — only send the fields being changed.
+export type FeedSettingsPatch = Partial<{
+  view_override: ViewMode | null;
+  title_override: string | null;
+  sort_order: SortOrder | null;
+  retention_days: number | null;
+  is_muted: boolean;
+  ai_enabled: boolean;
+  refresh_interval_minutes: number;
+}>;
 
 export type EntityBadge = {
   id: number;

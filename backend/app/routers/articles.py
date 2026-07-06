@@ -34,6 +34,7 @@ from ..schemas import (
     MarkAllReadIn,
 )
 from ..security import get_current_user
+from .feeds import retention_visible
 
 logger = logging.getLogger(__name__)
 
@@ -159,8 +160,14 @@ def _scoped_article_ids(user_id: int, feed_id: int | None, filter: str):
             ),
         )
     )
+    stmt = stmt.where(retention_visible())
     if feed_id is not None:
         stmt = stmt.where(Article.feed_id == feed_id)
+    else:
+        # Muted feeds stay out of the aggregate inbox; their own page and the
+        # saved list still show everything.
+        if filter != "saved":
+            stmt = stmt.where(Subscription.is_muted.is_(False))
     if filter == "unread":
         stmt = stmt.where(or_(UserArticleState.id.is_(None), UserArticleState.is_read.is_(False)))
     elif filter == "saved":
@@ -234,8 +241,11 @@ async def list_articles(
             ),
         )
     )
+    stmt = stmt.where(retention_visible())
     if feed_id is not None:
         stmt = stmt.where(Article.feed_id == feed_id)
+    elif filter != "saved":
+        stmt = stmt.where(Subscription.is_muted.is_(False))
     if filter == "unread":
         stmt = stmt.where(
             or_(UserArticleState.id.is_(None), UserArticleState.is_read.is_(False))
@@ -260,9 +270,18 @@ async def list_articles(
             stmt = stmt.where(
                 or_(Article.title.ilike(pattern), Article.excerpt.ilike(pattern))
             )
-        stmt = stmt.order_by(
-            Article.published_at.desc().nulls_last(), Article.id.desc()
-        ).limit(limit).offset(offset)
+        sort_order = None
+        if feed_id is not None:
+            sort_order = await session.scalar(
+                select(Subscription.sort_order).where(
+                    Subscription.user_id == user.id, Subscription.feed_id == feed_id
+                )
+            )
+        if sort_order == "oldest":
+            stmt = stmt.order_by(Article.published_at.asc().nulls_last(), Article.id.asc())
+        else:
+            stmt = stmt.order_by(Article.published_at.desc().nulls_last(), Article.id.desc())
+        stmt = stmt.limit(limit).offset(offset)
         rows = (await session.execute(stmt)).all()
     entity_map = await _entities_for_articles(session, [a.id for a, _, _ in rows])
     return [

@@ -42,6 +42,9 @@ class Feed(Base):
     description: Mapped[str | None] = mapped_column(Text)
     last_fetched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     refresh_interval_minutes: Mapped[int] = mapped_column(Integer, default=15)
+    # Global switch: skip auto-summaries/embeddings for this feed (shared by
+    # all subscribers; on-demand summaries in the article view still work).
+    ai_enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     articles: Mapped[list["Article"]] = relationship(back_populates="feed", cascade="all, delete-orphan")
@@ -55,6 +58,11 @@ class Subscription(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     feed_id: Mapped[int] = mapped_column(ForeignKey("feeds.id", ondelete="CASCADE"), index=True)
     view_override: Mapped[str | None] = mapped_column(String(16))
+    # Per-user feed settings; NULL means "inherit the default".
+    title_override: Mapped[str | None] = mapped_column(String(512))
+    sort_order: Mapped[str | None] = mapped_column(String(16))  # 'oldest'; NULL = newest
+    retention_days: Mapped[int | None] = mapped_column(Integer)  # NULL = keep forever
+    is_muted: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     feed: Mapped[Feed] = relationship()

@@ -1,0 +1,315 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { mutate } from "swr";
+import { mutateArticleLists } from "./ArticleList";
+import {
+  api,
+  type Feed,
+  type FeedSettingsPatch,
+  type SortOrder,
+  type ViewMode,
+} from "@/lib/api";
+import { TrashIcon, XIcon } from "./icons";
+
+const RETENTION_OPTIONS = [
+  { value: 0, label: "Keep forever" },
+  { value: 7, label: "1 week" },
+  { value: 30, label: "1 month" },
+  { value: 90, label: "3 months" },
+  { value: 365, label: "1 year" },
+];
+
+const REFRESH_OPTIONS = [
+  { value: 15, label: "Every 15 min" },
+  { value: 30, label: "Every 30 min" },
+  { value: 60, label: "Every hour" },
+  { value: 180, label: "Every 3 hours" },
+  { value: 360, label: "Every 6 hours" },
+  { value: 1440, label: "Once a day" },
+];
+
+function Row({
+  label,
+  hint,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-4 py-2.5">
+      <div className="min-w-0">
+        <p className="text-[13.5px]">{label}</p>
+        {hint && (
+          <p className="mt-0.5 text-[11.5px]" style={{ color: "var(--ink-faint)" }}>
+            {hint}
+          </p>
+        )}
+      </div>
+      <div className="shrink-0">{children}</div>
+    </div>
+  );
+}
+
+function Toggle({
+  checked,
+  onChange,
+  label,
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  label: string;
+}) {
+  return (
+    <button
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      onClick={() => onChange(!checked)}
+      className="relative h-[22px] w-[38px] rounded-full transition-colors"
+      style={{ background: checked ? "var(--accent)" : "var(--line)" }}
+    >
+      <span
+        className="absolute top-[3px] h-4 w-4 rounded-full transition-all"
+        style={{ background: "var(--bg-raised)", left: checked ? 18 : 3 }}
+      />
+    </button>
+  );
+}
+
+export default function FeedSettingsModal({
+  feed,
+  onClose,
+  onUnsubscribed,
+}: {
+  feed: Feed;
+  onClose: () => void;
+  onUnsubscribed?: () => void;
+}) {
+  const [title, setTitle] = useState(feed.title_override ?? "");
+  const [view, setView] = useState<ViewMode | "default">(feed.view_override ?? "default");
+  const [sort, setSort] = useState<SortOrder>(feed.sort_order ?? "newest");
+  const [retention, setRetention] = useState(feed.retention_days ?? 0);
+  const [muted, setMuted] = useState(feed.is_muted);
+  const [aiEnabled, setAiEnabled] = useState(feed.ai_enabled);
+  const [refreshMinutes, setRefreshMinutes] = useState(feed.refresh_interval_minutes);
+  const [confirmingRemove, setConfirmingRemove] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  function buildPatch(): FeedSettingsPatch {
+    const patch: FeedSettingsPatch = {};
+    const trimmed = title.trim();
+    if (trimmed !== (feed.title_override ?? "")) patch.title_override = trimmed || null;
+    const viewValue = view === "default" ? null : view;
+    if (viewValue !== feed.view_override) patch.view_override = viewValue;
+    const sortValue = sort === "newest" ? null : sort;
+    if (sortValue !== feed.sort_order) patch.sort_order = sortValue;
+    const retentionValue = retention === 0 ? null : retention;
+    if (retentionValue !== feed.retention_days) patch.retention_days = retentionValue;
+    if (muted !== feed.is_muted) patch.is_muted = muted;
+    if (aiEnabled !== feed.ai_enabled) patch.ai_enabled = aiEnabled;
+    if (refreshMinutes !== feed.refresh_interval_minutes)
+      patch.refresh_interval_minutes = refreshMinutes;
+    return patch;
+  }
+
+  async function save() {
+    if (busy) return;
+    const patch = buildPatch();
+    if (Object.keys(patch).length === 0) {
+      onClose();
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await api<Feed>(`/feeds/${feed.id}/settings`, { method: "PATCH", body: patch });
+      mutateArticleLists();
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save settings");
+      setBusy(false);
+    }
+  }
+
+  async function unsubscribe() {
+    if (!confirmingRemove) {
+      setConfirmingRemove(true);
+      return;
+    }
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api(`/feeds/${feed.id}`, { method: "DELETE" });
+      mutate("/feeds");
+      onUnsubscribed?.();
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not unsubscribe");
+      setBusy(false);
+    }
+  }
+
+  const refreshOptions = REFRESH_OPTIONS.some((o) => o.value === feed.refresh_interval_minutes)
+    ? REFRESH_OPTIONS
+    : [
+        ...REFRESH_OPTIONS,
+        { value: feed.refresh_interval_minutes, label: `Every ${feed.refresh_interval_minutes} min` },
+      ].sort((a, b) => a.value - b.value);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-6"
+      style={{ background: "var(--bg-scrim)", backdropFilter: "blur(4px)" }}
+      onClick={onClose}
+    >
+      <div
+        className="fade-up max-h-full w-full max-w-[480px] overflow-y-auto rounded-lg border p-6"
+        style={{
+          background: "var(--bg-raised)",
+          borderColor: "var(--line)",
+          boxShadow: "var(--shadow-modal)",
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <p className="mono-label">Feed settings</p>
+            <h2 className="font-serif-nr mt-1.5 truncate text-[19px] leading-snug">
+              {feed.title}
+            </h2>
+          </div>
+          <button className="icon-btn shrink-0" onClick={onClose} aria-label="Close">
+            <XIcon size={16} />
+          </button>
+        </div>
+
+        <div className="mt-4">
+          <label
+            className="text-[12px] font-medium"
+            style={{ color: "var(--ink-dim)" }}
+            htmlFor="feed-title-input"
+          >
+            Custom name
+          </label>
+          <input
+            id="feed-title-input"
+            className="input mt-1.5"
+            style={{ fontSize: 13.5 }}
+            placeholder={feed.title_override ? feed.title : `${feed.title} (original name)`}
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+          />
+        </div>
+
+        <div className="mt-3 divide-y divide-[color:var(--line-soft)]">
+          <Row label="View" hint="Layout used when reading this feed">
+            <select
+              className="input"
+              style={{ fontSize: 13, width: 150 }}
+              aria-label="View mode"
+              value={view}
+              onChange={(e) => setView(e.target.value as ViewMode | "default")}
+            >
+              <option value="default">My default</option>
+              <option value="list">List</option>
+              <option value="zen">Zen</option>
+              <option value="stories">Stories</option>
+            </select>
+          </Row>
+
+          <Row label="Sort order">
+            <select
+              className="input"
+              style={{ fontSize: 13, width: 150 }}
+              aria-label="Sort order"
+              value={sort}
+              onChange={(e) => setSort(e.target.value as SortOrder)}
+            >
+              <option value="newest">Newest first</option>
+              <option value="oldest">Oldest first</option>
+            </select>
+          </Row>
+
+          <Row label="Keep articles" hint="Saved articles are always kept">
+            <select
+              className="input"
+              style={{ fontSize: 13, width: 150 }}
+              aria-label="Retention"
+              value={retention}
+              onChange={(e) => setRetention(Number(e.target.value))}
+            >
+              {RETENTION_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </Row>
+
+          <Row label="Mute" hint="Hide from Inbox and unread counts">
+            <Toggle checked={muted} onChange={setMuted} label="Mute feed" />
+          </Row>
+
+          <Row label="AI summaries" hint="Applies to everyone subscribed to this feed">
+            <Toggle checked={aiEnabled} onChange={setAiEnabled} label="AI summaries" />
+          </Row>
+
+          <Row label="Check for new articles" hint="Applies to everyone subscribed to this feed">
+            <select
+              className="input"
+              style={{ fontSize: 13, width: 150 }}
+              aria-label="Refresh interval"
+              value={refreshMinutes}
+              onChange={(e) => setRefreshMinutes(Number(e.target.value))}
+            >
+              {refreshOptions.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </Row>
+        </div>
+
+        {error && (
+          <p className="mt-2 text-[12.5px]" style={{ color: "var(--danger)" }}>
+            {error}
+          </p>
+        )}
+
+        <div className="mt-5 flex items-center justify-between">
+          <button
+            className="btn btn-ghost"
+            style={{ color: "var(--danger)" }}
+            onClick={unsubscribe}
+            disabled={busy}
+          >
+            <TrashIcon size={13} />
+            {confirmingRemove ? "Really unsubscribe?" : "Unsubscribe"}
+          </button>
+          <div className="flex items-center gap-2">
+            <button className="btn btn-ghost" onClick={onClose} disabled={busy}>
+              Cancel
+            </button>
+            <button className="btn btn-accent" onClick={save} disabled={busy}>
+              {busy ? "Saving…" : "Save"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

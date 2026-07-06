@@ -1,12 +1,13 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import useSWR from "swr";
 import ArticleList, { mutateArticleLists } from "@/components/ArticleList";
+import FeedSettingsModal from "@/components/FeedSettingsModal";
 import StoriesView from "@/components/StoriesView";
 import ViewSwitcher from "@/components/ViewSwitcher";
-import { CheckAllIcon, RefreshIcon, SearchIcon } from "@/components/icons";
+import { CheckAllIcon, GearIcon, RefreshIcon, SearchIcon } from "@/components/icons";
 import { useAuth } from "@/lib/auth";
 import { api, fetcher, type Feed, type ViewMode } from "@/lib/api";
 
@@ -19,6 +20,7 @@ function pendingCountOf(feeds: Feed[] | undefined, feedId: string | null): numbe
 }
 
 function Inbox() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const feedId = searchParams.get("feed");
   const { user } = useAuth();
@@ -56,6 +58,7 @@ function Inbox() {
   const [search, setSearch] = useState("");
   const [q, setQ] = useState("");
   const [refreshing, setRefreshing] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   useEffect(() => {
     const t = setTimeout(() => setQ(search.trim()), 250);
@@ -120,6 +123,16 @@ function Inbox() {
               <button className="btn btn-ghost" onClick={refresh} title="Refresh feed">
                 <RefreshIcon size={14} className={refreshing ? "spinning" : undefined} />
                 <span className="hidden sm:inline">Refresh</span>
+              </button>
+            )}
+            {feed && (
+              <button
+                className="btn btn-ghost"
+                onClick={() => setSettingsOpen(true)}
+                title="Feed settings"
+              >
+                <GearIcon size={14} />
+                <span className="hidden sm:inline">Settings</span>
               </button>
             )}
             <button className="btn btn-ghost" onClick={markAllRead} title="Mark all as read">
@@ -191,6 +204,13 @@ function Inbox() {
                 ? "New articles land here as your feeds refresh."
                 : "Subscribe to a feed from the sidebar to start reading."
           }
+        />
+      )}
+      {settingsOpen && feed && (
+        <FeedSettingsModal
+          feed={feed}
+          onClose={() => setSettingsOpen(false)}
+          onUnsubscribed={() => router.push("/")}
         />
       )}
     </>
