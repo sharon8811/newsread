@@ -148,6 +148,39 @@ describe("<ProjectPickerModal>", () => {
     expect(await screen.findByRole("button", { name: /New project/ })).toBeInTheDocument();
   });
 
+  it("disables Add until pin statuses have loaded", () => {
+    setSwr([twoMembers], undefined);
+    render(<ProjectPickerModal article={makeArticle()} onClose={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "Add" })).toBeDisabled();
+  });
+
+  it("reports a created project whose pin call failed, and still revalidates", async () => {
+    const fetchMock = vi.fn().mockImplementation((url: string, opts?: { method?: string }) => {
+      if (String(url).endsWith("/projects") && opts?.method === "POST") {
+        return Promise.resolve({
+          status: 201,
+          ok: true,
+          json: async () => ({ id: 9, name: "Fresh" }),
+        });
+      }
+      return Promise.resolve({
+        status: 404,
+        ok: false,
+        json: async () => ({ detail: "Article not found" }),
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    setSwr([], []);
+    render(<ProjectPickerModal article={makeArticle()} onClose={vi.fn()} />);
+    await userEvent.click(screen.getByRole("button", { name: /New project/ }));
+    await userEvent.type(screen.getByPlaceholderText("Project name"), "Fresh");
+    await userEvent.click(screen.getByRole("button", { name: /Create & add/ }));
+    expect(
+      await screen.findByText(/Created "Fresh", but couldn't add the article: Article not found/),
+    ).toBeInTheDocument();
+    expect(mutateMock).toHaveBeenCalledWith("/projects");
+  });
+
   it("shows the API error when adding fails", async () => {
     vi.stubGlobal(
       "fetch",

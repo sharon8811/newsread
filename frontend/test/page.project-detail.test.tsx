@@ -221,14 +221,29 @@ describe("ProjectPage", () => {
     expect(routerMock.push).not.toHaveBeenCalled();
   });
 
-  it("owner deletes the project", async () => {
+  it("owner deletes the project only after the inline confirm", async () => {
     const fetchMock = okFetch();
     vi.stubGlobal("fetch", fetchMock);
     setSwr({ project: ownedProject, pins: [] });
     render(<ProjectPage />);
     await userEvent.click(screen.getByTitle("Delete project"));
+    // first click only arms the confirm — nothing deleted yet
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(screen.getByText("Delete for every member?")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Delete" }));
     await waitFor(() => expect(routerMock.push).toHaveBeenCalledWith("/projects"));
     expect(mutateMock).toHaveBeenCalledWith("/projects");
+  });
+
+  it("cancel disarms the delete confirm", async () => {
+    const fetchMock = okFetch();
+    vi.stubGlobal("fetch", fetchMock);
+    setSwr({ project: ownedProject, pins: [] });
+    render(<ProjectPage />);
+    await userEvent.click(screen.getByTitle("Delete project"));
+    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.getByTitle("Delete project")).toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("surfaces a delete failure", async () => {
@@ -236,6 +251,7 @@ describe("ProjectPage", () => {
     setSwr({ project: ownedProject, pins: [] });
     render(<ProjectPage />);
     await userEvent.click(screen.getByTitle("Delete project"));
+    await userEvent.click(screen.getByRole("button", { name: "Delete" }));
     expect(await screen.findByText("Could not delete project")).toBeInTheDocument();
     expect(routerMock.push).not.toHaveBeenCalled();
   });

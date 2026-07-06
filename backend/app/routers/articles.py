@@ -186,16 +186,16 @@ async def user_can_access(session: AsyncSession, user_id: int, article: Article)
     if shared is not None:
         return True
     # Pinned to a project the user belongs to (their own pin, or a shared one).
+    # Function-level import: projects.py imports from this module at load time.
+    from .projects import visible_pins
+
     pinned = await session.scalar(
         select(ProjectArticle.id)
         .join(ProjectMember, ProjectMember.project_id == ProjectArticle.project_id)
         .where(
             ProjectMember.user_id == user_id,
             ProjectArticle.article_id == article.id,
-            or_(
-                ProjectArticle.is_shared.is_(True),
-                ProjectArticle.added_by_user_id == user_id,
-            ),
+            visible_pins(user_id),
         )
     )
     return pinned is not None

@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 ViewMode = Literal["cards", "list", "stories"]
 SortOrder = Literal["newest", "oldest"]
@@ -201,16 +201,30 @@ class UnseenCountOut(BaseModel):
 ProjectRole = Literal["owner", "member"]
 
 
+def _stripped_nonempty(value: str) -> str:
+    value = value.strip()
+    if not value:
+        raise ValueError("must not be blank")
+    return value
+
+
 class ProjectCreateIn(BaseModel):
-    name: str = Field(min_length=1, max_length=120)
+    name: str = Field(max_length=120)
     description: str = Field(default="", max_length=2000)
+
+    _strip_name = field_validator("name")(_stripped_nonempty)
 
 
 class ProjectUpdateIn(BaseModel):
     """PATCH semantics: only fields present in the request are applied."""
 
-    name: str | None = Field(default=None, min_length=1, max_length=120)
+    name: str | None = Field(default=None, max_length=120)
     description: str | None = Field(default=None, max_length=2000)
+
+    @field_validator("name")
+    @classmethod
+    def _strip_name(cls, value: str | None) -> str | None:
+        return None if value is None else _stripped_nonempty(value)
 
 
 class ProjectMemberOut(BaseModel):

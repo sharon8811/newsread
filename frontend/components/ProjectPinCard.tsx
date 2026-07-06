@@ -87,18 +87,16 @@ export default function ProjectPinCard({
       }),
     );
 
-  // Removes what the viewer is allowed to remove: their own pin, and (for the
-  // owner) every shared pin of this article.
-  const removable = pins.filter(
+  // One call removes everything the viewer may remove (their own pin, plus all
+  // shared pins for the owner) atomically server-side.
+  const removable = pins.some(
     (p) => p.added_by.id === myId || (isOwner && p.is_shared),
   );
   const remove = () =>
     run(() =>
-      Promise.all(
-        removable.map((p) =>
-          api(`/projects/${projectId}/articles/${p.id}`, { method: "DELETE" }),
-        ),
-      ),
+      api(`/projects/${projectId}/articles/by-article/${article.id}`, {
+        method: "DELETE",
+      }),
     );
 
   return (
@@ -202,7 +200,7 @@ export default function ProjectPinCard({
             Make private
           </button>
         )}
-        {removable.length > 0 && !confirming && (
+        {removable && !confirming && (
           <button
             className="icon-btn ml-auto"
             title="Remove from project"

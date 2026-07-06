@@ -61,6 +61,30 @@ async def test_create_project_name_required(client, users):
     assert resp.status_code == 422
 
 
+async def test_create_project_blank_name_rejected(client, users):
+    user = await users.create()
+    resp = await client.post("/api/projects", json={"name": "   "}, headers=users.auth(user))
+    assert resp.status_code == 422
+
+
+async def test_update_project_blank_name_rejected(client, users, session):
+    owner = await users.create()
+    project = await _project(session, owner)
+    resp = await client.patch(f"/api/projects/{project.id}", json={"name": " \t "},
+                              headers=users.auth(owner))
+    assert resp.status_code == 422
+
+
+async def test_count_deduplicates_articles_pinned_by_two_members(client, users, data, session):
+    owner, member, feed, article = await _team(users, data)
+    project = await _project(session, owner, member)
+    now = datetime.now(timezone.utc)
+    await _pin(session, project, article, owner, is_shared=True, shared_at=now)
+    await _pin(session, project, article, member, is_shared=True, shared_at=now)
+    resp = await client.get("/api/projects", headers=users.auth(owner))
+    assert resp.json()[0]["article_count"] == 1
+
+
 async def test_list_projects_mine_only_with_roles(client, users, session):
     owner = await users.create(username="olive")
     member = await users.create(username="mia")
@@ -539,6 +563,62 @@ async def test_member_cannot_remove_others_shared_pin(client, users, data, sessi
                      shared_at=datetime.now(timezone.utc))
     resp = await client.delete(f"/api/projects/{project.id}/articles/{pin.id}",
                                headers=users.auth(m2))
+    assert resp.status_code == 403
+
+
+async def test_remove_by_article_removes_own_and_shared_for_owner(client, users, data, session):
+    owner, member, feed, article = await _team(users, data)
+    now = datetime.now(timezone.utc)
+    project = await _project(session, owner, member)
+    await _pin(session, project, article, owner)  # owner's private pin
+    await _pin(session, project, article, member, is_shared=True, shared_at=now)
+    resp = await client.delete(
+        f"/api/projects/{project.id}/articles/by-article/{article.id}",
+        headers=users.auth(owner),
+    )
+    assert resp.status_code == 204
+    left = (await client.get(f"/api/projects/{project.id}/articles",
+                             headers=users.auth(member))).json()
+    assert left == []
+
+
+async def test_remove_by_article_member_keeps_others_shared(client, users, data, session):
+    owner, member, feed, article = await _team(users, data)
+    now = datetime.now(timezone.utc)
+    project = await _project(session, owner, member)
+    await _pin(session, project, article, member)  # member's own private pin
+    await _pin(session, project, article, owner, is_shared=True, shared_at=now)
+    resp = await client.delete(
+        f"/api/projects/{project.id}/articles/by-article/{article.id}",
+        headers=users.auth(member),
+    )
+    assert resp.status_code == 204
+    left = (await client.get(f"/api/projects/{project.id}/articles",
+                             headers=users.auth(member))).json()
+    # The owner's shared pin survives; only the member's own pin went away.
+    assert [p["added_by"]["username"] for p in left] == [owner.username]
+
+
+async def test_remove_by_article_nothing_visible_404(client, users, data, session):
+    owner, member, feed, article = await _team(users, data)
+    project = await _project(session, owner, member)
+    await _pin(session, project, article, owner)  # private → invisible to member
+    resp = await client.delete(
+        f"/api/projects/{project.id}/articles/by-article/{article.id}",
+        headers=users.auth(member),
+    )
+    assert resp.status_code == 404
+
+
+async def test_remove_by_article_member_cannot_remove_others_shared(client, users, data, session):
+    owner, member, feed, article = await _team(users, data)
+    now = datetime.now(timezone.utc)
+    project = await _project(session, owner, member)
+    await _pin(session, project, article, owner, is_shared=True, shared_at=now)
+    resp = await client.delete(
+        f"/api/projects/{project.id}/articles/by-article/{article.id}",
+        headers=users.auth(member),
+    )
     assert resp.status_code == 403
 
 

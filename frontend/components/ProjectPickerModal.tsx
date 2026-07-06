@@ -104,8 +104,9 @@ export default function ProjectPickerModal({
     if (!newName.trim() || busy) return;
     setBusy(true);
     setError(null);
+    let project: Project | null = null;
     try {
-      const project = await api<Project>("/projects", {
+      project = await api<Project>("/projects", {
         method: "POST",
         body: { name: newName.trim() },
       });
@@ -116,11 +117,19 @@ export default function ProjectPickerModal({
       });
       setNewName("");
       setCreating(false);
-      mutate("/projects");
       mutate(statusKey);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not create project");
+      const detail = err instanceof Error ? err.message : null;
+      // The project may exist even when the pin call failed — say so instead
+      // of inviting a retry that would create a duplicate.
+      setError(
+        project
+          ? `Created "${project.name}", but couldn't add the article${detail ? `: ${detail}` : ""}`
+          : (detail ?? "Could not create project"),
+      );
     } finally {
+      // Revalidate even on failure: a half-completed create must show up.
+      if (project) mutate("/projects");
       setBusy(false);
     }
   }
@@ -216,7 +225,9 @@ export default function ProjectPickerModal({
                     <button
                       className="btn"
                       style={{ padding: "4px 12px", fontSize: 12.5 }}
-                      disabled={busy}
+                      // Until statuses load we can't tell "not added" from
+                      // "already added" — don't invite a duplicate 409.
+                      disabled={busy || !statuses}
                       onClick={() => add(project.id)}
                     >
                       Add

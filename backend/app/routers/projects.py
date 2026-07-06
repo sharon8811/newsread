@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import and_, func, or_, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from typing import Literal
@@ -71,7 +72,9 @@ async def _visible_counts(session: AsyncSession, project_ids: list[int], user_id
     if not project_ids:
         return {}
     rows = await session.execute(
-        select(ProjectArticle.project_id, func.count(ProjectArticle.id))
+        # Distinct articles, not pins: two members pinning the same article is
+        # one article, matching the grouped card the project page renders.
+        select(ProjectArticle.project_id, func.count(func.distinct(ProjectArticle.article_id)))
         .where(ProjectArticle.project_id.in_(project_ids), visible_pins(user_id))
         .group_by(ProjectArticle.project_id)
     )
@@ -94,6 +97,17 @@ def _project_out(project: Project, my_role: str, article_count: int) -> ProjectO
     )
 
 
+async def _project_response(
+    session: AsyncSession, project_id: int, user_id: int, my_role: str
+) -> ProjectOut:
+    """Standard epilogue: reload with members/owner and viewer-visible count."""
+    project = await session.scalar(
+        select(Project).where(Project.id == project_id).options(*_project_load_options)
+    )
+    counts = await _visible_counts(session, [project_id], user_id)
+    return _project_out(project, my_role, counts.get(project_id, 0))
+
+
 def _pin_out(pin: ProjectArticle, feed_title: str, state, entities=None) -> ProjectArticleOut:
     return ProjectArticleOut(
         id=pin.id,
@@ -113,14 +127,11 @@ async def create_project(
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
-    project = Project(owner_id=user.id, name=body.name.strip(), description=body.description.strip())
+    project = Project(owner_id=user.id, name=body.name, description=body.description.strip())
     project.members = [ProjectMember(user_id=user.id, role="owner")]
     session.add(project)
     await session.commit()
-    project = await session.scalar(
-        select(Project).where(Project.id == project.id).options(*_project_load_options)
-    )
-    return _project_out(project, "owner", 0)
+    return await _project_response(session, project.id, user.id, "owner")
 
 
 @router.get("", response_model=list[ProjectOut])
@@ -201,11 +212,7 @@ async def get_project(
     session: AsyncSession = Depends(get_session),
 ):
     membership = await _member_or_404(session, project_id, user.id)
-    project = await session.scalar(
-        select(Project).where(Project.id == project_id).options(*_project_load_options)
-    )
-    counts = await _visible_counts(session, [project_id], user.id)
-    return _project_out(project, membership.role, counts.get(project_id, 0))
+    return await _project_response(session, project_id, user.id, membership.role)
 
 
 @router.patch("/{project_id}", response_model=ProjectOut)
@@ -221,15 +228,11 @@ async def update_project(
     project = await session.get(Project, project_id)
     updates = body.model_dump(exclude_unset=True)
     if updates.get("name") is not None:
-        project.name = updates["name"].strip()
+        project.name = updates["name"]
     if updates.get("description") is not None:
         project.description = updates["description"].strip()
     await session.commit()
-    project = await session.scalar(
-        select(Project).where(Project.id == project_id).options(*_project_load_options)
-    )
-    counts = await _visible_counts(session, [project_id], user.id)
-    return _project_out(project, "owner", counts.get(project_id, 0))
+    return await _project_response(session, project_id, user.id, "owner")
 
 
 @router.delete("/{project_id}", status_code=204)
@@ -265,11 +268,7 @@ async def add_member(
         raise HTTPException(status_code=409, detail="Already a member")
     session.add(ProjectMember(project_id=project_id, user_id=invitee.id, role="member"))
     await session.commit()
-    project = await session.scalar(
-        select(Project).where(Project.id == project_id).options(*_project_load_options)
-    )
-    counts = await _visible_counts(session, [project_id], user.id)
-    return _project_out(project, "owner", counts.get(project_id, 0))
+    return await _project_response(session, project_id, user.id, "owner")
 
 
 @router.delete("/{project_id}/members/{member_user_id}", status_code=204)
@@ -352,28 +351,27 @@ async def add_project_article(
     article = await session.get(Article, body.article_id)
     if article is None or not await user_can_access(session, user.id, article):
         raise HTTPException(status_code=404, detail="Article not found")
-    existing = await session.scalar(
-        select(ProjectArticle.id).where(
-            ProjectArticle.project_id == project_id,
-            ProjectArticle.article_id == article.id,
-            ProjectArticle.added_by_user_id == user.id,
-        )
-    )
-    if existing is not None:
-        raise HTTPException(status_code=409, detail="You already added this article")
     note = body.note.strip() if body.note else None
-    pin = ProjectArticle(
-        project_id=project_id,
-        article_id=article.id,
-        added_by_user_id=user.id,
-        is_shared=body.is_shared,
-        shared_at=datetime.now(timezone.utc) if body.is_shared else None,
-        note=note or None,
+    # Atomic insert: a concurrent duplicate (double-click, second tab) resolves
+    # to "already added" instead of a unique-constraint 500.
+    pin_id = await session.scalar(
+        pg_insert(ProjectArticle)
+        .values(
+            project_id=project_id,
+            article_id=article.id,
+            added_by_user_id=user.id,
+            is_shared=body.is_shared,
+            shared_at=datetime.now(timezone.utc) if body.is_shared else None,
+            note=note or None,
+        )
+        .on_conflict_do_nothing(index_elements=["project_id", "article_id", "added_by_user_id"])
+        .returning(ProjectArticle.id)
     )
-    session.add(pin)
+    if pin_id is None:
+        raise HTTPException(status_code=409, detail="You already added this article")
     await session.commit()
     pin = await session.scalar(
-        select(ProjectArticle).where(ProjectArticle.id == pin.id).options(*_pin_load_options)
+        select(ProjectArticle).where(ProjectArticle.id == pin_id).options(*_pin_load_options)
     )
     states = await _states_for(session, user.id, [article.id])
     return _pin_out(pin, pin.article.feed.title or pin.article.feed.url, states.get(article.id))
@@ -433,4 +431,38 @@ async def remove_project_article(
     if pin.added_by_user_id != user.id and not (membership.role == "owner" and pin.is_shared):
         raise HTTPException(status_code=403, detail="Only the adder or the owner can remove this")
     await session.delete(pin)
+    await session.commit()
+
+
+@router.delete("/{project_id}/articles/by-article/{article_id}", status_code=204)
+async def remove_article_pins(
+    project_id: int,
+    article_id: int,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Remove every pin of this article the caller may remove, in one
+    transaction: their own pin, plus all shared pins when they're the owner.
+    Backs the card's single remove action — no client-side DELETE fan-out."""
+    membership = await _member_or_404(session, project_id, user.id)
+    pins = (
+        await session.scalars(
+            select(ProjectArticle).where(
+                ProjectArticle.project_id == project_id,
+                ProjectArticle.article_id == article_id,
+                visible_pins(user.id),
+            )
+        )
+    ).all()
+    if not pins:
+        raise HTTPException(status_code=404, detail="Not found in this project")
+    removable = [
+        p
+        for p in pins
+        if p.added_by_user_id == user.id or (membership.role == "owner" and p.is_shared)
+    ]
+    if not removable:
+        raise HTTPException(status_code=403, detail="Only the adder or the owner can remove this")
+    for pin in removable:
+        await session.delete(pin)
     await session.commit()

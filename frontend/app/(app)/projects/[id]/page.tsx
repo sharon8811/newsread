@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import useSWR, { mutate } from "swr";
 import ProjectPinCard, { groupPins } from "@/components/ProjectPinCard";
@@ -27,6 +27,7 @@ export default function ProjectPage() {
   const [inviting, setInviting] = useState(false);
   const [invitee, setInvitee] = useState("");
   const [results, setResults] = useState<UserPublic[]>([]);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -34,20 +35,30 @@ export default function ProjectPage() {
   const sharedGroups = groupPins((pins ?? []).filter((p) => p.is_shared));
   const privatePins = (pins ?? []).filter((p) => !p.is_shared);
 
-  async function searchUsers(q: string) {
-    setInvitee(q);
-    const trimmed = q.trim().replace(/^@/, "");
-    if (!trimmed) {
+  // Debounced like ShareModal's search; the cleanup also cancels the pending
+  // request's effect, so a slow early response can't overwrite newer results.
+  useEffect(() => {
+    const q = invitee.trim().replace(/^@/, "");
+    if (!q) {
       setResults([]);
       return;
     }
-    try {
-      const users = await api<UserPublic[]>(`/users/search?q=${encodeURIComponent(trimmed)}`);
-      setResults(users.filter((u) => !project?.members.some((m) => m.user.id === u.id)));
-    } catch {
-      setResults([]);
-    }
-  }
+    let stale = false;
+    const t = setTimeout(() => {
+      api<UserPublic[]>(`/users/search?q=${encodeURIComponent(q)}`)
+        .then((users) => {
+          if (stale) return;
+          setResults(users.filter((u) => !project?.members.some((m) => m.user.id === u.id)));
+        })
+        .catch(() => {
+          if (!stale) setResults([]);
+        });
+    }, 200);
+    return () => {
+      stale = true;
+      clearTimeout(t);
+    };
+  }, [invitee, project]);
 
   async function invite(username: string) {
     if (busy) return;
@@ -166,9 +177,36 @@ export default function ProjectPage() {
               </button>
             )}
             {isOwner ? (
-              <button className="icon-btn" title="Delete project" onClick={deleteProject}>
-                <TrashIcon size={14} />
-              </button>
+              confirmingDelete ? (
+                <span className="fade-up flex items-center gap-1.5">
+                  <span className="text-[12px]" style={{ color: "var(--ink-dim)" }}>
+                    Delete for every member?
+                  </span>
+                  <button
+                    className="btn"
+                    style={{ fontSize: 12, color: "var(--danger)" }}
+                    disabled={busy}
+                    onClick={deleteProject}
+                  >
+                    Delete
+                  </button>
+                  <button
+                    className="btn"
+                    style={{ fontSize: 12 }}
+                    onClick={() => setConfirmingDelete(false)}
+                  >
+                    Cancel
+                  </button>
+                </span>
+              ) : (
+                <button
+                  className="icon-btn"
+                  title="Delete project"
+                  onClick={() => setConfirmingDelete(true)}
+                >
+                  <TrashIcon size={14} />
+                </button>
+              )
             ) : (
               <button
                 className="btn"
@@ -194,7 +232,7 @@ export default function ProjectPage() {
               style={{ fontSize: 13, padding: "7px 10px" }}
               placeholder="@username to invite"
               value={invitee}
-              onChange={(e) => searchUsers(e.target.value)}
+              onChange={(e) => setInvitee(e.target.value)}
               autoFocus
             />
             {results.length > 0 && (

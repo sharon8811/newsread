@@ -113,16 +113,18 @@ describe("<ProjectPinCard>", () => {
     expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ is_shared: false });
   });
 
-  it("removes the viewer's own pin", async () => {
+  it("removes the article with one by-article call", async () => {
     const fetchMock = okFetch();
     vi.stubGlobal("fetch", fetchMock);
-    renderCard([makeProjectArticle({ id: 7, added_by: me })]);
+    renderCard([makeProjectArticle({ id: 7, added_by: me, article: makeArticle({ id: 5 }) })]);
     await userEvent.click(screen.getByTitle("Remove from project"));
-    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-    expect(fetchMock.mock.calls[0][1].method).toBe("DELETE");
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    const [url, opts] = fetchMock.mock.calls[0];
+    expect(String(url)).toContain("/projects/1/articles/by-article/5");
+    expect(opts.method).toBe("DELETE");
   });
 
-  it("lets the owner remove every shared pin of the article", async () => {
+  it("owner removes a multi-adder group with a single call", async () => {
     const fetchMock = okFetch();
     vi.stubGlobal("fetch", fetchMock);
     renderCard(
@@ -133,10 +135,8 @@ describe("<ProjectPinCard>", () => {
       { isOwner: true },
     );
     await userEvent.click(screen.getByTitle("Remove from project"));
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
-    const urls = fetchMock.mock.calls.map(([u]) => String(u));
-    expect(urls.some((u) => u.endsWith("/7"))).toBe(true);
-    expect(urls.some((u) => u.endsWith("/8"))).toBe(true);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(String(fetchMock.mock.calls[0][0])).toContain("/articles/by-article/");
   });
 
   it("offers no actions to a member on someone else's shared pin", () => {
