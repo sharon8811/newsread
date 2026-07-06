@@ -177,6 +177,33 @@ async def test_enrich_and_summarize_scoped_to_feed(session, monkeypatch):
     assert enriched == [feed1.id]
 
 
+async def test_enrich_and_summarize_converges_when_nothing_fetchable(session, monkeypatch):
+    # Regression: an article with a rich feed body and an image already set
+    # still matches the enrich batch query while full_text == '' and the stamp
+    # is NULL. The real enrich_article must stamp it (without fetching), or the
+    # worker re-selects it every cycle and pending_count never reaches zero.
+    from app import extractor
+
+    feed = await _feed(session, url="converge")
+    rich = "<p>" + ("word " * 200) + "</p>"
+    art = await _article(session, feed, content_html=rich, image_url="https://x/i.png")
+
+    async def no_fetch(url):
+        raise AssertionError("nothing to fetch for this article")
+
+    async def fake_extract(feed_id=None):
+        return 0
+
+    monkeypatch.setattr(extractor, "fetch_page", no_fetch)
+    monkeypatch.setattr(worker, "extract_entities", fake_extract)
+    monkeypatch.setattr(worker.llm, "is_configured", lambda: False)
+
+    await worker.enrich_and_summarize(feed_id=feed.id)
+
+    await session.refresh(art)
+    assert art.full_text_fetched_at is not None
+
+
 async def test_enrich_and_summarize_skips_ai_disabled_feed(session, monkeypatch):
     feed = await _feed(session, url="noai")
     feed.ai_enabled = False
