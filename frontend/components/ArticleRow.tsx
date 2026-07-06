@@ -31,7 +31,7 @@ export default function ArticleRow({
     <div
       data-row-index={index}
       onClick={() => router.push(`/article/${article.id}`)}
-      className="group flex cursor-pointer items-start gap-3 border-b px-4 py-[15px] transition-colors sm:gap-3.5 sm:px-5"
+      className="group flex cursor-pointer items-start gap-3 border-b px-4 py-[18px] transition-colors sm:gap-4 sm:px-6"
       style={{
         borderColor: "var(--line-soft)",
         background: selected ? "var(--bg-hover)" : "transparent",
@@ -42,12 +42,12 @@ export default function ArticleRow({
       }
     >
       <span
-        className="dot-unread mt-[9px]"
+        className="dot-unread mt-[10px]"
         style={{ opacity: article.is_read ? 0 : 1 }}
       />
       <div className="min-w-0 flex-1">
         <h3
-          className="font-serif-nr text-[17px] leading-snug"
+          className="font-serif-nr text-[18px] leading-snug sm:text-[19px]"
           style={{
             color: article.is_read ? "var(--ink-dim)" : "var(--ink)",
             fontWeight: article.is_read ? 400 : 500,
@@ -56,7 +56,7 @@ export default function ArticleRow({
           {article.title}
         </h3>
         <p
-          className="font-mono-nr mt-1 truncate text-[11px]"
+          className="font-mono-nr mt-1.5 truncate text-[11.5px]"
           style={{ color: "var(--ink-faint)" }}
         >
           {domainOf(article.url)}
@@ -72,7 +72,7 @@ export default function ArticleRow({
 
         {oneLiner && (
           <p
-            className="mt-1.5 line-clamp-1 text-[13px] leading-relaxed"
+            className="mt-2 line-clamp-2 text-[14px] leading-relaxed"
             style={{ color: "var(--ink-dim)" }}
           >
             {article.summary_short && (
@@ -89,7 +89,7 @@ export default function ArticleRow({
 
         {readMore && (
           <button
-            className="font-mono-nr mt-1.5 text-[11px] transition-colors"
+            className="font-mono-nr mt-2 text-[11.5px] transition-colors"
             style={{ color: expanded ? "var(--ink-faint)" : "var(--accent)" }}
             onClick={(e) => {
               e.stopPropagation();
@@ -102,7 +102,7 @@ export default function ArticleRow({
 
         {expanded && readMore && (
           <p
-            className="fade-up mt-2 border-l pl-3 text-[13.5px] leading-relaxed"
+            className="fade-up mt-2 border-l pl-3 text-[14.5px] leading-relaxed"
             style={{ color: "var(--ink)", borderColor: "var(--accent-border)" }}
           >
             {readMore}
@@ -147,7 +147,7 @@ export default function ArticleRow({
           image, so thumbnails popping in never reflow the row. */}
       {(article.image_url || article.enriching) && (
         <div
-          className={`h-[54px] w-[80px] shrink-0 overflow-hidden rounded-md border sm:h-[72px] sm:w-[108px] ${
+          className={`h-[58px] w-[86px] shrink-0 overflow-hidden rounded-lg border sm:h-[84px] sm:w-[126px] ${
             article.image_url ? "" : "shimmer"
           }`}
           style={{ borderColor: "var(--line-soft)", background: "var(--bg-hover)" }}

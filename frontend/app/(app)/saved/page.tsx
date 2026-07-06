@@ -9,7 +9,7 @@ import { SearchIcon } from "@/components/icons";
 import { useAuth } from "@/lib/auth";
 import { type ViewMode } from "@/lib/api";
 
-const VIEW_MODES = ["list", "stories", "zen"] as const;
+const VIEW_MODES = ["cards", "list", "stories"] as const;
 
 function Saved() {
   const searchParams = useSearchParams();
@@ -23,7 +23,7 @@ function Saved() {
   const paramView = VIEW_MODES.includes(rawParamView as ViewMode)
     ? (rawParamView as ViewMode)
     : null;
-  const view: ViewMode = localView ?? paramView ?? user?.default_view ?? "list";
+  const view: ViewMode = localView ?? paramView ?? user?.default_view ?? "cards";
 
   const [search, setSearch] = useState("");
   const [q, setQ] = useState("");
@@ -71,11 +71,11 @@ function Saved() {
         <StoriesView
           filter="saved"
           markOnAdvance={false}
-          onExit={() => setLocalView("list")}
+          onExit={() => setLocalView("cards")}
         />
       ) : (
         <ArticleList
-          variant={view === "zen" ? "zen" : "list"}
+          variant={view === "list" ? "list" : "cards"}
           filter="saved"
           q={q}
           emptyTitle={q ? "Nothing matches your search." : "Nothing saved yet."}

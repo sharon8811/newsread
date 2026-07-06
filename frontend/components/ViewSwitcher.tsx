@@ -3,11 +3,11 @@
 import { mutate } from "swr";
 import { api, type Feed, type User, type ViewMode } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import { ListIcon, StoriesIcon, ZenIcon } from "./icons";
+import { CardsIcon, ListIcon, StoriesIcon } from "./icons";
 
 const MODES: { mode: ViewMode; label: string; Icon: typeof ListIcon }[] = [
+  { mode: "cards", label: "Cards view", Icon: CardsIcon },
   { mode: "list", label: "List view", Icon: ListIcon },
-  { mode: "zen", label: "Zen view — dense headlines", Icon: ZenIcon },
   { mode: "stories", label: "Stories view — one at a time", Icon: StoriesIcon },
 ];
 
@@ -54,7 +54,7 @@ export default function ViewSwitcher({
 
   function resetOverride() {
     if (!feed) return;
-    onSwitch?.(user?.default_view ?? "list");
+    onSwitch?.(user?.default_view ?? "cards");
     setFeedOverride(feed.id, null);
   }
 

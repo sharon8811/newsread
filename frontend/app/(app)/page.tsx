@@ -11,7 +11,7 @@ import { CheckAllIcon, GearIcon, RefreshIcon, SearchIcon } from "@/components/ic
 import { useAuth } from "@/lib/auth";
 import { api, fetcher, type Feed, type ViewMode } from "@/lib/api";
 
-const VIEW_MODES = ["list", "stories", "zen"] as const;
+const VIEW_MODES = ["cards", "list", "stories"] as const;
 
 function pendingCountOf(feeds: Feed[] | undefined, feedId: string | null): number {
   if (!feeds) return 0;
@@ -52,7 +52,7 @@ function Inbox() {
     localView ??
     paramView ??
     (feed ? (feed.view_override ?? user?.default_view) : user?.default_view) ??
-    "list";
+    "cards";
 
   const [tab, setTab] = useState<"unread" | "all">("unread");
   const [search, setSearch] = useState("");
@@ -182,10 +182,10 @@ function Inbox() {
       </header>
 
       {view === "stories" ? (
-        <StoriesView feedId={feedId} onExit={() => setLocalView("list")} />
+        <StoriesView feedId={feedId} onExit={() => setLocalView("cards")} />
       ) : (
         <ArticleList
-          variant={view === "zen" ? "zen" : "list"}
+          variant={view === "list" ? "list" : "cards"}
           filter={tab === "unread" ? "unread" : "all"}
           feedId={feedId}
           q={q}

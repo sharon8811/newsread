@@ -1,9 +1,9 @@
 async def test_update_me_sets_default_view(client, users):
     user = await users.create(default_view="list")
-    resp = await client.patch("/api/users/me", json={"default_view": "zen"},
+    resp = await client.patch("/api/users/me", json={"default_view": "cards"},
                               headers=users.auth(user))
     assert resp.status_code == 200
-    assert resp.json()["default_view"] == "zen"
+    assert resp.json()["default_view"] == "cards"
 
 
 async def test_update_me_none_leaves_unchanged(client, users):
@@ -21,7 +21,7 @@ async def test_update_me_invalid_view(client, users):
 
 
 async def test_update_me_requires_auth(client):
-    resp = await client.patch("/api/users/me", json={"default_view": "zen"})
+    resp = await client.patch("/api/users/me", json={"default_view": "cards"})
     assert resp.status_code == 401
 
 

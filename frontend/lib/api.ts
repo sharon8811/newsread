@@ -105,7 +105,7 @@ export async function streamQA(
 
 // ——— types (mirror backend schemas) ———
 
-export type ViewMode = "list" | "stories" | "zen";
+export type ViewMode = "cards" | "list" | "stories";
 
 export type User = {
   id: number;

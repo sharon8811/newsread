@@ -224,8 +224,8 @@ export default function FeedSettingsModal({
               onChange={(e) => setView(e.target.value as ViewMode | "default")}
             >
               <option value="default">My default</option>
+              <option value="cards">Cards</option>
               <option value="list">List</option>
-              <option value="zen">Zen</option>
               <option value="stories">Stories</option>
             </select>
           </Row>

@@ -26,7 +26,7 @@ class User(Base):
     username: Mapped[str] = mapped_column(String(30), unique=True, index=True)
     name: Mapped[str] = mapped_column(String(120))
     password_hash: Mapped[str] = mapped_column(String(128))
-    default_view: Mapped[str] = mapped_column(String(16), default="list", server_default="list")
+    default_view: Mapped[str] = mapped_column(String(16), default="cards", server_default="cards")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

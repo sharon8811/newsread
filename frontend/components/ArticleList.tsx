@@ -4,9 +4,9 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import useSWR, { mutate } from "swr";
 import { api, fetcher, type Article } from "@/lib/api";
+import ArticleCard from "./ArticleCard";
 import ArticleRow from "./ArticleRow";
 import ShareModal from "./ShareModal";
-import ZenRow from "./ZenRow";
 
 export function articlesKey(opts: {
   filter: "all" | "unread" | "saved";
@@ -38,7 +38,7 @@ export default function ArticleList({
   q?: string;
   emptyTitle: string;
   emptySubtitle?: string;
-  variant?: "list" | "zen";
+  variant?: "cards" | "list";
   refreshInterval?: number;
 }) {
   const router = useRouter();
@@ -47,12 +47,10 @@ export default function ArticleList({
     refreshInterval,
   });
   const [selected, setSelected] = useState(0);
-  const [revealed, setRevealed] = useState<number | null>(null);
   const [sharing, setSharing] = useState<Article | null>(null);
 
   useEffect(() => {
     setSelected(0);
-    setRevealed(null);
   }, [key]);
 
   const toggleSaved = useCallback(
@@ -88,12 +86,8 @@ export default function ArticleList({
 
       if (e.key === "j") {
         setSelected((s) => Math.min(s + 1, articles.length - 1));
-        setRevealed(null);
       } else if (e.key === "k") {
         setSelected((s) => Math.max(s - 1, 0));
-        setRevealed(null);
-      } else if (e.key === "a" && variant === "zen") {
-        setRevealed((r) => (r === selected ? null : selected));
       } else if (e.key === "Enter") {
         const article = articles[selected];
         if (article) router.push(`/article/${article.id}`);
@@ -110,7 +104,7 @@ export default function ArticleList({
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [articles, selected, sharing, router, toggleSaved, toggleRead, variant]);
+  }, [articles, selected, sharing, router, toggleSaved, toggleRead]);
 
   useEffect(() => {
     document
@@ -119,7 +113,17 @@ export default function ArticleList({
   }, [selected]);
 
   if (isLoading) {
-    return (
+    return variant === "cards" ? (
+      <div className="mx-auto flex w-full max-w-[720px] flex-col gap-6 p-4 sm:gap-7 sm:py-8">
+        {[...Array(4)].map((_, i) => (
+          <div
+            key={i}
+            className="h-[320px] rounded-lg"
+            style={{ background: "var(--bg-hover)", opacity: 1 - i * 0.2 }}
+          />
+        ))}
+      </div>
+    ) : (
       <div className="flex flex-col gap-4 px-5 py-6">
         {[...Array(6)].map((_, i) => (
           <div
@@ -153,16 +157,21 @@ export default function ArticleList({
   return (
     <>
       <div className="fade-up">
-        {articles.map((article, i) =>
-          variant === "zen" ? (
-            <ZenRow
-              key={article.id}
-              article={article}
-              index={i}
-              selected={i === selected}
-              revealed={i === revealed}
-            />
-          ) : (
+        {variant === "cards" ? (
+          <div className="mx-auto flex w-full max-w-[720px] flex-col gap-6 p-4 sm:gap-7 sm:py-8">
+            {articles.map((article, i) => (
+              <ArticleCard
+                key={article.id}
+                article={article}
+                index={i}
+                selected={i === selected}
+                onToggleSaved={toggleSaved}
+                onShare={setSharing}
+              />
+            ))}
+          </div>
+        ) : (
+          articles.map((article, i) => (
             <ArticleRow
               key={article.id}
               article={article}
@@ -171,15 +180,13 @@ export default function ArticleList({
               onToggleSaved={toggleSaved}
               onShare={setSharing}
             />
-          ),
+          ))
         )}
         <p
           className="font-mono-nr px-5 py-6 text-center text-[11px]"
           style={{ color: "var(--ink-faint)" }}
         >
-          {variant === "zen"
-            ? "j / k navigate · enter open · a peek summary · s save · m read"
-            : "j / k to navigate · enter to open · s to save · m to toggle read"}
+          j / k to navigate · enter to open · s to save · m to toggle read
         </p>
       </div>
       {sharing && <ShareModal article={sharing} onClose={() => setSharing(null)} />}

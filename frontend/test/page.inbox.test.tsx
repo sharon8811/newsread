@@ -136,11 +136,18 @@ describe("InboxPage", () => {
     expect(screen.queryByTestId("article-list")).not.toBeInTheDocument();
   });
 
-  it("renders zen variant from ?view=zen", () => {
-    searchState.params = new URLSearchParams("view=zen");
+  it("renders cards variant from ?view=cards", () => {
+    searchState.params = new URLSearchParams("view=cards");
     swrMock.mockReturnValue({ data: [makeFeed()] });
     render(<InboxPage />);
-    expect(screen.getByTestId("article-list")).toHaveTextContent("zen:unread");
+    expect(screen.getByTestId("article-list")).toHaveTextContent("cards:unread");
+  });
+
+  it("falls back to the cards view without a user default", () => {
+    authState.user = null;
+    swrMock.mockReturnValue({ data: [makeFeed()] });
+    render(<InboxPage />);
+    expect(screen.getByTestId("article-list")).toHaveTextContent("cards:unread");
   });
 
   it("falls back to list when the feed is not found", () => {

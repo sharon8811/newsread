@@ -97,7 +97,7 @@ describe("useAuth", () => {
   it("updateUser replaces the user", async () => {
     const { result } = renderHook(() => useAuth(), { wrapper });
     await waitFor(() => expect(result.current.ready).toBe(true));
-    act(() => result.current.updateUser({ ...USER, default_view: "zen" }));
-    expect(result.current.user?.default_view).toBe("zen");
+    act(() => result.current.updateUser({ ...USER, default_view: "cards" }));
+    expect(result.current.user?.default_view).toBe("cards");
   });
 });

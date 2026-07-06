@@ -25,7 +25,7 @@ describe("<ViewSwitcher>", () => {
   it("renders the three view buttons", () => {
     render(<ViewSwitcher view="list" feed={null} />);
     expect(screen.getByLabelText("List view")).toBeInTheDocument();
-    expect(screen.getByLabelText(/Zen view/)).toBeInTheDocument();
+    expect(screen.getByLabelText("Cards view")).toBeInTheDocument();
     expect(screen.getByLabelText(/Stories view/)).toBeInTheDocument();
   });
 
@@ -37,18 +37,18 @@ describe("<ViewSwitcher>", () => {
   });
 
   it("sets the default view when no feed is given", async () => {
-    const fetchMock = okFetch(makeUser({ default_view: "zen" }));
+    const fetchMock = okFetch(makeUser({ default_view: "cards" }));
     vi.stubGlobal("fetch", fetchMock);
     const onSwitch = vi.fn();
     render(<ViewSwitcher view="list" feed={null} onSwitch={onSwitch} />);
-    await userEvent.click(screen.getByLabelText(/Zen view/));
-    expect(onSwitch).toHaveBeenCalledWith("zen");
+    await userEvent.click(screen.getByLabelText("Cards view"));
+    expect(onSwitch).toHaveBeenCalledWith("cards");
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     expect(fetchMock.mock.calls[0][0]).toContain("/users/me");
   });
 
   it("sets a feed override when a feed is given", async () => {
-    const fetchMock = okFetch(makeFeed({ view_override: "zen" }));
+    const fetchMock = okFetch(makeFeed({ view_override: "cards" }));
     vi.stubGlobal("fetch", fetchMock);
     // Invoke the optimistic-update callback so its cache-map branch runs.
     mutateMock.mockImplementation((_key: string, fn?: unknown) => {
@@ -58,14 +58,14 @@ describe("<ViewSwitcher>", () => {
       }
     });
     render(<ViewSwitcher view="list" feed={makeFeed({ id: 1 })} onSwitch={vi.fn()} />);
-    await userEvent.click(screen.getByLabelText(/Zen view/));
+    await userEvent.click(screen.getByLabelText("Cards view"));
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     expect(fetchMock.mock.calls[0][0]).toContain("/feeds/1/settings");
     expect(mutateMock).toHaveBeenCalled();
   });
 
   it("shows override controls when the feed differs from the default", () => {
-    render(<ViewSwitcher view="zen" feed={makeFeed({ view_override: "zen" })} />);
+    render(<ViewSwitcher view="cards" feed={makeFeed({ view_override: "cards" })} />);
     expect(screen.getByText("reset")).toBeInTheDocument();
     expect(screen.getByText("make default")).toBeInTheDocument();
   });
@@ -73,18 +73,18 @@ describe("<ViewSwitcher>", () => {
   it("reset clears the override", async () => {
     vi.stubGlobal("fetch", okFetch(makeFeed({ view_override: null })));
     const onSwitch = vi.fn();
-    render(<ViewSwitcher view="zen" feed={makeFeed({ view_override: "zen" })} onSwitch={onSwitch} />);
+    render(<ViewSwitcher view="cards" feed={makeFeed({ view_override: "cards" })} onSwitch={onSwitch} />);
     await userEvent.click(screen.getByText("reset"));
     expect(onSwitch).toHaveBeenCalledWith("list");
   });
 
   it("make default persists the current view and clears the override", async () => {
-    const fetchMock = okFetch(makeUser({ default_view: "zen" }));
+    const fetchMock = okFetch(makeUser({ default_view: "cards" }));
     vi.stubGlobal("fetch", fetchMock);
     const onSwitch = vi.fn();
-    render(<ViewSwitcher view="zen" feed={makeFeed({ view_override: "zen" })} onSwitch={onSwitch} />);
+    render(<ViewSwitcher view="cards" feed={makeFeed({ view_override: "cards" })} onSwitch={onSwitch} />);
     await userEvent.click(screen.getByText("make default"));
-    expect(onSwitch).toHaveBeenCalledWith("zen");
+    expect(onSwitch).toHaveBeenCalledWith("cards");
     await waitFor(() => expect(fetchMock.mock.calls.length).toBeGreaterThanOrEqual(1));
   });
 

@@ -82,7 +82,7 @@ describe("<FeedSettingsModal>", () => {
           title_override: "Renamed",
           sort_order: "oldest",
           retention_days: 30,
-          view_override: "zen",
+          view_override: "cards",
         })}
         onClose={vi.fn()}
       />,
