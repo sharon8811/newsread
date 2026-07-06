@@ -4,10 +4,12 @@ import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import useSWR, { mutate } from "swr";
 import ProjectPinCard, { groupPins } from "@/components/ProjectPinCard";
+import QAPanel from "@/components/QAPanel";
 import { LockIcon, MuteIcon, PlusIcon, TrashIcon, XIcon } from "@/components/icons";
 import {
   api,
   fetcher,
+  streamProjectQA,
   type Project,
   type ProjectArticle,
   type UserPublic,
@@ -23,7 +25,7 @@ export default function ProjectPage() {
   const listKey = `/projects/${id}/articles`;
   const { data: pins, isLoading } = useSWR<ProjectArticle[]>(listKey, fetcher);
 
-  const [tab, setTab] = useState<"shared" | "mine">("shared");
+  const [tab, setTab] = useState<"shared" | "mine" | "ask">("shared");
   const [inviting, setInviting] = useState(false);
   const [invitee, setInvitee] = useState("");
   const [results, setResults] = useState<UserPublic[]>([]);
@@ -305,7 +307,7 @@ export default function ProjectPage() {
         )}
 
         <div className="mt-3 flex gap-5">
-          {(["shared", "mine"] as const).map((t) => (
+          {(["shared", "mine", "ask"] as const).map((t) => (
             <button
               key={t}
               className="flex items-center gap-1.5 border-b-2 pb-2.5 text-[13px] transition-colors"
@@ -316,10 +318,12 @@ export default function ProjectPage() {
               onClick={() => setTab(t)}
             >
               {t === "mine" && <LockIcon size={12} />}
-              {t === "shared" ? "Shared" : "Only you"}
-              <span className="font-mono-nr text-[11px]" style={{ color: "var(--ink-faint)" }}>
-                {t === "shared" ? sharedGroups.length : privatePins.length}
-              </span>
+              {t === "shared" ? "Shared" : t === "mine" ? "Only you" : "Ask"}
+              {t !== "ask" && (
+                <span className="font-mono-nr text-[11px]" style={{ color: "var(--ink-faint)" }}>
+                  {t === "shared" ? sharedGroups.length : privatePins.length}
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -347,17 +351,33 @@ export default function ProjectPage() {
         </div>
       )}
 
-      <div className="fade-up">
-        {(tab === "shared" ? sharedGroups : privatePins.map((p) => [p])).map((group) => (
-          <ProjectPinCard
-            key={group[0].id}
-            pins={group}
-            myId={user?.id ?? 0}
-            isOwner={isOwner}
-            projectName={project.name}
+      {tab === "ask" ? (
+        <div className="mx-auto w-full max-w-[680px] px-5 pb-16 sm:px-8">
+          <QAPanel
+            qaKey={`/projects/${project.id}/qa`}
+            stream={(q, onEvent) => streamProjectQA(project.id, q, onEvent)}
+            heading="Ask across this project"
+            placeholder="Ask anything about the collected articles…"
+            suggestions={[
+              "What are the themes across these articles?",
+              "What changed most recently?",
+              "What should I read first?",
+            ]}
           />
-        ))}
-      </div>
+        </div>
+      ) : (
+        <div className="fade-up">
+          {(tab === "shared" ? sharedGroups : privatePins.map((p) => [p])).map((group) => (
+            <ProjectPinCard
+              key={group[0].id}
+              pins={group}
+              myId={user?.id ?? 0}
+              isOwner={isOwner}
+              projectName={project.name}
+            />
+          ))}
+        </div>
+      )}
     </>
   );
 }

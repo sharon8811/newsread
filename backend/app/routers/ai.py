@@ -3,7 +3,7 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -12,11 +12,21 @@ from ..config import settings
 from ..db import get_session
 from ..enrichers import badge_for
 from ..extractor import clip_for_llm, ensure_full_text, is_thin
-from ..models import Article, ArticleEntity, Conversation, Entity, Message, User
+from ..models import (
+    Article,
+    ArticleEntity,
+    Conversation,
+    Entity,
+    Message,
+    Project,
+    ProjectArticle,
+    User,
+)
 from ..schemas import AiStatusOut, AskIn, MessageOut, SummaryOut
 from ..security import get_current_user
 from ..summarizer import ThinContentError, generate_summaries
 from .articles import user_can_access
+from .projects import _member_or_404, visible_pins
 
 logger = logging.getLogger(__name__)
 
@@ -194,6 +204,152 @@ async def ask_article_stream(
                     yield _sse(event)
         except Exception as exc:
             logger.warning("Q&A stream failed for article %s: %s", article.id, exc)
+            yield _sse({"type": "error", "detail": "The LLM request failed"})
+            return
+        if result is None or not result["content"]:
+            yield _sse({"type": "error", "detail": "The LLM returned an empty answer"})
+            return
+
+        session.add(
+            Message(conversation_id=conversation.id, role="user", content=question)
+        )
+        assistant = Message(
+            conversation_id=conversation.id,
+            role="assistant",
+            content=result["content"],
+            tool_events=result["tool_events"] or None,
+        )
+        session.add(assistant)
+        await session.commit()
+        await session.refresh(assistant)
+        message = MessageOut.model_validate(assistant).model_dump(mode="json")
+        yield _sse({"type": "done", "message": message})
+
+    return StreamingResponse(
+        event_source(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+# --- project-wide Q&A ---
+
+# How many distinct articles feed the corpus; each contributes its summary,
+# not full text (the agent can web_extract a specific URL to read deeper).
+PROJECT_QA_ARTICLES = 30
+
+
+async def _project_corpus(session: AsyncSession, project_id: int, user_id: int) -> str:
+    """Titles + summaries + member notes of the pins the viewer may see —
+    others' private pins are excluded here exactly as everywhere else."""
+    pins = (
+        await session.scalars(
+            select(ProjectArticle)
+            .where(ProjectArticle.project_id == project_id, visible_pins(user_id))
+            .options(
+                selectinload(ProjectArticle.article),
+                selectinload(ProjectArticle.added_by),
+            )
+            .order_by(
+                func.coalesce(ProjectArticle.shared_at, ProjectArticle.created_at).desc()
+            )
+            .limit(PROJECT_QA_ARTICLES * 2)  # headroom for multi-pin articles
+        )
+    ).all()
+    grouped: dict[int, dict] = {}
+    order: list[int] = []
+    for pin in pins:
+        entry = grouped.get(pin.article_id)
+        if entry is None:
+            grouped[pin.article_id] = entry = {"article": pin.article, "notes": []}
+            order.append(pin.article_id)
+        if pin.note:
+            entry["notes"].append(f"@{pin.added_by.username}: {pin.note}")
+    blocks = []
+    for article_id in order[:PROJECT_QA_ARTICLES]:
+        entry = grouped[article_id]
+        article = entry["article"]
+        lines = [f"### {article.title}", f"URL: {article.url}"]
+        if article.published_at:
+            lines.append(f"Published: {article.published_at.date().isoformat()}")
+        if entry["notes"]:
+            lines.append("Notes: " + " | ".join(entry["notes"]))
+        summary = article.summary_medium or article.summary or article.excerpt
+        lines.append(summary or "(no summary available — web_extract the URL to read it)")
+        blocks.append("\n".join(lines))
+    return "\n\n".join(blocks)
+
+
+async def _get_or_create_project_conversation(
+    session: AsyncSession, user_id: int, project_id: int
+) -> Conversation:
+    conversation = await session.scalar(
+        select(Conversation)
+        .where(Conversation.user_id == user_id, Conversation.project_id == project_id)
+        .options(selectinload(Conversation.messages))
+    )
+    if conversation is None:
+        conversation = Conversation(user_id=user_id, project_id=project_id, messages=[])
+        session.add(conversation)
+        await session.flush()
+    return conversation
+
+
+@router.get("/projects/{project_id}/qa", response_model=list[MessageOut])
+async def get_project_conversation(
+    project_id: int,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    await _member_or_404(session, project_id, user.id)
+    conversation = await session.scalar(
+        select(Conversation)
+        .where(Conversation.user_id == user.id, Conversation.project_id == project_id)
+        .options(selectinload(Conversation.messages))
+    )
+    if conversation is None:
+        return []
+    return [MessageOut.model_validate(m) for m in conversation.messages]
+
+
+@router.post("/projects/{project_id}/qa/stream")
+async def ask_project_stream(
+    project_id: int,
+    body: AskIn,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Answer a question across the project's collection; same SSE event
+    stream as the per-article endpoint."""
+    await _member_or_404(session, project_id, user.id)
+    project = await session.get(Project, project_id)
+    _require_llm()
+
+    corpus = await _project_corpus(session, project_id, user.id)
+    if not corpus:
+        raise HTTPException(
+            status_code=422, detail="Nothing in this project to ask about yet"
+        )
+    conversation = await _get_or_create_project_conversation(session, user.id, project_id)
+    history = [(m.role, m.content) for m in conversation.messages]
+    question = body.content.strip()
+
+    async def event_source():
+        result: dict | None = None
+        try:
+            async for event in qa_agent.stream_project_answer(
+                name=project.name,
+                description=project.description,
+                corpus=corpus,
+                history=history,
+                question=question,
+            ):
+                if event["type"] == "result":
+                    result = event
+                else:
+                    yield _sse(event)
+        except Exception as exc:
+            logger.warning("Q&A stream failed for project %s: %s", project_id, exc)
             yield _sse({"type": "error", "detail": "The LLM request failed"})
             return
         if result is None or not result["content"]:

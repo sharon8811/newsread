@@ -289,6 +289,8 @@ class ArticleProjectStatus(BaseModel):
     project_article_id: int | None  # the viewer's own pin, if any
     is_shared: bool | None  # the viewer's pin's flag
     shared_by_others: bool
+    # Embedding similarity says this article belongs here (best match only).
+    suggested: bool = False
 
 
 # --- AI ---

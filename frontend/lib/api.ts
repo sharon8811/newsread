@@ -60,13 +60,29 @@ export type QAStreamEvent =
   | { type: "done"; message: ChatMessage }
   | { type: "error"; detail: string };
 
-export async function streamQA(
+export function streamQA(
   articleId: number,
   content: string,
   onEvent: (event: QAStreamEvent) => void,
 ): Promise<void> {
+  return streamSSE(`/articles/${articleId}/qa/stream`, content, onEvent);
+}
+
+export function streamProjectQA(
+  projectId: number,
+  content: string,
+  onEvent: (event: QAStreamEvent) => void,
+): Promise<void> {
+  return streamSSE(`/projects/${projectId}/qa/stream`, content, onEvent);
+}
+
+async function streamSSE(
+  path: string,
+  content: string,
+  onEvent: (event: QAStreamEvent) => void,
+): Promise<void> {
   const token = getToken();
-  const res = await fetch(`${API_URL}/api/articles/${articleId}/qa/stream`, {
+  const res = await fetch(`${API_URL}/api${path}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -259,6 +275,7 @@ export type ArticleProjectStatus = {
   project_article_id: number | null; // my own pin, if any
   is_shared: boolean | null; // my pin's flag
   shared_by_others: boolean;
+  suggested: boolean; // embedding similarity says this article belongs here
 };
 
 export type Share = {

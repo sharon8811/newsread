@@ -138,6 +138,7 @@ export function makeProjectStatus(
     project_article_id: null,
     is_shared: null,
     shared_by_others: false,
+    suggested: false,
     ...over,
   };
 }

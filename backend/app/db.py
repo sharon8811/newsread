@@ -53,6 +53,13 @@ MIGRATIONS = [
     "CREATE INDEX IF NOT EXISTS ix_articles_search_tsv ON articles USING gin (search_tsv)",
     # Per-member project push mute (project_members predates the column).
     "ALTER TABLE project_members ADD COLUMN IF NOT EXISTS is_muted BOOLEAN NOT NULL DEFAULT FALSE",
+    # Project-wide Q&A threads: conversations gain an optional project scope.
+    "ALTER TABLE conversations ALTER COLUMN article_id DROP NOT NULL",
+    "ALTER TABLE conversations ADD COLUMN IF NOT EXISTS project_id INTEGER "
+    "REFERENCES projects(id) ON DELETE CASCADE",
+    "CREATE INDEX IF NOT EXISTS ix_conversations_project_id ON conversations (project_id)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS uq_conversations_project_user "
+    "ON conversations (project_id, user_id) WHERE project_id IS NOT NULL",
     # The zen view was replaced by the cards view; remap stored preferences.
     "ALTER TABLE users ALTER COLUMN default_view SET DEFAULT 'cards'",
     "UPDATE users SET default_view = 'cards' WHERE default_view = 'zen'",
