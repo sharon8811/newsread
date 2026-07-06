@@ -1,9 +1,12 @@
 import type {
   Article,
   ArticleDetail,
+  ArticleProjectStatus,
   EntityBadge,
   EntityFull,
   Feed,
+  Project,
+  ProjectArticle,
   Share,
   User,
   UserPublic,
@@ -93,6 +96,48 @@ export function makeEntityFull(over: Partial<EntityFull> = {}): EntityFull {
     snapshots: [],
     ...over,
   } as EntityFull;
+}
+
+export function makeProject(over: Partial<Project> = {}): Project {
+  const owner = makePublic({ id: 1, username: "alice", name: "Alice" });
+  return {
+    id: 1,
+    name: "AI Research",
+    description: "",
+    owner,
+    my_role: "owner",
+    members: [{ user: owner, role: "owner" }],
+    article_count: 0,
+    created_at: "2026-01-01T00:00:00Z",
+    ...over,
+  };
+}
+
+export function makeProjectArticle(over: Partial<ProjectArticle> = {}): ProjectArticle {
+  return {
+    id: 1,
+    project_id: 1,
+    article: makeArticle(),
+    added_by: makePublic({ id: 1, username: "alice", name: "Alice" }),
+    is_shared: true,
+    shared_at: "2026-01-02T00:00:00Z",
+    note: null,
+    created_at: "2026-01-01T00:00:00Z",
+    ...over,
+  };
+}
+
+export function makeProjectStatus(
+  over: Partial<ArticleProjectStatus> = {},
+): ArticleProjectStatus {
+  return {
+    project_id: 1,
+    project_name: "AI Research",
+    project_article_id: null,
+    is_shared: null,
+    shared_by_others: false,
+    ...over,
+  };
 }
 
 export function makeShare(over: Partial<Share> = {}): Share {

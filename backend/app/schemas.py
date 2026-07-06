@@ -196,6 +196,79 @@ class UnseenCountOut(BaseModel):
     count: int
 
 
+# --- Projects ---
+
+ProjectRole = Literal["owner", "member"]
+
+
+class ProjectCreateIn(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    description: str = Field(default="", max_length=2000)
+
+
+class ProjectUpdateIn(BaseModel):
+    """PATCH semantics: only fields present in the request are applied."""
+
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    description: str | None = Field(default=None, max_length=2000)
+
+
+class ProjectMemberOut(BaseModel):
+    user: UserPublic
+    role: ProjectRole
+
+
+class ProjectOut(BaseModel):
+    id: int
+    name: str
+    description: str
+    owner: UserPublic
+    my_role: ProjectRole
+    members: list[ProjectMemberOut]
+    # Only counts articles the viewer can see (others' private pins excluded).
+    article_count: int
+    created_at: datetime
+
+
+class ProjectMemberAddIn(BaseModel):
+    username: str = Field(min_length=1, max_length=64)
+
+
+class ProjectArticleAddIn(BaseModel):
+    article_id: int
+    is_shared: bool = False
+    note: str | None = Field(default=None, max_length=4000)
+
+
+class ProjectArticleUpdateIn(BaseModel):
+    """PATCH semantics: only fields present are applied; explicit null note
+    clears it. Flipping is_shared on stamps shared_at; off clears it."""
+
+    is_shared: bool | None = None
+    note: str | None = Field(default=None, max_length=4000)
+
+
+class ProjectArticleOut(BaseModel):
+    id: int
+    project_id: int
+    article: ArticleListItem
+    added_by: UserPublic
+    is_shared: bool
+    shared_at: datetime | None
+    note: str | None
+    created_at: datetime
+
+
+class ArticleProjectStatus(BaseModel):
+    """Picker state for one of the viewer's projects against one article."""
+
+    project_id: int
+    project_name: str
+    project_article_id: int | None  # the viewer's own pin, if any
+    is_shared: bool | None  # the viewer's pin's flag
+    shared_by_others: bool
+
+
 # --- AI ---
 
 class AiStatusOut(BaseModel):

@@ -9,6 +9,7 @@ import { useAuth } from "@/lib/auth";
 import FeedSettingsModal from "./FeedSettingsModal";
 import {
   BookmarkIcon,
+  FolderIcon,
   GearIcon,
   InboxIcon,
   LogoutIcon,
@@ -147,6 +148,12 @@ export default function Sidebar() {
           active={pathname === "/saved"}
           icon={<BookmarkIcon />}
           label="Saved"
+        />
+        <NavLink
+          href="/projects"
+          active={pathname.startsWith("/projects")}
+          icon={<FolderIcon />}
+          label="Projects"
         />
       </nav>
 

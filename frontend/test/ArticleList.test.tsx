@@ -16,6 +16,12 @@ vi.mock("@/components/ShareModal", () => ({
   ),
 }));
 
+vi.mock("@/components/ProjectPickerModal", () => ({
+  default: ({ onClose }: { onClose: () => void }) => (
+    <div data-testid="project-picker" onClick={onClose} />
+  ),
+}));
+
 function stub(articles: unknown, isLoading = false) {
   swrMock.mockReturnValue({ data: articles, isLoading });
 }
@@ -189,6 +195,17 @@ describe("<ArticleList>", () => {
     // closing the modal restores nav
     await userEvent.click(screen.getByTestId("share-modal"));
     expect(screen.queryByTestId("share-modal")).not.toBeInTheDocument();
+  });
+
+  it("opens the project picker and suspends keyboard nav while open", async () => {
+    stub([makeArticle({ id: 1, title: "Pinnable" })]);
+    render(<ArticleList filter="all" emptyTitle="Empty" />);
+    await userEvent.click(screen.getByTitle("Add to project"));
+    expect(screen.getByTestId("project-picker")).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: "Enter" });
+    expect(pushMock).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByTestId("project-picker"));
+    expect(screen.queryByTestId("project-picker")).not.toBeInTheDocument();
   });
 
   it("saves via the row save button (onToggleSaved callback)", async () => {

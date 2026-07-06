@@ -68,6 +68,7 @@ describe("<Sidebar>", () => {
     expect(screen.getByText("Shared with me")).toBeInTheDocument();
     expect(screen.getByText("Sent")).toBeInTheDocument();
     expect(screen.getByText("Saved")).toBeInTheDocument();
+    expect(screen.getByText("Projects").closest("a")).toHaveAttribute("href", "/projects");
     expect(screen.getByText("Alice")).toBeInTheDocument();
     expect(screen.getByText("@alice")).toBeInTheDocument();
     // avatar initial
@@ -110,6 +111,13 @@ describe("<Sidebar>", () => {
     pathState.value = "/shared";
     render(<Sidebar />);
     const link = screen.getByText("Shared with me").closest("a")!;
+    expect(link).toHaveStyle({ background: "var(--bg-hover)" });
+  });
+
+  it("marks Projects active on any /projects path", () => {
+    pathState.value = "/projects/4";
+    render(<Sidebar />);
+    const link = screen.getByText("Projects").closest("a")!;
     expect(link).toHaveStyle({ background: "var(--bg-hover)" });
   });
 
