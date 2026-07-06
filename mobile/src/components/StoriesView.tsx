@@ -6,6 +6,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { ImageBackground } from "expo-image";
 import { useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { timeAgo } from "@/lib/format";
 import type { Article } from "@/lib/types";
@@ -21,6 +22,8 @@ type Props = {
 };
 
 export default function StoriesView({ articles, onOpen, onMarkRead, onExit }: Props) {
+  // The nav header is hidden here, so the safe areas are ours to respect.
+  const insets = useSafeAreaInsets();
   // Snapshot the queue on mount so read-state changes don't reshuffle cards
   // mid-session (same behaviour as the web StoriesView).
   const queue = useRef(articles).current;
@@ -59,7 +62,7 @@ export default function StoriesView({ articles, onOpen, onMarkRead, onExit }: Pr
       >
         <View style={styles.scrim} />
 
-        <View style={styles.progressRow}>
+        <View style={[styles.progressRow, { top: insets.top + 8 }]}>
           {queue.length <= 30 ? (
             queue.map((item, itemIndex) => (
               <View
@@ -74,7 +77,11 @@ export default function StoriesView({ articles, onOpen, onMarkRead, onExit }: Pr
           )}
         </View>
 
-        <Pressable style={styles.closeButton} onPress={onExit} hitSlop={10}>
+        <Pressable
+          style={[styles.closeButton, { top: insets.top + 2 }]}
+          onPress={onExit}
+          hitSlop={14}
+        >
           <Ionicons name="close" size={26} color="#ffffff" />
         </Pressable>
 
@@ -84,7 +91,10 @@ export default function StoriesView({ articles, onOpen, onMarkRead, onExit }: Pr
           <Pressable style={styles.tapForward} onPress={advance} />
         </View>
 
-        <View style={styles.body} pointerEvents="box-none">
+        <View
+          style={[styles.body, { paddingBottom: 24 + insets.bottom }]}
+          pointerEvents="box-none"
+        >
           <Text style={styles.meta}>
             {article.feed_title}
             {article.published_at ? ` · ${timeAgo(article.published_at)}` : ""}
@@ -111,7 +121,6 @@ const styles = StyleSheet.create({
   scrim: { ...StyleSheet.absoluteFillObject, backgroundColor: SCRIM },
   progressRow: {
     position: "absolute",
-    top: 10,
     left: 12,
     right: 56,
     flexDirection: "row",
@@ -126,7 +135,7 @@ const styles = StyleSheet.create({
   },
   progressDone: { backgroundColor: "rgba(255,255,255,0.9)" },
   progressCounter: { color: "rgba(255,255,255,0.9)", fontSize: 13, fontWeight: "600" },
-  closeButton: { position: "absolute", top: 4, right: 12, padding: 6, zIndex: 3 },
+  closeButton: { position: "absolute", right: 12, padding: 6, zIndex: 3 },
   tapZones: { ...StyleSheet.absoluteFillObject, flexDirection: "row", zIndex: 1 },
   tapBack: { flex: 1 },
   tapForward: { flex: 2 },
