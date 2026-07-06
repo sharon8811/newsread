@@ -38,7 +38,10 @@ services:
       NEWSREAD_DATABASE_URL: postgresql+asyncpg://newsread:newsread@db:5432/newsread
       NEWSREAD_REDIS_URL: redis://redis:6379/0
       NEWSREAD_JWT_SECRET: ${NEWSREAD_JWT_SECRET:-dev-secret-change-me}
-      NEWSREAD_CORS_ORIGINS: http://localhost:3000
+      # Override in .env to add LAN origins, e.g. when testing the mobile
+      # app's web build from a phone (http://<lan-ip>:8081). Native apps
+      # (Expo Go / device builds) are unaffected — CORS is browser-only.
+      NEWSREAD_CORS_ORIGINS: ${NEWSREAD_CORS_ORIGINS:-http://localhost:3000}
       # A set SEARXNG_BASE_URL in .env points at the host (localhost:8080),
       # but inside the compose network the instance lives at searxng:8080 —
       # rewrite it. Set NEWSREAD_SEARXNG_BASE_URL to use an external instance.
