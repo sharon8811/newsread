@@ -93,3 +93,22 @@ async def test_me_authenticated(client, users):
 async def test_me_unauthenticated(client):
     resp = await client.get("/api/auth/me")
     assert resp.status_code == 401
+
+
+async def test_refresh_returns_new_working_token(client, users):
+    user = await users.create(username="heidi")
+    resp = await client.post("/api/auth/refresh", headers=users.auth(user))
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["token_type"] == "bearer"
+    assert body["user"]["username"] == "heidi"
+    # The minted token must itself authenticate.
+    me = await client.get(
+        "/api/auth/me", headers={"Authorization": f"Bearer {body['access_token']}"}
+    )
+    assert me.status_code == 200
+
+
+async def test_refresh_unauthenticated(client):
+    resp = await client.post("/api/auth/refresh")
+    assert resp.status_code == 401

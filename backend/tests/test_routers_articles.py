@@ -493,3 +493,129 @@ async def test_mark_all_read_nothing(client, users, data):
     resp = await client.post("/api/articles/mark-all-read", json={},
                              headers=users.auth(user))
     assert resp.status_code == 204
+
+
+# --- cursor (keyset) pagination ---
+
+async def _walk_pages(client, users, user, limit, extra_params=None):
+    """Follow X-Next-Cursor until it disappears; returns titles per page."""
+    pages = []
+    cursor = None
+    for _ in range(20):  # safety bound
+        params = {"limit": limit, **(extra_params or {})}
+        if cursor:
+            params["cursor"] = cursor
+        resp = await client.get("/api/articles", params=params, headers=users.auth(user))
+        assert resp.status_code == 200
+        pages.append([a["title"] for a in resp.json()])
+        cursor = resp.headers.get("x-next-cursor")
+        if not cursor:
+            return pages
+    raise AssertionError("pagination never terminated")
+
+
+async def test_cursor_pagination_walks_all_pages(client, users, data):
+    user, feed = await _setup(users, data)
+    for i in range(5):
+        await data.article(feed, title=f"A{i}",
+                           published_at=datetime(2024, 1, i + 1, tzinfo=timezone.utc))
+    pages = await _walk_pages(client, users, user, limit=2)
+    assert pages == [["A4", "A3"], ["A2", "A1"], ["A0"]]
+
+
+async def test_cursor_header_absent_when_page_exactly_fits(client, users, data):
+    user, feed = await _setup(users, data)
+    for i in range(2):
+        await data.article(feed, title=f"A{i}",
+                           published_at=datetime(2024, 1, i + 1, tzinfo=timezone.utc))
+    resp = await client.get("/api/articles", params={"limit": 2}, headers=users.auth(user))
+    assert len(resp.json()) == 2
+    assert "x-next-cursor" not in resp.headers
+
+
+async def test_cursor_stable_when_new_articles_arrive(client, users, data):
+    """The property offsets lack: a prepended article must not shift the page."""
+    user, feed = await _setup(users, data)
+    for i in range(4):
+        await data.article(feed, title=f"A{i}",
+                           published_at=datetime(2024, 1, i + 1, tzinfo=timezone.utc))
+    first = await client.get("/api/articles", params={"limit": 2}, headers=users.auth(user))
+    assert [a["title"] for a in first.json()] == ["A3", "A2"]
+    cursor = first.headers["x-next-cursor"]
+
+    await data.article(feed, title="Breaking",
+                       published_at=datetime(2024, 6, 1, tzinfo=timezone.utc))
+
+    second = await client.get("/api/articles", params={"limit": 2, "cursor": cursor},
+                              headers=users.auth(user))
+    assert [a["title"] for a in second.json()] == ["A1", "A0"]
+
+
+async def test_cursor_pagination_null_published_at_tail(client, users, data):
+    user, feed = await _setup(users, data)
+    await data.article(feed, title="Dated",
+                       published_at=datetime(2024, 1, 1, tzinfo=timezone.utc))
+    await data.article(feed, title="Undated1")  # published_at=None
+    await data.article(feed, title="Undated2")
+    pages = await _walk_pages(client, users, user, limit=1)
+    # Dated first, then the null tail by id desc; every article exactly once.
+    assert pages == [["Dated"], ["Undated2"], ["Undated1"]]
+
+
+async def test_cursor_pagination_oldest_sort(client, users, data, session):
+    from app.models import Subscription
+
+    user, feed = await _setup(users, data)
+    sub = await session.scalar(select(Subscription).where(Subscription.user_id == user.id))
+    sub.sort_order = "oldest"
+    await session.commit()
+    for i in range(3):
+        await data.article(feed, title=f"A{i}",
+                           published_at=datetime(2024, 1, i + 1, tzinfo=timezone.utc))
+    await data.article(feed, title="Undated")
+    pages = await _walk_pages(client, users, user, limit=2,
+                              extra_params={"feed_id": feed.id})
+    assert pages == [["A0", "A1"], ["A2", "Undated"]]
+
+
+async def test_cursor_rejected_with_search(client, users, data):
+    user, feed = await _setup(users, data)
+    resp = await client.get("/api/articles", params={"q": "x", "cursor": "abc"},
+                            headers=users.auth(user))
+    assert resp.status_code == 422
+
+
+async def test_cursor_invalid_garbage(client, users, data):
+    user, feed = await _setup(users, data)
+    for bad in ("not-base64!!!", "bm9zZXBhcmF0b3I=", "fA=="):  # garbage, no |, empty id
+        resp = await client.get("/api/articles", params={"cursor": bad},
+                                headers=users.auth(user))
+        assert resp.status_code == 422, bad
+
+
+async def test_search_pages_have_no_cursor_header(client, users, data):
+    user, feed = await _setup(users, data)
+    for i in range(3):
+        await data.article(feed, title=f"apple {i}",
+                           published_at=datetime(2024, 1, i + 1, tzinfo=timezone.utc))
+    resp = await client.get("/api/articles", params={"q": "apple", "limit": 2},
+                            headers=users.auth(user))
+    assert resp.status_code == 200
+    assert len(resp.json()) == 2
+    assert "x-next-cursor" not in resp.headers
+
+
+async def test_cursor_pagination_oldest_sort_null_tail(client, users, data, session):
+    from app.models import Subscription
+
+    user, feed = await _setup(users, data)
+    sub = await session.scalar(select(Subscription).where(Subscription.user_id == user.id))
+    sub.sort_order = "oldest"
+    await session.commit()
+    await data.article(feed, title="Dated",
+                       published_at=datetime(2024, 1, 1, tzinfo=timezone.utc))
+    await data.article(feed, title="Undated1")
+    await data.article(feed, title="Undated2")
+    pages = await _walk_pages(client, users, user, limit=1,
+                              extra_params={"feed_id": feed.id})
+    assert pages == [["Dated"], ["Undated1"], ["Undated2"]]

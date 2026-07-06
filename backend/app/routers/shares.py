@@ -7,6 +7,7 @@ from sqlalchemy.orm import selectinload
 
 from ..db import get_session
 from ..models import Article, Feed, Share, ShareRecipient, User, UserArticleState
+from ..queue import enqueue
 from ..schemas import ShareCreateIn, ShareOut, UnseenCountOut, UserPublic
 from ..security import get_current_user
 from .articles import to_list_item, user_can_access
@@ -76,6 +77,7 @@ async def create_share(
     share.recipients = [ShareRecipient(to_user_id=r.id) for r in recipients]
     session.add(share)
     await session.commit()
+    await enqueue("send_share_push", share.id)
 
     share = await session.scalar(
         select(Share).where(Share.id == share.id).options(*_share_load_options)

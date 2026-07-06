@@ -27,7 +27,7 @@ Traditional readers like Feedly treat sharing as an afterthought — you get a r
 **Planned:**
 
 - **🏷️ Tagging** — Color-coded, searchable tags and shareable collections
-- **🔔 Push Notifications** — Native mobile alerts for @mentions (React Native app)
+- **🔔 Push Notifications** — Native mobile alerts for @mentions (React Native app; the API side — device registration, Expo push delivery, cursor pagination, token refresh, server handshake — is already in place)
 - **📚 Learning Experiences** — Plugin-based integrations (NotebookLM first) for podcasts and study guides
 
 ## Quick Start

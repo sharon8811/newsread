@@ -11,11 +11,18 @@ from app.main import app, health, lifespan
 async def test_health(client):
     resp = await client.get("/api/health")
     assert resp.status_code == 200
-    assert resp.json() == {"status": "ok"}
+    body = resp.json()
+    assert body["status"] == "ok"
+    # Mobile onboarding fingerprints the server by these fields.
+    assert body["app"] == "newsread"
+    assert body["version"]
+    assert body["min_client_version"]
 
 
 async def test_health_function_directly():
-    assert await health() == {"status": "ok"}
+    body = await health()
+    assert body["status"] == "ok"
+    assert body["app"] == "newsread"
 
 
 async def test_get_session_yields_session():

@@ -409,5 +409,66 @@ async def test_startup(monkeypatch):
 
 
 def test_worker_settings_shape():
-    assert worker.WorkerSettings.functions == [worker.enrich_feed]
+    assert worker.WorkerSettings.functions == [worker.enrich_feed, worker.send_share_push]
     assert len(worker.WorkerSettings.cron_jobs) == 2
+
+
+# --- send_share_push ---
+
+async def test_send_share_push_missing_share(monkeypatch):
+    async def boom(*args, **kwargs):
+        raise AssertionError("should not send for a missing share")
+
+    monkeypatch.setattr(worker.push, "send_push", boom)
+    await worker.send_share_push({}, 99999)
+
+
+async def test_send_share_push_notifies_recipients(session, users, monkeypatch):
+    from app.models import Share, ShareRecipient
+
+    sender = await users.create(username="sender")
+    recipient = await users.create(username="reader")
+    feed = await _feed(session, url="share-push")
+    art = await _article(session, feed, title="Big News")
+    share = Share(from_user_id=sender.id, article_id=art.id, note=None)
+    share.recipients = [ShareRecipient(to_user_id=recipient.id)]
+    session.add(share)
+    await session.commit()
+    await session.refresh(share)
+
+    sent = {}
+
+    async def fake_send(user_ids, title, body, data=None):
+        sent.update(user_ids=user_ids, title=title, body=body, data=data)
+        return len(user_ids)
+
+    monkeypatch.setattr(worker.push, "send_push", fake_send)
+    await worker.send_share_push({}, share.id)
+    assert sent["user_ids"] == [recipient.id]
+    assert "@sender" in sent["title"]
+    assert sent["body"] == "Big News"  # no note -> article title
+    assert sent["data"]["share_id"] == share.id
+
+
+async def test_send_share_push_note_becomes_body(session, users, monkeypatch):
+    from app.models import Share, ShareRecipient
+
+    sender = await users.create(username="sender2")
+    recipient = await users.create(username="reader2")
+    feed = await _feed(session, url="share-push-2")
+    art = await _article(session, feed, title="Ignored Title")
+    share = Share(from_user_id=sender.id, article_id=art.id, note="check this out")
+    share.recipients = [ShareRecipient(to_user_id=recipient.id)]
+    session.add(share)
+    await session.commit()
+    await session.refresh(share)
+
+    captured = {}
+
+    async def fake_send(user_ids, title, body, data=None):
+        captured["body"] = body
+        return 1
+
+    monkeypatch.setattr(worker.push, "send_push", fake_send)
+    await worker.send_share_push({}, share.id)
+    assert captured["body"] == "check this out"

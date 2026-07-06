@@ -181,3 +181,25 @@ async def test_unseen_count_zero(client, users, data):
     sender = await users.create(username="s")
     resp = await client.get("/api/shares/unseen-count", headers=users.auth(sender))
     assert resp.json()["count"] == 0
+
+
+async def test_create_share_enqueues_push_job(client, users, data, monkeypatch):
+    sender = await users.create(username="pusher")
+    recipient = await users.create(username="pushee")
+    feed = await data.feed()
+    await data.subscribe(sender, feed)
+    article = await data.article(feed)
+
+    jobs = []
+
+    async def record(job_name, *args):
+        jobs.append((job_name, args))
+
+    monkeypatch.setattr("app.routers.shares.enqueue", record)
+    resp = await client.post(
+        "/api/shares",
+        json={"article_id": article.id, "recipients": ["pushee"]},
+        headers=users.auth(sender),
+    )
+    assert resp.status_code == 201
+    assert jobs == [("send_share_push", (resp.json()["id"],))]

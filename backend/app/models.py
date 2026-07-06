@@ -30,6 +30,23 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class Device(Base):
+    """A mobile device registered for push notifications. Tokens are Expo push
+    tokens, which cover both iOS and Android; a token that logs into another
+    account is reassigned (one physical device, one owner at a time)."""
+
+    __tablename__ = "devices"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    push_token: Mapped[str] = mapped_column(String(512), unique=True, index=True)
+    platform: Mapped[str] = mapped_column(String(16))  # 'ios' | 'android'
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    last_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 class Feed(Base):
     """Global: one row per feed URL, fetched once no matter how many subscribers."""
 

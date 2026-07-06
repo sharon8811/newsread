@@ -204,8 +204,9 @@ async def data(session):
 
 @pytest_asyncio.fixture(autouse=True)
 def _no_enqueue(monkeypatch):
-    """Feed routes enqueue background jobs; keep tests off Redis."""
+    """Feed/share routes enqueue background jobs; keep tests off Redis."""
     async def _noop(*args, **kwargs):
         return None
 
     monkeypatch.setattr("app.routers.feeds.enqueue", _noop)
+    monkeypatch.setattr("app.routers.shares.enqueue", _noop)
