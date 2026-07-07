@@ -236,6 +236,8 @@ export type Project = {
   my_role: ProjectRole;
   members: ProjectMember[];
   article_count: number; // only what the viewer can see
+  unseen_count: number; // others' publishes since my last visit
+  is_muted: boolean; // my per-project push mute
   created_at: string;
 };
 

@@ -19,7 +19,7 @@ from .db import SessionLocal, init_db
 from .enrichers.pipeline import extract_entities, refresh_stale_entities
 from .extractor import enrich_article
 from .fetcher import refresh_feed
-from .models import Article, ArticleEmbedding, Feed, Share
+from .models import Article, ArticleEmbedding, Feed, Project, ProjectArticle, Share
 from .summarizer import ThinContentError, generate_summaries
 
 logger = logging.getLogger(__name__)
@@ -182,6 +182,40 @@ async def send_share_push(ctx: dict, share_id: int) -> None:
         logger.info("Share %d: sent %d push notifications", share_id, sent)
 
 
+async def send_project_pin_push(ctx: dict, pin_id: int) -> None:
+    """Enqueued when a pin is published to a project; notifies every other
+    member's devices, except members who muted the project."""
+    async with SessionLocal() as session:
+        pin = await session.scalar(
+            select(ProjectArticle)
+            .where(ProjectArticle.id == pin_id)
+            .options(
+                selectinload(ProjectArticle.project).selectinload(Project.members),
+                selectinload(ProjectArticle.added_by),
+                selectinload(ProjectArticle.article),
+            )
+        )
+    if pin is None or not pin.is_shared:
+        return  # unpinned or unpublished again before the job ran
+    recipients = [
+        m.user_id
+        for m in pin.project.members
+        if m.user_id != pin.added_by_user_id and not m.is_muted
+    ]
+    sent = await push.send_push(
+        recipients,
+        title=f"@{pin.added_by.username} · {pin.project.name}",
+        body=pin.note or pin.article.title,
+        data={
+            "type": "project_pin",
+            "project_id": pin.project_id,
+            "article_id": pin.article_id,
+        },
+    )
+    if sent:
+        logger.info("Project pin %d: sent %d push notifications", pin_id, sent)
+
+
 async def refresh_entities(ctx: dict) -> None:
     try:
         await refresh_stale_entities()
@@ -214,7 +248,7 @@ async def startup(ctx: dict) -> None:
 class WorkerSettings:
     redis_settings = RedisSettings.from_dsn(settings.redis_url)
     on_startup = startup
-    functions = [enrich_feed, send_share_push]
+    functions = [enrich_feed, send_share_push, send_project_pin_push]
     cron_jobs = [
         cron(poll_feeds, minute=set(range(0, 60, 3)), run_at_startup=True),
         cron(refresh_entities, minute={7, 37}),

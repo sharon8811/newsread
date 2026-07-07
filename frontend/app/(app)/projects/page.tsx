@@ -111,7 +111,21 @@ export default function ProjectsPage() {
               <FolderIcon size={17} />
             </span>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-[15px] font-medium">{project.name}</p>
+              <p className="flex items-center gap-2 truncate text-[15px] font-medium">
+                {project.name}
+                {project.unseen_count > 0 && (
+                  <span
+                    className="font-mono-nr rounded-full px-1.5 text-[10.5px] leading-[18px]"
+                    style={{
+                      background: "var(--accent)",
+                      color: "var(--accent-ink)",
+                      fontWeight: 600,
+                    }}
+                  >
+                    {project.unseen_count}
+                  </span>
+                )}
+              </p>
               {project.description && (
                 <p className="mt-0.5 truncate text-[13px]" style={{ color: "var(--ink-dim)" }}>
                   {project.description}

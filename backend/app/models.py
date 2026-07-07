@@ -268,6 +268,8 @@ class ProjectMember(Base):
     role: Mapped[str] = mapped_column(String(12), default="member")  # 'owner' | 'member'
     # Powers the "new since last visit" badge.
     last_visited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Per-member push mute for this project's publish notifications.
+    is_muted: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     project: Mapped[Project] = relationship(back_populates="members")

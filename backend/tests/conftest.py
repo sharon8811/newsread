@@ -210,3 +210,4 @@ def _no_enqueue(monkeypatch):
 
     monkeypatch.setattr("app.routers.feeds.enqueue", _noop)
     monkeypatch.setattr("app.routers.shares.enqueue", _noop)
+    monkeypatch.setattr("app.routers.projects.enqueue", _noop)

@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import useSWR, { mutate } from "swr";
 import ProjectPinCard, { groupPins } from "@/components/ProjectPinCard";
-import { LockIcon, PlusIcon, TrashIcon, XIcon } from "@/components/icons";
+import { LockIcon, MuteIcon, PlusIcon, TrashIcon, XIcon } from "@/components/icons";
 import {
   api,
   fetcher,
@@ -34,6 +34,17 @@ export default function ProjectPage() {
   const isOwner = project?.my_role === "owner";
   const sharedGroups = groupPins((pins ?? []).filter((p) => p.is_shared));
   const privatePins = (pins ?? []).filter((p) => !p.is_shared);
+
+  // Opening the project marks it visited: the unseen badge measures from here.
+  const visitedRef = useRef(false);
+  useEffect(() => {
+    if (project && !visitedRef.current) {
+      visitedRef.current = true;
+      api(`/projects/${id}/visit`, { method: "POST" })
+        .then(() => mutate("/projects"))
+        .catch(() => {});
+    }
+  }, [project, id]);
 
   // Debounced like ShareModal's search; the cleanup also cancels the pending
   // request's effect, so a slow early response can't overwrite newer results.
@@ -93,6 +104,24 @@ export default function ProjectPage() {
       mutate("/projects");
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Could not remove member");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function toggleMute() {
+    if (busy || !project) return;
+    setBusy(true);
+    setActionError(null);
+    try {
+      await api(`/projects/${id}/membership`, {
+        method: "PATCH",
+        body: { is_muted: !project.is_muted },
+      });
+      mutate(projectKey);
+      mutate("/projects");
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Could not update notifications");
     } finally {
       setBusy(false);
     }
@@ -167,6 +196,18 @@ export default function ProjectPage() {
                 )}
               </span>
             ))}
+            <button
+              className={`icon-btn ${project.is_muted ? "active" : ""}`}
+              title={
+                project.is_muted
+                  ? "Unmute — get notified when members share here"
+                  : "Mute notifications from this project"
+              }
+              disabled={busy}
+              onClick={toggleMute}
+            >
+              <MuteIcon size={13} />
+            </button>
             {isOwner && (
               <button
                 className="icon-btn"

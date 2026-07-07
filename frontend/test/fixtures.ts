@@ -108,6 +108,8 @@ export function makeProject(over: Partial<Project> = {}): Project {
     my_role: "owner",
     members: [{ user: owner, role: "owner" }],
     article_count: 0,
+    unseen_count: 0,
+    is_muted: false,
     created_at: "2026-01-01T00:00:00Z",
     ...over,
   };

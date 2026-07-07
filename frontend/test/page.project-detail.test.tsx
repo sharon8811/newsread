@@ -215,9 +215,8 @@ describe("ProjectPage", () => {
     render(<ProjectPage />);
     await userEvent.click(screen.getByTitle("Remove Bob"));
     await waitFor(() => expect(mutateMock).toHaveBeenCalledWith("/projects/1"));
-    const call = fetchMock.mock.calls[0];
+    const call = fetchMock.mock.calls.find(([, o]) => o?.method === "DELETE")!;
     expect(String(call[0])).toContain("/projects/1/members/2");
-    expect(call[1].method).toBe("DELETE");
     expect(routerMock.push).not.toHaveBeenCalled();
   });
 
@@ -228,7 +227,7 @@ describe("ProjectPage", () => {
     render(<ProjectPage />);
     await userEvent.click(screen.getByTitle("Delete project"));
     // first click only arms the confirm — nothing deleted yet
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(fetchMock.mock.calls.filter(([, o]) => o?.method === "DELETE")).toHaveLength(0);
     expect(screen.getByText("Delete for every member?")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Delete" }));
     await waitFor(() => expect(routerMock.push).toHaveBeenCalledWith("/projects"));
@@ -243,7 +242,7 @@ describe("ProjectPage", () => {
     await userEvent.click(screen.getByTitle("Delete project"));
     await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(screen.getByTitle("Delete project")).toBeInTheDocument();
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(fetchMock.mock.calls.filter(([, o]) => o?.method === "DELETE")).toHaveLength(0);
   });
 
   it("surfaces a delete failure", async () => {
@@ -273,8 +272,42 @@ describe("ProjectPage", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Leave" }));
     await waitFor(() => expect(routerMock.push).toHaveBeenCalledWith("/projects"));
-    const call = fetchMock.mock.calls[0];
+    const call = fetchMock.mock.calls.find(([, o]) => o?.method === "DELETE")!;
     expect(String(call[0])).toContain("/projects/1/members/2");
+  });
+
+  it("posts a visit on load and revalidates the projects list", async () => {
+    const fetchMock = okFetch();
+    vi.stubGlobal("fetch", fetchMock);
+    setSwr({ project: ownedProject, pins: [] });
+    render(<ProjectPage />);
+    await waitFor(() => {
+      const visit = fetchMock.mock.calls.find(([u]) => String(u).endsWith("/projects/1/visit"));
+      expect(visit).toBeTruthy();
+      expect(visit![1].method).toBe("POST");
+    });
+    await waitFor(() => expect(mutateMock).toHaveBeenCalledWith("/projects"));
+  });
+
+  it("toggles the project mute for the viewer", async () => {
+    const fetchMock = okFetch();
+    vi.stubGlobal("fetch", fetchMock);
+    setSwr({ project: ownedProject, pins: [] });
+    render(<ProjectPage />);
+    await userEvent.click(screen.getByTitle(/Mute notifications/));
+    await waitFor(() => {
+      const patch = fetchMock.mock.calls.find(([u]) =>
+        String(u).endsWith("/projects/1/membership"),
+      )!;
+      expect(JSON.parse(patch[1].body)).toEqual({ is_muted: true });
+    });
+    expect(mutateMock).toHaveBeenCalledWith("/projects/1");
+  });
+
+  it("offers unmute when already muted", () => {
+    setSwr({ project: makeProject({ ...ownedProject, is_muted: true }), pins: [] });
+    render(<ProjectPage />);
+    expect(screen.getByTitle(/Unmute/)).toBeInTheDocument();
   });
 
   it("surfaces a member-removal failure", async () => {
