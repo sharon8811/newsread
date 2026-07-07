@@ -208,13 +208,20 @@ class Share(Base):
 
 
 class Conversation(Base):
-    """One Q&A thread per (article, user)."""
+    """One Q&A thread per (article, user) — or per (project, user) when the
+    chat spans a project's collection (then article_id is NULL). The
+    (project_id, user_id) uniqueness lives in a partial index (db.MIGRATIONS)."""
 
     __tablename__ = "conversations"
     __table_args__ = (UniqueConstraint("article_id", "user_id"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    article_id: Mapped[int] = mapped_column(ForeignKey("articles.id", ondelete="CASCADE"), index=True)
+    article_id: Mapped[int | None] = mapped_column(
+        ForeignKey("articles.id", ondelete="CASCADE"), index=True, nullable=True
+    )
+    project_id: Mapped[int | None] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), index=True, nullable=True
+    )
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

@@ -808,3 +808,102 @@ async def test_get_article_others_private_pin_denies(client, users, data, sessio
     await _pin(session, project, article, owner)  # private
     resp = await client.get(f"/api/articles/{article.id}", headers=users.auth(stranger))
     assert resp.status_code == 404
+
+
+# --- embedding-based suggestions ---
+
+def _vec(direction: str) -> list[float]:
+    """Orthogonal toy vectors: 'ai' articles vs 'sports' articles."""
+    return [1.0, 0.0, 0.0] if direction == "ai" else [0.0, 1.0, 0.0]
+
+
+async def _embed(session, article, direction):
+    from app.models import ArticleEmbedding
+
+    session.add(ArticleEmbedding(article_id=article.id, model="", embedding=_vec(direction)))
+    await session.commit()
+
+
+async def test_status_suggests_best_matching_project(client, users, data, session):
+    owner, member, feed, article = await _team(users, data)
+    ai_article = await data.article(feed, title="Old AI Piece")
+    sports_article = await data.article(feed, title="Match Report")
+    new_article = await data.article(feed, title="Fresh AI News")
+    await _embed(session, ai_article, "ai")
+    await _embed(session, sports_article, "sports")
+    await _embed(session, new_article, "ai")
+
+    ai_project = await _project(session, owner, name="AI")
+    await _pin(session, ai_project, ai_article, owner, is_shared=True,
+               shared_at=datetime.now(timezone.utc))
+    sports_project = await _project(session, owner, name="Sports")
+    await _pin(session, sports_project, sports_article, owner, is_shared=True,
+               shared_at=datetime.now(timezone.utc))
+
+    resp = await client.get(f"/api/projects/article/{new_article.id}",
+                            headers=users.auth(owner))
+    by_name = {s["project_name"]: s for s in resp.json()}
+    assert by_name["AI"]["suggested"] is True
+    assert by_name["Sports"]["suggested"] is False
+
+
+async def test_status_no_suggestion_without_embedding(client, users, data, session):
+    owner, member, feed, article = await _team(users, data)
+    project = await _project(session, owner, name="AI")
+    pinned = await data.article(feed, title="Pinned")
+    await _embed(session, pinned, "ai")
+    await _pin(session, project, pinned, owner, is_shared=True,
+               shared_at=datetime.now(timezone.utc))
+    # `article` itself has no embedding row.
+    resp = await client.get(f"/api/projects/article/{article.id}",
+                            headers=users.auth(owner))
+    assert all(s["suggested"] is False for s in resp.json())
+
+
+async def test_status_never_suggests_where_already_pinned(client, users, data, session):
+    owner, member, feed, article = await _team(users, data)
+    twin = await data.article(feed, title="Twin")
+    await _embed(session, article, "ai")
+    await _embed(session, twin, "ai")
+    project = await _project(session, owner, name="AI")
+    await _pin(session, project, twin, owner, is_shared=True,
+               shared_at=datetime.now(timezone.utc))
+    await _pin(session, project, article, owner)  # already added by viewer
+
+    resp = await client.get(f"/api/projects/article/{article.id}",
+                            headers=users.auth(owner))
+    [status] = resp.json()
+    assert status["suggested"] is False
+
+
+async def test_status_suggestion_ignores_others_private_pins(client, users, data, session):
+    owner, member, feed, article = await _team(users, data)
+    hidden = await data.article(feed, title="Hidden")
+    await _embed(session, article, "ai")
+    await _embed(session, hidden, "ai")
+    project = await _project(session, owner, member, name="AI")
+    await _pin(session, project, hidden, owner)  # private → invisible to member
+
+    resp = await client.get(f"/api/projects/article/{article.id}",
+                            headers=users.auth(member))
+    [status] = resp.json()
+    assert status["suggested"] is False
+
+
+async def test_status_suggestion_skipped_without_vector_support(
+    client, users, data, session, monkeypatch,
+):
+    from app import db as app_db
+
+    owner, member, feed, article = await _team(users, data)
+    pinned = await data.article(feed, title="Pinned")
+    await _embed(session, article, "ai")
+    await _embed(session, pinned, "ai")
+    project = await _project(session, owner, name="AI")
+    await _pin(session, project, pinned, owner, is_shared=True,
+               shared_at=datetime.now(timezone.utc))
+    monkeypatch.setattr(app_db, "vector_enabled", False)
+    resp = await client.get(f"/api/projects/article/{article.id}",
+                            headers=users.auth(owner))
+    [status] = resp.json()
+    assert status["suggested"] is False

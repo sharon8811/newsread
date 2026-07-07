@@ -16,7 +16,7 @@ import {
   FolderIcon,
   ShareIcon,
 } from "@/components/icons";
-import { api, fetcher, type ArticleDetail } from "@/lib/api";
+import { api, fetcher, streamQA, type ArticleDetail } from "@/lib/api";
 import { domainOf, timeAgo } from "@/lib/format";
 
 export default function ArticlePage() {
@@ -152,7 +152,17 @@ export default function ArticlePage() {
         </p>
       )}
 
-      <QAPanel article={article} />
+      <QAPanel
+        qaKey={`/articles/${article.id}/qa`}
+        stream={(q, onEvent) => streamQA(article.id, q, onEvent)}
+        heading="Ask the article"
+        placeholder="Ask anything about this article…"
+        suggestions={[
+          "What are the key points?",
+          "Why does this matter?",
+          "What is the counterargument?",
+        ]}
+      />
 
       {sharing && <ShareModal article={article} onClose={() => setSharing(false)} />}
       {pickingProject && (

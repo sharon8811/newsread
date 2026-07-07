@@ -305,3 +305,191 @@ async def test_ask_stream_article_not_found(client, users, data, monkeypatch):
     resp = await client.post("/api/articles/99999/qa/stream",
                              json={"content": "q"}, headers=users.auth(user))
     assert resp.status_code == 404
+
+
+# --- project Q&A ---
+
+async def _project_with_pins(users, data, session, *, note=None, with_summary=True):
+    from datetime import datetime, timezone
+
+    from app.models import Project, ProjectArticle, ProjectMember
+
+    owner = await users.create(username="powner")
+    member = await users.create(username="pmember")
+    feed = await data.feed()
+    await data.subscribe(owner, feed)
+    art = await data.article(
+        feed, title="Corpus Article",
+        published_at=datetime(2026, 7, 1, tzinfo=timezone.utc),
+        **({"summary_medium": "the medium summary"} if with_summary else {}),
+    )
+    project = Project(owner_id=owner.id, name="Research", description="focus")
+    project.members = [
+        ProjectMember(user_id=owner.id, role="owner"),
+        ProjectMember(user_id=member.id, role="member"),
+    ]
+    session.add(project)
+    await session.commit()
+    await session.refresh(project)
+    pin = ProjectArticle(
+        project_id=project.id, article_id=art.id, added_by_user_id=owner.id,
+        is_shared=True, shared_at=datetime.now(timezone.utc), note=note,
+    )
+    session.add(pin)
+    await session.commit()
+    return owner, member, project, art
+
+
+async def test_get_project_conversation_empty(client, users, data, session):
+    owner, member, project, art = await _project_with_pins(users, data, session)
+    resp = await client.get(f"/api/projects/{project.id}/qa", headers=users.auth(owner))
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
+async def test_get_project_conversation_non_member_404(client, users, data, session):
+    owner, member, project, art = await _project_with_pins(users, data, session)
+    outsider = await users.create()
+    resp = await client.get(f"/api/projects/{project.id}/qa", headers=users.auth(outsider))
+    assert resp.status_code == 404
+
+
+async def test_get_project_conversation_with_messages(client, users, data, session):
+    from app.models import Conversation, Message
+
+    owner, member, project, art = await _project_with_pins(users, data, session)
+    conv = Conversation(user_id=owner.id, project_id=project.id, messages=[])
+    session.add(conv)
+    await session.flush()
+    session.add(Message(conversation_id=conv.id, role="user", content="hi"))
+    await session.commit()
+    resp = await client.get(f"/api/projects/{project.id}/qa", headers=users.auth(owner))
+    assert [m["content"] for m in resp.json()] == ["hi"]
+
+
+async def test_ask_project_stream_success(client, users, data, session, monkeypatch):
+    owner, member, project, art = await _project_with_pins(
+        users, data, session, note="worth reading",
+    )
+    monkeypatch.setattr(llm, "is_configured", lambda: True)
+    captured = {}
+
+    async def fake_stream(**kwargs):
+        captured.update(kwargs)
+        yield {"type": "delta", "text": "Across"}
+        yield {"type": "result", "content": "Across the articles…", "tool_events": []}
+
+    monkeypatch.setattr(qa_agent, "stream_project_answer", fake_stream)
+    resp = await client.post(f"/api/projects/{project.id}/qa/stream",
+                             json={"content": "themes?"}, headers=users.auth(owner))
+    assert resp.status_code == 200
+    events = _parse_sse(resp.text)
+    assert [e["type"] for e in events][-1] == "done"
+    # Corpus carries title, summary and the member note.
+    assert "Corpus Article" in captured["corpus"]
+    assert "the medium summary" in captured["corpus"]
+    assert "@powner: worth reading" in captured["corpus"]
+    assert captured["name"] == "Research"
+    # Messages persisted on the project conversation.
+    msgs = (await session.scalars(select(Message))).all()
+    assert len(msgs) == 2
+
+
+async def test_ask_project_stream_excludes_others_private_pins(
+    client, users, data, session, monkeypatch,
+):
+    from datetime import datetime, timezone
+
+    from app.models import ProjectArticle
+
+    owner, member, project, art = await _project_with_pins(users, data, session)
+    feed2 = await data.feed()
+    secret = await data.article(feed2, title="Secret Research")
+    session.add(ProjectArticle(
+        project_id=project.id, article_id=secret.id, added_by_user_id=owner.id,
+        is_shared=False, note=None,
+    ))
+    await session.commit()
+    monkeypatch.setattr(llm, "is_configured", lambda: True)
+    captured = {}
+
+    async def fake_stream(**kwargs):
+        captured.update(kwargs)
+        yield {"type": "result", "content": "answer", "tool_events": []}
+
+    monkeypatch.setattr(qa_agent, "stream_project_answer", fake_stream)
+    resp = await client.post(f"/api/projects/{project.id}/qa/stream",
+                             json={"content": "q"}, headers=users.auth(member))
+    assert resp.status_code == 200
+    assert "Secret Research" not in captured["corpus"]
+    assert "Corpus Article" in captured["corpus"]
+
+
+async def test_ask_project_stream_empty_project_422(client, users, data, session, monkeypatch):
+    from app.models import Project, ProjectMember
+
+    user = await users.create()
+    project = Project(owner_id=user.id, name="Empty")
+    project.members = [ProjectMember(user_id=user.id, role="owner")]
+    session.add(project)
+    await session.commit()
+    monkeypatch.setattr(llm, "is_configured", lambda: True)
+    resp = await client.post(f"/api/projects/{project.id}/qa/stream",
+                             json={"content": "q"}, headers=users.auth(user))
+    assert resp.status_code == 422
+
+
+async def test_ask_project_stream_no_llm(client, users, data, session, monkeypatch):
+    owner, member, project, art = await _project_with_pins(users, data, session)
+    monkeypatch.setattr(llm, "is_configured", lambda: False)
+    resp = await client.post(f"/api/projects/{project.id}/qa/stream",
+                             json={"content": "q"}, headers=users.auth(owner))
+    assert resp.status_code == 503
+
+
+async def test_ask_project_stream_agent_error(client, users, data, session, monkeypatch):
+    owner, member, project, art = await _project_with_pins(users, data, session)
+    monkeypatch.setattr(llm, "is_configured", lambda: True)
+
+    async def boom(**kwargs):
+        raise RuntimeError("crash")
+        yield  # pragma: no cover
+
+    monkeypatch.setattr(qa_agent, "stream_project_answer", boom)
+    resp = await client.post(f"/api/projects/{project.id}/qa/stream",
+                             json={"content": "q"}, headers=users.auth(owner))
+    assert any(e["type"] == "error" for e in _parse_sse(resp.text))
+
+
+async def test_ask_project_stream_empty_answer(client, users, data, session, monkeypatch):
+    owner, member, project, art = await _project_with_pins(users, data, session)
+    monkeypatch.setattr(llm, "is_configured", lambda: True)
+
+    async def empty(**kwargs):
+        yield {"type": "result", "content": "", "tool_events": []}
+
+    monkeypatch.setattr(qa_agent, "stream_project_answer", empty)
+    resp = await client.post(f"/api/projects/{project.id}/qa/stream",
+                             json={"content": "q"}, headers=users.auth(owner))
+    assert any(e["type"] == "error" for e in _parse_sse(resp.text))
+
+
+async def test_ask_project_stream_article_without_summary_gets_hint(
+    client, users, data, session, monkeypatch,
+):
+    owner, member, project, art = await _project_with_pins(
+        users, data, session, with_summary=False,
+    )
+    art.excerpt = ""
+    await session.commit()
+    monkeypatch.setattr(llm, "is_configured", lambda: True)
+    captured = {}
+
+    async def fake_stream(**kwargs):
+        captured.update(kwargs)
+        yield {"type": "result", "content": "a", "tool_events": []}
+
+    monkeypatch.setattr(qa_agent, "stream_project_answer", fake_stream)
+    await client.post(f"/api/projects/{project.id}/qa/stream",
+                      json={"content": "q"}, headers=users.auth(owner))
+    assert "no summary available" in captured["corpus"]

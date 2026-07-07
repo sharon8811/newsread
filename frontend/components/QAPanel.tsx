@@ -6,19 +6,12 @@ import remarkGfm from "remark-gfm";
 import useSWR, { mutate } from "swr";
 import {
   fetcher,
-  streamQA,
   type AiStatus,
-  type ArticleDetail,
   type ChatMessage,
+  type QAStreamEvent,
   type ToolEvent,
 } from "@/lib/api";
 import { CheckIcon, CommentIcon, ExternalIcon, RefreshIcon, SearchIcon, ShareIcon } from "./icons";
-
-const SUGGESTIONS = [
-  "What are the key points?",
-  "Why does this matter?",
-  "What is the counterargument?",
-];
 
 type LiveToolCall = ToolEvent & { id: string; done: boolean };
 
@@ -94,9 +87,23 @@ function ToolTrace({ calls }: { calls: (ToolEvent & { done: boolean })[] }) {
   );
 }
 
-export default function QAPanel({ article }: { article: ArticleDetail }) {
+/** Generic streaming chat over a persisted conversation. The article page
+ * and the project page differ only in endpoint, copy, and suggestions. */
+export default function QAPanel({
+  qaKey,
+  stream,
+  heading,
+  placeholder,
+  suggestions,
+}: {
+  qaKey: string;
+  stream: (content: string, onEvent: (event: QAStreamEvent) => void) => Promise<void>;
+  heading: string;
+  placeholder: string;
+  suggestions: string[];
+}) {
   const { data: status } = useSWR<AiStatus>("/ai/status", fetcher);
-  const key = `/articles/${article.id}/qa`;
+  const key = qaKey;
   const { data: messages } = useSWR<ChatMessage[]>(
     status?.configured ? key : null,
     fetcher,
@@ -126,7 +133,7 @@ export default function QAPanel({ article }: { article: ArticleDetail }) {
     setError(null);
     try {
       let finished = false;
-      await streamQA(article.id, q, (event) => {
+      await stream(q, (event) => {
         if (event.type === "tool_call") {
           // Any text so far was pre-tool-call preamble, not the answer.
           setLiveText("");
@@ -162,7 +169,7 @@ export default function QAPanel({ article }: { article: ArticleDetail }) {
     <section className="mt-10 border-t pt-7" style={{ borderColor: "var(--line-soft)" }}>
       <div className="flex items-center gap-2">
         <CommentIcon size={13} />
-        <span className="mono-label">Ask the article</span>
+        <span className="mono-label">{heading}</span>
         {status.search && (
           <span className="mono-label" style={{ opacity: 0.55 }}>
             · web-aware
@@ -172,7 +179,7 @@ export default function QAPanel({ article }: { article: ArticleDetail }) {
 
       {(!messages || messages.length === 0) && !pending && (
         <div className="mt-4 flex flex-wrap gap-2">
-          {SUGGESTIONS.map((s) => (
+          {suggestions.map((s) => (
             <button
               key={s}
               className="btn"
@@ -251,7 +258,7 @@ export default function QAPanel({ article }: { article: ArticleDetail }) {
       >
         <input
           className="input"
-          placeholder="Ask anything about this article…"
+          placeholder={placeholder}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           disabled={pending !== null}

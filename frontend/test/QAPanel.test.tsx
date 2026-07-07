@@ -20,6 +20,20 @@ vi.mock("swr", () => ({ default: swrMock, mutate: mutateMock }));
 const article = makeArticleDetail({ id: 1 });
 const KEY = "/articles/1/qa";
 
+// The page passes an article-bound stream closure; mirror that shape so the
+// existing streamQAMock(articleId, …) assertions keep holding.
+const panelProps = {
+  qaKey: KEY,
+  stream: (q: string, cb: (e: QAStreamEvent) => void) => streamQAMock(article.id, q, cb),
+  heading: "Ask the article",
+  placeholder: "Ask anything about this article…",
+  suggestions: [
+    "What are the key points?",
+    "Why does this matter?",
+    "What is the counterargument?",
+  ],
+};
+
 function makeStatus(over: Partial<AiStatus> = {}): AiStatus {
   return { configured: true, model: "m", search: false, search_provider: null, ...over };
 }
@@ -61,19 +75,19 @@ beforeEach(() => {
 describe("<QAPanel>", () => {
   it("renders nothing when AI is not configured", () => {
     stub({ status: makeStatus({ configured: false }) });
-    const { container } = render(<QAPanel article={article} />);
+    const { container } = render(<QAPanel {...panelProps} />);
     expect(container.firstChild).toBeNull();
   });
 
   it("renders nothing when status is undefined", () => {
     swrMock.mockReturnValue({ data: undefined });
-    const { container } = render(<QAPanel article={article} />);
+    const { container } = render(<QAPanel {...panelProps} />);
     expect(container.firstChild).toBeNull();
   });
 
   it("shows the header, suggestions and no web-aware label by default", () => {
     stub();
-    render(<QAPanel article={article} />);
+    render(<QAPanel {...panelProps} />);
     expect(screen.getByText("Ask the article")).toBeInTheDocument();
     expect(screen.getByText("What are the key points?")).toBeInTheDocument();
     expect(screen.queryByText("· web-aware")).toBeNull();
@@ -81,7 +95,7 @@ describe("<QAPanel>", () => {
 
   it("shows the web-aware label when search is enabled", () => {
     stub({ status: makeStatus({ search: true, search_provider: "tavily" }) });
-    render(<QAPanel article={article} />);
+    render(<QAPanel {...panelProps} />);
     expect(screen.getByText("· web-aware")).toBeInTheDocument();
   });
 
@@ -105,7 +119,7 @@ describe("<QAPanel>", () => {
       makeMsg({ id: 3, role: "assistant", content: "second reply", tool_events: null }),
     ];
     stub({ messages });
-    const { container } = render(<QAPanel article={article} />);
+    const { container } = render(<QAPanel {...panelProps} />);
 
     expect(screen.getByText("my question")).toBeInTheDocument();
     expect(screen.getByText("the reply body")).toBeInTheDocument();
@@ -128,7 +142,7 @@ describe("<QAPanel>", () => {
 
   it("ignores empty/whitespace submissions", async () => {
     stub();
-    render(<QAPanel article={article} />);
+    render(<QAPanel {...panelProps} />);
     const input = screen.getByPlaceholderText("Ask anything about this article…");
     await userEvent.type(input, "   ");
     fireEvent.submit(input.closest("form")!);
@@ -154,7 +168,7 @@ describe("<QAPanel>", () => {
       },
     );
 
-    const { container } = render(<QAPanel article={article} />);
+    const { container } = render(<QAPanel {...panelProps} />);
     await userEvent.click(screen.getByText("What are the key points?"));
 
     // pending: question echoed, tool running (spinner) and typing dots (no live text yet)
@@ -183,7 +197,7 @@ describe("<QAPanel>", () => {
       },
     );
 
-    render(<QAPanel article={article} />);
+    render(<QAPanel {...panelProps} />);
     const input = screen.getByPlaceholderText("Ask anything about this article…");
     await userEvent.type(input, "why?");
     await userEvent.click(screen.getByRole("button", { name: "" }).closest("button")!);
@@ -205,7 +219,7 @@ describe("<QAPanel>", () => {
         // no "done" event
       },
     );
-    render(<QAPanel article={article} />);
+    render(<QAPanel {...panelProps} />);
     const input = screen.getByPlaceholderText("Ask anything about this article…") as HTMLInputElement;
     await userEvent.type(input, "a question");
     fireEvent.submit(input.closest("form")!);
@@ -221,7 +235,7 @@ describe("<QAPanel>", () => {
   it("shows the rejection message when streamQA throws an Error", async () => {
     stub();
     streamQAMock.mockRejectedValue(new Error("network down"));
-    render(<QAPanel article={article} />);
+    render(<QAPanel {...panelProps} />);
     await userEvent.click(screen.getByText("Why does this matter?"));
     await waitFor(() => expect(screen.getByText("network down")).toBeInTheDocument());
   });
@@ -229,7 +243,7 @@ describe("<QAPanel>", () => {
   it("falls back to a generic message for non-Error rejections", async () => {
     stub();
     streamQAMock.mockRejectedValue("string failure");
-    render(<QAPanel article={article} />);
+    render(<QAPanel {...panelProps} />);
     await userEvent.click(screen.getByText("What is the counterargument?"));
     await waitFor(() =>
       expect(screen.getByText("The assistant could not answer")).toBeInTheDocument(),

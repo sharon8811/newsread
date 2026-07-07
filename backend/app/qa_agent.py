@@ -83,6 +83,19 @@ Article text:
 {text}{entities}"""
 
 
+PROJECT_QA_INSTRUCTIONS = """You are NewsRead's research assistant for the project "{name}". The user collects articles around this project and asks questions across the whole collection.
+
+Today's date: {today}.
+
+Ground your answers in the collected articles below — titles, summaries, and the notes members attached. When you draw on an article, cite it inline as a markdown link to its URL. If web tools are available, use web_extract to read an article's full text when its summary is not enough, and web_search only for information none of the articles contain. If neither yields the answer, say so plainly.
+
+Be concise. Answer in markdown.
+{description}
+Collected articles (newest first):
+
+{corpus}"""
+
+
 async def web_search(query: str) -> list[dict] | str:
     """Search the web. Returns results with title, url and a content snippet."""
     base = settings.searxng_base_url.rstrip("/")
@@ -283,14 +296,42 @@ async def stream_answer(
     history: list[tuple[str, str]],
     question: str,
 ) -> AsyncIterator[dict[str, Any]]:
-    """Run the agent, yielding UI-shaped events.
+    """Run the article agent, yielding UI-shaped events.
 
     Event types: status | tool_call | tool_result | delta | result.
     The final event is always {"type": "result", "content", "tool_events"}.
     """
+    async for event in _stream_agent(
+        _instructions(title, url, text, published_at, entities), history, question
+    ):
+        yield event
+
+
+async def stream_project_answer(
+    *,
+    name: str,
+    description: str,
+    corpus: str,
+    history: list[tuple[str, str]],
+    question: str,
+) -> AsyncIterator[dict[str, Any]]:
+    """Same event stream as stream_answer, over a project's collection."""
+    instructions = PROJECT_QA_INSTRUCTIONS.format(
+        today=datetime.now(timezone.utc).date().isoformat(),
+        name=name,
+        description=f"\nProject description: {description}\n" if description else "",
+        corpus=corpus,
+    )
+    async for event in _stream_agent(instructions, history, question):
+        yield event
+
+
+async def _stream_agent(
+    instructions: str, history: list[tuple[str, str]], question: str
+) -> AsyncIterator[dict[str, Any]]:
     agent = Agent(
         _model(),
-        instructions=_instructions(title, url, text, published_at, entities),
+        instructions=instructions,
         tools=_tools(),
         model_settings=ModelSettings(temperature=0.3, max_tokens=2000),
     )

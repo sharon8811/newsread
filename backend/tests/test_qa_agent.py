@@ -445,3 +445,51 @@ async def test_stream_answer_empty_text_part_ignored(monkeypatch):
     events = await _drain(**BASE_KWARGS)
     # Empty TextPart content yields no delta.
     assert not any(e["type"] == "delta" for e in events)
+
+
+# --- stream_project_answer ---
+
+async def test_stream_project_answer_builds_project_instructions(monkeypatch):
+    final = _new(AgentRunResultEvent, result=types.SimpleNamespace(output="ok"))
+    captured = {}
+
+    class FakeAgent:
+        def __init__(self, *a, instructions=None, **k):
+            captured["instructions"] = instructions
+
+        def run_stream_events(self, question, message_history=None, usage_limits=None):
+            return _FakeEvents([final])
+
+    monkeypatch.setattr(qa_agent, "Agent", FakeAgent)
+    monkeypatch.setattr(qa_agent, "_model", lambda: object())
+    monkeypatch.setattr(qa_agent, "_tools", lambda: [])
+
+    events = [e async for e in qa_agent.stream_project_answer(
+        name="AI Research", description="the frontier",
+        corpus="### Article One\nsummary", history=[], question="themes?",
+    )]
+    assert events[-1] == {"type": "result", "content": "ok", "tool_events": []}
+    assert 'project "AI Research"' in captured["instructions"]
+    assert "Project description: the frontier" in captured["instructions"]
+    assert "### Article One" in captured["instructions"]
+
+
+async def test_stream_project_answer_omits_empty_description(monkeypatch):
+    final = _new(AgentRunResultEvent, result=types.SimpleNamespace(output="ok"))
+    captured = {}
+
+    class FakeAgent:
+        def __init__(self, *a, instructions=None, **k):
+            captured["instructions"] = instructions
+
+        def run_stream_events(self, question, message_history=None, usage_limits=None):
+            return _FakeEvents([final])
+
+    monkeypatch.setattr(qa_agent, "Agent", FakeAgent)
+    monkeypatch.setattr(qa_agent, "_model", lambda: object())
+    monkeypatch.setattr(qa_agent, "_tools", lambda: [])
+
+    [e async for e in qa_agent.stream_project_answer(
+        name="P", description="", corpus="c", history=[], question="q",
+    )]
+    assert "Project description" not in captured["instructions"]

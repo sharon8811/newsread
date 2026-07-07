@@ -10,7 +10,15 @@ import {
   type Project,
   type ProjectArticle,
 } from "@/lib/api";
-import { CheckIcon, FolderIcon, LockIcon, PlusIcon, UsersIcon, XIcon } from "./icons";
+import {
+  CheckIcon,
+  FolderIcon,
+  LockIcon,
+  PlusIcon,
+  SparkleIcon,
+  UsersIcon,
+  XIcon,
+} from "./icons";
 
 const VIS_KEY = "newsread_project_vis";
 
@@ -55,6 +63,15 @@ export default function ProjectPickerModal({
 
   const statusFor = (projectId: number) =>
     statuses?.find((s) => s.project_id === projectId);
+
+  // The embedding-suggested project floats to the top of the picker.
+  const ordered = (projects ?? [])
+    .slice()
+    .sort(
+      (a, b) =>
+        Number(statusFor(b.id)?.suggested ?? false) -
+        Number(statusFor(a.id)?.suggested ?? false),
+    );
 
   function setVis(projectId: number, shared: boolean) {
     const next = { ...visibility, [projectId]: shared };
@@ -167,7 +184,7 @@ export default function ProjectPickerModal({
               No projects yet — create your first below.
             </p>
           )}
-          {projects?.map((project) => {
+          {ordered.map((project) => {
             const status = statusFor(project.id);
             const added = status?.project_article_id != null;
             const shared = visibility[project.id] ?? false;
@@ -175,13 +192,27 @@ export default function ProjectPickerModal({
               <div
                 key={project.id}
                 className="flex items-center gap-3 rounded-md border px-3.5 py-2.5"
-                style={{ borderColor: "var(--line-soft)" }}
+                style={{
+                  borderColor: status?.suggested ? "var(--accent-border)" : "var(--line-soft)",
+                }}
               >
                 <span style={{ color: "var(--ink-faint)" }}>
                   <FolderIcon size={15} />
                 </span>
                 <div className="min-w-0 flex-1 leading-tight">
-                  <p className="truncate text-[13.5px]">{project.name}</p>
+                  <p className="flex items-center gap-1.5 truncate text-[13.5px]">
+                    {project.name}
+                    {status?.suggested && (
+                      <span
+                        className="font-mono-nr flex items-center gap-1 text-[10px]"
+                        style={{ color: "var(--accent)" }}
+                        title="This article looks like it belongs here"
+                      >
+                        <SparkleIcon size={11} />
+                        Suggested
+                      </span>
+                    )}
+                  </p>
                   <p className="font-mono-nr text-[10.5px]" style={{ color: "var(--ink-faint)" }}>
                     {project.members.length}{" "}
                     {project.members.length === 1 ? "member" : "members"}

@@ -148,6 +148,23 @@ describe("<ProjectPickerModal>", () => {
     expect(await screen.findByRole("button", { name: /New project/ })).toBeInTheDocument();
   });
 
+  it("floats the suggested project to the top with a chip", () => {
+    setSwr(
+      [makeProject({ id: 1, name: "Sports" }), makeProject({ id: 2, name: "AI" })],
+      [
+        makeProjectStatus({ project_id: 1, project_name: "Sports" }),
+        makeProjectStatus({ project_id: 2, project_name: "AI", suggested: true }),
+      ],
+    );
+    render(<ProjectPickerModal article={makeArticle()} onClose={vi.fn()} />);
+    expect(screen.getByText("Suggested")).toBeInTheDocument();
+    const names = screen
+      .getAllByText(/^(AI|Sports)/)
+      .map((el) => el.textContent);
+    expect(names[0]).toContain("AI"); // suggested first, despite list order
+    expect(names[1]).toBe("Sports");
+  });
+
   it("disables Add until pin statuses have loaded", () => {
     setSwr([twoMembers], undefined);
     render(<ProjectPickerModal article={makeArticle()} onClose={vi.fn()} />);

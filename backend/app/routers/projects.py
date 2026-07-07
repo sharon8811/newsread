@@ -1,4 +1,5 @@
 import logging
+import math
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -8,10 +9,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from typing import Literal
 
+from .. import db
+from ..config import settings
 from ..db import get_session
 from ..queue import enqueue
 from ..models import (
     Article,
+    ArticleEmbedding,
     Feed,
     Project,
     ProjectArticle,
@@ -194,6 +198,73 @@ async def list_projects(
     ]
 
 
+# A project is suggested when the article's embedding is at least this close
+# to the centroid of the project's recent pins.
+SUGGEST_MIN_SIMILARITY = 0.55
+# Newest pins per project that shape its centroid — projects drift over time.
+SUGGEST_PINS_PER_PROJECT = 50
+
+
+def _cosine(a: list[float], b: list[float]) -> float:
+    dot = sum(x * y for x, y in zip(a, b))
+    norm_a = math.sqrt(sum(x * x for x in a))
+    norm_b = math.sqrt(sum(x * x for x in b))
+    return dot / (norm_a * norm_b) if norm_a and norm_b else 0.0
+
+
+async def _suggested_project_id(
+    session: AsyncSession, article_id: int, user_id: int
+) -> int | None:
+    """The single project whose recent pins are most similar to this article,
+    if any clears the threshold. Purely reads stored vectors — no LLM calls."""
+    if not db.vector_enabled:
+        return None
+    article_vector = await session.scalar(
+        select(ArticleEmbedding.embedding).where(
+            ArticleEmbedding.article_id == article_id,
+            ArticleEmbedding.model == settings.openai_embedding_model,
+        )
+    )
+    if article_vector is None:
+        return None
+    rows = (
+        await session.execute(
+            select(ProjectArticle.project_id, ArticleEmbedding.embedding)
+            .join(
+                ProjectMember,
+                and_(
+                    ProjectMember.project_id == ProjectArticle.project_id,
+                    ProjectMember.user_id == user_id,
+                ),
+            )
+            .join(
+                ArticleEmbedding,
+                and_(
+                    ArticleEmbedding.article_id == ProjectArticle.article_id,
+                    ArticleEmbedding.model == settings.openai_embedding_model,
+                ),
+            )
+            .where(visible_pins(user_id), ProjectArticle.article_id != article_id)
+            .order_by(
+                func.coalesce(ProjectArticle.shared_at, ProjectArticle.created_at).desc()
+            )
+        )
+    ).all()
+    vectors_by_project: dict[int, list[list[float]]] = {}
+    for project_id, vector in rows:
+        bucket = vectors_by_project.setdefault(project_id, [])
+        if len(bucket) < SUGGEST_PINS_PER_PROJECT:
+            bucket.append([float(x) for x in vector])
+    target = [float(x) for x in article_vector]
+    best_id, best_similarity = None, SUGGEST_MIN_SIMILARITY
+    for project_id, vectors in vectors_by_project.items():
+        centroid = [sum(dim) / len(vectors) for dim in zip(*vectors)]
+        similarity = _cosine(target, centroid)
+        if similarity >= best_similarity:
+            best_id, best_similarity = project_id, similarity
+    return best_id
+
+
 # Literal path defined before /{project_id} so "article" never parses as an id.
 @router.get("/article/{article_id}", response_model=list[ArticleProjectStatus])
 async def article_project_status(
@@ -233,6 +304,7 @@ async def article_project_status(
             .order_by(Project.created_at.desc())
         )
     ).all()
+    suggested_id = await _suggested_project_id(session, article_id, user.id)
     return [
         ArticleProjectStatus(
             project_id=pid,
@@ -240,6 +312,8 @@ async def article_project_status(
             project_article_id=pin_id,
             is_shared=pin_shared,
             shared_by_others=bool(other_count),
+            # Suggesting a project the article is already pinned to is noise.
+            suggested=pid == suggested_id and pin_id is None,
         )
         for pid, name, pin_id, pin_shared, other_count in rows
     ]

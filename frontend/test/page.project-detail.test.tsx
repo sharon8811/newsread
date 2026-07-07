@@ -23,6 +23,11 @@ vi.mock("@/lib/auth", () => ({ useAuth: () => authState }));
 const { cardProps } = vi.hoisted(() => ({
   cardProps: [] as Record<string, unknown>[],
 }));
+vi.mock("@/components/QAPanel", () => ({
+  default: ({ heading }: { heading: string }) => (
+    <div data-testid="qa-panel">{heading}</div>
+  ),
+}));
 vi.mock("@/components/ProjectPinCard", () => ({
   default: (props: Record<string, unknown>) => {
     cardProps.push(props);
@@ -274,6 +279,16 @@ describe("ProjectPage", () => {
     await waitFor(() => expect(routerMock.push).toHaveBeenCalledWith("/projects"));
     const call = fetchMock.mock.calls.find(([, o]) => o?.method === "DELETE")!;
     expect(String(call[0])).toContain("/projects/1/members/2");
+  });
+
+  it("shows the project Q&A panel on the Ask tab", async () => {
+    setSwr({ project: ownedProject, pins: [makeProjectArticle({ id: 1 })] });
+    render(<ProjectPage />);
+    expect(screen.queryByTestId("qa-panel")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Ask" }));
+    expect(screen.getByTestId("qa-panel")).toHaveTextContent("Ask across this project");
+    // pin cards are hidden while asking
+    expect(screen.queryByTestId("pin-card")).not.toBeInTheDocument();
   });
 
   it("posts a visit on load and revalidates the projects list", async () => {
