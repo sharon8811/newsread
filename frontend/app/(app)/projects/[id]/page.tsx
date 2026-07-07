@@ -26,6 +26,8 @@ export default function ProjectPage() {
   const { data: pins, isLoading } = useSWR<ProjectArticle[]>(listKey, fetcher);
 
   const [tab, setTab] = useState<"shared" | "mine" | "ask">("shared");
+  // The working view: done tickets step aside until you flip the switch.
+  const [statusFilter, setStatusFilter] = useState<"active" | "done">("active");
   const [inviting, setInviting] = useState(false);
   const [invitee, setInvitee] = useState("");
   const [results, setResults] = useState<UserPublic[]>([]);
@@ -34,8 +36,16 @@ export default function ProjectPage() {
   const [busy, setBusy] = useState(false);
 
   const isOwner = project?.my_role === "owner";
-  const sharedGroups = groupPins((pins ?? []).filter((p) => p.is_shared));
-  const privatePins = (pins ?? []).filter((p) => !p.is_shared);
+  const filtered = (pins ?? []).filter(
+    (p) => (p.status === "done") === (statusFilter === "done"),
+  );
+  const sharedGroups = groupPins(filtered.filter((p) => p.is_shared));
+  const privatePins = filtered.filter((p) => !p.is_shared);
+  const donePins = (pins ?? []).filter((p) => p.status === "done");
+  // Cards, not pins: matches the tab counts, which count grouped cards.
+  const doneCount =
+    groupPins(donePins.filter((p) => p.is_shared)).length +
+    donePins.filter((p) => !p.is_shared).length;
 
   // Opening the project marks it visited: the unseen badge measures from here.
   const visitedRef = useRef(false);
@@ -306,7 +316,7 @@ export default function ProjectPage() {
           </p>
         )}
 
-        <div className="mt-3 flex gap-5">
+        <div className="mt-3 flex items-center gap-5">
           {(["shared", "mine", "ask"] as const).map((t) => (
             <button
               key={t}
@@ -326,10 +336,42 @@ export default function ProjectPage() {
               )}
             </button>
           ))}
+          {tab !== "ask" && (
+            <div
+              className="ml-auto mb-2 flex overflow-hidden rounded-md border"
+              style={{ borderColor: "var(--line)" }}
+            >
+              {(["active", "done"] as const).map((f) => (
+                <button
+                  key={f}
+                  className="px-2.5 py-1 text-[11.5px] transition-colors"
+                  style={{
+                    background: statusFilter === f ? "var(--accent-soft)" : "transparent",
+                    color: statusFilter === f ? "var(--accent)" : "var(--ink-dim)",
+                  }}
+                  onClick={() => setStatusFilter(f)}
+                >
+                  {f === "active" ? "Active" : `Done${doneCount ? ` ${doneCount}` : ""}`}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </header>
 
-      {!isLoading && tab === "shared" && sharedGroups.length === 0 && (
+      {!isLoading && statusFilter === "done" &&
+        (tab === "shared" ? sharedGroups : privatePins).length === 0 && tab !== "ask" && (
+        <div className="flex flex-col items-center px-8 py-24 text-center">
+          <p className="text-[17px] font-medium" style={{ color: "var(--ink-dim)" }}>
+            Nothing marked done yet.
+          </p>
+          <p className="mt-2 max-w-md text-[13.5px]" style={{ color: "var(--ink-faint)" }}>
+            When an article is handled, mark it done — it moves here with its
+            closing note.
+          </p>
+        </div>
+      )}
+      {!isLoading && statusFilter === "active" && tab === "shared" && sharedGroups.length === 0 && (
         <div className="flex flex-col items-center px-8 py-24 text-center">
           <p className="text-[17px] font-medium" style={{ color: "var(--ink-dim)" }}>
             Nothing shared yet.
@@ -340,7 +382,7 @@ export default function ProjectPage() {
           </p>
         </div>
       )}
-      {!isLoading && tab === "mine" && privatePins.length === 0 && (
+      {!isLoading && statusFilter === "active" && tab === "mine" && privatePins.length === 0 && (
         <div className="flex flex-col items-center px-8 py-24 text-center">
           <p className="text-[17px] font-medium" style={{ color: "var(--ink-dim)" }}>
             Your private pile is empty.

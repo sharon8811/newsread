@@ -27,3 +27,23 @@ export function domainOf(url: string): string {
     return url;
   }
 }
+
+/** Provider-aware label for a comment's attached link, detected purely from
+ * the URL — no fetching. Anything unrecognized falls back to its hostname. */
+export function describeLink(url: string): { kind: "github" | "youtube" | "link"; label: string } {
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.replace(/^www\./, "");
+    if (host === "github.com") {
+      const ref = parsed.pathname.match(/^\/[^/]+\/([^/]+)\/(?:pull|issues)\/(\d+)/);
+      if (ref) return { kind: "github", label: `${ref[1]}#${ref[2]}` };
+      return { kind: "github", label: "GitHub" };
+    }
+    if (host === "youtube.com" || host === "youtu.be") {
+      return { kind: "youtube", label: "YouTube" };
+    }
+    return { kind: "link", label: host };
+  } catch {
+    return { kind: "link", label: url };
+  }
+}

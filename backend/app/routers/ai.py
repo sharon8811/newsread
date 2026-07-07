@@ -20,6 +20,8 @@ from ..models import (
     Message,
     Project,
     ProjectArticle,
+    ProjectArticleComment,
+    ProjectArticleState,
     User,
 )
 from ..schemas import AiStatusOut, AskIn, MessageOut, SummaryOut
@@ -240,16 +242,14 @@ PROJECT_QA_ARTICLES = 30
 
 
 async def _project_corpus(session: AsyncSession, project_id: int, user_id: int) -> str:
-    """Titles + summaries + member notes of the pins the viewer may see —
-    others' private pins are excluded here exactly as everywhere else."""
+    """Titles + summaries + each article's ticket status and discussion thread,
+    for the pins the viewer may see — others' private pins are excluded here
+    exactly as everywhere else."""
     pins = (
         await session.scalars(
             select(ProjectArticle)
             .where(ProjectArticle.project_id == project_id, visible_pins(user_id))
-            .options(
-                selectinload(ProjectArticle.article),
-                selectinload(ProjectArticle.added_by),
-            )
+            .options(selectinload(ProjectArticle.article))
             .order_by(
                 func.coalesce(ProjectArticle.shared_at, ProjectArticle.created_at).desc()
             )
@@ -259,21 +259,47 @@ async def _project_corpus(session: AsyncSession, project_id: int, user_id: int) 
     grouped: dict[int, dict] = {}
     order: list[int] = []
     for pin in pins:
-        entry = grouped.get(pin.article_id)
-        if entry is None:
-            grouped[pin.article_id] = entry = {"article": pin.article, "notes": []}
+        if pin.article_id not in grouped:
+            grouped[pin.article_id] = {"article": pin.article, "comments": []}
             order.append(pin.article_id)
-        if pin.note:
-            entry["notes"].append(f"@{pin.added_by.username}: {pin.note}")
+    order = order[:PROJECT_QA_ARTICLES]
+    statuses = dict(
+        (
+            await session.execute(
+                select(ProjectArticleState.article_id, ProjectArticleState.status).where(
+                    ProjectArticleState.project_id == project_id,
+                    ProjectArticleState.article_id.in_(order),
+                )
+            )
+        ).all()
+    )
+    comments = (
+        await session.scalars(
+            select(ProjectArticleComment)
+            .where(
+                ProjectArticleComment.project_id == project_id,
+                ProjectArticleComment.article_id.in_(order),
+            )
+            .options(selectinload(ProjectArticleComment.author))
+            .order_by(ProjectArticleComment.created_at.asc(), ProjectArticleComment.id.asc())
+        )
+    ).all()
+    for comment in comments:
+        text = comment.body
+        if comment.link_url:
+            text = f"{text} ({comment.link_url})" if text else comment.link_url
+        grouped[comment.article_id]["comments"].append(f"@{comment.author.username}: {text}")
     blocks = []
-    for article_id in order[:PROJECT_QA_ARTICLES]:
+    for article_id in order:
         entry = grouped[article_id]
         article = entry["article"]
         lines = [f"### {article.title}", f"URL: {article.url}"]
         if article.published_at:
             lines.append(f"Published: {article.published_at.date().isoformat()}")
-        if entry["notes"]:
-            lines.append("Notes: " + " | ".join(entry["notes"]))
+        if statuses.get(article_id, "open") != "open":
+            lines.append(f"Status: {statuses[article_id]}")
+        if entry["comments"]:
+            lines.append("Discussion: " + " | ".join(entry["comments"]))
         summary = article.summary_medium or article.summary or article.excerpt
         lines.append(summary or "(no summary available — web_extract the URL to read it)")
         blocks.append("\n".join(lines))

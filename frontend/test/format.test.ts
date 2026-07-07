@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { timeAgo, humanCount, domainOf } from "@/lib/format";
+import { timeAgo, humanCount, domainOf, describeLink } from "@/lib/format";
 
 describe("timeAgo", () => {
   afterEach(() => vi.useRealTimers());
@@ -61,5 +61,32 @@ describe("domainOf", () => {
 
   it("returns the input for invalid URLs", () => {
     expect(domainOf("not a url")).toBe("not a url");
+  });
+});
+
+describe("describeLink", () => {
+  it("labels GitHub PRs and issues by repo and number", () => {
+    expect(describeLink("https://github.com/org/repo/pull/42")).toEqual({
+      kind: "github",
+      label: "repo#42",
+    });
+    expect(describeLink("https://github.com/org/repo/issues/7")).toEqual({
+      kind: "github",
+      label: "repo#7",
+    });
+    expect(describeLink("https://github.com/org/repo")).toEqual({
+      kind: "github",
+      label: "GitHub",
+    });
+  });
+
+  it("recognizes YouTube on both hosts", () => {
+    expect(describeLink("https://www.youtube.com/watch?v=x").kind).toBe("youtube");
+    expect(describeLink("https://youtu.be/x").label).toBe("YouTube");
+  });
+
+  it("falls back to the hostname, or the raw string when unparsable", () => {
+    expect(describeLink("https://example.com/a")).toEqual({ kind: "link", label: "example.com" });
+    expect(describeLink("not a url")).toEqual({ kind: "link", label: "not a url" });
   });
 });

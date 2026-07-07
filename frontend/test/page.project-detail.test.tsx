@@ -136,6 +136,34 @@ describe("ProjectPage", () => {
     expect(screen.getByText("Your private pile is empty.")).toBeInTheDocument();
   });
 
+  it("hides done tickets by default and shows them behind the Done toggle", async () => {
+    setSwr({
+      project: ownedProject,
+      pins: [
+        makeProjectArticle({ id: 1 }),
+        makeProjectArticle({ id: 2, status: "done", status_updated_by: bob }),
+      ],
+    });
+    render(<ProjectPage />);
+    // active view: only the open ticket, done count on the toggle
+    expect(screen.getAllByTestId("pin-card")).toHaveLength(1);
+    expect(screen.getByRole("button", { name: /^Shared/ }).textContent).toContain("1");
+    await userEvent.click(screen.getByRole("button", { name: /^Done/ }));
+    expect(screen.getAllByTestId("pin-card")).toHaveLength(1);
+    expect(cardProps.at(-1)).toMatchObject({ pins: [expect.objectContaining({ id: 2 })] });
+    await userEvent.click(screen.getByRole("button", { name: "Active" }));
+    expect(cardProps.at(-1)).toMatchObject({ pins: [expect.objectContaining({ id: 1 })] });
+  });
+
+  it("shows the done empty state and no toggle on the Ask tab", async () => {
+    setSwr({ project: ownedProject, pins: [makeProjectArticle({ id: 1 })] });
+    render(<ProjectPage />);
+    await userEvent.click(screen.getByRole("button", { name: /^Done/ }));
+    expect(screen.getByText("Nothing marked done yet.")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Ask" }));
+    expect(screen.queryByRole("button", { name: "Active" })).not.toBeInTheDocument();
+  });
+
   it("owner invites a user found via search", async () => {
     const carol = makePublic({ id: 3, username: "carol", name: "Carol" });
     const fetchMock = vi.fn().mockImplementation((url: string) => {

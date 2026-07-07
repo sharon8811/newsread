@@ -19,6 +19,8 @@ from ..models import (
     Feed,
     Project,
     ProjectArticle,
+    ProjectArticleComment,
+    ProjectArticleState,
     ProjectMember,
     User,
     UserArticleState,
@@ -27,7 +29,11 @@ from ..schemas import (
     ArticleProjectStatus,
     ProjectArticleAddIn,
     ProjectArticleOut,
+    ProjectArticleStateOut,
+    ProjectArticleStatusIn,
     ProjectArticleUpdateIn,
+    ProjectCommentIn,
+    ProjectCommentOut,
     ProjectCreateIn,
     ProjectMemberAddIn,
     ProjectMemberOut,
@@ -147,7 +153,9 @@ async def _project_response(session: AsyncSession, project_id: int, user_id: int
     return _project_out(project, membership, counts.get(project_id, 0), unseen.get(project_id, 0))
 
 
-def _pin_out(pin: ProjectArticle, feed_title: str, state, entities=None) -> ProjectArticleOut:
+def _pin_out(
+    pin: ProjectArticle, feed_title: str, state, entities=None, ticket=None, comment_count=0
+) -> ProjectArticleOut:
     return ProjectArticleOut(
         id=pin.id,
         project_id=pin.project_id,
@@ -155,9 +163,71 @@ def _pin_out(pin: ProjectArticle, feed_title: str, state, entities=None) -> Proj
         added_by=UserPublic.model_validate(pin.added_by),
         is_shared=pin.is_shared,
         shared_at=pin.shared_at,
-        note=pin.note,
         created_at=pin.created_at,
+        status=ticket.status if ticket else "open",
+        status_updated_by=UserPublic.model_validate(ticket.updated_by) if ticket else None,
+        comment_count=comment_count,
     )
+
+
+async def _ticket_info(
+    session: AsyncSession, project_id: int, article_ids: list[int]
+) -> tuple[dict[int, ProjectArticleState], dict[int, int]]:
+    """Ticket states and comment counts by article id, both per-article (not
+    per-pin) — every pin of an article reports the same shared ticket."""
+    if not article_ids:
+        return {}, {}
+    states = (
+        await session.scalars(
+            select(ProjectArticleState)
+            .where(
+                ProjectArticleState.project_id == project_id,
+                ProjectArticleState.article_id.in_(article_ids),
+            )
+            .options(selectinload(ProjectArticleState.updated_by))
+        )
+    ).all()
+    counts = dict(
+        (
+            await session.execute(
+                select(ProjectArticleComment.article_id, func.count())
+                .where(
+                    ProjectArticleComment.project_id == project_id,
+                    ProjectArticleComment.article_id.in_(article_ids),
+                )
+                .group_by(ProjectArticleComment.article_id)
+            )
+        ).all()
+    )
+    return {s.article_id: s for s in states}, counts
+
+
+def _comment_out(comment: ProjectArticleComment, author: User | None = None) -> ProjectCommentOut:
+    return ProjectCommentOut(
+        id=comment.id,
+        author=UserPublic.model_validate(author or comment.author),
+        body=comment.body,
+        link_url=comment.link_url,
+        created_at=comment.created_at,
+    )
+
+
+async def _thread_or_404(
+    session: AsyncSession, project_id: int, article_id: int, user_id: int
+) -> None:
+    """A thread (and its ticket) exists for the viewer iff they can see at
+    least one pin of the article in the project — it rides the grouped card."""
+    pin_id = await session.scalar(
+        select(ProjectArticle.id)
+        .where(
+            ProjectArticle.project_id == project_id,
+            ProjectArticle.article_id == article_id,
+            visible_pins(user_id),
+        )
+        .limit(1)
+    )
+    if pin_id is None:
+        raise HTTPException(status_code=404, detail="Not found in this project")
 
 
 @router.post("", response_model=ProjectOut, status_code=201)
@@ -469,12 +539,15 @@ async def list_project_articles(
     article_ids = [p.article_id for p in pins]
     states = await _states_for(session, user.id, article_ids)
     entity_map = await _entities_for_articles(session, article_ids)
+    tickets, comment_counts = await _ticket_info(session, project_id, article_ids)
     return [
         _pin_out(
             pin,
             pin.article.feed.title or pin.article.feed.url,
             states.get(pin.article_id),
             [_to_badge(link, entity) for link, entity in entity_map.get(pin.article_id, [])],
+            ticket=tickets.get(pin.article_id),
+            comment_count=comment_counts.get(pin.article_id, 0),
         )
         for pin in pins
     ]
@@ -502,13 +575,20 @@ async def add_project_article(
             added_by_user_id=user.id,
             is_shared=body.is_shared,
             shared_at=datetime.now(timezone.utc) if body.is_shared else None,
-            note=note or None,
         )
         .on_conflict_do_nothing(index_elements=["project_id", "article_id", "added_by_user_id"])
         .returning(ProjectArticle.id)
     )
     if pin_id is None:
         raise HTTPException(status_code=409, detail="You already added this article")
+    if note:
+        # The save-time note opens the article's thread rather than living on
+        # the pin, so later discussion lands in the same place.
+        session.add(
+            ProjectArticleComment(
+                project_id=project_id, article_id=article.id, author_id=user.id, body=note
+            )
+        )
     await session.commit()
     if body.is_shared:
         await enqueue("send_project_pin_push", pin_id)
@@ -516,7 +596,14 @@ async def add_project_article(
         select(ProjectArticle).where(ProjectArticle.id == pin_id).options(*_pin_load_options)
     )
     states = await _states_for(session, user.id, [article.id])
-    return _pin_out(pin, pin.article.feed.title or pin.article.feed.url, states.get(article.id))
+    tickets, comment_counts = await _ticket_info(session, project_id, [article.id])
+    return _pin_out(
+        pin,
+        pin.article.feed.title or pin.article.feed.url,
+        states.get(article.id),
+        ticket=tickets.get(article.id),
+        comment_count=comment_counts.get(article.id, 0),
+    )
 
 
 async def _own_pin_or_error(
@@ -555,14 +642,18 @@ async def update_project_article(
         elif not updates["is_shared"]:
             pin.shared_at = None
         pin.is_shared = updates["is_shared"]
-    if "note" in updates:
-        note = updates["note"].strip() if updates["note"] else None
-        pin.note = note or None
     await session.commit()
     if published:
         await enqueue("send_project_pin_push", pin.id)
     states = await _states_for(session, user.id, [pin.article_id])
-    return _pin_out(pin, pin.article.feed.title or pin.article.feed.url, states.get(pin.article_id))
+    tickets, comment_counts = await _ticket_info(session, project_id, [pin.article_id])
+    return _pin_out(
+        pin,
+        pin.article.feed.title or pin.article.feed.url,
+        states.get(pin.article_id),
+        ticket=tickets.get(pin.article_id),
+        comment_count=comment_counts.get(pin.article_id, 0),
+    )
 
 
 @router.delete("/{project_id}/articles/{pin_id}", status_code=204)
@@ -611,4 +702,132 @@ async def remove_article_pins(
         raise HTTPException(status_code=403, detail="Only the adder or the owner can remove this")
     for pin in removable:
         await session.delete(pin)
+    await session.commit()
+
+
+@router.put(
+    "/{project_id}/articles/by-article/{article_id}/status",
+    response_model=ProjectArticleStateOut,
+)
+async def set_article_status(
+    project_id: int,
+    article_id: int,
+    body: ProjectArticleStatusIn,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Move the article's ticket. Any member can — shared task-list semantics,
+    unlike pin edits which stay adder-only. An optional comment (the
+    resolution note, possibly with a link) posts atomically with the move."""
+    await _member_or_404(session, project_id, user.id)
+    await _thread_or_404(session, project_id, article_id, user.id)
+    now = datetime.now(timezone.utc)
+    await session.execute(
+        pg_insert(ProjectArticleState)
+        .values(
+            project_id=project_id,
+            article_id=article_id,
+            status=body.status,
+            updated_by_user_id=user.id,
+            updated_at=now,
+        )
+        .on_conflict_do_update(
+            index_elements=["project_id", "article_id"],
+            set_={"status": body.status, "updated_by_user_id": user.id, "updated_at": now},
+        )
+    )
+    comment = None
+    comment_body = body.comment.strip() if body.comment else ""
+    if comment_body or body.link_url:
+        comment = ProjectArticleComment(
+            project_id=project_id,
+            article_id=article_id,
+            author_id=user.id,
+            body=comment_body,
+            link_url=body.link_url,
+        )
+        session.add(comment)
+    await session.commit()
+    if comment is not None:
+        await session.refresh(comment)  # load the server-side created_at
+    return ProjectArticleStateOut(
+        status=body.status,
+        updated_by=UserPublic.model_validate(user),
+        updated_at=now,
+        comment=_comment_out(comment, author=user) if comment else None,
+    )
+
+
+@router.get(
+    "/{project_id}/articles/by-article/{article_id}/comments",
+    response_model=list[ProjectCommentOut],
+)
+async def list_article_comments(
+    project_id: int,
+    article_id: int,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    await _member_or_404(session, project_id, user.id)
+    await _thread_or_404(session, project_id, article_id, user.id)
+    comments = (
+        await session.scalars(
+            select(ProjectArticleComment)
+            .where(
+                ProjectArticleComment.project_id == project_id,
+                ProjectArticleComment.article_id == article_id,
+            )
+            .options(selectinload(ProjectArticleComment.author))
+            .order_by(ProjectArticleComment.created_at.asc(), ProjectArticleComment.id.asc())
+        )
+    ).all()
+    return [_comment_out(c) for c in comments]
+
+
+@router.post(
+    "/{project_id}/articles/by-article/{article_id}/comments",
+    response_model=ProjectCommentOut,
+    status_code=201,
+)
+async def add_article_comment(
+    project_id: int,
+    article_id: int,
+    body: ProjectCommentIn,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    await _member_or_404(session, project_id, user.id)
+    await _thread_or_404(session, project_id, article_id, user.id)
+    comment = ProjectArticleComment(
+        project_id=project_id,
+        article_id=article_id,
+        author_id=user.id,
+        body=body.body,
+        link_url=body.link_url,
+    )
+    session.add(comment)
+    await session.commit()
+    await session.refresh(comment)  # load the server-side created_at
+    return _comment_out(comment, author=user)
+
+
+@router.delete("/{project_id}/comments/{comment_id}", status_code=204)
+async def delete_article_comment(
+    project_id: int,
+    comment_id: int,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    membership = await _member_or_404(session, project_id, user.id)
+    comment = await session.scalar(
+        select(ProjectArticleComment).where(
+            ProjectArticleComment.id == comment_id,
+            ProjectArticleComment.project_id == project_id,
+        )
+    )
+    if comment is None:
+        raise HTTPException(status_code=404, detail="Comment not found")
+    if comment.author_id != user.id and membership.role != "owner":
+        raise HTTPException(status_code=403, detail="Only the author or the owner can delete this")
+    await session.delete(comment)
     await session.commit()

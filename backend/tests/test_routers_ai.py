@@ -309,10 +309,10 @@ async def test_ask_stream_article_not_found(client, users, data, monkeypatch):
 
 # --- project Q&A ---
 
-async def _project_with_pins(users, data, session, *, note=None, with_summary=True):
+async def _project_with_pins(users, data, session, *, comment=None, with_summary=True):
     from datetime import datetime, timezone
 
-    from app.models import Project, ProjectArticle, ProjectMember
+    from app.models import Project, ProjectArticle, ProjectArticleComment, ProjectMember
 
     owner = await users.create(username="powner")
     member = await users.create(username="pmember")
@@ -333,9 +333,13 @@ async def _project_with_pins(users, data, session, *, note=None, with_summary=Tr
     await session.refresh(project)
     pin = ProjectArticle(
         project_id=project.id, article_id=art.id, added_by_user_id=owner.id,
-        is_shared=True, shared_at=datetime.now(timezone.utc), note=note,
+        is_shared=True, shared_at=datetime.now(timezone.utc),
     )
     session.add(pin)
+    if comment:
+        session.add(ProjectArticleComment(
+            project_id=project.id, article_id=art.id, author_id=owner.id, body=comment,
+        ))
     await session.commit()
     return owner, member, project, art
 
@@ -368,9 +372,20 @@ async def test_get_project_conversation_with_messages(client, users, data, sessi
 
 
 async def test_ask_project_stream_success(client, users, data, session, monkeypatch):
+    from app.models import ProjectArticleComment, ProjectArticleState
+
     owner, member, project, art = await _project_with_pins(
-        users, data, session, note="worth reading",
+        users, data, session, comment="worth reading",
     )
+    session.add(ProjectArticleState(
+        project_id=project.id, article_id=art.id, status="done",
+        updated_by_user_id=owner.id,
+    ))
+    session.add(ProjectArticleComment(
+        project_id=project.id, article_id=art.id, author_id=member.id,
+        body="wrapped up", link_url="https://github.com/o/r/pull/7",
+    ))
+    await session.commit()
     monkeypatch.setattr(llm, "is_configured", lambda: True)
     captured = {}
 
@@ -385,10 +400,12 @@ async def test_ask_project_stream_success(client, users, data, session, monkeypa
     assert resp.status_code == 200
     events = _parse_sse(resp.text)
     assert [e["type"] for e in events][-1] == "done"
-    # Corpus carries title, summary and the member note.
+    # Corpus carries title, summary, the discussion thread and the ticket status.
     assert "Corpus Article" in captured["corpus"]
     assert "the medium summary" in captured["corpus"]
     assert "@powner: worth reading" in captured["corpus"]
+    assert "@pmember: wrapped up (https://github.com/o/r/pull/7)" in captured["corpus"]
+    assert "Status: done" in captured["corpus"]
     assert captured["name"] == "Research"
     # Messages persisted on the project conversation.
     msgs = (await session.scalars(select(Message))).all()
@@ -407,7 +424,7 @@ async def test_ask_project_stream_excludes_others_private_pins(
     secret = await data.article(feed2, title="Secret Research")
     session.add(ProjectArticle(
         project_id=project.id, article_id=secret.id, added_by_user_id=owner.id,
-        is_shared=False, note=None,
+        is_shared=False,
     ))
     await session.commit()
     monkeypatch.setattr(llm, "is_configured", lambda: True)
