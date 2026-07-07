@@ -16,3 +16,4 @@ pgvector>=0.3
 pydantic-ai-slim[openai,tavily]>=2.0,<3
 scrapling[fetchers]>=0.4
 trafilatura>=1.12
+cryptography>=43

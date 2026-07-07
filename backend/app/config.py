@@ -52,5 +52,25 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("NEWSREAD_SEARXNG_BASE_URL", "SEARXNG_BASE_URL"),
     )
 
+    # Messaging integrations (share to Slack / Microsoft Teams as the user).
+    # Unset -> the platform shows as "not configured" in settings.
+    slack_client_id: str = ""  # NEWSREAD_SLACK_CLIENT_ID
+    slack_client_secret: str = ""  # NEWSREAD_SLACK_CLIENT_SECRET
+    # Verifies inbound requests from Slack (Events API / interactivity).
+    # Unused until an inbound feature ships (e.g. syncing channel replies).
+    slack_signing_secret: str = ""  # NEWSREAD_SLACK_SIGNING_SECRET
+    teams_client_id: str = ""  # NEWSREAD_TEAMS_CLIENT_ID
+    teams_client_secret: str = ""  # NEWSREAD_TEAMS_CLIENT_SECRET
+    # Entra authority: "organizations" (any work/school tenant) or a tenant id.
+    teams_tenant: str = "organizations"  # NEWSREAD_TEAMS_TENANT
+    # Public base URL the OAuth providers redirect back to. Slack requires
+    # HTTPS, so in dev this is a tunnel (ngrok/cloudflared) to the backend.
+    oauth_redirect_base: str = "http://localhost:8000"  # NEWSREAD_OAUTH_REDIRECT_BASE
+    # Where to send the browser after the OAuth callback completes.
+    frontend_base_url: str = "http://localhost:3000"  # NEWSREAD_FRONTEND_BASE_URL
+    # Fernet key encrypting per-user platform tokens at rest. Generate with:
+    # python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    token_encryption_key: str = ""  # NEWSREAD_TOKEN_ENCRYPTION_KEY
+
 
 settings = Settings()

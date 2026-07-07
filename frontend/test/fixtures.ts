@@ -169,3 +169,32 @@ export function makeShare(over: Partial<Share> = {}): Share {
     ...over,
   };
 }
+
+export function makeIntegration(
+  over: Partial<import("@/lib/api").IntegrationStatus> = {},
+): import("@/lib/api").IntegrationStatus {
+  return {
+    platform: "slack",
+    configured: true,
+    connected: false,
+    status: null,
+    workspace_name: null,
+    account_name: null,
+    ...over,
+  };
+}
+
+export function makeShareTarget(
+  over: Partial<import("@/lib/api").ShareTarget> = {},
+): import("@/lib/api").ShareTarget {
+  return {
+    id: 1,
+    platform: "slack",
+    external_id: "C1",
+    display_name: "#general",
+    target_type: "channel",
+    meta: {},
+    last_used_at: null,
+    ...over,
+  };
+}

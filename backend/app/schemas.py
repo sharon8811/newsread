@@ -342,6 +342,84 @@ class ArticleProjectStatus(BaseModel):
     suggested: bool = False
 
 
+# --- Messaging integrations ---
+
+Platform = Literal["slack", "teams"]
+TargetType = Literal["channel", "group", "dm", "chat"]
+
+
+class IntegrationStatusOut(BaseModel):
+    platform: Platform
+    configured: bool  # server has client credentials for this platform
+    connected: bool
+    status: str | None = None  # 'active' | 'error' (needs reconnect)
+    workspace_name: str | None = None
+    account_name: str | None = None
+
+
+class AuthorizeUrlOut(BaseModel):
+    url: str
+
+
+class TargetOptionOut(BaseModel):
+    """One row in the live target picker (proxied from the platform API)."""
+
+    external_id: str
+    display_name: str
+    target_type: TargetType
+    meta: dict = {}
+    saved_id: int | None = None  # ShareTarget id when already saved
+
+
+class ShareTargetIn(BaseModel):
+    platform: Platform
+    external_id: str = Field(min_length=1, max_length=255)
+    display_name: str = Field(min_length=1, max_length=255)
+    target_type: TargetType
+    meta: dict = {}
+
+
+class ShareTargetOut(BaseModel):
+    id: int
+    platform: Platform
+    external_id: str
+    display_name: str
+    target_type: TargetType
+    meta: dict = {}
+    last_used_at: datetime | None = None
+
+
+class ExternalShareIn(BaseModel):
+    """Send to either a saved target (target_id) or an ad-hoc one straight
+    from the picker (target); exactly one must be provided."""
+
+    article_id: int
+    message: str = Field(default="", max_length=4000)
+    target_id: int | None = None
+    target: ShareTargetIn | None = None
+
+
+class ExternalShareOut(BaseModel):
+    id: int
+    platform: Platform
+    target_display: str
+    status: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class ShareMessageIn(BaseModel):
+    article_id: int
+    draft: str = Field(default="", max_length=4000)
+    tone: Literal["casual", "professional", "enthusiastic"] | None = None
+    target_name: str | None = Field(default=None, max_length=255)
+
+
+class ShareMessageOut(BaseModel):
+    message: str
+
+
 # --- AI ---
 
 class AiStatusOut(BaseModel):
