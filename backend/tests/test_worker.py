@@ -499,7 +499,6 @@ async def _pinned_project(session, users, *, muted=False, shared=True):
         project_id=project.id, article_id=art.id, added_by_user_id=adder.id,
         is_shared=shared,
         shared_at=datetime.now(timezone.utc) if shared else None,
-        note=None,
     )
     session.add(pin)
     await session.commit()
@@ -554,9 +553,27 @@ async def test_send_project_pin_push_skips_unpublished_pin(session, users, monke
     await worker.send_project_pin_push({}, pin.id)
 
 
-async def test_send_project_pin_push_note_becomes_body(session, users, monkeypatch):
+async def test_send_project_pin_push_adder_comment_becomes_body(session, users, monkeypatch):
+    from app.models import ProjectArticleComment
+
     adder, member, pin = await _pinned_project(session, users)
-    pin.note = "must read"
+    # The adder's latest comment wins; others' comments and link-only ones don't.
+    session.add(ProjectArticleComment(
+        project_id=pin.project_id, article_id=pin.article_id,
+        author_id=adder.id, body="first thought",
+    ))
+    session.add(ProjectArticleComment(
+        project_id=pin.project_id, article_id=pin.article_id,
+        author_id=adder.id, body="must read",
+    ))
+    session.add(ProjectArticleComment(
+        project_id=pin.project_id, article_id=pin.article_id,
+        author_id=adder.id, body="", link_url="https://youtu.be/x",
+    ))
+    session.add(ProjectArticleComment(
+        project_id=pin.project_id, article_id=pin.article_id,
+        author_id=member.id, body="someone else's take",
+    ))
     await session.commit()
     captured = {}
 

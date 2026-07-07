@@ -7,6 +7,7 @@ import type {
   Feed,
   Project,
   ProjectArticle,
+  ProjectComment,
   Share,
   User,
   UserPublic,
@@ -123,8 +124,21 @@ export function makeProjectArticle(over: Partial<ProjectArticle> = {}): ProjectA
     added_by: makePublic({ id: 1, username: "alice", name: "Alice" }),
     is_shared: true,
     shared_at: "2026-01-02T00:00:00Z",
-    note: null,
     created_at: "2026-01-01T00:00:00Z",
+    status: "open",
+    status_updated_by: null,
+    comment_count: 0,
+    ...over,
+  };
+}
+
+export function makeProjectComment(over: Partial<ProjectComment> = {}): ProjectComment {
+  return {
+    id: 1,
+    author: makePublic({ id: 1, username: "alice", name: "Alice" }),
+    body: "a thought",
+    link_url: null,
+    created_at: "2026-01-03T00:00:00Z",
     ...over,
   };
 }

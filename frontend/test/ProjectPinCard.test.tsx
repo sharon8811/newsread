@@ -2,11 +2,15 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import ProjectPinCard, { groupPins } from "@/components/ProjectPinCard";
-import { makeArticle, makeProjectArticle, makePublic } from "./fixtures";
+import { makeArticle, makeProjectArticle, makeProjectComment, makePublic } from "./fixtures";
 
-const { pushMock, mutateMock } = vi.hoisted(() => ({ pushMock: vi.fn(), mutateMock: vi.fn() }));
+const { pushMock, mutateMock, swrMock } = vi.hoisted(() => ({
+  pushMock: vi.fn(),
+  mutateMock: vi.fn(),
+  swrMock: vi.fn(),
+}));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: pushMock }) }));
-vi.mock("swr", () => ({ mutate: mutateMock }));
+vi.mock("swr", () => ({ default: swrMock, mutate: mutateMock }));
 
 const me = makePublic({ id: 1, username: "alice", name: "Alice" });
 const bob = makePublic({ id: 2, username: "bob", name: "Bob" });
@@ -41,6 +45,8 @@ describe("<ProjectPinCard>", () => {
   beforeEach(() => {
     pushMock.mockClear();
     mutateMock.mockClear();
+    swrMock.mockReset();
+    swrMock.mockReturnValue({ data: undefined }); // thread not loaded
     vi.stubGlobal("fetch", okFetch());
   });
 
@@ -56,14 +62,13 @@ describe("<ProjectPinCard>", () => {
     expect(screen.queryByText("Only you")).not.toBeInTheDocument();
   });
 
-  it("renders each pin's note, attributed when there are several adders", () => {
+  it("shows the Done chip with attribution when the ticket is done", () => {
     renderCard([
-      makeProjectArticle({ id: 1, added_by: me, note: "my take" }),
-      makeProjectArticle({ id: 2, added_by: bob, note: "bob's take" }),
+      makeProjectArticle({ added_by: bob, status: "done", status_updated_by: bob }),
     ]);
-    expect(screen.getByText(/my take/)).toBeInTheDocument();
-    expect(screen.getByText(/bob's take/)).toBeInTheDocument();
-    expect(screen.getByText("— @bob")).toBeInTheDocument();
+    const chip = screen.getByTitle("Marked done by @bob");
+    expect(chip).toHaveTextContent("Done");
+    expect(screen.getByLabelText("Status")).toHaveValue("done");
   });
 
   it("opens the article on card click", async () => {
@@ -76,12 +81,12 @@ describe("<ProjectPinCard>", () => {
     const fetchMock = okFetch();
     vi.stubGlobal("fetch", fetchMock);
     renderCard([
-      makeProjectArticle({ id: 7, added_by: me, is_shared: false, shared_at: null, note: "n" }),
+      makeProjectArticle({ id: 7, added_by: me, is_shared: false, shared_at: null }),
     ]);
 
     await userEvent.click(screen.getByRole("button", { name: /Share with project/ }));
     expect(fetchMock).not.toHaveBeenCalled();
-    expect(screen.getByText(/Members of AI Research will see this and your note/)).toBeInTheDocument();
+    expect(screen.getByText(/Members of AI Research will see this\./)).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "Share" }));
     await waitFor(() => expect(mutateMock).toHaveBeenCalledWith("/projects/1/articles"));
@@ -97,7 +102,6 @@ describe("<ProjectPinCard>", () => {
     vi.stubGlobal("fetch", fetchMock);
     renderCard([makeProjectArticle({ added_by: me, is_shared: false, shared_at: null })]);
     await userEvent.click(screen.getByRole("button", { name: /Share with project/ }));
-    // note-less confirm copy has no "and your note"
     expect(screen.getByText(/Members of AI Research will see this\./)).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(fetchMock).not.toHaveBeenCalled();
@@ -158,5 +162,162 @@ describe("<ProjectPinCard>", () => {
     renderCard([makeProjectArticle({ id: 7, added_by: me })]);
     await userEvent.click(screen.getByTitle("Remove from project"));
     expect(await screen.findByText("Something went wrong")).toBeInTheDocument();
+  });
+
+  // --- ticket status ---
+
+  it("changing the status dropdown arms the form instead of applying", async () => {
+    const fetchMock = okFetch();
+    vi.stubGlobal("fetch", fetchMock);
+    renderCard([makeProjectArticle({ added_by: bob })]);
+    await userEvent.selectOptions(screen.getByLabelText("Status"), "done");
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(screen.getByPlaceholderText(/Optional closing note/)).toBeInTheDocument();
+  });
+
+  it("marks done with the note and link in one PUT", async () => {
+    const fetchMock = okFetch();
+    vi.stubGlobal("fetch", fetchMock);
+    renderCard([makeProjectArticle({ added_by: bob, article: makeArticle({ id: 5 }) })]);
+    await userEvent.selectOptions(screen.getByLabelText("Status"), "done");
+    await userEvent.type(screen.getByPlaceholderText(/Optional closing note/), "merged");
+    await userEvent.type(
+      screen.getByPlaceholderText(/Optional link/),
+      "https://github.com/o/r/pull/7",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Mark done" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    const [url, opts] = fetchMock.mock.calls[0];
+    expect(String(url)).toContain("/projects/1/articles/by-article/5/status");
+    expect(opts.method).toBe("PUT");
+    expect(JSON.parse(opts.body)).toEqual({
+      status: "done",
+      comment: "merged",
+      link_url: "https://github.com/o/r/pull/7",
+    });
+    expect(mutateMock).toHaveBeenCalledWith("/projects/1/articles");
+    expect(mutateMock).toHaveBeenCalledWith("/projects/1/articles/by-article/5/comments");
+  });
+
+  it("reopens a done ticket without a note", async () => {
+    const fetchMock = okFetch();
+    vi.stubGlobal("fetch", fetchMock);
+    renderCard([
+      makeProjectArticle({ added_by: bob, status: "done", article: makeArticle({ id: 5 }) }),
+    ]);
+    await userEvent.selectOptions(screen.getByLabelText("Status"), "open");
+    await userEvent.click(screen.getByRole("button", { name: "Reopen" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
+      status: "open",
+      comment: null,
+      link_url: null,
+    });
+  });
+
+  it("cancel disarms the status form", async () => {
+    const fetchMock = okFetch();
+    vi.stubGlobal("fetch", fetchMock);
+    renderCard([makeProjectArticle({ added_by: bob })]);
+    await userEvent.selectOptions(screen.getByLabelText("Status"), "done");
+    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByPlaceholderText(/Optional closing note/)).not.toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  // --- comment thread ---
+
+  it("expands the thread and renders comments with link chips", async () => {
+    swrMock.mockImplementation((key: string | null) =>
+      key
+        ? {
+            data: [
+              makeProjectComment({ id: 1, author: me, body: "my take" }),
+              makeProjectComment({
+                id: 2,
+                author: bob,
+                body: "wrapped up",
+                link_url: "https://github.com/o/repo/pull/42",
+              }),
+            ],
+          }
+        : { data: undefined },
+    );
+    renderCard([makeProjectArticle({ added_by: bob, comment_count: 2 })]);
+    // collapsed: count shown, thread not fetched
+    expect(swrMock).toHaveBeenCalledWith(null, expect.anything());
+    await userEvent.click(screen.getByRole("button", { name: "2" }));
+    expect(screen.getByText("my take")).toBeInTheDocument();
+    expect(screen.getByText("wrapped up")).toBeInTheDocument();
+    const chip = screen.getByRole("link", { name: /repo#42/ });
+    expect(chip).toHaveAttribute("href", "https://github.com/o/repo/pull/42");
+  });
+
+  it("posts a comment with an attached link", async () => {
+    const fetchMock = okFetch();
+    vi.stubGlobal("fetch", fetchMock);
+    swrMock.mockImplementation((key: string | null) => ({ data: key ? [] : undefined }));
+    renderCard([makeProjectArticle({ added_by: bob, article: makeArticle({ id: 5 }) })]);
+    await userEvent.click(screen.getByRole("button", { name: "Comment" }));
+    expect(screen.getByText("No comments yet — start the thread.")).toBeInTheDocument();
+    await userEvent.type(screen.getByPlaceholderText("Add a comment…"), "on it");
+    await userEvent.click(screen.getByTitle("Attach a link"));
+    await userEvent.type(
+      screen.getByPlaceholderText(/link to attach/),
+      "https://youtu.be/x",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Post" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    const [url, opts] = fetchMock.mock.calls[0];
+    expect(String(url)).toContain("/projects/1/articles/by-article/5/comments");
+    expect(opts.method).toBe("POST");
+    expect(JSON.parse(opts.body)).toEqual({ body: "on it", link_url: "https://youtu.be/x" });
+  });
+
+  it("posts a comment on Enter", async () => {
+    const fetchMock = okFetch();
+    vi.stubGlobal("fetch", fetchMock);
+    swrMock.mockImplementation((key: string | null) => ({ data: key ? [] : undefined }));
+    renderCard([makeProjectArticle({ added_by: bob })]);
+    await userEvent.click(screen.getByRole("button", { name: "Comment" }));
+    await userEvent.type(screen.getByPlaceholderText("Add a comment…"), "quick note{Enter}");
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
+      body: "quick note",
+      link_url: null,
+    });
+  });
+
+  it("lets the author delete their comment but not others'", async () => {
+    const fetchMock = okFetch();
+    vi.stubGlobal("fetch", fetchMock);
+    swrMock.mockImplementation((key: string | null) =>
+      key
+        ? {
+            data: [
+              makeProjectComment({ id: 1, author: me, body: "mine" }),
+              makeProjectComment({ id: 2, author: bob, body: "bob's" }),
+            ],
+          }
+        : { data: undefined },
+    );
+    renderCard([makeProjectArticle({ added_by: bob, comment_count: 2 })]);
+    await userEvent.click(screen.getByRole("button", { name: "2" }));
+    // only the viewer's own comment offers delete (non-owner viewer)
+    expect(screen.getAllByTitle("Delete comment")).toHaveLength(1);
+    await userEvent.click(screen.getByTitle("Delete comment"));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    const [url, opts] = fetchMock.mock.calls[0];
+    expect(String(url)).toContain("/projects/1/comments/1");
+    expect(opts.method).toBe("DELETE");
+  });
+
+  it("owner can delete any comment", async () => {
+    swrMock.mockImplementation((key: string | null) =>
+      key ? { data: [makeProjectComment({ id: 2, author: bob, body: "bob's" })] } : { data: undefined },
+    );
+    renderCard([makeProjectArticle({ added_by: bob, comment_count: 1 })], { isOwner: true });
+    await userEvent.click(screen.getByRole("button", { name: "1" }));
+    expect(screen.getByTitle("Delete comment")).toBeInTheDocument();
   });
 });

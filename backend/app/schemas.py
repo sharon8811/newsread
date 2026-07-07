@@ -256,18 +256,64 @@ class ProjectMemberAddIn(BaseModel):
     username: str = Field(min_length=1, max_length=64)
 
 
+# The ticket workflow an article moves through inside a project. Extend this
+# literal (and the STATUSES list in frontend/lib/api.ts) to add states — the
+# status dropdown and filters render from those lists, nothing else changes.
+ProjectTicketStatus = Literal["open", "done"]
+
+
+def _http_link(value: str | None) -> str | None:
+    value = value.strip() if value else None
+    if value and not value.startswith(("http://", "https://")):
+        raise ValueError("must be an http(s) URL")
+    return value or None
+
+
 class ProjectArticleAddIn(BaseModel):
     article_id: int
     is_shared: bool = False
+    # Posted as the article's first thread comment, not stored on the pin.
     note: str | None = Field(default=None, max_length=4000)
 
 
 class ProjectArticleUpdateIn(BaseModel):
-    """PATCH semantics: only fields present are applied; explicit null note
-    clears it. Flipping is_shared on stamps shared_at; off clears it."""
+    """PATCH semantics: only fields present are applied. Flipping is_shared
+    on stamps shared_at; off clears it."""
 
     is_shared: bool | None = None
-    note: str | None = Field(default=None, max_length=4000)
+
+
+class ProjectCommentIn(BaseModel):
+    body: str = Field(max_length=4000)
+    link_url: str | None = Field(default=None, max_length=2000)
+
+    _strip_body = field_validator("body")(_stripped_nonempty)
+    _check_link = field_validator("link_url")(_http_link)
+
+
+class ProjectCommentOut(BaseModel):
+    id: int
+    author: UserPublic
+    body: str
+    link_url: str | None
+    created_at: datetime
+
+
+class ProjectArticleStatusIn(BaseModel):
+    status: ProjectTicketStatus
+    # Optional resolution note ("done — merged in <PR>"), posted atomically
+    # as a thread comment alongside the status change.
+    comment: str | None = Field(default=None, max_length=4000)
+    link_url: str | None = Field(default=None, max_length=2000)
+
+    _check_link = field_validator("link_url")(_http_link)
+
+
+class ProjectArticleStateOut(BaseModel):
+    status: ProjectTicketStatus
+    updated_by: UserPublic
+    updated_at: datetime
+    comment: ProjectCommentOut | None = None  # the resolution comment, if sent
 
 
 class ProjectArticleOut(BaseModel):
@@ -277,8 +323,11 @@ class ProjectArticleOut(BaseModel):
     added_by: UserPublic
     is_shared: bool
     shared_at: datetime | None
-    note: str | None
     created_at: datetime
+    # Ticket state, shared per (project, article) across every pin of it.
+    status: ProjectTicketStatus = "open"
+    status_updated_by: UserPublic | None = None
+    comment_count: int = 0
 
 
 class ArticleProjectStatus(BaseModel):

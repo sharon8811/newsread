@@ -64,6 +64,14 @@ MIGRATIONS = [
     "ALTER TABLE users ALTER COLUMN default_view SET DEFAULT 'cards'",
     "UPDATE users SET default_view = 'cards' WHERE default_view = 'zen'",
     "UPDATE subscriptions SET view_override = 'cards' WHERE view_override = 'zen'",
+    # Ticket threads: legacy per-pin notes become each thread's first comment
+    # (author = the pin's adder, timestamp = pin time), then the notes are
+    # cleared. The pair is idempotent because the second statement empties
+    # what the first selects; both run in init_db's single transaction.
+    "INSERT INTO project_article_comments (project_id, article_id, author_id, body, created_at) "
+    "SELECT project_id, article_id, added_by_user_id, note, created_at FROM project_articles "
+    "WHERE note IS NOT NULL AND btrim(note) <> ''",
+    "UPDATE project_articles SET note = NULL WHERE note IS NOT NULL",
 ]
 
 

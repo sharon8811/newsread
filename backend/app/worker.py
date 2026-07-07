@@ -19,7 +19,15 @@ from .db import SessionLocal, init_db
 from .enrichers.pipeline import extract_entities, refresh_stale_entities
 from .extractor import enrich_article
 from .fetcher import refresh_feed
-from .models import Article, ArticleEmbedding, Feed, Project, ProjectArticle, Share
+from .models import (
+    Article,
+    ArticleEmbedding,
+    Feed,
+    Project,
+    ProjectArticle,
+    ProjectArticleComment,
+    Share,
+)
 from .summarizer import ThinContentError, generate_summaries
 
 logger = logging.getLogger(__name__)
@@ -195,6 +203,22 @@ async def send_project_pin_push(ctx: dict, pin_id: int) -> None:
                 selectinload(ProjectArticle.article),
             )
         )
+        note = None
+        if pin is not None:
+            # The adder's latest thread comment stands in for the old pin note.
+            note = await session.scalar(
+                select(ProjectArticleComment.body)
+                .where(
+                    ProjectArticleComment.project_id == pin.project_id,
+                    ProjectArticleComment.article_id == pin.article_id,
+                    ProjectArticleComment.author_id == pin.added_by_user_id,
+                    ProjectArticleComment.body != "",
+                )
+                .order_by(
+                    ProjectArticleComment.created_at.desc(), ProjectArticleComment.id.desc()
+                )
+                .limit(1)
+            )
     if pin is None or not pin.is_shared:
         return  # unpinned or unpublished again before the job ran
     recipients = [
@@ -205,7 +229,7 @@ async def send_project_pin_push(ctx: dict, pin_id: int) -> None:
     sent = await push.send_push(
         recipients,
         title=f"@{pin.added_by.username} · {pin.project.name}",
-        body=pin.note or pin.article.title,
+        body=note or pin.article.title,
         data={
             "type": "project_pin",
             "project_id": pin.project_id,

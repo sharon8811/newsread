@@ -299,12 +299,57 @@ class ProjectArticle(Base):
     added_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     is_shared: Mapped[bool] = mapped_column(Boolean, default=False)
     shared_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Legacy — notes now live in ProjectArticleComment. The column stays so the
+    # db.MIGRATIONS backfill can reference it on fresh databases; always NULL.
     note: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     project: Mapped[Project] = relationship()
     article: Mapped[Article] = relationship()
     added_by: Mapped[User] = relationship()
+
+
+class ProjectArticleState(Base):
+    """Shared ticket status of one article within one project. Keyed by
+    (project, article), not by pin: the project page groups pins of the same
+    article into one card, and "done" must mean done for everyone. No row
+    means "open" — pinning never writes here."""
+
+    __tablename__ = "project_article_states"
+    __table_args__ = (UniqueConstraint("project_id", "article_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    article_id: Mapped[int] = mapped_column(ForeignKey("articles.id", ondelete="CASCADE"), index=True)
+    # Allowed values are the schema's ProjectTicketStatus literal — extend there.
+    status: Mapped[str] = mapped_column(String(16), default="open")
+    updated_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    updated_by: Mapped[User] = relationship()
+
+
+class ProjectArticleComment(Base):
+    """One comment on an article's thread within a project. Threads are per
+    (project, article) like the grouped card and the ticket status — anyone
+    who can see the article in the project sees the whole thread, including
+    comments that began life as private-pin notes (the backfill in
+    db.MIGRATIONS folded legacy ProjectArticle.note values in here)."""
+
+    __tablename__ = "project_article_comments"
+    __table_args__ = (Index("ix_project_article_comments_thread", "project_id", "article_id", "created_at"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    article_id: Mapped[int] = mapped_column(ForeignKey("articles.id", ondelete="CASCADE"), index=True)
+    author_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    body: Mapped[str] = mapped_column(Text)
+    link_url: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    author: Mapped[User] = relationship()
 
 
 class ShareRecipient(Base):

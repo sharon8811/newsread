@@ -257,6 +257,16 @@ export type Project = {
   created_at: string;
 };
 
+// The ticket workflow an article moves through inside a project. Keep in sync
+// with the ProjectTicketStatus literal in backend/app/schemas.py — the status
+// dropdown and filters render from this list, nothing else changes.
+export const PROJECT_STATUSES = [
+  { value: "open", label: "Open" },
+  { value: "done", label: "Done" },
+] as const;
+
+export type ProjectTicketStatus = (typeof PROJECT_STATUSES)[number]["value"];
+
 export type ProjectArticle = {
   id: number;
   project_id: number;
@@ -264,7 +274,19 @@ export type ProjectArticle = {
   added_by: UserPublic;
   is_shared: boolean;
   shared_at: string | null;
-  note: string | null;
+  created_at: string;
+  // Ticket state, shared per (project, article) across every pin of it.
+  status: ProjectTicketStatus;
+  status_updated_by: UserPublic | null;
+  comment_count: number;
+};
+
+// One comment on an article's thread within a project.
+export type ProjectComment = {
+  id: number;
+  author: UserPublic;
+  body: string;
+  link_url: string | null;
   created_at: string;
 };
 

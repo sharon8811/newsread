@@ -87,7 +87,7 @@ PROJECT_QA_INSTRUCTIONS = """You are NewsRead's research assistant for the proje
 
 Today's date: {today}.
 
-Ground your answers in the collected articles below — titles, summaries, and the notes members attached. When you draw on an article, cite it inline as a markdown link to its URL. If web tools are available, use web_extract to read an article's full text when its summary is not enough, and web_search only for information none of the articles contain. If neither yields the answer, say so plainly.
+Ground your answers in the collected articles below — titles, summaries, each article's ticket status ("done" means the project considers it handled; no status means still open), and the members' discussion threads. When you draw on an article, cite it inline as a markdown link to its URL. If web tools are available, use web_extract to read an article's full text when its summary is not enough, and web_search only for information none of the articles contain. If neither yields the answer, say so plainly.
 
 Be concise. Answer in markdown.
 {description}
