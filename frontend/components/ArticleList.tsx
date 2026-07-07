@@ -6,6 +6,7 @@ import useSWR, { mutate } from "swr";
 import { api, fetcher, type Article } from "@/lib/api";
 import ArticleCard from "./ArticleCard";
 import ArticleRow from "./ArticleRow";
+import ProjectPickerModal from "./ProjectPickerModal";
 import ShareModal from "./ShareModal";
 
 export function articlesKey(opts: {
@@ -48,6 +49,7 @@ export default function ArticleList({
   });
   const [selected, setSelected] = useState(0);
   const [sharing, setSharing] = useState<Article | null>(null);
+  const [pickingProject, setPickingProject] = useState<Article | null>(null);
 
   useEffect(() => {
     setSelected(0);
@@ -74,7 +76,7 @@ export default function ArticleList({
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (sharing) return;
+      if (sharing || pickingProject) return;
       const target = e.target as HTMLElement;
       if (
         target instanceof HTMLInputElement ||
@@ -104,7 +106,7 @@ export default function ArticleList({
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [articles, selected, sharing, router, toggleSaved, toggleRead]);
+  }, [articles, selected, sharing, pickingProject, router, toggleSaved, toggleRead]);
 
   useEffect(() => {
     document
@@ -167,6 +169,7 @@ export default function ArticleList({
                 selected={i === selected}
                 onToggleSaved={toggleSaved}
                 onShare={setSharing}
+                onAddToProject={setPickingProject}
               />
             ))}
           </div>
@@ -179,6 +182,7 @@ export default function ArticleList({
               selected={i === selected}
               onToggleSaved={toggleSaved}
               onShare={setSharing}
+              onAddToProject={setPickingProject}
             />
           ))
         )}
@@ -190,6 +194,12 @@ export default function ArticleList({
         </p>
       </div>
       {sharing && <ShareModal article={sharing} onClose={() => setSharing(null)} />}
+      {pickingProject && (
+        <ProjectPickerModal
+          article={pickingProject}
+          onClose={() => setPickingProject(null)}
+        />
+      )}
     </>
   );
 }

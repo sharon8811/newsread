@@ -221,6 +221,44 @@ export type ChatMessage = {
   created_at: string;
 };
 
+export type ProjectRole = "owner" | "member";
+
+export type ProjectMember = {
+  user: UserPublic;
+  role: ProjectRole;
+};
+
+export type Project = {
+  id: number;
+  name: string;
+  description: string;
+  owner: UserPublic;
+  my_role: ProjectRole;
+  members: ProjectMember[];
+  article_count: number; // only what the viewer can see
+  created_at: string;
+};
+
+export type ProjectArticle = {
+  id: number;
+  project_id: number;
+  article: Article;
+  added_by: UserPublic;
+  is_shared: boolean;
+  shared_at: string | null;
+  note: string | null;
+  created_at: string;
+};
+
+// Picker state for one of my projects against one article.
+export type ArticleProjectStatus = {
+  project_id: number;
+  project_name: string;
+  project_article_id: number | null; // my own pin, if any
+  is_shared: boolean | null; // my pin's flag
+  shared_by_others: boolean;
+};
+
 export type Share = {
   id: number;
   article: Article;

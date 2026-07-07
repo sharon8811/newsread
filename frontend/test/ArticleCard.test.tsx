@@ -11,16 +11,18 @@ function renderCard(over: Parameters<typeof makeArticle>[0] = {}, props = {}) {
   const article = makeArticle(over);
   const onToggleSaved = vi.fn();
   const onShare = vi.fn();
+  const onAddToProject = vi.fn();
   const utils = render(
     <ArticleCard
       article={article}
       index={0}
       onToggleSaved={onToggleSaved}
       onShare={onShare}
+      onAddToProject={onAddToProject}
       {...props}
     />,
   );
-  return { article, onToggleSaved, onShare, ...utils };
+  return { article, onToggleSaved, onShare, onAddToProject, ...utils };
 }
 
 describe("<ArticleCard>", () => {
@@ -91,6 +93,13 @@ describe("<ArticleCard>", () => {
     const { article, onShare } = renderCard();
     await userEvent.click(screen.getByTitle("Share with a note"));
     expect(onShare).toHaveBeenCalledWith(article);
+    expect(pushMock).not.toHaveBeenCalled();
+  });
+
+  it("project button opens the picker without navigating", async () => {
+    const { article, onAddToProject } = renderCard();
+    await userEvent.click(screen.getByTitle("Add to project"));
+    expect(onAddToProject).toHaveBeenCalledWith(article);
     expect(pushMock).not.toHaveBeenCalled();
   });
 

@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
 from .db import init_db
-from .routers import ai, articles, auth, devices, feeds, shares, users
+from .routers import ai, articles, auth, devices, feeds, projects, shares, users
 
 logging.basicConfig(level=logging.INFO)
 
@@ -38,6 +38,7 @@ app.include_router(users.router, prefix="/api")
 app.include_router(feeds.router, prefix="/api")
 app.include_router(articles.router, prefix="/api")
 app.include_router(shares.router, prefix="/api")
+app.include_router(projects.router, prefix="/api")
 app.include_router(ai.router, prefix="/api")
 app.include_router(devices.router, prefix="/api")
 

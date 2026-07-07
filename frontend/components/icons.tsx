@@ -24,6 +24,23 @@ export function GearIcon(p: IconProps) {
   );
 }
 
+export function FolderIcon(p: IconProps) {
+  return (
+    <svg {...base(p)}>
+      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+    </svg>
+  );
+}
+
+export function LockIcon(p: IconProps) {
+  return (
+    <svg {...base(p)}>
+      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+    </svg>
+  );
+}
+
 export function MuteIcon(p: IconProps) {
   return (
     <svg {...base(p)}>

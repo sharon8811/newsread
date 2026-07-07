@@ -27,6 +27,13 @@ vi.mock("@/components/ShareModal", () => ({
     </div>
   ),
 }));
+vi.mock("@/components/ProjectPickerModal", () => ({
+  default: ({ onClose }: { onClose: () => void }) => (
+    <div data-testid="project-picker">
+      <button onClick={onClose}>close-picker</button>
+    </div>
+  ),
+}));
 
 function okFetch() {
   return vi.fn().mockResolvedValue({ status: 200, ok: true, json: async () => ({}) });
@@ -104,6 +111,15 @@ describe("ArticlePage", () => {
     expect(screen.getByTestId("share-modal")).toBeInTheDocument();
     await userEvent.click(screen.getByText("close-modal"));
     expect(screen.queryByTestId("share-modal")).not.toBeInTheDocument();
+  });
+
+  it("opens and closes the project picker", async () => {
+    swrMock.mockReturnValue({ data: makeArticleDetail({ is_read: true }), error: undefined });
+    render(<ArticlePage />);
+    await userEvent.click(screen.getByText("Project"));
+    expect(screen.getByTestId("project-picker")).toBeInTheDocument();
+    await userEvent.click(screen.getByText("close-picker"));
+    expect(screen.queryByTestId("project-picker")).not.toBeInTheDocument();
   });
 
   it("navigates back", async () => {

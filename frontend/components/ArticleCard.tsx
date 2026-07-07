@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { type Article } from "@/lib/api";
 import { domainOf, timeAgo } from "@/lib/format";
 import EntityBadges from "./EntityBadges";
-import { BookmarkIcon, ExternalIcon, ShareIcon } from "./icons";
+import { BookmarkIcon, ExternalIcon, FolderIcon, ShareIcon } from "./icons";
 
 export default function ArticleCard({
   article,
@@ -12,12 +12,14 @@ export default function ArticleCard({
   index,
   onToggleSaved,
   onShare,
+  onAddToProject,
 }: {
   article: Article;
   selected?: boolean;
   index: number;
   onToggleSaved: (article: Article) => void;
   onShare: (article: Article) => void;
+  onAddToProject: (article: Article) => void;
 }) {
   const router = useRouter();
   const summary = article.summary_short || article.excerpt;
@@ -138,6 +140,16 @@ export default function ArticleCard({
               }}
             >
               <ShareIcon size={15} />
+            </button>
+            <button
+              className="icon-btn"
+              title="Add to project"
+              onClick={(e) => {
+                e.stopPropagation();
+                onAddToProject(article);
+              }}
+            >
+              <FolderIcon size={15} />
             </button>
             <a
               className="icon-btn"

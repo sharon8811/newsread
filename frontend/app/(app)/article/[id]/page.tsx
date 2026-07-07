@@ -6,12 +6,14 @@ import useSWR, { mutate } from "swr";
 import AiSummary from "@/components/AiSummary";
 import { mutateArticleLists } from "@/components/ArticleList";
 import EntityCard from "@/components/EntityCard";
+import ProjectPickerModal from "@/components/ProjectPickerModal";
 import QAPanel from "@/components/QAPanel";
 import ShareModal from "@/components/ShareModal";
 import {
   BookmarkIcon,
   CommentIcon,
   ExternalIcon,
+  FolderIcon,
   ShareIcon,
 } from "@/components/icons";
 import { api, fetcher, type ArticleDetail } from "@/lib/api";
@@ -23,6 +25,7 @@ export default function ArticlePage() {
   const key = `/articles/${id}`;
   const { data: article, error } = useSWR<ArticleDetail>(key, fetcher);
   const [sharing, setSharing] = useState(false);
+  const [pickingProject, setPickingProject] = useState(false);
   const markedRef = useRef(false);
 
   useEffect(() => {
@@ -123,6 +126,14 @@ export default function ArticlePage() {
             <ShareIcon size={14} />
             Share
           </button>
+          <button
+            className="btn"
+            title="Add to project"
+            onClick={() => setPickingProject(true)}
+          >
+            <FolderIcon size={14} />
+            Project
+          </button>
         </div>
       </div>
 
@@ -144,6 +155,9 @@ export default function ArticlePage() {
       <QAPanel article={article} />
 
       {sharing && <ShareModal article={article} onClose={() => setSharing(false)} />}
+      {pickingProject && (
+        <ProjectPickerModal article={article} onClose={() => setPickingProject(false)} />
+      )}
     </article>
   );
 }

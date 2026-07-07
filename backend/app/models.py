@@ -240,6 +240,64 @@ class Message(Base):
     conversation: Mapped[Conversation] = relationship(back_populates="messages")
 
 
+class Project(Base):
+    """A workspace articles get pinned to. A project with one member is a
+    personal collection; sharing is what happens when membership grows."""
+
+    __tablename__ = "projects"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(120))
+    description: Mapped[str] = mapped_column(Text, default="", server_default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    owner: Mapped[User] = relationship()
+    members: Mapped[list["ProjectMember"]] = relationship(
+        back_populates="project", cascade="all, delete-orphan"
+    )
+
+
+class ProjectMember(Base):
+    __tablename__ = "project_members"
+    __table_args__ = (UniqueConstraint("project_id", "user_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    role: Mapped[str] = mapped_column(String(12), default="member")  # 'owner' | 'member'
+    # Powers the "new since last visit" badge.
+    last_visited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    project: Mapped[Project] = relationship(back_populates="members")
+    user: Mapped[User] = relationship()
+
+
+class ProjectArticle(Base):
+    """An article pinned to a project. Private pins (is_shared=False) are
+    visible only to their adder — every query joining this table must filter
+    `is_shared OR added_by_user_id == viewer`. Two members may each pin the
+    same article, hence the three-column uniqueness. The shared feed orders by
+    shared_at (publish time), so an old private pin published today surfaces."""
+
+    __tablename__ = "project_articles"
+    __table_args__ = (UniqueConstraint("project_id", "article_id", "added_by_user_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    article_id: Mapped[int] = mapped_column(ForeignKey("articles.id", ondelete="CASCADE"), index=True)
+    added_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    is_shared: Mapped[bool] = mapped_column(Boolean, default=False)
+    shared_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    note: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    project: Mapped[Project] = relationship()
+    article: Mapped[Article] = relationship()
+    added_by: Mapped[User] = relationship()
+
+
 class ShareRecipient(Base):
     __tablename__ = "share_recipients"
     __table_args__ = (UniqueConstraint("share_id", "to_user_id"),)
