@@ -146,6 +146,137 @@ describe("SettingsPage", () => {
     vi.unstubAllGlobals();
   });
 
+  it("disconnects after confirmation and refreshes both lists", async () => {
+    mockSWRData();
+    const fetchMock = vi.fn().mockResolvedValue({ status: 204, ok: true, json: async () => ({}) });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("confirm", vi.fn().mockReturnValue(true));
+    render(<SettingsPage />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Disconnect" }));
+    await waitFor(() => expect(mutateMock).toHaveBeenCalledWith("/integrations"));
+    expect(mutateMock).toHaveBeenCalledWith("/share-targets");
+    expect(fetchMock.mock.calls[0][0]).toContain("/integrations/slack");
+    expect(fetchMock.mock.calls[0][1].method).toBe("DELETE");
+    vi.unstubAllGlobals();
+  });
+
+  it("does nothing when the disconnect confirm is declined", async () => {
+    mockSWRData();
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("confirm", vi.fn().mockReturnValue(false));
+    render(<SettingsPage />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Disconnect" }));
+    expect(fetchMock).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
+
+  it("shows the error when starting the OAuth flow fails", async () => {
+    mockSWRData();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        status: 503,
+        ok: false,
+        json: async () => ({ detail: "slack credentials are not configured" }),
+      }),
+    );
+    render(<SettingsPage />);
+    await userEvent.click(screen.getByRole("button", { name: "Connect" }));
+    expect(
+      await screen.findByText("slack credentials are not configured"),
+    ).toBeInTheDocument();
+    vi.unstubAllGlobals();
+  });
+
+  it("dismisses the banner", async () => {
+    mockSWRData();
+    searchParams.value = new URLSearchParams("connected=slack");
+    render(<SettingsPage />);
+    const banner = await screen.findByText("Slack connected.");
+    await userEvent.click(banner.parentElement!.querySelector("button")!);
+    expect(screen.queryByText("Slack connected.")).not.toBeInTheDocument();
+  });
+
+  it("browses a platform, saves and unsaves targets", async () => {
+    mockSWRData();
+    const options = [
+      { external_id: "C1", display_name: "#general", target_type: "channel", meta: {}, saved_id: null },
+      { external_id: "C2", display_name: "#random", target_type: "channel", meta: {}, saved_id: 9 },
+    ];
+    const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+      if (url.includes("/integrations/slack/targets"))
+        return Promise.resolve({ status: 200, ok: true, json: async () => options });
+      if (init?.method === "POST")
+        return Promise.resolve({ status: 201, ok: true, json: async () => ({ id: 31 }) });
+      return Promise.resolve({ status: 204, ok: true, json: async () => ({}) });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<SettingsPage />);
+
+    // Only the active (slack) connection is browsable.
+    await userEvent.click(screen.getByRole("button", { name: "Browse Slack" }));
+    expect(await screen.findByText("#general")).toBeInTheDocument();
+
+    // Save the unsaved one…
+    await userEvent.click(screen.getByTitle("Add to quick share"));
+    await waitFor(() => expect(mutateMock).toHaveBeenCalledWith("/share-targets"));
+    const post = fetchMock.mock.calls.find((c) => c[1]?.method === "POST");
+    expect(JSON.parse(post![1].body)).toMatchObject({ platform: "slack", external_id: "C1" });
+    // …its button flips to saved (joining the already-saved #random).
+    expect(await screen.findAllByTitle("Remove from quick share")).toHaveLength(2);
+
+    // Unsave the already-saved one.
+    mutateMock.mockClear();
+    const removeButtons = screen.getAllByTitle("Remove from quick share");
+    await userEvent.click(removeButtons[removeButtons.length - 1]);
+    await waitFor(() => expect(mutateMock).toHaveBeenCalledWith("/share-targets"));
+    const del = fetchMock.mock.calls.find(
+      (c) => c[1]?.method === "DELETE" && String(c[0]).includes("/share-targets/9"),
+    );
+    expect(del).toBeTruthy();
+
+    // The browse button now closes the picker.
+    await userEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.queryByPlaceholderText(/Search Slack/)).not.toBeInTheDocument();
+    vi.unstubAllGlobals();
+  });
+
+  it("searches targets with the typed query", async () => {
+    mockSWRData();
+    const fetchMock = vi.fn().mockResolvedValue({ status: 200, ok: true, json: async () => [] });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<SettingsPage />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Browse Slack" }));
+    expect(await screen.findByText("Nothing matched.")).toBeInTheDocument();
+    await userEvent.type(screen.getByPlaceholderText(/Search Slack/), "ai");
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some((c) => String(c[0]).includes("targets?q=ai")),
+      ).toBe(true),
+    );
+    vi.unstubAllGlobals();
+  });
+
+  it("shows a picker error when the platform listing fails", async () => {
+    mockSWRData();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        status: 502,
+        ok: false,
+        json: async () => ({ detail: { message: "token revoked", reconnect: true } }),
+      }),
+    );
+    render(<SettingsPage />);
+    await userEvent.click(screen.getByRole("button", { name: "Browse Slack" }));
+    expect(await screen.findByText("token revoked")).toBeInTheDocument();
+    vi.unstubAllGlobals();
+  });
+
   it("prompts to connect before saving targets when nothing is connected", () => {
     mockSWRData({
       integrations: [
