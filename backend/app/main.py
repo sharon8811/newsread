@@ -6,7 +6,18 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
 from .db import init_db
-from .routers import ai, articles, auth, devices, feeds, integrations, projects, shares, users
+from .routers import (
+    activity,
+    ai,
+    articles,
+    auth,
+    devices,
+    feeds,
+    integrations,
+    projects,
+    shares,
+    users,
+)
 
 logging.basicConfig(level=logging.INFO)
 
@@ -42,6 +53,7 @@ app.include_router(projects.router, prefix="/api")
 app.include_router(ai.router, prefix="/api")
 app.include_router(devices.router, prefix="/api")
 app.include_router(integrations.router, prefix="/api")
+app.include_router(activity.router, prefix="/api")
 
 
 @app.get("/api/health")

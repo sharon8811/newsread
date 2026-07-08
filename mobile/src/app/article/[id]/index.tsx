@@ -17,6 +17,7 @@ import useSWR from "swr";
 
 import { api } from "@/lib/api";
 import { timeAgo } from "@/lib/format";
+import { useReadingTimer } from "@/lib/useReadingTimer";
 import { usePalette, type Palette } from "@/lib/theme";
 import type { AiStatus, ArticleDetail } from "@/lib/types";
 
@@ -56,6 +57,8 @@ export default function ArticleScreen() {
   const { data, error, mutate } = useSWR<ArticleDetail>(id ? `/articles/${id}` : null);
   const { data: ai } = useSWR<AiStatus>("/ai/status");
   const markedRead = useRef(false);
+
+  useReadingTimer(data?.id);
 
   // Opening an article marks it read, like the web app's article view.
   useEffect(() => {

@@ -8,6 +8,7 @@ import { api, fetcher, type Feed, type Project } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import FeedSettingsModal from "./FeedSettingsModal";
 import {
+  ActivityIcon,
   BookmarkIcon,
   FolderIcon,
   GearIcon,
@@ -160,6 +161,12 @@ export default function Sidebar() {
           label="Projects"
           badge={projectUnseen}
           badgeAccent
+        />
+        <NavLink
+          href="/activity"
+          active={pathname === "/activity"}
+          icon={<ActivityIcon />}
+          label="Activity"
         />
       </nav>
 

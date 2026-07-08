@@ -20,6 +20,16 @@ export function humanCount(value: number | null | undefined): string {
   return `${(value / 1_000_000_000).toFixed(1)}B`;
 }
 
+/** Reading-time totals: "1h 24m", "12m", "45s"; zero reads as "0m". */
+export function formatDuration(seconds: number): string {
+  if (seconds < 60) return seconds > 0 ? `${Math.round(seconds)}s` : "0m";
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest > 0 ? `${hours}h ${rest}m` : `${hours}h`;
+}
+
 export function domainOf(url: string): string {
   try {
     return new URL(url).hostname.replace(/^www\./, "");

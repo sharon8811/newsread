@@ -1,7 +1,8 @@
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy import (
     Boolean,
+    Date,
     DateTime,
     ForeignKey,
     Index,
@@ -186,6 +187,29 @@ class UserArticleState(Base):
     article_id: Mapped[int] = mapped_column(ForeignKey("articles.id", ondelete="CASCADE"), index=True)
     is_read: Mapped[bool] = mapped_column(Boolean, default=False)
     is_saved: Mapped[bool] = mapped_column(Boolean, default=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class ReadingActivity(Base):
+    """Time a user spent reading one article on one day, split by client kind.
+    Heartbeats increment `seconds`; `day` is the client's local date so "today"
+    on the activity page flips at the user's midnight, not UTC's. Kept
+    per-article (not just per-day) so interests can be inferred later."""
+
+    __tablename__ = "reading_activity"
+    __table_args__ = (
+        UniqueConstraint("user_id", "article_id", "day", "source"),
+        Index("ix_reading_activity_user_day", "user_id", "day"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    article_id: Mapped[int] = mapped_column(ForeignKey("articles.id", ondelete="CASCADE"), index=True)
+    day: Mapped[date] = mapped_column(Date)
+    source: Mapped[str] = mapped_column(String(8))  # 'web' | 'mobile'
+    seconds: Mapped[int] = mapped_column(Integer, default=0)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
