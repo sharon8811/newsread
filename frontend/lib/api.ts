@@ -227,6 +227,55 @@ export type AiStatus = {
   model: string | null;
   search: boolean;
   search_provider: "searxng" | "tavily" | null;
+  source?: "user" | "system" | null; // whose key interactive AI calls run on
+};
+
+// ——— Bring-your-own LLM key ———
+
+export type AIProvider = "openai" | "anthropic" | "custom";
+
+export const AI_PROVIDER_LABELS: Record<AIProvider, string> = {
+  openai: "OpenAI",
+  anthropic: "Anthropic",
+  custom: "Custom (OpenAI-compatible)",
+};
+
+export type AIImageSettings = {
+  provider: AIProvider;
+  model: string;
+  base_url: string;
+  key_hint: string;
+};
+
+export type AISettings = {
+  configured: boolean; // the user saved their own key
+  system_available: boolean; // a server-wide default exists to fall back to
+  provider: AIProvider | null;
+  model: string | null;
+  base_url: string | null;
+  key_hint: string | null; // keys are write-only; this is all that comes back
+  image: AIImageSettings | null;
+};
+
+export type AIImageSettingsSave = {
+  provider: AIProvider;
+  model: string;
+  api_key?: string; // omitted keeps the stored key / falls back to the main one
+  base_url?: string;
+};
+
+export type AISettingsSave = {
+  provider: AIProvider;
+  model: string;
+  api_key?: string; // omitted keeps the stored key
+  base_url?: string;
+  image?: AIImageSettingsSave | null;
+};
+
+export type AITestResult = {
+  ok: boolean;
+  detail: string | null;
+  model: string | null;
 };
 
 export type ToolEvent = {
