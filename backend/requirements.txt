@@ -16,4 +16,7 @@ pgvector>=0.3
 pydantic-ai-slim[openai,tavily]>=2.0,<3
 scrapling[fetchers]>=0.4
 trafilatura>=1.12
-cryptography>=43
+# Capped <46: cryptography 46+ bundles an OpenSSL that uses ARMv8 crypto
+# instructions Docker Desktop's Apple-Silicon VM doesn't expose, so any Fernet
+# call SIGILLs (crashes the backend on startup). 43–45 run fine.
+cryptography>=43,<46
