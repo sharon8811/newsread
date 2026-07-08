@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
@@ -449,3 +449,46 @@ class MessageOut(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+# --- Activity ---
+
+ActivitySource = Literal["web", "mobile"]
+ActivityRange = Literal["week", "month", "year"]
+
+
+class HeartbeatIn(BaseModel):
+    article_id: int
+    # One heartbeat covers at most ~2 minutes so a stuck client can't inflate
+    # the stats; well-behaved clients flush every ~30s.
+    seconds: int = Field(ge=1, le=120)
+    source: ActivitySource
+    day: date  # client-local date, so "today" flips at the user's midnight
+
+
+class ActivityDayOut(BaseModel):
+    day: date
+    seconds: int
+
+
+class ActivityFeedOut(BaseModel):
+    feed_id: int
+    title: str
+    seconds: int
+
+
+class ActivityArticleOut(BaseModel):
+    article_id: int
+    title: str
+    feed_title: str
+    seconds: int
+
+
+class ActivitySummaryOut(BaseModel):
+    range: ActivityRange
+    total_seconds: int
+    prev_total_seconds: int  # same-length window immediately before; powers the delta
+    days: list[ActivityDayOut]  # dense series oldest→newest, zero-filled
+    streak_days: int
+    top_feeds: list[ActivityFeedOut]
+    top_articles: list[ActivityArticleOut]

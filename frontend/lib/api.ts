@@ -316,6 +316,31 @@ export type Share = {
   seen_at: string | null;
 };
 
+// ——— reading activity ———
+
+export type ActivityRange = "week" | "month" | "year";
+
+export type ActivityDay = { day: string; seconds: number };
+
+export type ActivityFeed = { feed_id: number; title: string; seconds: number };
+
+export type ActivityArticle = {
+  article_id: number;
+  title: string;
+  feed_title: string;
+  seconds: number;
+};
+
+export type ActivitySummary = {
+  range: ActivityRange;
+  total_seconds: number;
+  prev_total_seconds: number; // same-length window just before; powers the delta
+  days: ActivityDay[]; // dense, oldest → newest
+  streak_days: number;
+  top_feeds: ActivityFeed[];
+  top_articles: ActivityArticle[];
+};
+
 // ——— messaging integrations (share to Slack / Teams as the user) ———
 
 export type MessagingPlatform = "slack" | "teams";

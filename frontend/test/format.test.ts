@@ -1,5 +1,31 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { timeAgo, humanCount, domainOf, describeLink } from "@/lib/format";
+import { timeAgo, humanCount, domainOf, describeLink, formatDuration } from "@/lib/format";
+
+describe("formatDuration", () => {
+  it("shows zero as 0m", () => {
+    expect(formatDuration(0)).toBe("0m");
+  });
+
+  it("shows sub-minute values in seconds", () => {
+    expect(formatDuration(45)).toBe("45s");
+  });
+
+  it("shows minutes", () => {
+    expect(formatDuration(12 * 60)).toBe("12m");
+  });
+
+  it("rounds 59.5+ minutes up into hours", () => {
+    expect(formatDuration(3599)).toBe("1h");
+  });
+
+  it("shows hours with a minute remainder", () => {
+    expect(formatDuration(2 * 3600 + 14 * 60)).toBe("2h 14m");
+  });
+
+  it("drops a zero remainder", () => {
+    expect(formatDuration(3 * 3600)).toBe("3h");
+  });
+});
 
 describe("timeAgo", () => {
   afterEach(() => vi.useRealTimers());

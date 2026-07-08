@@ -18,6 +18,7 @@ import {
 } from "@/components/icons";
 import { api, fetcher, streamQA, type ArticleDetail } from "@/lib/api";
 import { domainOf, timeAgo } from "@/lib/format";
+import { useReadingTimer } from "@/lib/useReadingTimer";
 
 export default function ArticlePage() {
   const { id } = useParams<{ id: string }>();
@@ -27,6 +28,8 @@ export default function ArticlePage() {
   const [sharing, setSharing] = useState(false);
   const [pickingProject, setPickingProject] = useState(false);
   const markedRef = useRef(false);
+
+  useReadingTimer(article?.id);
 
   useEffect(() => {
     if (article && !article.is_read && !markedRef.current) {
