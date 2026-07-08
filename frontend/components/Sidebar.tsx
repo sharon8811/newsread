@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import useSWR, { mutate } from "swr";
-import { api, fetcher, type Feed, type Project } from "@/lib/api";
+import { api, fetcher, type AISettings, type Feed, type Project } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import FeedSettingsModal from "./FeedSettingsModal";
 import {
@@ -18,6 +18,7 @@ import {
   PlusIcon,
   RssIcon,
   ShareIcon,
+  SparkleIcon,
   UsersIcon,
   XIcon,
 } from "./icons";
@@ -83,6 +84,9 @@ export default function Sidebar() {
     refreshInterval: 30_000,
   });
   const projectUnseen = projects?.reduce((sum, p) => sum + p.unseen_count, 0) ?? 0;
+  // AI usage is only tracked for calls on the user's own key, so the page is
+  // only offered once they've saved one.
+  const { data: aiSettings } = useSWR<AISettings>("/ai/settings", fetcher);
 
   const [adding, setAdding] = useState(false);
   const [newUrl, setNewUrl] = useState("");
@@ -168,6 +172,14 @@ export default function Sidebar() {
           icon={<ActivityIcon />}
           label="Activity"
         />
+        {aiSettings?.configured && (
+          <NavLink
+            href="/usage"
+            active={pathname === "/usage"}
+            icon={<SparkleIcon />}
+            label="AI usage"
+          />
+        )}
       </nav>
 
       <div className="mt-7 flex items-center justify-between px-5">

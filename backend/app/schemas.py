@@ -561,3 +561,51 @@ class ActivitySummaryOut(BaseModel):
     streak_days: int
     top_feeds: list[ActivityFeedOut]
     top_articles: list[ActivityArticleOut]
+
+
+# --- LLM usage (bring-your-own-key audit trail) ---
+
+class UsageDayOut(BaseModel):
+    day: date
+    calls: int
+    tokens: int  # prompt + completion
+
+
+class UsageFeatureOut(BaseModel):
+    feature: str
+    calls: int
+    tokens: int
+
+
+class UsageModelOut(BaseModel):
+    provider: str
+    model: str
+    calls: int
+    tokens: int
+
+
+class UsageSummaryOut(BaseModel):
+    range: ActivityRange
+    configured: bool  # the user currently has their own key saved
+    total_calls: int
+    total_tokens: int
+    prev_total_tokens: int  # same-length window immediately before; powers the delta
+    error_count: int
+    days: list[UsageDayOut]  # dense series oldest→newest, zero-filled
+    by_feature: list[UsageFeatureOut]
+    by_model: list[UsageModelOut]
+
+
+class UsageEventOut(BaseModel):
+    id: int
+    feature: str
+    provider: str
+    model: str
+    prompt_tokens: int
+    completion_tokens: int
+    duration_ms: int
+    status: str
+    error: str | None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
