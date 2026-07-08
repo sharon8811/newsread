@@ -21,6 +21,7 @@ import {
   TrashIcon,
   XIcon,
 } from "@/components/icons";
+import AISettingsSection from "@/components/AISettingsSection";
 
 function PlatformIcon({ platform, size }: { platform: MessagingPlatform; size?: number }) {
   return platform === "slack" ? <SlackIcon size={size} /> : <TeamsIcon size={size} />;
@@ -409,6 +410,8 @@ function SettingsContent() {
             </div>
           )}
         </section>
+
+        <AISettingsSection />
       </div>
     </>
   );
