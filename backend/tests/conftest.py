@@ -41,6 +41,11 @@ for _var in (
 
 # Messaging-integration tests need deterministic values regardless of .env:
 # a fixed (valid) Fernet key and known callback/frontend origins.
+# bcrypt at production cost (12 rounds, ~0.2-0.3s per hash) dominates suite
+# runtime — nearly every test creates users. 4 is bcrypt's minimum; the
+# hash/verify round-trip stays fully exercised.
+os.environ["NEWSREAD_BCRYPT_ROUNDS"] = "4"
+
 os.environ["NEWSREAD_TOKEN_ENCRYPTION_KEY"] = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
 os.environ["NEWSREAD_OAUTH_REDIRECT_BASE"] = "http://testserver"
 os.environ["NEWSREAD_FRONTEND_BASE_URL"] = "http://front.test"

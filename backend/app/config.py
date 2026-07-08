@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6380/0"
     jwt_secret: str = "dev-secret-change-me"
     jwt_expires_days: int = 30
+    # bcrypt work factor for password hashing. Tests lower it (hashing at cost
+    # 12 dominates suite runtime); production must keep >= 12.
+    bcrypt_rounds: int = 12
     cors_origins: str = "http://localhost:3000"
     feed_refresh_minutes: int = 15
 
