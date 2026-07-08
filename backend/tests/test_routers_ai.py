@@ -36,7 +36,7 @@ async def test_ai_status_configured(client, users, monkeypatch):
     monkeypatch.setattr(llm, "is_configured", lambda: True)
     monkeypatch.setattr(qa_agent, "search_enabled", lambda: True)
     monkeypatch.setattr(qa_agent, "search_provider", lambda: "searxng")
-    monkeypatch.setattr(ai_router.settings, "openai_model", "my-model")
+    monkeypatch.setattr(llm.settings, "openai_model", "my-model")
     user = await users.create()
     resp = await client.get("/api/ai/status", headers=users.auth(user))
     body = resp.json()
@@ -61,7 +61,7 @@ async def test_summarize_generates(client, users, data, monkeypatch):
     user, feed, art = await _setup(users, data)
     monkeypatch.setattr(llm, "is_configured", lambda: True)
 
-    async def fake_generate(session, article):
+    async def fake_generate(session, article, **kwargs):
         article.summary = "generated full"
         article.summary_short = "gen short"
         article.summary_medium = "gen medium"
@@ -84,7 +84,7 @@ async def test_summarize_thin_content(client, users, data, monkeypatch):
     user, feed, art = await _setup(users, data)
     monkeypatch.setattr(llm, "is_configured", lambda: True)
 
-    async def raise_thin(session, article):
+    async def raise_thin(session, article, **kwargs):
         raise ThinContentError()
 
     monkeypatch.setattr(ai_router, "generate_summaries", raise_thin)
@@ -96,7 +96,7 @@ async def test_summarize_llm_failure(client, users, data, monkeypatch):
     user, feed, art = await _setup(users, data)
     monkeypatch.setattr(llm, "is_configured", lambda: True)
 
-    async def boom(session, article):
+    async def boom(session, article, **kwargs):
         raise RuntimeError("llm down")
 
     monkeypatch.setattr(ai_router, "generate_summaries", boom)
@@ -111,7 +111,7 @@ async def test_summarize_force_regenerates(client, users, data, monkeypatch):
     await data.session.commit()
     monkeypatch.setattr(llm, "is_configured", lambda: True)
 
-    async def fake_generate(session, article):
+    async def fake_generate(session, article, **kwargs):
         article.summary = "new full"
         article.summary_short = "new short"
 
@@ -510,3 +510,241 @@ async def test_ask_project_stream_article_without_summary_gets_hint(
     await client.post(f"/api/projects/{project.id}/qa/stream",
                       json={"content": "q"}, headers=users.auth(owner))
     assert "no summary available" in captured["corpus"]
+
+
+# --- bring-your-own-key: per-user config + usage logging ---
+
+from app import crypto
+from app.models import LLMUsage, UserAISettings
+
+OWN_KEY = "sk-own-12345678"
+
+
+async def _own_key(session, user, *, provider="openai", model="gpt-5"):
+    session.add(UserAISettings(
+        user_id=user.id, provider=provider, model=model,
+        api_key_enc=crypto.encrypt_token(OWN_KEY), key_hint=OWN_KEY[-4:],
+    ))
+    await session.commit()
+
+
+async def test_ai_status_reports_user_source(client, users, session, monkeypatch):
+    monkeypatch.setattr(qa_agent, "search_enabled", lambda: False)
+    monkeypatch.setattr(qa_agent, "search_provider", lambda: None)
+    user = await users.create()
+    await _own_key(session, user, model="my-own-model")
+    body = (await client.get("/api/ai/status", headers=users.auth(user))).json()
+    assert body["configured"] is True
+    assert body["model"] == "my-own-model"
+    assert body["source"] == "user"
+
+
+async def test_ai_status_reports_system_source(client, users, monkeypatch):
+    monkeypatch.setattr(llm, "is_configured", lambda: True)
+    monkeypatch.setattr(qa_agent, "search_enabled", lambda: False)
+    monkeypatch.setattr(qa_agent, "search_provider", lambda: None)
+    user = await users.create()
+    body = (await client.get("/api/ai/status", headers=users.auth(user))).json()
+    assert body["source"] == "system"
+
+
+async def test_summarize_on_user_key_logs_usage(client, users, data, session, monkeypatch):
+    user, feed, art = await _setup(users, data)
+    await _own_key(session, user)
+    captured = {}
+
+    async def fake_generate(session_, article, **kwargs):
+        captured["config"] = kwargs["config"]
+        kwargs["usage"].add(50, 10)
+        article.summary = "full"
+        article.summary_short = "s"
+
+    monkeypatch.setattr(ai_router, "generate_summaries", fake_generate)
+    resp = await client.post(f"/api/articles/{art.id}/summarize", headers=users.auth(user))
+    assert resp.status_code == 200
+    assert captured["config"].user_owned is True
+    assert captured["config"].api_key == OWN_KEY
+    row = (await session.scalars(select(LLMUsage))).one()
+    assert row.feature == "summary"
+    assert row.status == "ok"
+    assert row.prompt_tokens == 50
+    assert row.completion_tokens == 10
+
+
+async def test_summarize_failure_on_user_key_logs_error(client, users, data, session, monkeypatch):
+    user, feed, art = await _setup(users, data)
+    await _own_key(session, user)
+
+    async def boom(session_, article, **kwargs):
+        raise RuntimeError("llm down")
+
+    monkeypatch.setattr(ai_router, "generate_summaries", boom)
+    resp = await client.post(f"/api/articles/{art.id}/summarize", headers=users.auth(user))
+    assert resp.status_code == 502
+    row = (await session.scalars(select(LLMUsage))).one()
+    assert row.status == "error"
+    assert "llm down" in row.error
+
+
+async def test_summarize_on_system_key_not_logged(client, users, data, session, monkeypatch):
+    user, feed, art = await _setup(users, data)
+    monkeypatch.setattr(llm, "is_configured", lambda: True)
+
+    async def fake_generate(session_, article, **kwargs):
+        article.summary = "full"
+        article.summary_short = "s"
+
+    monkeypatch.setattr(ai_router, "generate_summaries", fake_generate)
+    resp = await client.post(f"/api/articles/{art.id}/summarize", headers=users.auth(user))
+    assert resp.status_code == 200
+    assert (await session.scalars(select(LLMUsage))).all() == []
+
+
+async def test_summarize_undecryptable_key_503(client, users, data, session, monkeypatch):
+    user, feed, art = await _setup(users, data)
+    await _own_key(session, user)
+
+    def broken(ciphertext):
+        raise crypto.TokenCryptoError("key changed")
+
+    monkeypatch.setattr(crypto, "decrypt_token", broken)
+    resp = await client.post(f"/api/articles/{art.id}/summarize", headers=users.auth(user))
+    assert resp.status_code == 503
+    assert "re-enter" in resp.json()["detail"]
+
+
+async def test_share_message_on_user_key_logs_usage(client, users, data, session, monkeypatch):
+    user, feed, art = await _setup(users, data)
+    await _own_key(session, user)
+
+    async def fake_share(**kwargs):
+        kwargs["usage"].add(7, 3)
+        return "a note"
+
+    monkeypatch.setattr(llm, "share_message", fake_share)
+    resp = await client.post("/api/ai/share-message",
+                             json={"article_id": art.id}, headers=users.auth(user))
+    assert resp.status_code == 200
+    row = (await session.scalars(select(LLMUsage))).one()
+    assert row.feature == "share"
+    assert row.prompt_tokens == 7
+    assert row.completion_tokens == 3
+
+
+async def test_ask_stream_on_user_key_logs_usage(client, users, data, session, monkeypatch):
+    user, feed, art = await _setup(users, data)
+    await _own_key(session, user)
+    monkeypatch.setattr(qa_agent, "search_enabled", lambda: False)
+
+    async def fake_ensure(session_, article):
+        return "x" * 500
+
+    monkeypatch.setattr(ai_router, "ensure_full_text", fake_ensure)
+    captured = {}
+
+    async def fake_stream(**kwargs):
+        captured["config"] = kwargs["config"]
+        yield {"type": "result", "content": "answer", "tool_events": [],
+               "usage": {"prompt_tokens": 11, "completion_tokens": 22}}
+
+    monkeypatch.setattr(qa_agent, "stream_answer", fake_stream)
+    resp = await client.post(f"/api/articles/{art.id}/qa/stream",
+                             json={"content": "q"}, headers=users.auth(user))
+    assert resp.status_code == 200
+    assert captured["config"].user_owned is True
+    row = (await session.scalars(select(LLMUsage))).one()
+    assert row.feature == "qa"
+    assert row.prompt_tokens == 11
+    assert row.completion_tokens == 22
+    assert row.status == "ok"
+
+
+async def test_ask_stream_error_on_user_key_logs_error(client, users, data, session, monkeypatch):
+    user, feed, art = await _setup(users, data)
+    await _own_key(session, user)
+    monkeypatch.setattr(qa_agent, "search_enabled", lambda: False)
+
+    async def fake_ensure(session_, article):
+        return "x" * 500
+
+    monkeypatch.setattr(ai_router, "ensure_full_text", fake_ensure)
+
+    async def boom_stream(**kwargs):
+        raise RuntimeError("agent crashed")
+        yield  # pragma: no cover
+
+    monkeypatch.setattr(qa_agent, "stream_answer", boom_stream)
+    resp = await client.post(f"/api/articles/{art.id}/qa/stream",
+                             json={"content": "q"}, headers=users.auth(user))
+    assert any(e["type"] == "error" for e in _parse_sse(resp.text))
+    row = (await session.scalars(select(LLMUsage))).one()
+    assert row.status == "error"
+    assert "agent crashed" in row.error
+
+
+async def test_ai_status_undecryptable_key_reads_unconfigured(client, users, session, monkeypatch):
+    monkeypatch.setattr(qa_agent, "search_enabled", lambda: False)
+    monkeypatch.setattr(qa_agent, "search_provider", lambda: None)
+    user = await users.create()
+    await _own_key(session, user)
+
+    def broken(ciphertext):
+        raise crypto.TokenCryptoError("key changed")
+
+    monkeypatch.setattr(crypto, "decrypt_token", broken)
+    body = (await client.get("/api/ai/status", headers=users.auth(user))).json()
+    assert body["configured"] is False
+    assert body["source"] is None
+
+
+async def test_share_message_empty_502(client, users, data, monkeypatch):
+    user, feed, art = await _setup(users, data)
+    monkeypatch.setattr(llm, "is_configured", lambda: True)
+
+    async def fake_share(**kwargs):
+        return ""
+
+    monkeypatch.setattr(llm, "share_message", fake_share)
+    resp = await client.post("/api/ai/share-message",
+                             json={"article_id": art.id}, headers=users.auth(user))
+    assert resp.status_code == 502
+
+
+async def test_ask_stream_error_discards_flushed_conversation(client, users, data, session, monkeypatch):
+    """A failed first question must not persist an empty conversation row —
+    the error-path usage commit rolls back first."""
+    user, feed, art = await _setup(users, data)
+    await _own_key(session, user)
+    monkeypatch.setattr(qa_agent, "search_enabled", lambda: False)
+
+    async def fake_ensure(session_, article):
+        return "x" * 500
+
+    monkeypatch.setattr(ai_router, "ensure_full_text", fake_ensure)
+
+    async def boom_stream(**kwargs):
+        raise RuntimeError("agent crashed")
+        yield  # pragma: no cover
+
+    monkeypatch.setattr(qa_agent, "stream_answer", boom_stream)
+    await client.post(f"/api/articles/{art.id}/qa/stream",
+                      json={"content": "q"}, headers=users.auth(user))
+    assert (await session.scalars(select(Conversation))).all() == []
+    row = (await session.scalars(select(LLMUsage))).one()
+    assert row.status == "error"
+
+
+async def test_share_message_empty_on_user_key_logs_error(client, users, data, session, monkeypatch):
+    user, feed, art = await _setup(users, data)
+    await _own_key(session, user)
+
+    async def fake_share(**kwargs):
+        return ""
+
+    monkeypatch.setattr(llm, "share_message", fake_share)
+    resp = await client.post("/api/ai/share-message",
+                             json={"article_id": art.id}, headers=users.auth(user))
+    assert resp.status_code == 502
+    row = (await session.scalars(select(LLMUsage))).one()
+    assert row.status == "error"
+    assert "empty" in row.error

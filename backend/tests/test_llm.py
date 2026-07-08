@@ -70,3 +70,89 @@ async def test_complete_handles_none_content(monkeypatch):
     monkeypatch.setattr(llm, "get_client", lambda: _fake_client(None))
     out = await llm._complete([{"role": "user", "content": "x"}], max_tokens=10)
     assert out == ""
+
+
+def _fake_client_with_usage(content, usage):
+    async def create(**kwargs):
+        msg = types.SimpleNamespace(content=content)
+        choice = types.SimpleNamespace(message=msg)
+        return types.SimpleNamespace(choices=[choice], usage=usage)
+
+    return types.SimpleNamespace(
+        chat=types.SimpleNamespace(completions=types.SimpleNamespace(create=create))
+    )
+
+
+async def test_complete_accumulates_usage(monkeypatch):
+    usage_payload = types.SimpleNamespace(prompt_tokens=9, completion_tokens=4)
+    monkeypatch.setattr(llm, "get_client", lambda: _fake_client_with_usage("out", usage_payload))
+    usage = llm.TokenUsage()
+    await llm._complete([{"role": "user", "content": "x"}], max_tokens=10, usage=usage)
+    assert usage.prompt_tokens == 9
+    assert usage.completion_tokens == 4
+
+
+async def test_complete_system_config_uses_shared_client(monkeypatch):
+    monkeypatch.setattr(llm, "get_client", lambda: _fake_client("shared"))
+    config = llm.LLMConfig(provider="system", api_key="k", base_url=None, model="m")
+    out = await llm._complete([{"role": "user", "content": "x"}], max_tokens=10, config=config)
+    assert out == "shared"
+
+
+async def test_complete_user_config_uses_scoped_client(monkeypatch):
+    captured = {}
+
+    class FakeAsyncOpenAI:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+            captured["closed"] = False
+            self.chat = _fake_client("scoped").chat
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            captured["closed"] = True
+            return False
+
+    monkeypatch.setattr(llm, "AsyncOpenAI", FakeAsyncOpenAI)
+    config = llm.LLMConfig(provider="custom", api_key="sk-own-12345678",
+                           base_url="http://ollama.local/v1", model="llama",
+                           user_owned=True)
+    out = await llm._complete([{"role": "user", "content": "x"}], max_tokens=10, config=config)
+    assert out == "scoped"
+    assert captured["api_key"] == "sk-own-12345678"
+    assert captured["base_url"] == "http://ollama.local/v1"
+    assert captured["closed"] is True  # the per-call client never outlives the call
+
+
+async def test_share_message_polishes_draft(monkeypatch):
+    captured = {}
+
+    async def fake_complete(messages, max_tokens, **kwargs):
+        captured["user"] = messages[1]["content"]
+        return "note"
+
+    monkeypatch.setattr(llm, "_complete", fake_complete)
+    out = await llm.share_message(
+        "T", "the summary", draft="my draft", tone="casual", target_name="#general"
+    )
+    assert out == "note"
+    assert "Polish this draft" in captured["user"]
+    assert "my draft" in captured["user"]
+    assert "Tone: casual" in captured["user"]
+    assert "#general" in captured["user"]
+    assert "the summary" in captured["user"]
+
+
+async def test_share_message_from_scratch(monkeypatch):
+    captured = {}
+
+    async def fake_complete(messages, max_tokens, **kwargs):
+        captured["user"] = messages[1]["content"]
+        return "note"
+
+    monkeypatch.setattr(llm, "_complete", fake_complete)
+    await llm.share_message("T", "")
+    assert "Write the message from scratch." in captured["user"]
+    assert "Article summary" not in captured["user"]

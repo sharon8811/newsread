@@ -39,6 +39,7 @@ from pydantic_ai.usage import UsageLimits
 from scrapling.fetchers import AsyncFetcher
 from tavily import AsyncTavilyClient
 
+from . import llm
 from .config import settings
 
 logger = logging.getLogger(__name__)
@@ -198,13 +199,14 @@ def _tools() -> list:
     return []
 
 
-def _model() -> OpenAIChatModel:
+def _model(config: llm.LLMConfig | None = None) -> OpenAIChatModel:
+    config = config or llm.system_config()
+    if config is None:
+        # Routes gate on is_configured(); this protects any direct caller.
+        raise RuntimeError("No LLM is configured")
     return OpenAIChatModel(
-        settings.openai_model,
-        provider=OpenAIProvider(
-            base_url=settings.openai_base_url or None,
-            api_key=settings.openai_api_key,
-        ),
+        config.model,
+        provider=OpenAIProvider(base_url=config.base_url, api_key=config.api_key),
     )
 
 
@@ -295,14 +297,16 @@ async def stream_answer(
     entities: list[dict],
     history: list[tuple[str, str]],
     question: str,
+    config: llm.LLMConfig | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     """Run the article agent, yielding UI-shaped events.
 
     Event types: status | tool_call | tool_result | delta | result.
-    The final event is always {"type": "result", "content", "tool_events"}.
+    The final event is always {"type": "result", "content", "tool_events",
+    "usage"}.
     """
     async for event in _stream_agent(
-        _instructions(title, url, text, published_at, entities), history, question
+        _instructions(title, url, text, published_at, entities), history, question, config
     ):
         yield event
 
@@ -314,6 +318,7 @@ async def stream_project_answer(
     corpus: str,
     history: list[tuple[str, str]],
     question: str,
+    config: llm.LLMConfig | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     """Same event stream as stream_answer, over a project's collection."""
     instructions = PROJECT_QA_INSTRUCTIONS.format(
@@ -322,15 +327,18 @@ async def stream_project_answer(
         description=f"\nProject description: {description}\n" if description else "",
         corpus=corpus,
     )
-    async for event in _stream_agent(instructions, history, question):
+    async for event in _stream_agent(instructions, history, question, config):
         yield event
 
 
 async def _stream_agent(
-    instructions: str, history: list[tuple[str, str]], question: str
+    instructions: str,
+    history: list[tuple[str, str]],
+    question: str,
+    config: llm.LLMConfig | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     agent = Agent(
-        _model(),
+        _model(config),
         instructions=instructions,
         tools=_tools(),
         model_settings=ModelSettings(temperature=0.3, max_tokens=2000),
@@ -339,6 +347,7 @@ async def _stream_agent(
     tool_events: list[dict] = []
     by_call_id: dict[str, dict] = {}
     output = ""
+    usage: dict[str, int] = {"prompt_tokens": 0, "completion_tokens": 0}
 
     async with agent.run_stream_events(
         question,
@@ -378,5 +387,15 @@ async def _stream_agent(
                     yield {"type": "delta", "text": event.delta.content_delta}
             elif isinstance(event, AgentRunResultEvent):
                 output = str(event.result.output)
+                run_usage = event.result.usage()
+                usage = {
+                    "prompt_tokens": run_usage.input_tokens or 0,
+                    "completion_tokens": run_usage.output_tokens or 0,
+                }
 
-    yield {"type": "result", "content": output.strip(), "tool_events": tool_events}
+    yield {
+        "type": "result",
+        "content": output.strip(),
+        "tool_events": tool_events,
+        "usage": usage,
+    }

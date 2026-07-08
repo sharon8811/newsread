@@ -427,6 +427,75 @@ class AiStatusOut(BaseModel):
     model: str | None
     search: bool = False  # web search/extract tools available to the Q&A agent
     search_provider: str | None = None  # "searxng" | "tavily" | None
+    source: Literal["user", "system"] | None = None  # whose key interactive calls run on
+
+
+AIProvider = Literal["openai", "anthropic", "custom"]
+
+
+def _ai_base_url(value: str | None) -> str | None:
+    """Unlike _http_link, empty stays empty — '' means 'not set' here."""
+    if value is None:
+        return None
+    value = value.strip()
+    if value and not value.startswith(("http://", "https://")):
+        raise ValueError("must be an http(s) URL")
+    return value
+
+
+class AIImageSettingsIn(BaseModel):
+    provider: AIProvider
+    model: str = Field(min_length=1, max_length=120)
+    # None keeps the stored key — or, when the provider matches the main one,
+    # reuses the main key at call time.
+    api_key: str | None = Field(default=None, max_length=512)
+    base_url: str = Field(default="", max_length=2048)  # custom only
+
+    _check_base_url = field_validator("base_url")(_ai_base_url)
+
+
+class AISettingsIn(BaseModel):
+    provider: AIProvider
+    model: str = Field(min_length=1, max_length=120)
+    api_key: str | None = Field(default=None, max_length=512)  # None = keep stored key
+    base_url: str = Field(default="", max_length=2048)  # custom only
+    image: AIImageSettingsIn | None = None  # None clears the image model
+
+    _check_base_url = field_validator("base_url")(_ai_base_url)
+
+
+class AIImageSettingsOut(BaseModel):
+    provider: AIProvider
+    model: str
+    base_url: str = ""
+    key_hint: str = ""
+
+
+class AISettingsOut(BaseModel):
+    configured: bool  # the user saved their own key
+    system_available: bool  # a server-wide default exists to fall back to
+    provider: AIProvider | None = None
+    model: str | None = None
+    base_url: str | None = None
+    key_hint: str | None = None  # keys are write-only; this is all that comes back
+    image: AIImageSettingsOut | None = None
+
+
+class AITestIn(BaseModel):
+    """Values to test-drive; anything omitted falls back to the stored settings."""
+
+    provider: AIProvider | None = None
+    model: str | None = Field(default=None, max_length=120)
+    api_key: str | None = Field(default=None, max_length=512)
+    base_url: str | None = Field(default=None, max_length=2048)
+
+    _check_base_url = field_validator("base_url")(_ai_base_url)
+
+
+class AITestOut(BaseModel):
+    ok: bool
+    detail: str | None = None
+    model: str | None = None
 
 
 class SummaryOut(BaseModel):

@@ -361,6 +361,14 @@ def _new(cls, **attrs):
     return obj
 
 
+def _final(output, prompt=3, completion=7):
+    """A fake AgentRunResultEvent with the usage() the stream reads."""
+    return _new(AgentRunResultEvent, result=types.SimpleNamespace(
+        output=output,
+        usage=lambda: types.SimpleNamespace(input_tokens=prompt, output_tokens=completion),
+    ))
+
+
 class _FakeEvents:
     def __init__(self, events):
         self._events = events
@@ -388,7 +396,7 @@ def _install_fake_agent(monkeypatch, events):
             return _FakeEvents(events)
 
     monkeypatch.setattr(qa_agent, "Agent", FakeAgent)
-    monkeypatch.setattr(qa_agent, "_model", lambda: object())
+    monkeypatch.setattr(qa_agent, "_model", lambda config=None: object())
     monkeypatch.setattr(qa_agent, "_tools", lambda: [])
 
 
@@ -411,7 +419,7 @@ async def test_stream_answer_full_event_flow(monkeypatch):
     text_start = _new(PartStartEvent, part=_new(TextPart, content="Hello"))
     thinking = _new(PartStartEvent, part=_new(ThinkingPart, content="hmm"))
     delta = _new(PartDeltaEvent, delta=_new(TextPartDelta, content_delta=" world"))
-    final = _new(AgentRunResultEvent, result=types.SimpleNamespace(output="Hello world"))
+    final = _final("Hello world")
 
     _install_fake_agent(monkeypatch, [call, result_ev, text_start, thinking, delta, final])
     events = await _drain(**BASE_KWARGS)
@@ -431,7 +439,7 @@ async def test_stream_answer_tool_result_without_matching_call(monkeypatch):
     # A result event whose call id was never seen -> record is None branch.
     orphan = _new(FunctionToolResultEvent, part=types.SimpleNamespace(
         tool_call_id="unknown", content="some text"))
-    final = _new(AgentRunResultEvent, result=types.SimpleNamespace(output="answer"))
+    final = _final("answer")
     _install_fake_agent(monkeypatch, [orphan, final])
     events = await _drain(**BASE_KWARGS)
     assert any(e["type"] == "tool_result" for e in events)
@@ -440,7 +448,7 @@ async def test_stream_answer_tool_result_without_matching_call(monkeypatch):
 
 async def test_stream_answer_empty_text_part_ignored(monkeypatch):
     empty_text = _new(PartStartEvent, part=_new(TextPart, content=""))
-    final = _new(AgentRunResultEvent, result=types.SimpleNamespace(output="x"))
+    final = _final("x")
     _install_fake_agent(monkeypatch, [empty_text, final])
     events = await _drain(**BASE_KWARGS)
     # Empty TextPart content yields no delta.
@@ -450,7 +458,7 @@ async def test_stream_answer_empty_text_part_ignored(monkeypatch):
 # --- stream_project_answer ---
 
 async def test_stream_project_answer_builds_project_instructions(monkeypatch):
-    final = _new(AgentRunResultEvent, result=types.SimpleNamespace(output="ok"))
+    final = _final("ok")
     captured = {}
 
     class FakeAgent:
@@ -461,21 +469,22 @@ async def test_stream_project_answer_builds_project_instructions(monkeypatch):
             return _FakeEvents([final])
 
     monkeypatch.setattr(qa_agent, "Agent", FakeAgent)
-    monkeypatch.setattr(qa_agent, "_model", lambda: object())
+    monkeypatch.setattr(qa_agent, "_model", lambda config=None: object())
     monkeypatch.setattr(qa_agent, "_tools", lambda: [])
 
     events = [e async for e in qa_agent.stream_project_answer(
         name="AI Research", description="the frontier",
         corpus="### Article One\nsummary", history=[], question="themes?",
     )]
-    assert events[-1] == {"type": "result", "content": "ok", "tool_events": []}
+    assert events[-1] == {"type": "result", "content": "ok", "tool_events": [],
+                          "usage": {"prompt_tokens": 3, "completion_tokens": 7}}
     assert 'project "AI Research"' in captured["instructions"]
     assert "Project description: the frontier" in captured["instructions"]
     assert "### Article One" in captured["instructions"]
 
 
 async def test_stream_project_answer_omits_empty_description(monkeypatch):
-    final = _new(AgentRunResultEvent, result=types.SimpleNamespace(output="ok"))
+    final = _final("ok")
     captured = {}
 
     class FakeAgent:
@@ -486,10 +495,26 @@ async def test_stream_project_answer_omits_empty_description(monkeypatch):
             return _FakeEvents([final])
 
     monkeypatch.setattr(qa_agent, "Agent", FakeAgent)
-    monkeypatch.setattr(qa_agent, "_model", lambda: object())
+    monkeypatch.setattr(qa_agent, "_model", lambda config=None: object())
     monkeypatch.setattr(qa_agent, "_tools", lambda: [])
 
     [e async for e in qa_agent.stream_project_answer(
         name="P", description="", corpus="c", history=[], question="q",
     )]
     assert "Project description" not in captured["instructions"]
+
+
+def test_model_unconfigured_raises(monkeypatch):
+    monkeypatch.setattr(qa_agent.settings, "openai_model", "")
+    monkeypatch.setattr(qa_agent.settings, "openai_api_key", "")
+    with pytest.raises(RuntimeError):
+        qa_agent._model()
+
+
+def test_model_uses_config(monkeypatch):
+    config = qa_agent.llm.LLMConfig(
+        provider="custom", api_key="sk-own-12345678",
+        base_url="http://ollama.local/v1", model="llama", user_owned=True,
+    )
+    model = qa_agent._model(config)
+    assert model.model_name == "llama"
