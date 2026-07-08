@@ -72,6 +72,9 @@ MIGRATIONS = [
     "SELECT project_id, article_id, added_by_user_id, note, created_at FROM project_articles "
     "WHERE note IS NOT NULL AND btrim(note) <> ''",
     "UPDATE project_articles SET note = NULL WHERE note IS NOT NULL",
+    # Generated article images (bring-your-own-key feature).
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS image_prompt TEXT",
+    "ALTER TABLE articles ADD COLUMN IF NOT EXISTS image_gen_attempted_at TIMESTAMPTZ",
 ]
 
 

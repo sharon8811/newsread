@@ -3,12 +3,12 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
-from sqlalchemy import and_, func, literal_column, or_, select
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response
+from sqlalchemy import and_, func, literal_column, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .. import embeddings
+from .. import crypto, embeddings, image_gen
 from ..config import settings
 from ..db import get_session
 from ..enrichers import badge_for
@@ -19,6 +19,7 @@ from ..models import (
     Entity,
     EntitySnapshot,
     Feed,
+    GeneratedImage,
     ProjectArticle,
     ProjectMember,
     Share,
@@ -372,15 +373,60 @@ async def list_articles(
     ]
 
 
+# A recent claim with no image yet reads as "still rendering" to the client;
+# anything older is a failed/abandoned attempt and stops reporting pending.
+IMAGE_PENDING_WINDOW = timedelta(minutes=3)
+
+
+async def _maybe_generate_image(
+    session: AsyncSession, background: BackgroundTasks, user: User, article: Article
+) -> bool:
+    """Kick off lazy image generation on first view of an imageless article;
+    returns whether an image is (now or already) being rendered."""
+    if article.image_url is not None:
+        return False
+    if article.image_gen_attempted_at is not None:
+        return (
+            datetime.now(timezone.utc) - article.image_gen_attempted_at
+            < IMAGE_PENDING_WINDOW
+        )
+    try:
+        config = await image_gen.resolve_config(session, user.id)
+    except crypto.TokenCryptoError:
+        config = None  # broken stored key must not break reading
+    if config is None:
+        return False
+    # The claim is the once-ever guard: whoever flips NULL owns the attempt.
+    claimed = await session.execute(
+        update(Article)
+        .where(Article.id == article.id, Article.image_gen_attempted_at.is_(None))
+        .values(image_gen_attempted_at=func.now())
+    )
+    await session.commit()
+    if claimed.rowcount != 1:
+        return True  # a concurrent view just claimed it
+    prompt = image_gen.render_prompt(
+        user.image_prompt or image_gen.DEFAULT_IMAGE_PROMPT,
+        title=article.title,
+        excerpt=article.excerpt or "",
+    )
+    background.add_task(
+        image_gen.generate_for_article, article.id, user.id, config, prompt
+    )
+    return True
+
+
 @router.get("/{article_id}", response_model=ArticleDetail)
 async def get_article(
     article_id: int,
+    background: BackgroundTasks,
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
     article = await session.get(Article, article_id)
     if article is None or not await user_can_access(session, user.id, article):
         raise HTTPException(status_code=404, detail="Article not found")
+    image_pending = await _maybe_generate_image(session, background, user, article)
     feed = await session.get(Feed, article.feed_id)
     state = await session.scalar(
         select(UserArticleState).where(
@@ -418,6 +464,25 @@ async def get_article(
         content_html=article.content_html,
         summary_model=article.summary_model,
         entities=full_entities,
+        image_pending=image_pending,
+    )
+
+
+@router.get("/{article_id}/generated-image")
+async def get_generated_image(
+    article_id: int,
+    session: AsyncSession = Depends(get_session),
+):
+    """Serves AI-generated article images. Unauthenticated on purpose: <img>
+    tags can't send Authorization headers, and these illustrate public news
+    articles just like the og:images we scrape."""
+    image = await session.get(GeneratedImage, article_id)
+    if image is None:
+        raise HTTPException(status_code=404, detail="No generated image")
+    return Response(
+        content=image.data,
+        media_type=image.content_type,
+        headers={"Cache-Control": "public, max-age=31536000, immutable"},
     )
 
 

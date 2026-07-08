@@ -619,3 +619,141 @@ async def test_cursor_pagination_oldest_sort_null_tail(client, users, data, sess
     pages = await _walk_pages(client, users, user, limit=1,
                               extra_params={"feed_id": feed.id})
     assert pages == [["Dated"], ["Undated1"], ["Undated2"]]
+
+
+# --- lazy image generation (bring-your-own-key PR 4) ---
+
+from app import image_gen, llm
+from app.models import GeneratedImage
+
+
+def _image_config(user_owned=False):
+    return llm.LLMConfig(provider="system", api_key="sk-img", model="img-model",
+                         base_url=None, user_owned=user_owned)
+
+
+def _capture_generation(monkeypatch, config=None):
+    """Route the view-trigger at a fake config + generator; returns the capture list."""
+    calls = []
+
+    async def fake_resolve(session, user_id):
+        return config
+
+    async def fake_generate_for_article(article_id, user_id, cfg, prompt):
+        calls.append({"article_id": article_id, "user_id": user_id, "prompt": prompt})
+
+    monkeypatch.setattr(image_gen, "resolve_config", fake_resolve)
+    monkeypatch.setattr(image_gen, "generate_for_article", fake_generate_for_article)
+    return calls
+
+
+async def test_get_article_triggers_image_generation(client, users, data, session, monkeypatch):
+    user, feed = await _setup(users, data)
+    art = await data.article(feed)
+    art.image_url = None
+    await session.commit()
+    calls = _capture_generation(monkeypatch, _image_config())
+
+    resp = await client.get(f"/api/articles/{art.id}", headers=users.auth(user))
+    assert resp.status_code == 200
+    assert resp.json()["image_pending"] is True
+    assert len(calls) == 1
+    assert calls[0]["article_id"] == art.id
+    # Default template rendered with the article title.
+    assert calls[0]["prompt"].startswith(f"{art.title} showcased in a gritty noir")
+    await session.refresh(art)
+    assert art.image_gen_attempted_at is not None
+
+    # A second view does not double-generate but still reads as pending.
+    resp = await client.get(f"/api/articles/{art.id}", headers=users.auth(user))
+    assert resp.json()["image_pending"] is True
+    assert len(calls) == 1
+
+
+async def test_get_article_uses_custom_prompt(client, users, data, session, monkeypatch):
+    user, feed = await _setup(users, data)
+    art = await data.article(feed)
+    art.image_url = None
+    user.image_prompt = "Draw {article_title}, please"
+    await session.commit()
+    calls = _capture_generation(monkeypatch, _image_config())
+
+    await client.get(f"/api/articles/{art.id}", headers=users.auth(user))
+    assert calls[0]["prompt"] == f"Draw {art.title}, please"
+
+
+async def test_get_article_no_trigger_with_existing_image(client, users, data, session, monkeypatch):
+    user, feed = await _setup(users, data)
+    art = await data.article(feed)
+    art.image_url = "https://site/og.png"
+    await session.commit()
+    calls = _capture_generation(monkeypatch, _image_config())
+
+    resp = await client.get(f"/api/articles/{art.id}", headers=users.auth(user))
+    assert resp.json()["image_pending"] is False
+    assert calls == []
+
+
+async def test_get_article_no_trigger_without_config(client, users, data, session, monkeypatch):
+    user, feed = await _setup(users, data)
+    art = await data.article(feed)
+    art.image_url = None
+    await session.commit()
+    calls = _capture_generation(monkeypatch, config=None)
+
+    resp = await client.get(f"/api/articles/{art.id}", headers=users.auth(user))
+    assert resp.json()["image_pending"] is False
+    assert calls == []
+    await session.refresh(art)
+    assert art.image_gen_attempted_at is None
+
+
+async def test_get_article_stale_attempt_not_pending(client, users, data, session, monkeypatch):
+    user, feed = await _setup(users, data)
+    art = await data.article(feed)
+    art.image_url = None
+    art.image_gen_attempted_at = datetime.now(timezone.utc) - timedelta(minutes=30)
+    await session.commit()
+    calls = _capture_generation(monkeypatch, _image_config())
+
+    resp = await client.get(f"/api/articles/{art.id}", headers=users.auth(user))
+    assert resp.json()["image_pending"] is False
+    assert calls == []  # attempt-once policy: no retry
+
+
+async def test_get_article_broken_key_does_not_block_reading(client, users, data, session, monkeypatch):
+    from app import crypto
+
+    user, feed = await _setup(users, data)
+    art = await data.article(feed)
+    art.image_url = None
+    await session.commit()
+
+    async def broken_resolve(session_, user_id):
+        raise crypto.TokenCryptoError("key changed")
+
+    monkeypatch.setattr(image_gen, "resolve_config", broken_resolve)
+    resp = await client.get(f"/api/articles/{art.id}", headers=users.auth(user))
+    assert resp.status_code == 200
+    assert resp.json()["image_pending"] is False
+
+
+async def test_generated_image_served_unauthenticated(client, users, data, session):
+    user, feed = await _setup(users, data)
+    art = await data.article(feed)
+    session.add(GeneratedImage(article_id=art.id, content_type="image/png",
+                               data=b"\x89PNG bytes", model="img-model"))
+    await session.commit()
+
+    resp = await client.get(f"/api/articles/{art.id}/generated-image")  # no auth header
+    assert resp.status_code == 200
+    assert resp.content == b"\x89PNG bytes"
+    assert resp.headers["content-type"] == "image/png"
+    assert "immutable" in resp.headers["cache-control"]
+
+
+async def test_generated_image_404_when_missing(client, users, data):
+    user, feed = await _setup(users, data)
+    art = await data.article(feed)
+    resp = await client.get(f"/api/articles/{art.id}/generated-image")
+    assert resp.status_code == 404

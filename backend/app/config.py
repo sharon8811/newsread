@@ -44,6 +44,32 @@ class Settings(BaseSettings):
         ),
     )
 
+    # Server-wide default for generating images for articles that have none
+    # (users with their own image model override it). Any OpenAI-compatible
+    # endpoint; OpenRouter image models are served via chat completions with
+    # the modalities extension, which image_gen.py handles by base URL.
+    # The GENERTAION alias tolerates the typo this key shipped with in .env.
+    image_generation_base_url: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "NEWSREAD_IMAGE_GENERATION_BASE_URL", "IMAGE_GENERATION_BASE_URL"
+        ),
+    )
+    image_generation_model: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "NEWSREAD_IMAGE_GENERATION_MODEL",
+            "IMAGE_GENERATION_MODEL",
+            "IMAGE_GENERTAION_MODEL",
+        ),
+    )
+    image_generation_api_key: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "NEWSREAD_IMAGE_GENERATION_API_KEY", "IMAGE_GENERATION_API_KEY"
+        ),
+    )
+
     # Web tools for the Q&A agent. Without either, the agent still works,
     # just without web search/extract. SearXNG (self-hosted metasearch) wins
     # when both are configured — it's the local-deployment option.

@@ -7,6 +7,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    LargeBinary,
     String,
     Text,
     UniqueConstraint,
@@ -28,6 +29,9 @@ class User(Base):
     name: Mapped[str] = mapped_column(String(120))
     password_hash: Mapped[str] = mapped_column(String(128))
     default_view: Mapped[str] = mapped_column(String(16), default="cards", server_default="cards")
+    # Template for generated article images ({article_title}/{article_excerpt}
+    # tags); NULL = image_gen.DEFAULT_IMAGE_PROMPT.
+    image_prompt: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -165,8 +169,27 @@ class Article(Base):
     summary_model: Mapped[str | None] = mapped_column(String(120))
     summary_generated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     entities_extracted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Claim marker for lazy image generation (set once, attempt-once policy);
+    # doubles as the "in flight" signal while image_url is still NULL.
+    image_gen_attempted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     feed: Mapped[Feed] = relationship(back_populates="articles")
+
+
+class GeneratedImage(Base):
+    """AI-generated illustration for an article without one, stored as bytes
+    in Postgres (no media volume to configure at this scale) and served by
+    GET /articles/{id}/generated-image."""
+
+    __tablename__ = "generated_images"
+
+    article_id: Mapped[int] = mapped_column(
+        ForeignKey("articles.id", ondelete="CASCADE"), primary_key=True
+    )
+    content_type: Mapped[str] = mapped_column(String(64), default="image/png")
+    data: Mapped[bytes] = mapped_column(LargeBinary)
+    model: Mapped[str] = mapped_column(String(120))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class ArticleEmbedding(Base):

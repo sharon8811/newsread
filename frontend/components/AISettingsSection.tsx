@@ -68,6 +68,7 @@ function AISettingsForm({ settings }: { settings: AISettings }) {
   const [imageModel, setImageModel] = useState(stored?.image?.model ?? "");
   const [imageApiKey, setImageApiKey] = useState("");
   const [imageBaseUrl, setImageBaseUrl] = useState(stored?.image?.base_url ?? "");
+  const [imagePrompt, setImagePrompt] = useState(settings.image_prompt ?? "");
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
 
@@ -112,6 +113,10 @@ function AISettingsForm({ settings }: { settings: AISettings }) {
         setApiKey("");
         setImageApiKey("");
         setNote({ kind: "ok", text: "AI settings saved." });
+      }
+      if (imagePrompt.trim() !== (settings.image_prompt ?? "")) {
+        // Lives on the user, not the AI-settings row ("" = back to default).
+        await api("/users/me", { method: "PATCH", body: { image_prompt: imagePrompt.trim() } });
       }
       mutate("/ai/settings");
       mutate("/ai/status");
@@ -317,6 +322,34 @@ function AISettingsForm({ settings }: { settings: AISettings }) {
               )}
             </div>
           </>
+        )}
+
+        {(settings.image_generation_available || imageEnabled) && (
+          <div className="border-t pt-3.5" style={{ borderColor: "var(--line-soft)" }}>
+            <Field
+              label="Article image prompt"
+              hint="used when generating a picture for an article without one; {article_title} and {article_excerpt} are filled in"
+            >
+              <textarea
+                className="input"
+                style={{ fontSize: 13.5, minHeight: 74, resize: "vertical" }}
+                rows={3}
+                placeholder={settings.default_image_prompt}
+                aria-label="Article image prompt"
+                value={imagePrompt}
+                onChange={(e) => setImagePrompt(e.target.value)}
+              />
+            </Field>
+            {imagePrompt.trim() !== "" && (
+              <button
+                className="btn mt-2"
+                style={{ fontSize: 12 }}
+                onClick={() => setImagePrompt("")}
+              >
+                Reset to default
+              </button>
+            )}
+          </div>
         )}
 
         {note && (

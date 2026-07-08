@@ -18,6 +18,8 @@ async def update_me(
 ):
     if body.default_view is not None:
         user.default_view = body.default_view
+    if body.image_prompt is not None:
+        user.image_prompt = body.image_prompt.strip() or None
     session.add(user)
     await session.commit()
     await session.refresh(user)

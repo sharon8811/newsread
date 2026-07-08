@@ -33,6 +33,8 @@ class UserOut(BaseModel):
 
 class UserUpdateIn(BaseModel):
     default_view: ViewMode | None = None  # PATCH semantics: omitted/None = unchanged
+    # Template for generated article images; "" resets to the default prompt.
+    image_prompt: str | None = Field(default=None, max_length=2000)
 
 
 class UserPublic(BaseModel):
@@ -163,6 +165,8 @@ class ArticleDetail(ArticleListItem):
     content_html: str
     summary_model: str | None = None
     entities: list[EntityFull] = []
+    # An AI illustration is being rendered right now — worth one refetch soon.
+    image_pending: bool = False
 
 
 class ArticleStateIn(BaseModel):
@@ -479,6 +483,11 @@ class AISettingsOut(BaseModel):
     base_url: str | None = None
     key_hint: str | None = None  # keys are write-only; this is all that comes back
     image: AIImageSettingsOut | None = None
+    # Article image generation: whether any image model would serve this user
+    # (their own block or the server-wide default), plus their prompt template.
+    image_generation_available: bool = False
+    image_prompt: str | None = None  # None = default_image_prompt applies
+    default_image_prompt: str = ""
 
 
 class AITestIn(BaseModel):
