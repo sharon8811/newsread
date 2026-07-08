@@ -56,17 +56,17 @@ import pytest
 import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
-from sqlalchemy.pool import NullPool
 
 from app import db as app_db
 from app.config import settings
 
 # The app engine uses pool_pre_ping=True, whose ping runs a sync await outside
-# the async greenlet under tests (MissingGreenlet), and pools connections that
-# can outlive a test. Swap in a NullPool engine with no pre-ping and rebind it
-# everywhere the app reads it — including modules that imported SessionLocal by
-# value (worker, pipeline).
-engine = create_async_engine(settings.database_url, poolclass=NullPool)
+# the async greenlet under tests (MissingGreenlet). Swap in an engine without
+# pre-ping and rebind it everywhere the app reads it — including modules that
+# imported SessionLocal by value (worker, pipeline). Pooling is safe here (and
+# much faster than NullPool's connection-per-session) because pytest.ini pins
+# one session-scoped event loop, so pooled connections never cross loops.
+engine = create_async_engine(settings.database_url)
 SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
 app_db.engine = engine
 app_db.SessionLocal = SessionLocal
