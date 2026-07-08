@@ -24,7 +24,14 @@ from ..models import (
     ProjectArticleState,
     User,
 )
-from ..schemas import AiStatusOut, AskIn, MessageOut, SummaryOut
+from ..schemas import (
+    AiStatusOut,
+    AskIn,
+    MessageOut,
+    ShareMessageIn,
+    ShareMessageOut,
+    SummaryOut,
+)
 from ..security import get_current_user
 from ..summarizer import ThinContentError, generate_summaries
 from .articles import user_can_access
@@ -96,6 +103,33 @@ def _summary_out(article: Article) -> SummaryOut:
         model=article.summary_model,
         generated_at=article.summary_generated_at,
     )
+
+
+@router.post("/ai/share-message", response_model=ShareMessageOut)
+async def share_message(
+    body: ShareMessageIn,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Generate (or refine a draft of) the note that accompanies an article
+    shared to a messaging platform. Uses the stored summary — never fetches."""
+    article = await _accessible_article(session, user, body.article_id)
+    _require_llm()
+    summary = article.summary_medium or article.summary or article.excerpt or ""
+    try:
+        text = await llm.share_message(
+            title=article.title,
+            summary=summary,
+            draft=body.draft,
+            tone=body.tone,
+            target_name=body.target_name,
+        )
+    except Exception as exc:
+        logger.warning("Share-message generation failed for article %s: %s", article.id, exc)
+        raise HTTPException(status_code=502, detail="The LLM request failed")
+    if not text:
+        raise HTTPException(status_code=502, detail="The LLM returned an empty message")
+    return ShareMessageOut(message=text)
 
 
 async def _get_or_create_conversation(

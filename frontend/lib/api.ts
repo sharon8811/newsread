@@ -15,9 +15,13 @@ export function setToken(token: string | null) {
 
 export class ApiError extends Error {
   status: number;
-  constructor(message: string, status: number) {
+  // Structured detail from the backend, when it sends an object (e.g. external
+  // share failures include { message, reconnect }).
+  detail?: unknown;
+  constructor(message: string, status: number, detail?: unknown) {
     super(message);
     this.status = status;
+    this.detail = detail;
   }
 }
 
@@ -42,8 +46,10 @@ export async function api<T>(
         ? data.detail
         : Array.isArray(data?.detail)
           ? data.detail.map((d: { msg?: string }) => d.msg).join("; ")
-          : res.statusText;
-    throw new ApiError(detail, res.status);
+          : typeof data?.detail?.message === "string"
+            ? data.detail.message
+            : res.statusText;
+    throw new ApiError(detail, res.status, data?.detail);
   }
   return data as T;
 }
@@ -308,4 +314,52 @@ export type Share = {
   note: string | null;
   created_at: string;
   seen_at: string | null;
+};
+
+// ——— messaging integrations (share to Slack / Teams as the user) ———
+
+export type MessagingPlatform = "slack" | "teams";
+
+export const PLATFORM_LABELS: Record<MessagingPlatform, string> = {
+  slack: "Slack",
+  teams: "Microsoft Teams",
+};
+
+export type IntegrationStatus = {
+  platform: MessagingPlatform;
+  configured: boolean; // server has credentials for this platform
+  connected: boolean;
+  status: "active" | "error" | null; // 'error' = needs reconnect
+  workspace_name: string | null;
+  account_name: string | null;
+};
+
+export type TargetType = "channel" | "group" | "dm" | "chat";
+
+// One row in the live channel/chat picker (proxied from the platform).
+export type TargetOption = {
+  external_id: string;
+  display_name: string;
+  target_type: TargetType;
+  meta: Record<string, unknown>;
+  saved_id: number | null; // ShareTarget id when already saved
+};
+
+// A saved quick-share destination.
+export type ShareTarget = {
+  id: number;
+  platform: MessagingPlatform;
+  external_id: string;
+  display_name: string;
+  target_type: TargetType;
+  meta: Record<string, unknown>;
+  last_used_at: string | null;
+};
+
+export type ExternalShareResult = {
+  id: number;
+  platform: MessagingPlatform;
+  target_display: string;
+  status: string;
+  created_at: string;
 };

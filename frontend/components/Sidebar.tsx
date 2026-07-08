@@ -289,6 +289,9 @@ export default function Sidebar() {
             @{user?.username}
           </p>
         </div>
+        <Link href="/settings" className="icon-btn" title="Settings">
+          <GearIcon size={15} />
+        </Link>
         <button
           className="icon-btn"
           title="Sign out"

@@ -363,3 +363,73 @@ class ShareRecipient(Base):
 
     share: Mapped[Share] = relationship(back_populates="recipients")
     to_user: Mapped[User] = relationship()
+
+
+class MessagingConnection(Base):
+    """A user's OAuth link to a messaging platform (a Slack workspace, a Teams
+    tenant). Tokens are Fernet-encrypted at rest (crypto.py). Slack user tokens
+    don't expire (rotation off), so refresh_token/token_expires_at stay NULL;
+    Teams access tokens live ~1h and refresh on use."""
+
+    __tablename__ = "messaging_connections"
+    __table_args__ = (UniqueConstraint("user_id", "platform"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    platform: Mapped[str] = mapped_column(String(16))  # 'slack' | 'teams'
+    external_account_id: Mapped[str] = mapped_column(String(255), default="")
+    account_name: Mapped[str] = mapped_column(String(255), default="")
+    workspace_id: Mapped[str] = mapped_column(String(255), default="")
+    workspace_name: Mapped[str] = mapped_column(String(255), default="")
+    access_token_enc: Mapped[str] = mapped_column(Text)
+    refresh_token_enc: Mapped[str | None] = mapped_column(Text)
+    token_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    scopes: Mapped[str] = mapped_column(Text, default="")
+    # 'error' means sends fail with an auth problem and the user must reconnect.
+    status: Mapped[str] = mapped_column(String(16), default="active")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    targets: Mapped[list["ShareTarget"]] = relationship(
+        back_populates="connection", cascade="all, delete-orphan"
+    )
+
+
+class ShareTarget(Base):
+    """A saved quick-share destination (channel/chat) on a connection. `meta`
+    holds platform extras a send needs beyond the id (Teams channels need
+    their team_id)."""
+
+    __tablename__ = "share_targets"
+    __table_args__ = (UniqueConstraint("connection_id", "external_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    connection_id: Mapped[int] = mapped_column(
+        ForeignKey("messaging_connections.id", ondelete="CASCADE"), index=True
+    )
+    target_type: Mapped[str] = mapped_column(String(16))  # 'channel' | 'group' | 'dm' | 'chat'
+    external_id: Mapped[str] = mapped_column(String(255))
+    display_name: Mapped[str] = mapped_column(String(255))
+    meta: Mapped[dict] = mapped_column(JSONB, default=dict)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    connection: Mapped[MessagingConnection] = relationship(back_populates="targets")
+
+
+class ExternalShare(Base):
+    """Log of one message sent (or attempted) to a messaging platform; powers
+    the sent history and keeps delivery failures inspectable."""
+
+    __tablename__ = "external_shares"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    article_id: Mapped[int] = mapped_column(ForeignKey("articles.id", ondelete="CASCADE"), index=True)
+    platform: Mapped[str] = mapped_column(String(16))
+    target_display: Mapped[str] = mapped_column(String(255))
+    message: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(16))  # 'sent' | 'failed'
+    error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

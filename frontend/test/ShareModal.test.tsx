@@ -4,8 +4,13 @@ import userEvent from "@testing-library/user-event";
 import ShareModal from "@/components/ShareModal";
 import { makeArticle, makePublic } from "./fixtures";
 
-const { mutateMock } = vi.hoisted(() => ({ mutateMock: vi.fn() }));
-vi.mock("swr", () => ({ mutate: mutateMock }));
+const { mutateMock, swrMock } = vi.hoisted(() => ({
+  mutateMock: vi.fn(),
+  // ShareModal reads saved quick-share targets + AI status via useSWR; the
+  // base suite exercises the internal-share path, so both stay undefined.
+  swrMock: vi.fn(() => ({ data: undefined })),
+}));
+vi.mock("swr", () => ({ default: swrMock, mutate: mutateMock }));
 
 const bob = makePublic({ id: 2, username: "bob", name: "Bob" });
 const cara = makePublic({ id: 3, username: "cara", name: "Cara" });
@@ -41,7 +46,7 @@ describe("<ShareModal>", () => {
     vi.stubGlobal("fetch", makeFetch());
     render(<ShareModal article={makeArticle({ title: "My Story" })} onClose={vi.fn()} />);
     expect(screen.getByText("My Story")).toBeInTheDocument();
-    expect(screen.getByText("Add at least one reader")).toBeInTheDocument();
+    expect(screen.getByText("Add a reader or pick a channel")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Send/ })).toBeDisabled();
   });
 
@@ -124,7 +129,7 @@ describe("<ShareModal>", () => {
     await userEvent.click(removeBtn);
 
     expect(screen.queryByText("@bob")).not.toBeInTheDocument();
-    expect(screen.getByText("Add at least one reader")).toBeInTheDocument();
+    expect(screen.getByText("Add a reader or pick a channel")).toBeInTheDocument();
   });
 
   it("clears results when the query is emptied", async () => {

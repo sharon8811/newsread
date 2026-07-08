@@ -87,4 +87,46 @@ async def summarize(title: str, text: str) -> tuple[str, str, str]:
     return _parse_levels(raw)
 
 
+SHARE_MESSAGE_SYSTEM = """You write the short note someone sends alongside a news link in a work chat (Slack or Microsoft Teams).
+
+Rules:
+- One to three sentences, at most 50 words, plain text.
+- Sound like a person, not a marketer: no hashtags, no "Check this out!", no greetings or sign-offs.
+- Lead with why the article matters to the people reading it.
+- Use only facts from the provided title and summary; never invent details.
+- Do not include the URL — it is attached separately.
+- Output only the message text, nothing else."""
+
+
+async def share_message(
+    title: str,
+    summary: str,
+    draft: str = "",
+    tone: str | None = None,
+    target_name: str | None = None,
+) -> str:
+    """One short human-sounding message to accompany a shared article link."""
+    parts = [f"Article title: {title}"]
+    if summary:
+        parts.append(f"Article summary:\n{summary}")
+    if target_name:
+        parts.append(f"It will be posted to: {target_name}")
+    if tone:
+        parts.append(f"Tone: {tone}")
+    if draft.strip():
+        parts.append(
+            "Polish this draft — keep its intent and any personal remarks, "
+            f"just make it clearer and tighter:\n{draft.strip()}"
+        )
+    else:
+        parts.append("Write the message from scratch.")
+    return await _complete(
+        [
+            {"role": "system", "content": SHARE_MESSAGE_SYSTEM},
+            {"role": "user", "content": "\n\n".join(parts)},
+        ],
+        max_tokens=300,
+    )
+
+
 # Article Q&A lives in qa_agent.py (pydantic_ai, tool-calling, streaming).

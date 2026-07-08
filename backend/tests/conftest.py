@@ -31,8 +31,20 @@ for _var in (
     "SEARXNG_BASE_URL",
     "NEWSREAD_GITHUB_TOKEN",
     "NEWSREAD_HF_TOKEN",
+    "NEWSREAD_SLACK_CLIENT_ID",
+    "NEWSREAD_SLACK_CLIENT_SECRET",
+    "NEWSREAD_SLACK_SIGNING_SECRET",
+    "NEWSREAD_TEAMS_CLIENT_ID",
+    "NEWSREAD_TEAMS_CLIENT_SECRET",
 ):
     os.environ[_var] = ""
+
+# Messaging-integration tests need deterministic values regardless of .env:
+# a fixed (valid) Fernet key and known callback/frontend origins.
+os.environ["NEWSREAD_TOKEN_ENCRYPTION_KEY"] = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
+os.environ["NEWSREAD_OAUTH_REDIRECT_BASE"] = "http://testserver"
+os.environ["NEWSREAD_FRONTEND_BASE_URL"] = "http://front.test"
+os.environ["NEWSREAD_TEAMS_TENANT"] = "organizations"
 
 import httpx
 import pytest

@@ -254,3 +254,33 @@ export function MenuIcon(p: IconProps) {
     </svg>
   );
 }
+
+export function SlackIcon(p: IconProps) {
+  return (
+    <svg {...base(p)}>
+      <path d="M10 3.5 8.2 20.5" />
+      <path d="M15.8 3.5 14 20.5" />
+      <path d="M4 9.2h16.5" />
+      <path d="M3.5 14.8H20" />
+    </svg>
+  );
+}
+
+export function TeamsIcon(p: IconProps) {
+  return (
+    <svg {...base(p)}>
+      <rect x="3.5" y="3.5" width="17" height="17" rx="4" />
+      <path d="M8 8.5h8" />
+      <path d="M12 8.5V16" />
+    </svg>
+  );
+}
+
+export function WhatsAppIcon(p: IconProps) {
+  return (
+    <svg {...base(p)}>
+      <path d="M12 3a8.5 8.5 0 0 0-7.3 12.8L3 21l5.2-1.7A8.5 8.5 0 1 0 12 3z" />
+      <path d="M9.3 8.6l.9 1.8-.8.9a5.5 5.5 0 0 0 3.3 3.3l.9-.8 1.8.9c-.2 1-1.2 1.7-2.2 1.4a7.6 7.6 0 0 1-5.3-5.3c-.3-1 .4-2 1.4-2.2z" />
+    </svg>
+  );
+}
