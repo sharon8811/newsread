@@ -44,6 +44,17 @@ export default function ArticlePage() {
     }
   }, [article, key]);
 
+  // An AI illustration is rendering in the background; pick it up once it
+  // should be done rather than waiting for the next visit.
+  useEffect(() => {
+    if (!article?.image_pending) return;
+    const t = setTimeout(() => {
+      mutate(key);
+      mutateArticleLists();
+    }, 15_000);
+    return () => clearTimeout(t);
+  }, [article?.image_pending, key]);
+
   async function toggleSaved() {
     if (!article) return;
     await api(`/articles/${article.id}/state`, {

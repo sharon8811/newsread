@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from openai import AsyncOpenAI
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .. import crypto, llm
+from .. import crypto, image_gen, llm
 from ..db import get_session
 from ..models import User, UserAISettings
 from ..schemas import (
@@ -44,11 +44,19 @@ def _require_crypto() -> None:
         )
 
 
-def _out(row: UserAISettings | None) -> AISettingsOut:
+def _out(row: UserAISettings | None, user: User) -> AISettingsOut:
+    has_image_block = row is not None and bool(row.image_provider and row.image_model)
+    prompt_fields = dict(
+        image_generation_available=has_image_block or image_gen.is_configured(),
+        image_prompt=user.image_prompt,
+        default_image_prompt=image_gen.DEFAULT_IMAGE_PROMPT,
+    )
     if row is None:
-        return AISettingsOut(configured=False, system_available=llm.is_configured())
+        return AISettingsOut(
+            configured=False, system_available=llm.is_configured(), **prompt_fields
+        )
     image = None
-    if row.image_provider and row.image_model:
+    if has_image_block:
         image = AIImageSettingsOut(
             provider=row.image_provider,
             model=row.image_model,
@@ -63,6 +71,7 @@ def _out(row: UserAISettings | None) -> AISettingsOut:
         base_url=row.base_url or None,
         key_hint=row.key_hint,
         image=image,
+        **prompt_fields,
     )
 
 
@@ -71,7 +80,7 @@ async def get_ai_settings(
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
-    return _out(await session.get(UserAISettings, user.id))
+    return _out(await session.get(UserAISettings, user.id), user)
 
 
 @router.put("", response_model=AISettingsOut)
@@ -144,7 +153,7 @@ async def put_ai_settings(
     row.image_api_key_enc = image_api_key_enc
     row.image_key_hint = image_key_hint
     await session.commit()
-    return _out(row)
+    return _out(row, user)
 
 
 @router.delete("", status_code=204)

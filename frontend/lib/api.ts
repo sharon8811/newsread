@@ -220,6 +220,7 @@ export type ArticleDetail = Omit<Article, "entities"> & {
   content_html: string;
   summary_model: string | null;
   entities: EntityFull[];
+  image_pending?: boolean; // an AI illustration is rendering — refetch soon
 };
 
 export type AiStatus = {
@@ -255,6 +256,9 @@ export type AISettings = {
   base_url: string | null;
   key_hint: string | null; // keys are write-only; this is all that comes back
   image: AIImageSettings | null;
+  image_generation_available: boolean;
+  image_prompt: string | null; // null = the default prompt applies
+  default_image_prompt: string;
 };
 
 export type AIImageSettingsSave = {

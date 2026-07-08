@@ -385,3 +385,51 @@ async def test_base_url_must_be_http(client, users):
     user = await users.create()
     body = {**BODY, "provider": "custom", "base_url": "ollama.local/v1"}
     assert (await _put(client, users, user, body)).status_code == 422
+
+
+# --- article image prompt (users.image_prompt via /users/me) ---
+
+async def test_get_exposes_image_prompt_defaults(client, users, monkeypatch):
+    from app import image_gen
+
+    monkeypatch.setattr(image_gen.settings, "image_generation_api_key", "")
+    monkeypatch.setattr(image_gen.settings, "image_generation_model", "")
+    user = await users.create()
+    body = (await client.get("/api/ai/settings", headers=users.auth(user))).json()
+    assert body["image_prompt"] is None
+    assert body["default_image_prompt"] == image_gen.DEFAULT_IMAGE_PROMPT
+    assert body["image_generation_available"] is False
+
+
+async def test_image_generation_available_via_system_env(client, users, monkeypatch):
+    from app import image_gen
+
+    monkeypatch.setattr(image_gen.settings, "image_generation_api_key", "sk-img")
+    monkeypatch.setattr(image_gen.settings, "image_generation_model", "img-model")
+    user = await users.create()
+    body = (await client.get("/api/ai/settings", headers=users.auth(user))).json()
+    assert body["image_generation_available"] is True
+
+
+async def test_image_generation_available_via_user_block(client, users, monkeypatch):
+    from app import image_gen
+
+    monkeypatch.setattr(image_gen.settings, "image_generation_api_key", "")
+    user = await users.create()
+    await _put(client, users, user, {**BODY, "image": {"provider": "openai", "model": "gpt-image-1"}})
+    body = (await client.get("/api/ai/settings", headers=users.auth(user))).json()
+    assert body["image_generation_available"] is True
+
+
+async def test_patch_image_prompt_roundtrip(client, users):
+    user = await users.create()
+    resp = await client.patch("/api/users/me", json={"image_prompt": "  Draw {article_title}  "},
+                              headers=users.auth(user))
+    assert resp.status_code == 200
+    body = (await client.get("/api/ai/settings", headers=users.auth(user))).json()
+    assert body["image_prompt"] == "Draw {article_title}"
+
+    # Empty string resets to the default.
+    await client.patch("/api/users/me", json={"image_prompt": ""}, headers=users.auth(user))
+    body = (await client.get("/api/ai/settings", headers=users.auth(user))).json()
+    assert body["image_prompt"] is None

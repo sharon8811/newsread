@@ -10,6 +10,11 @@ const { swrMock, mutateMock } = vi.hoisted(() => ({
 }));
 vi.mock("swr", () => ({ default: swrMock, mutate: mutateMock }));
 
+const DEFAULT_PROMPT =
+  "{article_title} showcased in a gritty noir comic book splash page. " +
+  "High contrast chiaroscuro lighting, heavy ink lines, dramatic angle. " +
+  "Full bleed, edge-to-edge artwork, masterpiece.";
+
 const UNCONFIGURED: AISettings = {
   configured: false,
   system_available: true,
@@ -18,6 +23,9 @@ const UNCONFIGURED: AISettings = {
   base_url: null,
   key_hint: null,
   image: null,
+  image_generation_available: false,
+  image_prompt: null,
+  default_image_prompt: DEFAULT_PROMPT,
 };
 
 const CONFIGURED: AISettings = {
@@ -28,6 +36,9 @@ const CONFIGURED: AISettings = {
   base_url: null,
   key_hint: "5678",
   image: null,
+  image_generation_available: false,
+  image_prompt: null,
+  default_image_prompt: DEFAULT_PROMPT,
 };
 
 function withSettings(settings: AISettings | undefined) {
@@ -232,5 +243,83 @@ describe("<AISettingsSection>", () => {
     await userEvent.type(screen.getByLabelText("Model"), "gpt-5");
     await userEvent.click(screen.getByRole("button", { name: "Save" }));
     expect(await screen.findByText("An API key is required")).toBeInTheDocument();
+  });
+});
+
+
+describe("<AISettingsSection> image prompt", () => {
+  beforeEach(() => {
+    swrMock.mockReset();
+    mutateMock.mockClear();
+    vi.unstubAllGlobals();
+  });
+
+  it("is hidden when no image generation is available", () => {
+    withSettings(UNCONFIGURED);
+    render(<AISettingsSection />);
+    expect(screen.queryByLabelText("Article image prompt")).not.toBeInTheDocument();
+  });
+
+  it("shows the default prompt as placeholder when generation is available", () => {
+    withSettings({ ...UNCONFIGURED, image_generation_available: true });
+    render(<AISettingsSection />);
+    const textarea = screen.getByLabelText("Article image prompt");
+    expect(textarea).toHaveValue("");
+    expect(textarea).toHaveAttribute("placeholder", DEFAULT_PROMPT);
+  });
+
+  it("saves a custom prompt via PATCH /users/me", async () => {
+    withSettings({ ...UNCONFIGURED, image_generation_available: true });
+    const fetchMock = okFetch();
+    render(<AISettingsSection />);
+
+    await userEvent.type(
+      screen.getByLabelText("Article image prompt"),
+      // userEvent treats "{" as a key descriptor; "{{" types a literal brace.
+      "Watercolor of {{article_title}",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const patch = fetchMock.mock.calls.find(([url]) => (url as string).includes("/users/me"));
+    expect(patch).toBeTruthy();
+    expect(JSON.parse((patch![1] as RequestInit).body as string)).toEqual({
+      image_prompt: "Watercolor of {article_title}",
+    });
+  });
+
+  it("resets to the default prompt", async () => {
+    withSettings({
+      ...UNCONFIGURED,
+      image_generation_available: true,
+      image_prompt: "My custom prompt",
+    });
+    const fetchMock = okFetch();
+    render(<AISettingsSection />);
+
+    expect(screen.getByLabelText("Article image prompt")).toHaveValue("My custom prompt");
+    await userEvent.click(screen.getByRole("button", { name: "Reset to default" }));
+    expect(screen.getByLabelText("Article image prompt")).toHaveValue("");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const patch = fetchMock.mock.calls.find(([url]) => (url as string).includes("/users/me"));
+    expect(JSON.parse((patch![1] as RequestInit).body as string)).toEqual({ image_prompt: "" });
+  });
+
+  it("does not PATCH when the prompt is unchanged", async () => {
+    withSettings({
+      ...UNCONFIGURED,
+      image_generation_available: true,
+      image_prompt: "My custom prompt",
+    });
+    const fetchMock = okFetch();
+    render(<AISettingsSection />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(screen.getByText("Using the system default model.")).toBeInTheDocument(),
+    );
+    expect(fetchMock.mock.calls.some(([url]) => (url as string).includes("/users/me"))).toBe(false);
   });
 });
