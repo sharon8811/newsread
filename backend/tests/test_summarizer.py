@@ -23,7 +23,7 @@ async def test_generate_summaries_success(session, monkeypatch):
     async def fake_ensure(session_, article, allow_refetch=True):
         return "x" * 500
 
-    async def fake_summarize(title, text):
+    async def fake_summarize(title, text, **kwargs):
         return ("short one", "medium two", "full three")
 
     monkeypatch.setattr(summarizer, "ensure_full_text", fake_ensure)
@@ -55,7 +55,7 @@ async def test_generate_summaries_empty_summary_raises(session, monkeypatch):
     async def fake_ensure(session_, article, allow_refetch=True):
         return "x" * 500
 
-    async def fake_summarize(title, text):
+    async def fake_summarize(title, text, **kwargs):
         return ("", "", "")
 
     monkeypatch.setattr(summarizer, "ensure_full_text", fake_ensure)

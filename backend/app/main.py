@@ -9,6 +9,7 @@ from .db import init_db
 from .routers import (
     activity,
     ai,
+    ai_settings,
     articles,
     auth,
     devices,
@@ -51,6 +52,7 @@ app.include_router(articles.router, prefix="/api")
 app.include_router(shares.router, prefix="/api")
 app.include_router(projects.router, prefix="/api")
 app.include_router(ai.router, prefix="/api")
+app.include_router(ai_settings.router, prefix="/api")
 app.include_router(devices.router, prefix="/api")
 app.include_router(integrations.router, prefix="/api")
 app.include_router(activity.router, prefix="/api")

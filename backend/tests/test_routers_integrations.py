@@ -457,7 +457,7 @@ async def test_share_message_generates(client, users, data, monkeypatch):
     me, article = await _sharable(users, data)
     monkeypatch.setattr("app.llm.is_configured", lambda: True)
 
-    async def fake_share_message(*, title, summary, draft, tone, target_name):
+    async def fake_share_message(*, title, summary, draft, tone, target_name, **kwargs):
         assert title == "Big News" and draft == "my draft"
         return "A polished message."
 

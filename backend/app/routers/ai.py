@@ -1,5 +1,6 @@
 import json
 import logging
+import time
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
@@ -7,8 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from .. import llm, qa_agent
-from ..config import settings
+from .. import crypto, llm, qa_agent
 from ..db import get_session
 from ..enrichers import badge_for
 from ..extractor import clip_for_llm, ensure_full_text, is_thin
@@ -51,21 +51,44 @@ async def _accessible_article(
     return article
 
 
-def _require_llm() -> None:
-    if not llm.is_configured():
+async def _resolve_llm(session: AsyncSession, user: User) -> llm.LLMConfig:
+    """The user's own key when they saved one, else the server default — 503
+    when neither is usable."""
+    try:
+        config = await llm.resolve_config(session, user.id)
+    except crypto.TokenCryptoError:
         raise HTTPException(
             status_code=503,
-            detail="No LLM is configured. Set OPENAI_API_KEY, OPENAI_BASE_URL and OPENAI_MODEL.",
+            detail="Your stored API key can't be decrypted — re-enter it in Settings.",
         )
+    if config is None:
+        raise HTTPException(
+            status_code=503,
+            detail="No LLM is configured. Add your own key in Settings, or set "
+            "OPENAI_API_KEY, OPENAI_BASE_URL and OPENAI_MODEL on the server.",
+        )
+    return config
+
+
+def _ms_since(started: float) -> int:
+    return int((time.monotonic() - started) * 1000)
 
 
 @router.get("/ai/status", response_model=AiStatusOut)
-async def ai_status(user: User = Depends(get_current_user)):
+async def ai_status(
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    try:
+        config = await llm.resolve_config(session, user.id)
+    except crypto.TokenCryptoError:
+        config = None
     return AiStatusOut(
-        configured=llm.is_configured(),
-        model=settings.openai_model or None,
+        configured=config is not None,
+        model=config.model if config else None,
         search=qa_agent.search_enabled(),
         search_provider=qa_agent.search_provider(),
+        source=("user" if config.user_owned else "system") if config else None,
     )
 
 
@@ -79,19 +102,35 @@ async def summarize_article(
     article = await _accessible_article(session, user, article_id)
     if article.summary and article.summary_short and not force:
         return _summary_out(article)
-    _require_llm()
+    config = await _resolve_llm(session, user)
 
+    # Survives the rollback below — expired ORM attrs must not be touched.
+    user_id = user.id
+    usage = llm.TokenUsage()
+    started = time.monotonic()
     try:
-        await generate_summaries(session, article)
+        await generate_summaries(session, article, config=config, usage=usage)
     except ThinContentError:
         # Summarizing a headline stub just makes the model invent details.
+        # No LLM call happened, so nothing lands in llm_usage.
         raise HTTPException(
             status_code=422,
             detail="Couldn't fetch the article's full text — the site may block automated readers. Open the original instead.",
         )
     except Exception as exc:
         logger.warning("Summarization failed for article %s: %s", article.id, exc)
+        # The failure may have poisoned the transaction (e.g. a commit error
+        # inside generate_summaries) — reset it before writing the usage row.
+        await session.rollback()
+        await llm.record_usage(
+            session, user_id=user_id, feature="summary", config=config, usage=usage,
+            duration_ms=_ms_since(started), status="error", error=str(exc),
+        )
         raise HTTPException(status_code=502, detail="The LLM request failed")
+    await llm.record_usage(
+        session, user_id=user_id, feature="summary", config=config, usage=usage,
+        duration_ms=_ms_since(started),
+    )
     return _summary_out(article)
 
 
@@ -114,8 +153,11 @@ async def share_message(
     """Generate (or refine a draft of) the note that accompanies an article
     shared to a messaging platform. Uses the stored summary — never fetches."""
     article = await _accessible_article(session, user, body.article_id)
-    _require_llm()
+    config = await _resolve_llm(session, user)
     summary = article.summary_medium or article.summary or article.excerpt or ""
+    user_id = user.id
+    usage = llm.TokenUsage()
+    started = time.monotonic()
     try:
         text = await llm.share_message(
             title=article.title,
@@ -123,12 +165,30 @@ async def share_message(
             draft=body.draft,
             tone=body.tone,
             target_name=body.target_name,
+            config=config,
+            usage=usage,
         )
     except Exception as exc:
         logger.warning("Share-message generation failed for article %s: %s", article.id, exc)
+        await session.rollback()
+        await llm.record_usage(
+            session, user_id=user_id, feature="share", config=config, usage=usage,
+            duration_ms=_ms_since(started), status="error", error=str(exc),
+        )
         raise HTTPException(status_code=502, detail="The LLM request failed")
     if not text:
+        # An empty reply is a failed call — logged as such so the usage trail
+        # matches the 502 the client sees.
+        await llm.record_usage(
+            session, user_id=user_id, feature="share", config=config, usage=usage,
+            duration_ms=_ms_since(started), status="error",
+            error="The LLM returned an empty message",
+        )
         raise HTTPException(status_code=502, detail="The LLM returned an empty message")
+    await llm.record_usage(
+        session, user_id=user_id, feature="share", config=config, usage=usage,
+        duration_ms=_ms_since(started),
+    )
     return ShareMessageOut(message=text)
 
 
@@ -203,7 +263,7 @@ async def ask_article_stream(
     status | tool_call | tool_result | delta | done | error
     """
     article = await _accessible_article(session, user, article_id)
-    _require_llm()
+    config = await _resolve_llm(session, user)
 
     text = await ensure_full_text(session, article)
     if is_thin(text):
@@ -221,9 +281,12 @@ async def ask_article_stream(
     history = [(m.role, m.content) for m in conversation.messages]
     entities = await _entity_context(session, article.id)
     question = body.content.strip()
+    user_id = user.id  # survives the rollbacks below
 
     async def event_source():
         result: dict | None = None
+        usage = llm.TokenUsage()
+        started = time.monotonic()
         try:
             async for event in qa_agent.stream_answer(
                 title=article.title,
@@ -233,6 +296,7 @@ async def ask_article_stream(
                 entities=entities,
                 history=history,
                 question=question,
+                config=config,
             ):
                 if event["type"] == "result":
                     result = event
@@ -240,11 +304,32 @@ async def ask_article_stream(
                     yield _sse(event)
         except Exception as exc:
             logger.warning("Q&A stream failed for article %s: %s", article.id, exc)
+            # Reset the transaction (it may be poisoned, and it holds the
+            # flushed-but-uncommitted conversation) before the usage row;
+            # record before yielding so a disconnected client can't skip it.
+            await session.rollback()
+            await llm.record_usage(
+                session, user_id=user_id, feature="qa", config=config,
+                duration_ms=_ms_since(started), status="error", error=str(exc),
+            )
             yield _sse({"type": "error", "detail": "The LLM request failed"})
             return
+        if result is not None:
+            run_usage = result.get("usage") or {}
+            usage.add(run_usage.get("prompt_tokens"), run_usage.get("completion_tokens"))
         if result is None or not result["content"]:
+            await session.rollback()
+            await llm.record_usage(
+                session, user_id=user_id, feature="qa", config=config, usage=usage,
+                duration_ms=_ms_since(started), status="error",
+                error="The LLM returned an empty answer",
+            )
             yield _sse({"type": "error", "detail": "The LLM returned an empty answer"})
             return
+        await llm.record_usage(
+            session, user_id=user_id, feature="qa", config=config, usage=usage,
+            duration_ms=_ms_since(started),
+        )
 
         session.add(
             Message(conversation_id=conversation.id, role="user", content=question)
@@ -383,7 +468,7 @@ async def ask_project_stream(
     stream as the per-article endpoint."""
     await _member_or_404(session, project_id, user.id)
     project = await session.get(Project, project_id)
-    _require_llm()
+    config = await _resolve_llm(session, user)
 
     corpus = await _project_corpus(session, project_id, user.id)
     if not corpus:
@@ -393,9 +478,12 @@ async def ask_project_stream(
     conversation = await _get_or_create_project_conversation(session, user.id, project_id)
     history = [(m.role, m.content) for m in conversation.messages]
     question = body.content.strip()
+    user_id = user.id  # survives the rollbacks below
 
     async def event_source():
         result: dict | None = None
+        usage = llm.TokenUsage()
+        started = time.monotonic()
         try:
             async for event in qa_agent.stream_project_answer(
                 name=project.name,
@@ -403,6 +491,7 @@ async def ask_project_stream(
                 corpus=corpus,
                 history=history,
                 question=question,
+                config=config,
             ):
                 if event["type"] == "result":
                     result = event
@@ -410,11 +499,31 @@ async def ask_project_stream(
                     yield _sse(event)
         except Exception as exc:
             logger.warning("Q&A stream failed for project %s: %s", project_id, exc)
+            # Same discipline as the article stream: reset the (possibly
+            # poisoned) transaction, record, then yield.
+            await session.rollback()
+            await llm.record_usage(
+                session, user_id=user_id, feature="qa", config=config,
+                duration_ms=_ms_since(started), status="error", error=str(exc),
+            )
             yield _sse({"type": "error", "detail": "The LLM request failed"})
             return
+        if result is not None:
+            run_usage = result.get("usage") or {}
+            usage.add(run_usage.get("prompt_tokens"), run_usage.get("completion_tokens"))
         if result is None or not result["content"]:
+            await session.rollback()
+            await llm.record_usage(
+                session, user_id=user_id, feature="qa", config=config, usage=usage,
+                duration_ms=_ms_since(started), status="error",
+                error="The LLM returned an empty answer",
+            )
             yield _sse({"type": "error", "detail": "The LLM returned an empty answer"})
             return
+        await llm.record_usage(
+            session, user_id=user_id, feature="qa", config=config, usage=usage,
+            duration_ms=_ms_since(started),
+        )
 
         session.add(
             Message(conversation_id=conversation.id, role="user", content=question)

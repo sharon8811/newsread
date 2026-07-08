@@ -31,6 +31,56 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class UserAISettings(Base):
+    """A user's own LLM configuration ("bring your own key"). No row means the
+    user rides the server-wide default from config.py. API keys are
+    Fernet-encrypted at rest (crypto.py) and never leave the backend —
+    responses only carry `key_hint` (last characters). The image_* block is an
+    optional second model for generating pictures for imageless articles; its
+    key falls back to the main one when the provider matches."""
+
+    __tablename__ = "user_ai_settings"
+
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    provider: Mapped[str] = mapped_column(String(16))  # 'openai' | 'anthropic' | 'custom'
+    api_key_enc: Mapped[str] = mapped_column(Text)
+    key_hint: Mapped[str] = mapped_column(String(8), default="")
+    base_url: Mapped[str] = mapped_column(String(2048), default="")  # custom only
+    model: Mapped[str] = mapped_column(String(120))
+    image_provider: Mapped[str | None] = mapped_column(String(16))
+    image_model: Mapped[str | None] = mapped_column(String(120))
+    image_api_key_enc: Mapped[str | None] = mapped_column(Text)
+    image_key_hint: Mapped[str | None] = mapped_column(String(8))
+    image_base_url: Mapped[str | None] = mapped_column(String(2048))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class LLMUsage(Base):
+    """One row per LLM call made with a user's own key — the audit trail behind
+    the usage page. Calls on the server-wide default key are deliberately not
+    logged here (that's the operator's bill, not the user's)."""
+
+    __tablename__ = "llm_usage"
+    __table_args__ = (Index("ix_llm_usage_user_created", "user_id", "created_at"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    feature: Mapped[str] = mapped_column(String(16))  # 'summary' | 'qa' | 'share' | 'image'
+    provider: Mapped[str] = mapped_column(String(16))
+    model: Mapped[str] = mapped_column(String(120))
+    prompt_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    completion_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    duration_ms: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[str] = mapped_column(String(8), default="ok")  # 'ok' | 'error'
+    error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class Device(Base):
     """A mobile device registered for push notifications. Tokens are Expo push
     tokens, which cover both iOS and Android; a token that logs into another
