@@ -278,6 +278,51 @@ export type AITestResult = {
   model: string | null;
 };
 
+export type UsageFeatureKey = "summary" | "qa" | "share" | "image";
+
+export const USAGE_FEATURE_LABELS: Record<UsageFeatureKey, string> = {
+  summary: "Summaries",
+  qa: "Q&A",
+  share: "Share messages",
+  image: "Images",
+};
+
+export type UsageDay = { day: string; calls: number; tokens: number };
+
+export type UsageFeature = { feature: string; calls: number; tokens: number };
+
+export type UsageModel = {
+  provider: string;
+  model: string;
+  calls: number;
+  tokens: number;
+};
+
+export type UsageSummary = {
+  range: ActivityRange;
+  configured: boolean;
+  total_calls: number;
+  total_tokens: number;
+  prev_total_tokens: number;
+  error_count: number;
+  days: UsageDay[];
+  by_feature: UsageFeature[];
+  by_model: UsageModel[];
+};
+
+export type UsageEvent = {
+  id: number;
+  feature: string;
+  provider: string;
+  model: string;
+  prompt_tokens: number;
+  completion_tokens: number;
+  duration_ms: number;
+  status: string;
+  error: string | null;
+  created_at: string;
+};
+
 export type ToolEvent = {
   name: string;
   args: Record<string, unknown>;

@@ -38,12 +38,13 @@ vi.mock("@/components/FeedSettingsModal", () => ({
   },
 }));
 
-type SwrData = { feeds?: unknown; unseen?: unknown; projects?: unknown };
-function setSwr({ feeds, unseen, projects }: SwrData) {
+type SwrData = { feeds?: unknown; unseen?: unknown; projects?: unknown; ai?: unknown };
+function setSwr({ feeds, unseen, projects, ai }: SwrData) {
   swrMock.mockImplementation((key: string) => {
     if (key === "/feeds") return { data: feeds };
     if (key === "/shares/unseen-count") return { data: unseen };
     if (key === "/projects") return { data: projects };
+    if (key === "/ai/settings") return { data: ai };
     return { data: undefined };
   });
 }
@@ -280,5 +281,28 @@ describe("<Sidebar>", () => {
     render(<Sidebar />);
     await userEvent.click(screen.getByTitle("Add feed"));
     expect(screen.queryByText(/No feeds yet/)).not.toBeInTheDocument();
+  });
+});
+
+
+describe("<Sidebar> AI usage link", () => {
+  beforeEach(() => {
+    pathState.value = "/";
+    searchState.feed = null;
+    authState.user = makeUser();
+    authState.logout = vi.fn();
+  });
+
+  it("is hidden without an own AI key", () => {
+    setSwr({ feeds: [], unseen: { count: 0 }, ai: { configured: false } });
+    render(<Sidebar />);
+    expect(screen.queryByText("AI usage")).not.toBeInTheDocument();
+  });
+
+  it("appears once a key is configured", () => {
+    setSwr({ feeds: [], unseen: { count: 0 }, ai: { configured: true } });
+    render(<Sidebar />);
+    const link = screen.getByText("AI usage").closest("a");
+    expect(link).toHaveAttribute("href", "/usage");
   });
 });

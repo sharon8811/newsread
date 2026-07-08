@@ -17,6 +17,7 @@ from .routers import (
     integrations,
     projects,
     shares,
+    usage,
     users,
 )
 
@@ -56,6 +57,7 @@ app.include_router(ai_settings.router, prefix="/api")
 app.include_router(devices.router, prefix="/api")
 app.include_router(integrations.router, prefix="/api")
 app.include_router(activity.router, prefix="/api")
+app.include_router(usage.router, prefix="/api")
 
 
 @app.get("/api/health")
