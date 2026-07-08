@@ -8,6 +8,7 @@ import { useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { imageSrc } from "@/lib/api";
 import { timeAgo } from "@/lib/format";
 import type { Article } from "@/lib/types";
 
@@ -55,7 +56,7 @@ export default function StoriesView({ articles, onOpen, onMarkRead, onExit }: Pr
   return (
     <View style={[styles.screen, { backgroundColor: CARD_BG }]}>
       <ImageBackground
-        source={article.image_url ? { uri: article.image_url } : undefined}
+        source={article.image_url ? { uri: imageSrc(article.image_url) } : undefined}
         style={styles.card}
         contentFit="cover"
         transition={200}

@@ -76,9 +76,12 @@ async def resolve_config(session, user_id: int) -> llm.LLMConfig | None:
 
 
 def public_image_url(article_id: int) -> str:
-    # oauth_redirect_base is the deployment's public backend base URL; <img>
-    # tags need an absolute address.
-    return f"{settings.oauth_redirect_base}/api/articles/{article_id}/generated-image"
+    # Relative on purpose: each client resolves it against the API base it
+    # already reaches (web NEXT_PUBLIC_API_URL, mobile server URL), so the
+    # stored value never depends on a deployment-specific host. Absolute URLs
+    # built from oauth_redirect_base broke as soon as that var pointed at an
+    # OAuth tunnel instead of the API the browser uses.
+    return f"/api/articles/{article_id}/generated-image"
 
 
 def _uses_chat_modalities(config: llm.LLMConfig) -> bool:

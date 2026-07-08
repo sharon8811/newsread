@@ -258,3 +258,35 @@ async def test_generate_for_article_failure_logs_error(session, users, monkeypat
     row = (await session.scalars(select(LLMUsage))).one()
     assert row.status == "error"
     assert "model unavailable" in row.error
+
+
+def test_public_image_url_is_relative():
+    # Absolute URLs built from oauth_redirect_base broke behind OAuth tunnels;
+    # clients resolve this against their own API base.
+    assert image_gen.public_image_url(42) == "/api/articles/42/generated-image"
+
+
+async def test_backfill_rewrites_absolute_generated_image_urls(session):
+    from sqlalchemy import text
+
+    from app import db as app_db
+
+    feed = Feed(url="https://feed/backfill")
+    session.add(feed)
+    await session.flush()
+    generated = Article(feed_id=feed.id, guid="bf-1", url="https://x/1", title="T1",
+                        image_url="https://tunnel.ngrok.io/api/articles/999/generated-image")
+    scraped = Article(feed_id=feed.id, guid="bf-2", url="https://x/2", title="T2",
+                      image_url="https://site.example/og.png")
+    session.add_all([generated, scraped])
+    await session.commit()
+
+    backfill = next(s for s in app_db.MIGRATIONS if "generated-image" in s)
+    await session.execute(text(backfill))
+    await session.execute(text(backfill))  # idempotent
+    await session.commit()
+
+    await session.refresh(generated)
+    await session.refresh(scraped)
+    assert generated.image_url == f"/api/articles/{generated.id}/generated-image"
+    assert scraped.image_url == "https://site.example/og.png"

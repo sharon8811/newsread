@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import useSWR from "swr";
-import { api, fetcher, type Article } from "@/lib/api";
+import { api, fetcher, imageSrc, type Article } from "@/lib/api";
 import { timeAgo } from "@/lib/format";
 import { articlesKey, mutateArticleLists } from "./ArticleList";
 import EntityBadges from "./EntityBadges";
@@ -93,7 +93,7 @@ export default function StoriesView({
   useEffect(() => {
     if (!queue) return;
     for (const next of [queue[index + 1], queue[index + 2]]) {
-      if (next?.image_url) new window.Image().src = next.image_url;
+      if (next?.image_url) new window.Image().src = imageSrc(next.image_url)!;
     }
   }, [queue, index]);
 
@@ -194,7 +194,7 @@ export default function StoriesView({
         className="fade-up absolute inset-0 bg-cover bg-center"
         style={{
           backgroundImage: a.image_url
-            ? `linear-gradient(to bottom, rgba(10,11,15,0.35), rgba(10,11,15,0.55) 55%, rgba(10,11,15,0.96)), url(${JSON.stringify(a.image_url)})`
+            ? `linear-gradient(to bottom, rgba(10,11,15,0.35), rgba(10,11,15,0.55) 55%, rgba(10,11,15,0.96)), url(${JSON.stringify(imageSrc(a.image_url))})`
             : FALLBACK_BG,
         }}
       />
