@@ -14,7 +14,7 @@ import {
 } from "react-native";
 
 import StoriesView from "@/components/StoriesView";
-import { api } from "@/lib/api";
+import { api, imageSrc } from "@/lib/api";
 import { useArticles, type ArticleFilter } from "@/lib/articles";
 import { useAuth } from "@/lib/auth";
 import { timeAgo } from "@/lib/format";
@@ -69,7 +69,7 @@ function ListRow({ article, colors, onPress }: {
       </View>
       {article.image_url && (
         <Image
-          source={{ uri: article.image_url }}
+          source={{ uri: imageSrc(article.image_url) }}
           style={styles.thumb}
           contentFit="cover"
           transition={150}
@@ -99,7 +99,7 @@ function CardRow({ article, colors, onPress }: {
     >
       {article.image_url && (
         <Image
-          source={{ uri: article.image_url }}
+          source={{ uri: imageSrc(article.image_url) }}
           style={[styles.cardImage, dim && { opacity: 0.55 }]}
           contentFit="cover"
           transition={150}

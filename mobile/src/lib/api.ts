@@ -67,3 +67,11 @@ export async function apiPage<T>(path: string): Promise<Page<T>> {
 }
 
 export const fetcher = <T,>(path: string) => api<T>(path);
+
+// Generated article images are stored as relative /api/... paths so they
+// survive any deployment host; scraped og:images stay absolute. Resolve the
+// relative ones against the configured server.
+export function imageSrc(url: string | null): string | undefined {
+  if (!url) return undefined;
+  return url.startsWith("/") && baseUrl ? `${baseUrl}${url}` : url;
+}

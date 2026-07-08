@@ -56,6 +56,14 @@ export async function api<T>(
 
 export const fetcher = <T,>(path: string) => api<T>(path);
 
+// Generated article images are stored as relative /api/... paths so they
+// survive any deployment host; scraped og:images stay absolute. Resolve the
+// relative ones against the API base this client already talks to.
+export function imageSrc(url: string | null): string | undefined {
+  if (!url) return undefined;
+  return url.startsWith("/") ? `${API_URL}${url}` : url;
+}
+
 // ——— Q&A streaming (SSE over fetch; EventSource can't POST or send auth) ———
 
 export type QAStreamEvent =

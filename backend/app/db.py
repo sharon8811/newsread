@@ -75,6 +75,12 @@ MIGRATIONS = [
     # Generated article images (bring-your-own-key feature).
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS image_prompt TEXT",
     "ALTER TABLE articles ADD COLUMN IF NOT EXISTS image_gen_attempted_at TIMESTAMPTZ",
+    # Generated-image URLs were briefly stored absolute (built from the OAuth
+    # redirect base, which may point at a tunnel browsers can't reach);
+    # relative paths survive any deployment host. Idempotent: already-relative
+    # rows are excluded by the NOT LIKE.
+    "UPDATE articles SET image_url = '/api/articles/' || id || '/generated-image' "
+    "WHERE image_url LIKE '%/api/articles/%/generated-image' AND image_url NOT LIKE '/api/%'",
 ]
 
 

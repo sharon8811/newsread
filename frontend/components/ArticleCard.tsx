@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { type Article } from "@/lib/api";
+import { imageSrc, type Article } from "@/lib/api";
 import { domainOf, timeAgo } from "@/lib/format";
 import EntityBadges from "./EntityBadges";
 import { BookmarkIcon, ExternalIcon, FolderIcon, ShareIcon } from "./icons";
@@ -55,7 +55,7 @@ export default function ArticleCard({
           {article.image_url && (
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              src={article.image_url}
+              src={imageSrc(article.image_url)}
               alt=""
               loading="lazy"
               className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"

@@ -189,3 +189,19 @@ describe("streamQA", () => {
     expect(fetchMock.mock.calls[0][0]).toContain("/articles/5/qa/stream");
   });
 });
+
+describe("imageSrc", () => {
+  it("prefixes relative generated-image paths with the API base", async () => {
+    const { imageSrc, API_URL } = await import("@/lib/api");
+    expect(imageSrc("/api/articles/32/generated-image")).toBe(
+      `${API_URL}/api/articles/32/generated-image`,
+    );
+  });
+
+  it("leaves absolute og-image URLs and empty values alone", async () => {
+    const { imageSrc } = await import("@/lib/api");
+    expect(imageSrc("https://site.example/og.png")).toBe("https://site.example/og.png");
+    expect(imageSrc(null)).toBeUndefined();
+    expect(imageSrc("")).toBeUndefined();
+  });
+});
