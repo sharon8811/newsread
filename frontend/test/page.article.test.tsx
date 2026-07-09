@@ -152,4 +152,40 @@ describe("ArticlePage", () => {
     render(<ArticlePage />);
     expect(screen.getByTitle("Unsave")).toBeInTheDocument();
   });
+
+  it("shows a generating placeholder while an illustration renders", () => {
+    swrMock.mockReturnValue({
+      data: makeArticleDetail({ is_read: true, image_url: null, image_pending: true }),
+      error: undefined,
+    });
+    const { container } = render(<ArticlePage />);
+    // Announced to screen readers as a live status, not just painted.
+    expect(screen.getByRole("status")).toHaveTextContent(/generating illustration/);
+    expect(container.querySelector(".shimmer")).toBeInTheDocument();
+    expect(container.querySelector("img")).toBeNull();
+  });
+
+  it("renders the illustration once it is ready", () => {
+    swrMock.mockReturnValue({
+      data: makeArticleDetail({
+        is_read: true,
+        image_url: "/api/articles/1/generated-image",
+      }),
+      error: undefined,
+    });
+    const { container } = render(<ArticlePage />);
+    expect(container.querySelector("img")).toBeInTheDocument();
+    expect(screen.queryByText(/generating illustration/)).not.toBeInTheDocument();
+    expect(container.querySelector(".shimmer")).toBeNull();
+  });
+
+  it("renders no illustration hero for an imageless article", () => {
+    swrMock.mockReturnValue({
+      data: makeArticleDetail({ is_read: true, image_url: null, image_pending: false }),
+      error: undefined,
+    });
+    const { container } = render(<ArticlePage />);
+    expect(screen.queryByText(/generating illustration/)).not.toBeInTheDocument();
+    expect(container.querySelector("img")).toBeNull();
+  });
 });

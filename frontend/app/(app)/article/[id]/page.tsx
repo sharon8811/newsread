@@ -16,7 +16,7 @@ import {
   FolderIcon,
   ShareIcon,
 } from "@/components/icons";
-import { api, fetcher, streamQA, type ArticleDetail } from "@/lib/api";
+import { api, fetcher, imageSrc, streamQA, type ArticleDetail } from "@/lib/api";
 import { domainOf, timeAgo } from "@/lib/format";
 import { useReadingTimer } from "@/lib/useReadingTimer";
 
@@ -24,10 +24,18 @@ export default function ArticlePage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const key = `/articles/${id}`;
-  const { data: article, error } = useSWR<ArticleDetail>(key, fetcher);
+  // While an AI illustration is rendering, poll the detail so the image
+  // appears the moment it lands (and the "generating" state clears if it
+  // fails). Server-side pending stops reporting after ~3 min, which halts
+  // the poll on its own.
+  const { data: article, error } = useSWR<ArticleDetail>(key, fetcher, {
+    refreshInterval: (data) =>
+      data?.image_pending && !data.image_url ? 3000 : 0,
+  });
   const [sharing, setSharing] = useState(false);
   const [pickingProject, setPickingProject] = useState(false);
   const markedRef = useRef(false);
+  const hadImageRef = useRef<boolean | null>(null);
 
   useReadingTimer(article?.id);
 
@@ -44,16 +52,16 @@ export default function ArticlePage() {
     }
   }, [article, key]);
 
-  // An AI illustration is rendering in the background; pick it up once it
-  // should be done rather than waiting for the next visit.
+  // When a background-generated illustration lands (image_url goes from
+  // absent to present for this article), propagate it to the card/row lists
+  // so they pick up the new image too. Only fires on the transition, not for
+  // articles that already had an image on open.
   useEffect(() => {
-    if (!article?.image_pending) return;
-    const t = setTimeout(() => {
-      mutate(key);
-      mutateArticleLists();
-    }, 15_000);
-    return () => clearTimeout(t);
-  }, [article?.image_pending, key]);
+    if (article === undefined) return;
+    const hasImage = Boolean(article.image_url);
+    if (hadImageRef.current === false && hasImage) mutateArticleLists();
+    hadImageRef.current = hasImage;
+  }, [article]);
 
   async function toggleSaved() {
     if (!article) return;
@@ -108,6 +116,51 @@ export default function ArticlePage() {
         {article.author ? ` · ${article.author}` : ""}
         {article.published_at ? ` · ${timeAgo(article.published_at)}` : ""}
       </p>
+
+      {/* Illustration hero. While an AI image renders in the background we show
+          a live "generating" placeholder (shimmer + label) that polls above;
+          the finished image fades in. Nothing renders for articles with no
+          image and none on the way. */}
+      {(article.image_url || article.image_pending) && (
+        <div
+          className={`relative mt-6 aspect-[2/1] w-full overflow-hidden rounded-lg border ${
+            article.image_url ? "" : "shimmer"
+          }`}
+          style={{ borderColor: "var(--line-soft)", background: "var(--bg-hover)" }}
+        >
+          {article.image_url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={imageSrc(article.image_url)}
+              alt=""
+              className="fade-in h-full w-full object-cover"
+              onError={(e) => {
+                e.currentTarget.style.display = "none";
+              }}
+            />
+          ) : (
+            <span
+              role="status"
+              className="font-mono-nr absolute inset-0 flex items-center justify-center gap-2 text-[11px]"
+              style={{ color: "var(--ink-faint)" }}
+            >
+              <span aria-hidden="true" style={{ color: "var(--accent)" }}>
+                ✦
+              </span>
+              generating illustration
+              <span aria-hidden="true" className="inline-flex items-center gap-1">
+                {[0, 1, 2].map((i) => (
+                  <span
+                    key={i}
+                    className="typing-dot"
+                    style={{ animationDelay: `${i * 0.18}s` }}
+                  />
+                ))}
+              </span>
+            </span>
+          )}
+        </div>
+      )}
 
       <div
         className="mt-7 flex flex-wrap items-center gap-2 border-y py-3.5"

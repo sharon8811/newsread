@@ -70,9 +70,10 @@ describe("<ArticleCard>", () => {
     expect(container.querySelector(".shimmer")).toBeNull();
   });
 
-  it("shimmers a media frame while enrichment may add an image", () => {
+  it("reserves no media frame while merely enriching (image not yet available)", () => {
     const { container } = renderCard({ enriching: true });
-    expect(container.querySelector(".shimmer")).toBeInTheDocument();
+    expect(container.querySelector("img")).toBeNull();
+    expect(container.querySelector(".shimmer")).toBeNull();
   });
 
   it("shows the author, falling back to the feed title", () => {
