@@ -42,10 +42,14 @@ def test_system_config_from_env(monkeypatch):
     monkeypatch.setattr(
         image_gen.settings, "image_generation_base_url", "https://openrouter.ai/api/v1"
     )
+    monkeypatch.setattr(
+        image_gen.settings, "image_generation_extra_params", '{"aspect_ratio": "16:9"}'
+    )
     config = image_gen.system_config()
     assert config.provider == "system"
     assert config.user_owned is False
     assert config.base_url == "https://openrouter.ai/api/v1"
+    assert config.extra_params == {"aspect_ratio": "16:9"}
 
     monkeypatch.setattr(image_gen.settings, "image_generation_api_key", "")
     assert image_gen.system_config() is None
@@ -57,11 +61,13 @@ async def test_resolve_config_prefers_user_image_block(session, users):
         user_id=user.id, provider="openai", model="gpt-5",
         api_key_enc=crypto.encrypt_token("sk-main-12345678"), key_hint="5678",
         image_provider="openai", image_model="gpt-image-1",
+        image_extra_params='{"aspect_ratio": "16:9"}',
     ))
     await session.commit()
     config = await image_gen.resolve_config(session, user.id)
     assert config.user_owned is True
     assert config.model == "gpt-image-1"
+    assert config.extra_params == {"aspect_ratio": "16:9"}
     # No dedicated image key -> the main key serves (same provider, enforced at save).
     assert config.api_key == "sk-main-12345678"
 
@@ -142,37 +148,82 @@ def _openrouter_config(**overrides):
     return llm.LLMConfig(**defaults)
 
 
-async def test_generate_via_openrouter_chat_modalities(monkeypatch):
-    message = types.SimpleNamespace(
-        images=[{"type": "image_url", "image_url": {"url": DATA_URL}}],
-        model_extra={},
-    )
-    response = types.SimpleNamespace(
-        choices=[types.SimpleNamespace(message=message)],
-        usage=types.SimpleNamespace(prompt_tokens=12, completion_tokens=1290),
-    )
-    monkeypatch.setattr(
-        image_gen, "AsyncOpenAI",
-        lambda **kw: _FakeClient(chat_response=response, **kw),
-    )
-    data, content_type, usage = await image_gen.generate(_openrouter_config(), "a prompt")
+class _FakeHTTPResponse:
+    def __init__(self, body, status_code=200):
+        self._body = body
+        self.status_code = status_code
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise RuntimeError(f"HTTP {self.status_code}")
+
+    def json(self):
+        return self._body
+
+
+class _FakeHTTPClient:
+    """httpx.AsyncClient stand-in for the OpenRouter images endpoint."""
+
+    def __init__(self, body, status_code=200):
+        _FakeHTTPClient.body = body
+        _FakeHTTPClient.status_code = status_code
+
+    def __call__(self, **kwargs):  # mimics AsyncClient(timeout=...)
+        return self
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args):
+        return False
+
+    async def post(self, url, headers=None, json=None):
+        _FakeHTTPClient.call = {"url": url, "headers": headers, "json": json}
+        return _FakeHTTPResponse(_FakeHTTPClient.body, _FakeHTTPClient.status_code)
+
+
+async def test_generate_via_openrouter_images_endpoint(monkeypatch):
+    body = {
+        "created": 1748372400,
+        "data": [{"b64_json": base64.b64encode(PNG_BYTES).decode(),
+                  "media_type": "image/webp"}],
+        "usage": {"prompt_tokens": 12, "completion_tokens": 1290},
+    }
+    monkeypatch.setattr(image_gen.httpx, "AsyncClient", _FakeHTTPClient(body))
+    config = _openrouter_config(extra_params={"aspect_ratio": "16:9"})
+    data, content_type, usage = await image_gen.generate(config, "a prompt")
+    assert data == PNG_BYTES
+    assert content_type == "image/webp"
+    assert usage.completion_tokens == 1290
+    assert _FakeHTTPClient.call["url"] == "https://openrouter.ai/api/v1/images"
+    assert _FakeHTTPClient.call["headers"]["Authorization"] == "Bearer sk-img"
+    # Extra params ride along verbatim next to model + prompt.
+    assert _FakeHTTPClient.call["json"] == {
+        "model": "google/gemini-2.5-flash-image",
+        "prompt": "a prompt",
+        "aspect_ratio": "16:9",
+    }
+
+
+async def test_generate_openrouter_url_fallback(monkeypatch):
+    body = {"data": [{"url": DATA_URL}]}
+    monkeypatch.setattr(image_gen.httpx, "AsyncClient", _FakeHTTPClient(body))
+    data, content_type, usage = await image_gen.generate(_openrouter_config(), "p")
     assert data == PNG_BYTES
     assert content_type == "image/png"
-    assert usage.completion_tokens == 1290
-    assert _FakeClient.chat_call["extra_body"] == {"modalities": ["image", "text"]}
-    assert _FakeClient.chat_call["messages"] == [{"role": "user", "content": "a prompt"}]
 
 
 async def test_generate_openrouter_no_image_raises(monkeypatch):
-    message = types.SimpleNamespace(images=[], model_extra={})
-    response = types.SimpleNamespace(
-        choices=[types.SimpleNamespace(message=message)], usage=None
-    )
-    monkeypatch.setattr(
-        image_gen, "AsyncOpenAI",
-        lambda **kw: _FakeClient(chat_response=response, **kw),
-    )
+    monkeypatch.setattr(image_gen.httpx, "AsyncClient", _FakeHTTPClient({"data": []}))
     with pytest.raises(RuntimeError, match="no image"):
+        await image_gen.generate(_openrouter_config(), "p")
+
+
+async def test_generate_openrouter_http_error_raises(monkeypatch):
+    monkeypatch.setattr(
+        image_gen.httpx, "AsyncClient", _FakeHTTPClient({}, status_code=402)
+    )
+    with pytest.raises(RuntimeError, match="402"):
         await image_gen.generate(_openrouter_config(), "p")
 
 
@@ -189,6 +240,35 @@ async def test_generate_via_images_api(monkeypatch):
     assert data == PNG_BYTES
     assert content_type == "image/png"
     assert _FakeClient.images_call["prompt"] == "a prompt"
+    assert _FakeClient.images_call["extra_body"] is None
+
+
+async def test_generate_via_images_api_passes_extra_params(monkeypatch):
+    response = types.SimpleNamespace(
+        data=[types.SimpleNamespace(b64_json=base64.b64encode(PNG_BYTES).decode(), url=None)]
+    )
+    monkeypatch.setattr(
+        image_gen, "AsyncOpenAI",
+        lambda **kw: _FakeClient(images_response=response, **kw),
+    )
+    config = _openrouter_config(
+        provider="openai", base_url=None, extra_params={"size": "1536x1024"}
+    )
+    await image_gen.generate(config, "a prompt")
+    assert _FakeClient.images_call["extra_body"] == {"size": "1536x1024"}
+
+
+# --- extra params parsing ---
+
+def test_parse_extra_params():
+    assert image_gen.parse_extra_params(None) == {}
+    assert image_gen.parse_extra_params("  ") == {}
+    assert image_gen.parse_extra_params('{"aspect_ratio": "16:9"}') == {
+        "aspect_ratio": "16:9"
+    }
+    # Malformed values degrade to plain generation instead of breaking it.
+    assert image_gen.parse_extra_params("not json") == {}
+    assert image_gen.parse_extra_params('["not", "an", "object"]') == {}
 
 
 # --- background task ---

@@ -69,6 +69,9 @@ function AISettingsForm({ settings }: { settings: AISettings }) {
   const [imageModel, setImageModel] = useState(stored?.image?.model ?? "");
   const [imageApiKey, setImageApiKey] = useState("");
   const [imageBaseUrl, setImageBaseUrl] = useState(stored?.image?.base_url ?? "");
+  const [imageExtraParams, setImageExtraParams] = useState(
+    stored?.image?.extra_params ?? "",
+  );
   const [imagePrompt, setImagePrompt] = useState(settings.image_prompt ?? "");
   // Kept as text so the field can be emptied while typing; "" = unlimited.
   const [imageBudget, setImageBudget] = useState(
@@ -101,11 +104,31 @@ function AISettingsForm({ settings }: { settings: AISettings }) {
       body.image = { provider: imageProvider, model: imageModel.trim() };
       if (imageApiKey.trim()) body.image.api_key = imageApiKey.trim();
       if (imageProvider === "custom") body.image.base_url = imageBaseUrl.trim();
+      // Always sent: like the rest of the image block, a save replaces it.
+      body.image.extra_params = imageExtraParams.trim();
     }
     return body;
   }
 
+  function validExtraParams(): boolean {
+    const raw = imageExtraParams.trim();
+    if (!raw) return true;
+    try {
+      const parsed = JSON.parse(raw);
+      return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed);
+    } catch {
+      return false;
+    }
+  }
+
   async function save() {
+    if (ownKey && imageEnabled && imageModel.trim() && !validExtraParams()) {
+      setNote({
+        kind: "error",
+        text: 'Extra parameters must be a JSON object, e.g. {"aspect_ratio": "16:9"}',
+      });
+      return;
+    }
     setBusy(true);
     setNote(null);
     try {
@@ -347,6 +370,19 @@ function AISettingsForm({ settings }: { settings: AISettings }) {
                       />
                     </Field>
                   )}
+                  <Field
+                    label="Extra parameters"
+                    hint="optional JSON sent with every generation request (aspect ratio, quality, …)"
+                  >
+                    <input
+                      className="input"
+                      style={{ fontSize: 13.5 }}
+                      placeholder='{"aspect_ratio": "16:9"}'
+                      aria-label="Image extra parameters"
+                      value={imageExtraParams}
+                      onChange={(e) => setImageExtraParams(e.target.value)}
+                    />
+                  </Field>
                 </div>
               )}
             </div>

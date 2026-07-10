@@ -90,6 +90,8 @@ MIGRATIONS = [
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS image_gen_monthly_limit INTEGER",
     "ALTER TABLE articles ADD COLUMN IF NOT EXISTS image_gen_user_id INTEGER "
     "REFERENCES users(id) ON DELETE SET NULL",
+    # Model-specific request parameters for the user's own image model.
+    "ALTER TABLE user_ai_settings ADD COLUMN IF NOT EXISTS image_extra_params TEXT",
 ]
 
 

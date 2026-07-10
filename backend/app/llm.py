@@ -8,7 +8,7 @@ every provider in the dropdown."""
 import base64
 import logging
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from openai import AsyncOpenAI
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -37,6 +37,9 @@ class LLMConfig:
     model: str
     user_owned: bool = False
     supports_vision: bool = False  # model accepts image input (user/operator-declared)
+    # Model-specific request parameters merged verbatim into every generation
+    # call (image models only today, e.g. {"aspect_ratio": "16:9"}).
+    extra_params: dict = field(default_factory=dict)
 
 
 class TokenUsage:

@@ -66,6 +66,7 @@ def _out(
             model=row.image_model,
             base_url=row.image_base_url or "",
             key_hint=row.image_key_hint or "",
+            extra_params=row.image_extra_params or "",
         )
     return AISettingsOut(
         configured=True,
@@ -119,8 +120,9 @@ async def put_ai_settings(
         raise HTTPException(status_code=422, detail="An API key is required")
 
     image_provider = image_model = image_base_url = None
-    image_api_key_enc = image_key_hint = None
+    image_api_key_enc = image_key_hint = image_extra_params = None
     if body.image is not None:
+        image_extra_params = body.image.extra_params or None
         same_stored_image_provider = (
             row is not None and row.image_provider == body.image.provider
         )
@@ -162,6 +164,7 @@ async def put_ai_settings(
     row.image_base_url = image_base_url
     row.image_api_key_enc = image_api_key_enc
     row.image_key_hint = image_key_hint
+    row.image_extra_params = image_extra_params
     await session.commit()
     return _out(row, user, await image_gen.generations_this_month(session, user.id))
 

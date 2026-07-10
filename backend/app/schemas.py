@@ -1,3 +1,4 @@
+import json
 from datetime import date, datetime
 from typing import Literal
 
@@ -454,6 +455,20 @@ def _ai_base_url(value: str | None) -> str | None:
     return value
 
 
+def _ai_extra_params(value: str) -> str:
+    """Model-specific request parameters: empty, or a JSON object."""
+    value = value.strip()
+    if not value:
+        return ""
+    try:
+        parsed = json.loads(value)
+    except ValueError:
+        raise ValueError('must be a JSON object, e.g. {"aspect_ratio": "16:9"}')
+    if not isinstance(parsed, dict):
+        raise ValueError('must be a JSON object, e.g. {"aspect_ratio": "16:9"}')
+    return value
+
+
 class AIImageSettingsIn(BaseModel):
     provider: AIProvider
     model: str = Field(min_length=1, max_length=120)
@@ -461,8 +476,12 @@ class AIImageSettingsIn(BaseModel):
     # reuses the main key at call time.
     api_key: str | None = Field(default=None, max_length=512)
     base_url: str = Field(default="", max_length=2048)  # custom only
+    # JSON object merged into every generation request ("" = none). Sent in
+    # full on every save, like the rest of the image block.
+    extra_params: str = Field(default="", max_length=2000)
 
     _check_base_url = field_validator("base_url")(_ai_base_url)
+    _check_extra_params = field_validator("extra_params")(_ai_extra_params)
 
 
 class AISettingsIn(BaseModel):
@@ -481,6 +500,7 @@ class AIImageSettingsOut(BaseModel):
     model: str
     base_url: str = ""
     key_hint: str = ""
+    extra_params: str = ""
 
 
 class AISettingsOut(BaseModel):

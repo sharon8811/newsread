@@ -76,6 +76,14 @@ class Settings(BaseSettings):
             "NEWSREAD_IMAGE_GENERATION_API_KEY", "IMAGE_GENERATION_API_KEY"
         ),
     )
+    # JSON object merged verbatim into every generation request — model-specific
+    # knobs like {"aspect_ratio": "16:9"}. Invalid JSON is ignored with a warning.
+    image_generation_extra_params: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "NEWSREAD_IMAGE_GENERATION_EXTRA_PARAMS", "IMAGE_GENERATION_EXTRA_PARAMS"
+        ),
+    )
 
     # Web tools for the Q&A agent. Without either, the agent still works,
     # just without web search/extract. SearXNG (self-hosted metasearch) wins

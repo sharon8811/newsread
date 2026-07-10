@@ -256,6 +256,7 @@ export type AIImageSettings = {
   model: string;
   base_url: string;
   key_hint: string;
+  extra_params: string; // JSON object merged into every generation request; "" = none
 };
 
 export type AISettings = {
@@ -279,6 +280,7 @@ export type AIImageSettingsSave = {
   model: string;
   api_key?: string; // omitted keeps the stored key / falls back to the main one
   base_url?: string;
+  extra_params?: string; // sent in full each save; omitted/"" clears
 };
 
 export type AISettingsSave = {

@@ -256,7 +256,49 @@ describe("<AISettingsSection>", () => {
     await userEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-    expect(lastCall(fetchMock).body.image).toEqual({ provider: "openai", model: "gpt-image-1" });
+    expect(lastCall(fetchMock).body.image).toEqual({
+      provider: "openai",
+      model: "gpt-image-1",
+      extra_params: "",
+    });
+  });
+
+  it("sends image extra parameters and prefills stored ones", async () => {
+    withSettings(UNCONFIGURED);
+    const fetchMock = okFetch(CONFIGURED);
+    render(<AISettingsSection />);
+
+    await userEvent.selectOptions(screen.getByLabelText("Model provider"), "openai");
+    await userEvent.type(screen.getByLabelText("API key"), "sk-test-12345678");
+    await userEvent.type(screen.getByLabelText("Model"), "gpt-5");
+    await userEvent.click(screen.getByRole("checkbox", { name: /Image generation/ }));
+    await userEvent.type(screen.getByLabelText("Image model"), "gpt-image-1");
+    // userEvent treats "{" as a key descriptor; "{{" types a literal brace.
+    await userEvent.type(
+      screen.getByLabelText("Image extra parameters"),
+      '{{"aspect_ratio": "16:9"}',
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    expect(lastCall(fetchMock).body.image.extra_params).toBe('{"aspect_ratio": "16:9"}');
+  });
+
+  it("rejects extra parameters that are not a JSON object", async () => {
+    withSettings(UNCONFIGURED);
+    const fetchMock = okFetch(CONFIGURED);
+    render(<AISettingsSection />);
+
+    await userEvent.selectOptions(screen.getByLabelText("Model provider"), "openai");
+    await userEvent.type(screen.getByLabelText("API key"), "sk-test-12345678");
+    await userEvent.type(screen.getByLabelText("Model"), "gpt-5");
+    await userEvent.click(screen.getByRole("checkbox", { name: /Image generation/ }));
+    await userEvent.type(screen.getByLabelText("Image model"), "gpt-image-1");
+    await userEvent.type(screen.getByLabelText("Image extra parameters"), "not json");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(await screen.findByText(/must be a JSON object/)).toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("surfaces backend validation errors", async () => {

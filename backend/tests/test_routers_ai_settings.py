@@ -476,3 +476,36 @@ async def test_get_exposes_image_budget(client, users, data, session):
     body = resp.json()
     assert body["image_gen_monthly_limit"] == 10
     assert body["image_generations_this_month"] == 2
+
+
+async def test_put_image_extra_params_roundtrip(client, users):
+    user = await users.create()
+    body = {
+        "provider": "openai", "model": "gpt-5", "api_key": "sk-main-12345678",
+        "image": {"provider": "openai", "model": "gpt-image-1",
+                  "extra_params": '{"aspect_ratio": "16:9"}'},
+    }
+    resp = await client.put("/api/ai/settings", json=body, headers=users.auth(user))
+    assert resp.status_code == 200
+    assert resp.json()["image"]["extra_params"] == '{"aspect_ratio": "16:9"}'
+    resp = await client.get("/api/ai/settings", headers=users.auth(user))
+    assert resp.json()["image"]["extra_params"] == '{"aspect_ratio": "16:9"}'
+
+    # A save that omits extra_params clears them, like the rest of the block.
+    del body["image"]["extra_params"]
+    resp = await client.put("/api/ai/settings", json=body, headers=users.auth(user))
+    assert resp.json()["image"]["extra_params"] == ""
+
+
+async def test_put_image_extra_params_must_be_json_object(client, users):
+    user = await users.create()
+    body = {
+        "provider": "openai", "model": "gpt-5", "api_key": "sk-main-12345678",
+        "image": {"provider": "openai", "model": "gpt-image-1",
+                  "extra_params": "aspect_ratio=16:9"},
+    }
+    resp = await client.put("/api/ai/settings", json=body, headers=users.auth(user))
+    assert resp.status_code == 422
+    body["image"]["extra_params"] = '["a", "list"]'
+    resp = await client.put("/api/ai/settings", json=body, headers=users.auth(user))
+    assert resp.status_code == 422

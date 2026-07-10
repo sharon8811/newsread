@@ -64,6 +64,9 @@ class UserAISettings(Base):
     image_api_key_enc: Mapped[str | None] = mapped_column(Text)
     image_key_hint: Mapped[str | None] = mapped_column(String(8))
     image_base_url: Mapped[str | None] = mapped_column(String(2048))
+    # JSON object merged into every generation request for this model
+    # (e.g. {"aspect_ratio": "16:9"}); NULL = no extra parameters.
+    image_extra_params: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
