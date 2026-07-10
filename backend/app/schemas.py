@@ -119,6 +119,25 @@ class FeedSettingsIn(BaseModel):
     refresh_interval_minutes: int | None = Field(default=None, ge=5, le=10080)
 
 
+# --- Catalog (curated feed directory) ---
+
+class CatalogEntryOut(BaseModel):
+    id: int
+    url: str
+    title: str
+    description: str | None
+    site_url: str | None
+    category: str
+    # The viewer's Feed id when they already subscribe to this URL, else null.
+    feed_id: int | None = None
+    subscribed: bool = False
+
+
+class CatalogCategoryOut(BaseModel):
+    name: str
+    count: int
+
+
 # --- Entities (smart link enrichment) ---
 
 class EntityBadge(BaseModel):

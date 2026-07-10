@@ -12,6 +12,7 @@ from .routers import (
     ai_settings,
     articles,
     auth,
+    catalog,
     devices,
     feeds,
     integrations,
@@ -49,6 +50,7 @@ app.add_middleware(
 app.include_router(auth.router, prefix="/api")
 app.include_router(users.router, prefix="/api")
 app.include_router(feeds.router, prefix="/api")
+app.include_router(catalog.router, prefix="/api")
 app.include_router(articles.router, prefix="/api")
 app.include_router(shares.router, prefix="/api")
 app.include_router(projects.router, prefix="/api")

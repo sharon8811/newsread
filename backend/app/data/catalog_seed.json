@@ -1,0 +1,4076 @@
+[
+ {
+  "url": "https://feeds.twit.tv/aaa.xml",
+  "title": "All About Android (Audio)",
+  "description": "All About Android delivers everything you want to know about Android each week--the biggest news, freshest hardware, best apps and geekiest how-tos--with Android enthusiasts Jason Howell, Ron Richards, Huyen Tue Dao, and a variety of special guests along the way. Although the show is no longer in production, you can enjoy over a decade of Android in our archives.",
+  "site_url": null,
+  "category": "Android"
+ },
+ {
+  "url": "https://blog.google/products/android/rss",
+  "title": "Android",
+  "description": "Android",
+  "site_url": null,
+  "category": "Android"
+ },
+ {
+  "url": "https://www.reddit.com/r/android/.rss",
+  "title": "Android",
+  "description": "Android news, reviews, tips, and discussions about rooting, tutorials, and apps. General discussion about devices is welcome. Please direct technical support, upgrade questions, buy/sell, app recommendations, and carrier-related issues to other subreddits.",
+  "site_url": null,
+  "category": "Android"
+ },
+ {
+  "url": "https://www.androidauthority.com/feed",
+  "title": "Android Authority",
+  "description": "Android News, Reviews, How To",
+  "site_url": null,
+  "category": "Android"
+ },
+ {
+  "url": "https://www.youtube.com/feeds/videos.xml?user=AndroidAuthority",
+  "title": "Android Authority",
+  "description": null,
+  "site_url": null,
+  "category": "Android"
+ },
+ {
+  "url": "https://androidauthority.libsyn.com/rss",
+  "title": "Android Authority Podcast",
+  "description": "The Android Authority Podcast – discussing topics in Android every week.  The Android Authority Podcast brings you all the top stories and features based on your favorite mobile operating system: Android. We help make Android more accessible to all, and dive deeper into the details when we can, there's something in here for everyone.  Check out androidauthority.com for all the best news and reviews for your favorite phones and tablets, then join our community forums to join in on the discussion. Don't forget to hit our YouTube channel for even more.",
+  "site_url": null,
+  "category": "Android"
+ },
+ {
+  "url": "http://feeds.feedburner.com/AndroidCentralPodcast",
+  "title": "Android Central Podcast",
+  "description": "The Android and Google Podcast for Everyone. Hosted by Daniel Bader.",
+  "site_url": null,
+  "category": "Android"
+ },
+ {
+  "url": "https://androidcommunity.com/feed/",
+  "title": "Android Community",
+  "description": "Android News, Reviews, and Apps",
+  "site_url": null,
+  "category": "Android"
+ },
+ {
+  "url": "http://feeds.feedburner.com/AndroidPolice",
+  "title": "Android Police",
+  "description": "All the latest mobile tech news, deals, reviews, guides, editorials, and more. Embracing the green bubble since 2009.",
+  "site_url": null,
+  "category": "Android"
+ },
+ {
+  "url": "https://anchor.fm/s/4495abac/podcast/rss",
+  "title": "Blind Android Users Podcast",
+  "description": "At Blind Android Users, we strive to make using Android as easy as possible for every blind person who's starting the Android journey.We bridge the dividing gap that stands between blind people, both new to Android and those familiar with the platform, on the use of the platform and revealing what makes the OS the platform to be on!The Blind Android Users Podcast believes that, no blind person should be struggling with their Android device, thus, we have determine to embark on a mission of understanding Android from a blindness perspective as easy as a child's play!<hr><p style='color:grey; font-size:0.75em;'> Hosted on Acast. See <a style='color:grey;' target='_blank' rel='noopener noreferrer' href='https://acast.com/privacy'>acast.com/privacy</a> for more information.</p>",
+  "site_url": null,
+  "category": "Android"
+ },
+ {
+  "url": "https://www.cultofandroid.com/feed",
+  "title": "Cult of Android",
+  "description": "Breaking news for Android fans",
+  "site_url": null,
+  "category": "Android"
+ },
+ {
+  "url": "https://www.cyanogenmods.org/feed",
+  "title": "cyanogenmods.org",
+  "description": "GCam APK | LineageOS | AI Mods",
+  "site_url": null,
+  "category": "Android"
+ },
+ {
+  "url": "https://www.droid-life.com/feed",
+  "title": "Droid Life – Opinionated Android news.",
+  "description": "Opinionated Android news.",
+  "site_url": null,
+  "category": "Android"
+ },
+ {
+  "url": "https://www.gsmarena.com/rss-news-reviews.php3",
+  "title": "GSMArena.com - Latest articles",
+  "description": "GSMArena.com is the ultimate resource for GSM handset information. This feed contains the latest articles (news and reviews) in chronological order.",
+  "site_url": null,
+  "category": "Android"
+ },
+ {
+  "url": "http://feeds.androidcentral.com/androidcentral",
+  "title": "Latest from Android Central",
+  "description": "All the latest content from the Android Central team",
+  "site_url": null,
+  "category": "Android"
+ },
+ {
+  "url": "http://feeds2.feedburner.com/AndroidPhoneFans",
+  "title": "Phandroid",
+  "description": "Android Phone News, Rumors, Reviews, Apps, Forums & More!",
+  "site_url": null,
+  "category": "Android"
+ },
+ {
+  "url": "http://feeds.feedburner.com/AndroidNewsGoogleAndroidForums",
+  "title": "TalkAndroid",
+  "description": "The latest in android news, rumours, and updates, including device news and apps!",
+  "site_url": null,
+  "category": "Android"
+ },
+ {
+  "url": "https://www.youtube.com/feeds/videos.xml?user=androiddevelopers",
+  "title": "Android Developers",
+  "description": null,
+  "site_url": null,
+  "category": "Android Development"
+ },
+ {
+  "url": "https://medium.com/feed/androiddevelopers",
+  "title": "Android Developers - Medium",
+  "description": "Articles on modern tools and resources to help you build experiences that people love, faster and easier, across every Android device. - Medium",
+  "site_url": null,
+  "category": "Android Development"
+ },
+ {
+  "url": "http://feeds.feedburner.com/blogspot/androiddevelopersbackstage",
+  "title": "Android Developers Backstage",
+  "description": "Android Backstage, a podcast by and for Android developers. Hosted by developers from the Android engineering team, this show covers topics of interest to Android programmers, with in-depth discussions and interviews with engineers on the Android team at Google.  Subscribe to Android Developers YouTube → https://goo.gle/AndroidDevs",
+  "site_url": null,
+  "category": "Android Development"
+ },
+ {
+  "url": "http://feeds.feedburner.com/blogspot/hsDu",
+  "title": "Android Developers Blog",
+  "description": "An Open Handset Alliance Project.",
+  "site_url": null,
+  "category": "Android Development"
+ },
+ {
+  "url": "https://medium.com/feed/mindorks/tagged/android",
+  "title": "Android in MindOrks on Medium",
+  "description": "Latest stories tagged with Android in MindOrks on Medium",
+  "site_url": null,
+  "category": "Android Development"
+ },
+ {
+  "url": "https://medium.com/feed/airbnb-engineering/tagged/android",
+  "title": "Android in The Airbnb Tech Blog on Medium",
+  "description": "Latest stories tagged with Android in The Airbnb Tech Blog on Medium",
+  "site_url": null,
+  "category": "Android Development"
+ },
+ {
+  "url": "https://chrynan.codes/rss/",
+  "title": "Chris Keenan Codes",
+  "description": "Software Development Blog",
+  "site_url": null,
+  "category": "Android Development"
+ },
+ {
+  "url": "https://blog.jetbrains.com/blog/feed",
+  "title": "Company | The JetBrains Blog",
+  "description": "Developer Tools for Professionals and Teams",
+  "site_url": null,
+  "category": "Android Development"
+ },
+ {
+  "url": "https://blog.danlew.net/rss/",
+  "title": "Dan Lew Codes",
+  "description": "Thoughts on life, the universe and the mystery of it all; but actually mostly just code.",
+  "site_url": null,
+  "category": "Android Development"
+ },
+ {
+  "url": "https://reddit.com/r/androiddev.rss",
+  "title": "Developing Android Apps",
+  "description": "News for Android developers with the who, what, where, when and how of the Android community. News / Articles / Talks / Tools / Open source!",
+  "site_url": null,
+  "category": "Android Development"
+ },
+ {
+  "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCKubKoe1CBw_-n_GXetEQbg",
+  "title": "droidcon SF",
+  "description": null,
+  "site_url": null,
+  "category": "Android Development"
+ },
+ {
+  "url": "https://feeds.simplecast.com/LpAGSLnY",
+  "title": "Fragmented - AI Developer Podcast",
+  "description": "Fragmented is an AI developer podcast for engineers who want to go beyond vibe coding and ship real software. We cover AI-assisted development the way working engineers actually use it: prompting strategies, code review, testing, debugging, workflows, and building production-grade software with AI tools. No hype. No \"I shipped a SaaS in a weekend\" stories. Just tactics that work. Hosted by Kaushik Gopal and Iury Souza — software engineers using AI daily to build and ship real products. From vibe coding to software engineering — one episode at a time. Our goal: help you use AI to become a better engineer, not be replaced by one.",
+  "site_url": null,
+  "category": "Android Development"
+ },
+ {
+  "url": "https://handstandsam.com/feed/",
+  "title": "Handstand Sam",
+  "description": "Sam Edwards - Handstands, Travel, Android & Web",
+  "site_url": null,
+  "category": "Android Development"
+ },
+ {
+  "url": "https://jakewharton.com/atom.xml",
+  "title": "Jake Wharton",
+  "description": null,
+  "site_url": null,
+  "category": "Android Development"
+ },
+ {
+  "url": "https://www.youtube.com/feeds/videos.xml?playlist_id=PLQ176FUIyIUa6SChjajjVc-LMzxWiz6dy",
+  "title": "Kotlin",
+  "description": null,
+  "site_url": null,
+  "category": "Android Development"
+ },
+ {
+  "url": "https://okkotlin.com/rss.xml",
+  "title": "OkKotlin",
+  "description": "A premier blog on Kotlin.",
+  "site_url": null,
+  "category": "Android Development"
+ },
+ {
+  "url": "https://proandroiddev.com/feed",
+  "title": "ProAndroidDev - Medium",
+  "description": "The latest posts from Android Professionals and Google Developer Experts. - Medium",
+  "site_url": null,
+  "category": "Android Development"
+ },
+ {
+  "url": "https://publicobject.com/rss/",
+  "title": "Public Object",
+  "description": "Jesse Wilson on programming.",
+  "site_url": null,
+  "category": "Android Development"
+ },
+ {
+  "url": "https://saket.me/feed/",
+  "title": "Saket Narayan",
+  "description": "A wild developer appears. He works at <a href=\"https://square.com/\">Square</a>. Find him on <a rel=\"me\" href=\"https://twitter.com/saketme\">Twitter</a> and <a rel=\"me\" href=\"https://bsky.app/profile/saket.me\">Bluesky</a>.",
+  "site_url": null,
+  "category": "Android Development"
+ },
+ {
+  "url": "https://feeds.feedburner.com/Android_Arsenal",
+  "title": "The Android Arsenal",
+  "description": "A categorized directory of libraries and tools for Android",
+  "site_url": null,
+  "category": "Android Development"
+ },
+ {
+  "url": "https://www.zacsweers.dev/rss/",
+  "title": "Zac Sweers",
+  "description": "Musings on Kotlin, mobile, open source, and building good things.",
+  "site_url": null,
+  "category": "Android Development"
+ },
+ {
+  "url": "https://zarah.dev/feed.xml",
+  "title": "Zarah Dominguez",
+  "description": "An Android Love Affair",
+  "site_url": null,
+  "category": "Android Development"
+ },
+ {
+  "url": "https://zsmb.co/index.xml",
+  "title": "zsmb.co",
+  "description": "Recent content on zsmb.co",
+  "site_url": null,
+  "category": "Android Development"
+ },
+ {
+  "url": "https://www.activewild.com/feed/",
+  "title": "Active Wild",
+  "description": "Animals, Science & Nature – Facts, News, Information & Pictures",
+  "site_url": null,
+  "category": "Animal & Wildlife"
+ },
+ {
+  "url": "https://focusingonwildlife.com/news/feed/",
+  "title": "Focusing on Wildlife",
+  "description": "Celebrating the biodiversity of Planet Earth",
+  "site_url": null,
+  "category": "Animal & Wildlife"
+ },
+ {
+  "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCRZPkuHwaoKwTP3CYPdVldg",
+  "title": "Love Nature",
+  "description": null,
+  "site_url": null,
+  "category": "Animal & Wildlife"
+ },
+ {
+  "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCbq-4OJxnziD3awH-aTezeA",
+  "title": "Real Wild",
+  "description": null,
+  "site_url": null,
+  "category": "Animal & Wildlife"
+ },
+ {
+  "url": "https://www.thewildlifeindia.com/feeds/posts/default",
+  "title": "The Wildlife India",
+  "description": null,
+  "site_url": null,
+  "category": "Animal & Wildlife"
+ },
+ {
+  "url": "https://www.reddit.com/r/wildlifephotography/.rss",
+  "title": "Wildlife Photography: Gear, Photos & Discussion",
+  "description": "A subreddit for those interested in shooting wildlife...with a camera.",
+  "site_url": null,
+  "category": "Animal & Wildlife"
+ },
+ {
+  "url": "https://www.theguardian.com/environment/wildlife/rss",
+  "title": "Wildlife | The Guardian",
+  "description": "Latest news and features from theguardian.com, the world's leading liberal voice",
+  "site_url": null,
+  "category": "Animal & Wildlife"
+ },
+ {
+  "url": "https://www.reddit.com/r/NatureIsFuckingLit/.rss",
+  "title": "🔥 Nature Is Fucking Lit",
+  "description": "We are here to appreciate the awesome majesty and incredibly cool aspects of nature. 🔥 Banner done by u/esoterix_luke",
+  "site_url": null,
+  "category": "Animal & Wildlife"
+ },
+ {
+  "url": "https://9to5mac.com/feed",
+  "title": "9to5Mac",
+  "description": "Apple News & Mac Rumors Breaking All Day",
+  "site_url": null,
+  "category": "Apple"
+ },
+ {
+  "url": "https://www.youtube.com/feeds/videos.xml?user=Apple",
+  "title": "Apple",
+  "description": null,
+  "site_url": null,
+  "category": "Apple"
+ },
+ {
+  "url": "https://www.apple.com/newsroom/rss-feed.rss",
+  "title": "Apple Newsroom",
+  "description": null,
+  "site_url": null,
+  "category": "Apple"
+ },
+ {
+  "url": "https://appleinsider.com/rss/news/",
+  "title": "AppleInsider News",
+  "description": "AppleInsider News Feed",
+  "site_url": null,
+  "category": "Apple"
+ },
+ {
+  "url": "https://www.cultofmac.com/feed",
+  "title": "Cult of Mac",
+  "description": "Your source for the latest Apple news, rumors, analysis, reviews, how-tos and deals.",
+  "site_url": null,
+  "category": "Apple"
+ },
+ {
+  "url": "https://daringfireball.net/feeds/main",
+  "title": "Daring Fireball",
+  "description": "By John Gruber",
+  "site_url": null,
+  "category": "Apple"
+ },
+ {
+  "url": "http://feeds.feedburner.com/TheiPhoneBlog",
+  "title": "iMore - The #1 iPhone, iPad, and iPod touch blog",
+  "description": "More news and rumors, more help and how-tos, more app and accessory reviews, more iPhone and iPad and iPod touch. More of everything you love. iMore.",
+  "site_url": null,
+  "category": "Apple"
+ },
+ {
+  "url": "https://www.youtube.com/feeds/videos.xml?user=macrumors",
+  "title": "MacRumors",
+  "description": null,
+  "site_url": null,
+  "category": "Apple"
+ },
+ {
+  "url": "http://feeds.macrumors.com/MacRumors-Mac",
+  "title": "MacRumors: Mac News and Rumors - Mac Blog",
+  "description": "Apple, iPhone, iPad, Mac News and Rumors",
+  "site_url": null,
+  "category": "Apple"
+ },
+ {
+  "url": "https://www.macstories.net/feed",
+  "title": "MacStories",
+  "description": "Apple news, app reviews, and stories by Federico Viticci and friends.",
+  "site_url": null,
+  "category": "Apple"
+ },
+ {
+  "url": "https://www.macworld.com/index.rss",
+  "title": "Macworld",
+  "description": "Macworld is your best source for all things Apple. We give you the scoop on what's new, what's best and how to make the most out of the products you love.",
+  "site_url": null,
+  "category": "Apple"
+ },
+ {
+  "url": "https://marco.org/rss",
+  "title": "Marco.org",
+  "description": "I’m Marco Arment, creator of Overcast, technology podcaster and writer, and coffee enthusiast.",
+  "site_url": null,
+  "category": "Apple"
+ },
+ {
+  "url": "http://feeds.feedburner.com/osxdaily",
+  "title": "OS X Daily",
+  "description": "News, tips, software, reviews, and more for Mac OS X, iPhone, iPad",
+  "site_url": null,
+  "category": "Apple"
+ },
+ {
+  "url": "https://www.reddit.com/r/apple/.rss",
+  "title": "r/Apple: Unofficial Apple Community",
+  "description": "An unofficial community about Apple and all of its devices and software.",
+  "site_url": null,
+  "category": "Apple"
+ },
+ {
+  "url": "https://www.reddit.com/r/iphone/.rss",
+  "title": "r/iPhone",
+  "description": "Reddit’s little corner for iPhone lovers (and some people who just mildly enjoy it…)",
+  "site_url": null,
+  "category": "Apple"
+ },
+ {
+  "url": "https://www.loopinsight.com/feed",
+  "title": "The Loop",
+  "description": "Making Sense of Technology",
+  "site_url": null,
+  "category": "Apple"
+ },
+ {
+  "url": "http://feeds.feedburner.com/archidose",
+  "title": "A Weekly Dose of Architecture Books",
+  "description": "This blog wrapped in early 2024, though it continues as a Substack newsletter with the same name: <a href=\"https://archidose.substack.com/\">archidose.substack.com</a>",
+  "site_url": null,
+  "category": "Architecture"
+ },
+ {
+  "url": "http://feeds.feedburner.com/Archdaily",
+  "title": "ArchDaily Global",
+  "description": "ArchDaily | Broadcasting Architecture Worldwide",
+  "site_url": null,
+  "category": "Architecture"
+ },
+ {
+  "url": "https://www.architecturaldigest.com/feed/rss",
+  "title": "Architectural Digest",
+  "description": "The latest from www.architecturaldigest.com",
+  "site_url": null,
+  "category": "Architecture"
+ },
+ {
+  "url": "https://www.youtube.com/feeds/videos.xml?user=ArchitecturalDigest",
+  "title": "Architectural Digest",
+  "description": null,
+  "site_url": null,
+  "category": "Architecture"
+ },
+ {
+  "url": "https://www.reddit.com/r/architecture/.rss",
+  "title": "Architecture",
+  "description": "A community for students, professionals, and lovers of architecture.",
+  "site_url": null,
+  "category": "Architecture"
+ },
+ {
+  "url": "https://www.designboom.com/architecture/feed/",
+  "title": "architecture archives | designboom | architecture & design magazine",
+  "description": "designboom magazine | your first source for architecture, design & art news",
+  "site_url": null,
+  "category": "Architecture"
+ },
+ {
+  "url": "https://www.dezeen.com/architecture/feed/",
+  "title": "Architecture news and projects | Dezeen",
+  "description": "architecture and design magazine",
+  "site_url": null,
+  "category": "Architecture"
+ },
+ {
+  "url": "https://design-milk.com/category/architecture/feed/",
+  "title": "Design MilkArchitecture, Architectural Designs, and House Designs | Design Milk",
+  "description": "Dedicated to modern design",
+  "site_url": null,
+  "category": "Architecture"
+ },
+ {
+  "url": "https://architizer.wpengine.com/feed/",
+  "title": "Journal",
+  "description": "Inspiration and Tools for Architects",
+  "site_url": null,
+  "category": "Architecture"
+ },
+ {
+  "url": "https://www.youtube.com/feeds/videos.xml?user=livingbigtinyhouse",
+  "title": "Living Big In A Tiny House",
+  "description": null,
+  "site_url": null,
+  "category": "Architecture"
+ },
+ {
+  "url": "https://archpaper.com/feed",
+  "title": "The Architect’s Newspaper",
+  "description": "The most authoritative voice on architecture and design in the United States.",
+  "site_url": null,
+  "category": "Architecture"
+ },
+ {
+  "url": "https://www.elle.com/rss/beauty.xml/",
+  "title": "Beauty - ELLE",
+  "description": "RSS feed for Beauty - ELLE",
+  "site_url": null,
+  "category": "Beauty"
+ },
+ {
+  "url": "https://fashionista.com/.rss/excerpt/beauty",
+  "title": "Fashionista Full",
+  "description": "Fashionista Full",
+  "site_url": null,
+  "category": "Beauty"
+ },
+ {
+  "url": "http://feeds.feedburner.com/frmheadtotoe",
+  "title": "From Head To Toe",
+  "description": "A beauty blog by Korean-American Jen Chae \"From Head To Toe\" @frmheadtotoe that showcases monolid and asian eyes makeup tutorials, fashion, hair, nails, swatches, skincare, beauty, lifestyle and product reviews.",
+  "site_url": null,
+  "category": "Beauty"
+ },
+ {
+  "url": "https://feeds.feedburner.com/intothegloss/oqoU",
+  "title": "Into The Gloss - Beauty Tips, Trends, And Product Reviews",
+  "description": "The best in beauty tips, makeup tutorials, product reviews, and techniques from industry leaders worldwide. Into The Gloss is beauty, from the Inside.",
+  "site_url": null,
+  "category": "Beauty"
+ },
+ {
+  "url": "https://www.popsugar.com/beauty/feed",
+  "title": "POPSUGAR Beauty",
+  "description": "Top Beauty Stories",
+  "site_url": null,
+  "category": "Beauty"
+ },
+ {
+  "url": "https://www.refinery29.com/beauty/rss.xml",
+  "title": "Refinery29",
+  "description": "Refinery29",
+  "site_url": null,
+  "category": "Beauty"
+ },
+ {
+  "url": "https://thebeautylookbook.com/feed",
+  "title": "The Beauty Look Book",
+  "description": "Beauty Blog, Reviews + Makeup Looks",
+  "site_url": null,
+  "category": "Beauty"
+ },
+ {
+  "url": "https://ayearofreadingtheworld.com/feed/",
+  "title": "A year of reading the world",
+  "description": "196 countries, countless stories...",
+  "site_url": null,
+  "category": "Books"
+ },
+ {
+  "url": "https://aestasbookblog.com/feed/",
+  "title": "Aestas Book Blog",
+  "description": "Romance book reviews. Reviews of books that make my heart race, have a beautiful love story, and a happy ending.",
+  "site_url": null,
+  "category": "Books"
+ },
+ {
+  "url": "https://bookriot.com/feed/",
+  "title": "BOOK RIOT",
+  "description": "Book Recommendations and Reviews",
+  "site_url": null,
+  "category": "Books"
+ },
+ {
+  "url": "https://rss.acast.com/harrypottersacredtext",
+  "title": "Harry Potter and the Sacred Text",
+  "description": "<p>It’s the English class you didn't know you missed and the meaningful conversations you didn't know you craved. Join Vanessa Zoltan and Matt Potts as they bring thought, reflection and laughter to Harry Potter; not just as novels, but as instructive and inspirational texts that will teach us about our own lives. Relive the magic of Harry Potter chapter by chapter as Matt and Vanessa explore themes such as commitment, revenge and forgiveness. This podcast creates time in your week to think about life’s big questions. Because reading fiction doesn’t just help us escape the world, it helps us live in it.</p><br><p>Harry Potter and the Sacred Text is produced by Not Sorry Productions, a feminist organization that produces podcasts, educational content, live shows, and immersive experiences with the explicit goal of addressing the spiritual needs of its participants. Through community, rigor, and ritual, we treat traditionally secular things as if they were sacred. To learn more about what we do, visit <a href=\"https://notsorryworks.com/\" rel=\"noopener noreferrer\" target=\"_blank\">https://notsorryworks.com/</a>.</p><hr><p style='color:grey; font-size:0.75em;'> Hosted on Acast. See <a style='color:grey;' target='_blank' rel='noopener noreferrer' href='https://acast.com/privacy'>acast.com/privacy</a> for more information.</p>",
+  "site_url": null,
+  "category": "Books"
+ },
+ {
+  "url": "https://www.kirkusreviews.com/feeds/rss/",
+  "title": "Kirkus Reviews",
+  "description": "Latest book reviews from Kirkus Reviews.",
+  "site_url": null,
+  "category": "Books"
+ },
+ {
+  "url": "https://www.newinbooks.com/feed/",
+  "title": "NewInBooks",
+  "description": "Answering the Age old question - What are you reading?",
+  "site_url": null,
+  "category": "Books"
+ },
+ {
+  "url": "https://reddit.com/r/books/.rss",
+  "title": "So many books, so little time",
+  "description": "This is a moderated subreddit. It is our intent and purpose to foster and encourage in-depth discussion about all things related to books, authors, genres, or publishing in a safe, supportive environment. If you're looking for help with a personal book recommendation, consult our Weekly Recommendation Thread, Suggested Reading page, or ask in r/suggestmeabook.",
+  "site_url": null,
+  "category": "Books"
+ },
+ {
+  "url": "https://wokeread.home.blog/feed/",
+  "title": "Wokeread",
+  "description": "Books any time any day.",
+  "site_url": null,
+  "category": "Books"
+ },
+ {
+  "url": "https://www.investing.com/rss/news.rss",
+  "title": "All News",
+  "description": null,
+  "site_url": null,
+  "category": "Business & Economy"
+ },
+ {
+  "url": "https://www.youtube.com/feeds/videos.xml?user=Bloomberg",
+  "title": "Bloomberg Originals",
+  "description": null,
+  "site_url": null,
+  "category": "Business & Economy"
+ },
+ {
+  "url": "https://seekingalpha.com/market_currents.xml",
+  "title": "Breaking News on Seeking Alpha",
+  "description": "© seekingalpha.com. Use of this feed is limited to personal, non-commercial use and is governed by Seeking Alpha's Terms of Use (https://about.seekingalpha.com/terms). Publishing this feed for public or commercial use and/or misrepresentation by a third party is prohibited.",
+  "site_url": null,
+  "category": "Business & Economy"
+ },
+ {
+  "url": "https://www.youtube.com/feeds/videos.xml?user=businessinsider",
+  "title": "Business Insider",
+  "description": null,
+  "site_url": null,
+  "category": "Business & Economy"
+ },
+ {
+  "url": "https://economictimes.indiatimes.com/rssfeedsdefault.cms",
+  "title": "Economic Times",
+  "description": "The Economic Times: Latest business, finance, markets, stocks, company news from India.",
+  "site_url": null,
+  "category": "Business & Economy"
+ },
+ {
+  "url": "https://feeds.simplecast.com/wgl4xEgL",
+  "title": "EconTalk",
+  "description": "EconTalk: Conversations for the Curious is an award-winning weekly podcast hosted by Russ Roberts of Shalem College in Jerusalem and Stanford's Hoover Institution. The eclectic guest list includes authors, doctors, psychologists, historians, philosophers, economists, and more. Learn how the health care system really works, the serenity that comes from humility, the challenge of interpreting data, how potato chips are made, what it's like to run an upscale Manhattan restaurant, what caused the 2008 financial crisis, the nature of consciousness, the conflicts and history of the Middle East, and more. EconTalk has been taking the Monday out of Mondays since 2006. All 1000+ episodes are available in the archive. Go to EconTalk.org for transcripts, related resources, and comments.",
+  "site_url": null,
+  "category": "Business & Economy"
+ },
+ {
+  "url": "https://www.forbes.com/business/feed/",
+  "title": "Forbes - Business",
+  "description": "Forbes - Business",
+  "site_url": null,
+  "category": "Business & Economy"
+ },
+ {
+  "url": "https://fortune.com/feed",
+  "title": "Fortune | FORTUNE",
+  "description": "Fortune 500 Daily & Breaking Business News",
+  "site_url": null,
+  "category": "Business & Economy"
+ },
+ {
+  "url": "http://feeds.harvardbusiness.org/harvardbusiness/ideacast",
+  "title": "HBR IdeaCast",
+  "description": "A weekly podcast featuring the leading thinkers in business and management.",
+  "site_url": null,
+  "category": "Business & Economy"
+ },
+ {
+  "url": "https://feeds.npr.org/510313/podcast.xml",
+  "title": "How I Built This with Guy Raz",
+  "description": "<p>Guy Raz interviews the world’s best-known entrepreneurs to learn how they built their iconic brands. In each episode, founders reveal deep, intimate moments of doubt and failure, and share insights on their eventual success.&nbsp;<em>How I Built This&nbsp;</em>is a master-class on innovation, creativity, leadership and how to navigate challenges of all kinds.</p><p>New episodes release on Mondays and Thursdays. </p>",
+  "site_url": null,
+  "category": "Business & Economy"
+ },
+ {
+  "url": "https://feeds.npr.org/510289/podcast.xml",
+  "title": "Planet Money",
+  "description": "Wanna see a trick? Give us any topic and we can tie it back to the economy. At <em>Planet Money</em>, we explore the forces that shape our lives and bring you along for the ride. Don't just understand the economy – understand the world.<br><br><em>Wanna go deeper? <em>Subscribe to </em><em>Planet Money+ and get sponsor-free episodes of Planet Money, The Indicator, and Planet Money Summer School. Plus access to bonus content. It's a new way to support the show you love. Learn more at plus.npr.org/planetmoney</em><br></em>",
+  "site_url": null,
+  "category": "Business & Economy"
+ },
+ {
+  "url": "https://feeds.feedburner.com/Mixergy-main-podcast",
+  "title": "Startup Stories - Mixergy",
+  "description": "Business tips for startups by proven entrepreneurs",
+  "site_url": null,
+  "category": "Business & Economy"
+ },
+ {
+  "url": "https://tim.blog/feed/",
+  "title": "The Blog of Author Tim Ferriss",
+  "description": "Tim Ferriss is the author of five #1 New York Times bestsellers and host of The Tim Ferriss Show podcast.",
+  "site_url": null,
+  "category": "Business & Economy"
+ },
+ {
+  "url": "https://ducttape.libsyn.com/rss",
+  "title": "The Duct Tape Marketing Podcast",
+  "description": "Insightful interviews with authors, experts, entrepreneurs, and thought leaders who share valuable marketing tips, growth strategies, and resources. Hosted by John Jantsch, one of America's top small business marketing experts, this show is dedicated to helping you craft effective marketing strategies that will grow your business. Whether you're a small business owner, marketing professional, or marketing agency owner, you'll gain valuable insights and actionable advice on topics such as marketing strategy, consulting, social media marketing, content marketing, SEO, email marketing, lead generation, business management, entrepreneurship and much more. With over 900 episodes since its inception in 2005, The Duct Tape Marketing podcast is your go-to resource for all things marketing or business growth. Join us each week as we dive into the latest marketing trends and strategies that will help you achieve your business goals. Don't miss out on this opportunity to learn from the best in the business. Tune in to The Duct Tape Marketing podcast and start listening today!",
+  "site_url": null,
+  "category": "Business & Economy"
+ },
+ {
+  "url": "http://thegrowthshow.hubspot.libsynpro.com/",
+  "title": "The Growth Show",
+  "description": "Starting a business has never been easier. But finding success in one has never been harder. Each episode explores the inspiring stories behind how people grow a business, an idea, or a movement. Hosted by Matthew Brown.",
+  "site_url": null,
+  "category": "Business & Economy"
+ },
+ {
+  "url": "https://www.cnbc.com/id/100003114/device/rss/rss.html",
+  "title": "US Top News and Analysis",
+  "description": "CNBC is the world leader in business news and real-time financial market coverage. Find fast, actionable information.",
+  "site_url": null,
+  "category": "Business & Economy"
+ },
+ {
+  "url": "https://finance.yahoo.com/news/rssindex",
+  "title": "Yahoo Finance",
+  "description": "At Yahoo Finance, you get free stock quotes, up-to-date news, portfolio management resources, international market data, social interaction and mortgage rates that help you manage your financial life.",
+  "site_url": null,
+  "category": "Business & Economy"
+ },
+ {
+  "url": "https://www.autocar.co.uk/rss",
+  "title": "Autocar RSS Feed",
+  "description": "Welcome to nirvana for car enthusiasts. You have just entered the online home of the world's oldest car magazine, and the only place on the internet where you can find Autocar's unique mix of up-to-the-minute news, red hot car reviews, conclusive road test verdicts, and a lot more besides.",
+  "site_url": null,
+  "category": "Cars"
+ },
+ {
+  "url": "https://www.bikeexif.com/feed",
+  "title": "BikeEXIF",
+  "description": "Latest updates from BikeEXIF",
+  "site_url": null,
+  "category": "Cars"
+ },
+ {
+  "url": "https://feeds.feedburner.com/BmwBlog",
+  "title": "BMWBLOG",
+  "description": "Latest BMW News, Reviews and New Models",
+  "site_url": null,
+  "category": "Cars"
+ },
+ {
+  "url": "https://www.carbodydesign.com/feed/",
+  "title": "Car Body Design",
+  "description": "Car Design Resources, News and Tutorials",
+  "site_url": null,
+  "category": "Cars"
+ },
+ {
+  "url": "https://www.carscoops.com/feed/",
+  "title": "Carscoops",
+  "description": "Breaking Car News, Scoops & Reviews",
+  "site_url": null,
+  "category": "Cars"
+ },
+ {
+  "url": "https://www.reddit.com/r/formula1/.rss",
+  "title": "Formula 1",
+  "description": "Welcome to r/formula1, the largest independent online Formula 1 community!",
+  "site_url": null,
+  "category": "Cars"
+ },
+ {
+  "url": "https://jalopnik.com/rss",
+  "title": "Jalopnik - Obsessed with the culture of cars",
+  "description": "From cars to motorcycles, Jalopnik is your go-to site covering everything with an engine—including automotive news, buying guides, and expert commentary from our staff.",
+  "site_url": null,
+  "category": "Cars"
+ },
+ {
+  "url": "https://www.caranddriver.com/rss/all.xml/",
+  "title": "Latest Content - Car and Driver",
+  "description": "RSS feed for Latest Content - Car and Driver",
+  "site_url": null,
+  "category": "Cars"
+ },
+ {
+  "url": "http://feeds.feedburner.com/speedhunters",
+  "title": "Speedhunters",
+  "description": "Global Car Culture Since 2008",
+  "site_url": null,
+  "category": "Cars"
+ },
+ {
+  "url": "https://bringatrailer.com/feed/",
+  "title": "The best vintage and classic cars for sale online | Bring a Trailer",
+  "description": "Barn finds, rally cars, and needles in the haystack.",
+  "site_url": null,
+  "category": "Cars"
+ },
+ {
+  "url": "https://www.thetruthaboutcars.com/feed/",
+  "title": "TheTruthAboutCars",
+  "description": "TheTruthAboutCars RSS feed",
+  "site_url": null,
+  "category": "Cars"
+ },
+ {
+  "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCL5YbN5WLFD8dLIegT5QAbA",
+  "title": "agadmator's Chess Channel",
+  "description": null,
+  "site_url": null,
+  "category": "Chess"
+ },
+ {
+  "url": "https://betterchess.net/feed/",
+  "title": "Better Chess",
+  "description": "A chess blog dedicated to help players improve their play and to promote the great game of chess.",
+  "site_url": null,
+  "category": "Chess"
+ },
+ {
+  "url": "https://en.chessbase.com/feed",
+  "title": "Chess News",
+  "description": "Chess News",
+  "site_url": null,
+  "category": "Chess"
+ },
+ {
+  "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UC6HDXr-sNPnWLF_Q-y3KduA",
+  "title": "Chess Talk",
+  "description": null,
+  "site_url": null,
+  "category": "Chess"
+ },
+ {
+  "url": "https://www.theguardian.com/sport/chess/rss",
+  "title": "Chess | The Guardian",
+  "description": "Latest news and features from theguardian.com, the world's leading liberal voice",
+  "site_url": null,
+  "category": "Chess"
+ },
+ {
+  "url": "https://www.youtube.com/feeds/videos.xml?user=wwwChesscom",
+  "title": "Chess.com",
+  "description": null,
+  "site_url": null,
+  "category": "Chess"
+ },
+ {
+  "url": "https://www.chess.com/rss/news",
+  "title": "Chess.com News",
+  "description": "The latest news from Chess.com.",
+  "site_url": null,
+  "category": "Chess"
+ },
+ {
+  "url": "https://www.youtube.com/feeds/videos.xml?user=chess24media",
+  "title": "chess24",
+  "description": null,
+  "site_url": null,
+  "category": "Chess"
+ },
+ {
+  "url": "https://www.chessable.com/blog/feed/",
+  "title": "Chessable Blog",
+  "description": "Chessable uses science to make learning chess better and in this blog we share that journey",
+  "site_url": null,
+  "category": "Chess"
+ },
+ {
+  "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCIsEhwBMPkRHsEgqYAPQHsA",
+  "title": "ChessBase India",
+  "description": null,
+  "site_url": null,
+  "category": "Chess"
+ },
+ {
+  "url": "https://www.reddit.com/r/chessbeginners/.rss",
+  "title": "For the budding patzer",
+  "description": "A place for new chess players to hang out, ask questions, discover tactics, get advice from others and learn more about the game: This is the r/chessbeginners subreddit.",
+  "site_url": null,
+  "category": "Chess"
+ },
+ {
+  "url": "https://lichess.org/blog.atom",
+  "title": "Lichess's Blog",
+  "description": null,
+  "site_url": null,
+  "category": "Chess"
+ },
+ {
+  "url": "https://feeds.megaphone.fm/BLU4811105299",
+  "title": "Perpetual Chess Podcast",
+  "description": "Perpetual Chess features weekly conversations with the chess world's best players, trainers and accomplished amateurs about their careers, current projects, best practices and the latest in chess news. Learn more at PerpetualChessPod.com",
+  "site_url": null,
+  "category": "Chess"
+ },
+ {
+  "url": "https://www.reddit.com/r/chess/.rss",
+  "title": "r/Chess",
+  "description": "All about the game of chess, including discussions on professional tournaments, game analysis and theory. If you are new to the game, check out /r/chessbeginners and before posting here please read our rules: https://www.reddit.com/r/chess/wiki/index.",
+  "site_url": null,
+  "category": "Chess"
+ },
+ {
+  "url": "https://theweekinchess.com/twic-rss-feed",
+  "title": "The Week in Chess",
+  "description": "Chess News from throughout the World",
+  "site_url": null,
+  "category": "Chess"
+ },
+ {
+  "url": "https://www.youtube.com/feeds/videos.xml?user=thechesswebsite",
+  "title": "thechesswebsite",
+  "description": null,
+  "site_url": null,
+  "category": "Chess"
+ },
+ {
+  "url": "http://feeds.bbci.co.uk/sport/cricket/rss.xml",
+  "title": "BBC Sport",
+  "description": "BBC Sport - Cricket",
+  "site_url": null,
+  "category": "Cricket"
+ },
+ {
+  "url": "http://feeds.feedburner.com/cantbowlcantthrow",
+  "title": "Can't Bowl Can't Throw Cricket Show",
+  "description": "The third season of the Can't Bowl Can't Throw Cricket Show, in which we talk about cricket on a podcast. In a third season.",
+  "site_url": null,
+  "category": "Cricket"
+ },
+ {
+  "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCSRQXk5yErn4e14vN76upOw",
+  "title": "Cricbuzz",
+  "description": null,
+  "site_url": null,
+  "category": "Cricket"
+ },
+ {
+  "url": "https://www.reddit.com/r/Cricket/.rss",
+  "title": "Cricket",
+  "description": "News, banter and occasional serious discussion on the great game.",
+  "site_url": null,
+  "category": "Cricket"
+ },
+ {
+  "url": "http://www.espncricinfo.com/rss/content/story/feeds/0.xml",
+  "title": "Cricket news from ESPN Cricinfo.com",
+  "description": "Visit Cricinfo.com for up-to-the-minute cricket news, breaking cricket news, live cricket commentary, ball-by-ball commentary, cricket video, cricket audio and features.",
+  "site_url": null,
+  "category": "Cricket"
+ },
+ {
+  "url": "https://timesofindia.indiatimes.com/rssfeeds/54829575.cms",
+  "title": "Cricket News Today, Latest Cricket Updates, Cricket Live Score, Upcoming Matches | Times of India",
+  "description": "Latest and Breaking Cricket News: Check live cricket scores, schedule, results, scorecard, upcoming matches list and ball by ball commentary along with player stats, player profiles, team profiles and live cricket commentary on Times of India Cricket.",
+  "site_url": null,
+  "category": "Cricket"
+ },
+ {
+  "url": "https://www.wisden.com/feed",
+  "title": "Cricket News: Stories, Features, Interviews, Opinion, Reports | Wisden",
+  "description": "The independent voice of cricket",
+  "site_url": null,
+  "category": "Cricket"
+ },
+ {
+  "url": "https://www.theguardian.com/sport/cricket/rss",
+  "title": "Cricket | The Guardian",
+  "description": "Latest news and features from theguardian.com, the world's leading liberal voice",
+  "site_url": null,
+  "category": "Cricket"
+ },
+ {
+  "url": "https://indianexpress.com/section/sports/cricket/feed/",
+  "title": "Cricket | The Indian Express",
+  "description": "Latest News Today, Breaking News, India News, Top Headlines",
+  "site_url": null,
+  "category": "Cricket"
+ },
+ {
+  "url": "https://www.theroar.com.au/cricket/feed/",
+  "title": "Cricket – The Roar",
+  "description": "Australia's Biggest Sporting Debate",
+  "site_url": null,
+  "category": "Cricket"
+ },
+ {
+  "url": "https://www.youtube.com/feeds/videos.xml?user=cricketaustraliatv",
+  "title": "cricket.com.au",
+  "description": null,
+  "site_url": null,
+  "category": "Cricket"
+ },
+ {
+  "url": "https://www.youtube.com/feeds/videos.xml?user=ecbcricket",
+  "title": "England & Wales Cricket Board",
+  "description": null,
+  "site_url": null,
+  "category": "Cricket"
+ },
+ {
+  "url": "http://feeds.feedburner.com/ndtvsports-cricket",
+  "title": "NDTV News Search Records Found 1000",
+  "description": "NDTV.com provides the latest information from and in-depth coverage of India and the world. Find breaking news, India news, top stories, elections, politics, business, cricket, movies, lifestyle, health, live TV, videos, photos and more.",
+  "site_url": null,
+  "category": "Cricket"
+ },
+ {
+  "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCiWrjBhlICf_L_RK5y6Vrxw",
+  "title": "Pakistan Cricket",
+  "description": null,
+  "site_url": null,
+  "category": "Cricket"
+ },
+ {
+  "url": "https://www.youtube.com/feeds/videos.xml?user=TheOfficialSLC",
+  "title": "Sri Lanka Cricket",
+  "description": null,
+  "site_url": null,
+  "category": "Cricket"
+ },
+ {
+  "url": "https://podcasts.files.bbci.co.uk/p02gsrmh.rss",
+  "title": "Stumped",
+  "description": "<p>The weekly cricket show from BBC Sport in association with ABC and  Akashvani.</p>",
+  "site_url": null,
+  "category": "Cricket"
+ },
+ {
+  "url": "https://feeds.megaphone.fm/ESP9247246951",
+  "title": "Switch Hit Podcast",
+  "description": "Lively debate and discussion about the game on and off the field with a focus on English cricket. Featuring ESPNcricinfo's writers and reporters.",
+  "site_url": null,
+  "category": "Cricket"
+ },
+ {
+  "url": "https://podcasts.files.bbci.co.uk/p02pcb4w.rss",
+  "title": "Tailenders",
+  "description": "<p>Greg James, Jimmy Anderson and Felix White take an alternative (and sometimes musical) look at cricket...</p>",
+  "site_url": null,
+  "category": "Cricket"
+ },
+ {
+  "url": "https://podcasts.files.bbci.co.uk/p02nrsl2.rss",
+  "title": "Test Match Special",
+  "description": "<p>The Test Match Special team bring you the very best cricket reaction, insight &amp; analysis.</p><p>Plus the No Balls podcast with Kate Cross and Alex Hartley brings a fine balance of nonsense and cricket as they welcome some of the biggest names in the sport.</p>",
+  "site_url": null,
+  "category": "Cricket"
+ },
+ {
+  "url": "https://feeds.simplecast.com/j5Cx9jps",
+  "title": "Bitcoin & Crypto Trading: Ledger Cast",
+  "description": "Ledger Cast covers the cryptocurrency industry (Bitcoin, Ethereum, and alt coins), including technical and trading analysis, fundamentals, and anything else crypto and blockchain related. Made by Ledger Status and friends.",
+  "site_url": null,
+  "category": "Cryptocurrency"
+ },
+ {
+  "url": "https://www.reddit.com/r/Bitcoin/.rss",
+  "title": "Bitcoin - The Currency of the Internet",
+  "description": "Bitcoin is the currency of the Internet: a distributed, worldwide, decentralized digital money. Unlike traditional currencies such as dollars, bitcoins are issued and managed without any central authority whatsoever: there is no government, company, or bank in charge of Bitcoin. As such, it is more resistant to wild inflation and corrupt banks. With Bitcoin, you can be your own bank.",
+  "site_url": null,
+  "category": "Cryptocurrency"
+ },
+ {
+  "url": "https://bitcoinaudible.com/feed/",
+  "title": "Bitcoin Audible",
+  "description": "The Best in Bitcoin, Ai, & Development - Made Audible",
+  "site_url": null,
+  "category": "Cryptocurrency"
+ },
+ {
+  "url": "https://news.bitcoin.com/feed/",
+  "title": "Bitcoin News",
+  "description": "Daily Bitcoin News",
+  "site_url": null,
+  "category": "Cryptocurrency"
+ },
+ {
+  "url": "https://medium.com/feed/buyucoin-talks",
+  "title": "BuyUcoin Talks - Medium",
+  "description": "BuyUcoin (https://www.buyucoin.com/) provides a simple and secure online platform for trading cryptocurrencies and blockchain-based digital assets. Users can profitably trade Bitcoin to INR, Ethereum to INR, and 150+ crypto to INR on a daily basis using EZ/OTC trade.buyucoin.com - Medium",
+  "site_url": null,
+  "category": "Cryptocurrency"
+ },
+ {
+  "url": "https://cointelegraph.com/rss",
+  "title": "Cointelegraph.com News",
+  "description": "Cointelegraph covers fintech, blockchain and Bitcoin bringing you the latest crypto news and analyses on the future of money.",
+  "site_url": null,
+  "category": "Cryptocurrency"
+ },
+ {
+  "url": "https://www.reddit.com/r/CryptoCurrency/.rss",
+  "title": "Cryptocurrency News & Discussion",
+  "description": "The leading community for cryptocurrency news, discussion, and analysis.",
+  "site_url": null,
+  "category": "Cryptocurrency"
+ },
+ {
+  "url": "https://techcrunch.com/tag/cryptocurrency/feed",
+  "title": "cryptocurrency | TechCrunch",
+  "description": "Startup and Technology News",
+  "site_url": null,
+  "category": "Cryptocurrency"
+ },
+ {
+  "url": "https://www.financemagnates.com/cryptocurrency/feed/",
+  "title": "CryptoCurrency – Finance Magnates | Financial and business news",
+  "description": null,
+  "site_url": null,
+  "category": "Cryptocurrency"
+ },
+ {
+  "url": "https://www.cryptoninjas.net/feed/",
+  "title": "CryptoNinjas",
+  "description": "Bitcoin, Cryptocurrency and Blockchain Asset Source",
+  "site_url": null,
+  "category": "Cryptocurrency"
+ },
+ {
+  "url": "https://cryptopotato.com/feed/",
+  "title": "CryptoPotato",
+  "description": null,
+  "site_url": null,
+  "category": "Cryptocurrency"
+ },
+ {
+  "url": "https://dailycoin.com/feed/",
+  "title": "DailyCoin",
+  "description": "Cryptocurrency News",
+  "site_url": null,
+  "category": "Cryptocurrency"
+ },
+ {
+  "url": "https://feeds.simplecast.com/lKmQDG9R",
+  "title": "Epicenter - Learn about Crypto, Blockchain, Ethereum, Bitcoin and Distributed Technologies",
+  "description": "Epicenter brings you in-depth conversations about the technical, economic and social implications of cryptocurrencies and blockchain technologies. Every week, we interview business leaders, engineers academics and entrepreneurs, and bring you a diverse spectrum of opinions and points of view.   Epicenter is hosted by Sebastien Couture, Brian Fabian Crain, Friederike Ernst, Meher Roy and Felix Lutsch. Since 2014, our episodes have been downloaded over 8 million times.",
+  "site_url": null,
+  "category": "Cryptocurrency"
+ },
+ {
+  "url": "https://www.reddit.com/r/ethereum/.rss",
+  "title": "Ethereum",
+  "description": "Next-generation platform for decentralised applications. Dive in at ethereum.org",
+  "site_url": null,
+  "category": "Cryptocurrency"
+ },
+ {
+  "url": "https://blog.ethereum.org/feed.xml",
+  "title": "Ethereum Foundation Blog",
+  "description": null,
+  "site_url": null,
+  "category": "Cryptocurrency"
+ },
+ {
+  "url": "https://incrypted.net/feed/",
+  "title": "INCRYPTED",
+  "description": "Все о Блокчейн и Криптовалютах",
+  "site_url": null,
+  "category": "Cryptocurrency"
+ },
+ {
+  "url": "https://feed.podbean.com/nuggetsnews/feed.xml",
+  "title": "Interviews",
+  "description": "#Investing #Finance #Markets",
+  "site_url": null,
+  "category": "Cryptocurrency"
+ },
+ {
+  "url": "https://blog.kraken.com/feed/",
+  "title": "Kraken Blog",
+  "description": null,
+  "site_url": null,
+  "category": "Cryptocurrency"
+ },
+ {
+  "url": "https://cryptonews.com/news/feed",
+  "title": "News - Cryptonews",
+  "description": null,
+  "site_url": null,
+  "category": "Cryptocurrency"
+ },
+ {
+  "url": "https://www.newsbtc.com/feed/",
+  "title": "NewsBTC",
+  "description": "Bitcoin & Cryptocurrency News Today",
+  "site_url": null,
+  "category": "Cryptocurrency"
+ },
+ {
+  "url": "https://anchor.fm/s/7d083a4/podcast/rss",
+  "title": "Stephan Livera Podcast",
+  "description": "Join Stephan as he interviews the sharpest economic and technical minds in Bitcoin &amp; Austrian Economics to help you understand how money is changing and evolving. Leading names in the world of Bitcoin join the show to share their insights, whether they are developers, CEOs, economists, authors, analysts and more.",
+  "site_url": null,
+  "category": "Cryptocurrency"
+ },
+ {
+  "url": "https://badcryptopodcast.com/feed/",
+  "title": "The Bad Crypto Podcast",
+  "description": "The World's Top Bitcoin Podcast covering Blockchain, Cryptocurrency, Ethereum, ICOs, Altcoins, Fintech and Digital Money. Hosted by Internet pioneer Joel Comm and Marketing Technologist Travis Wright, The Bad Crypto Podcast makes crypto easy to understand for newbies and crypto enthusiasts alike!",
+  "site_url": null,
+  "category": "Cryptocurrency"
+ },
+ {
+  "url": "https://www.bitcoin.kn/feed/podcast/",
+  "title": "The Bitcoin Knowledge Podcast",
+  "description": "Interviews with top people in Bitcoin, blockchain and fintech including Adam Back, Caitlin Long, Saifedean Ammous, Paul Chou, Jesse Powell and many more.",
+  "site_url": null,
+  "category": "Cryptocurrency"
+ },
+ {
+  "url": "https://feeds.simplecast.com/xCQr3ykc",
+  "title": "The Bitcoin Podcast",
+  "description": "The Bitcoin Podcast is a show that discusses Bitcoin and Crypto topics in a laid back nature. From deep and technical topics, to laid back and philosophical topics...the gang, Demetrick, Corey and Jessie are just 3 guys looking to relax and talk about bitcoin. Established in 2015, one of the oldest crypto shows in the game.",
+  "site_url": null,
+  "category": "Cryptocurrency"
+ },
+ {
+  "url": "https://themarketscompass.substack.com/feed",
+  "title": "The Market's Compass Technical View",
+  "description": "Using Technical Analysis to Navigate the Waters of the Global Financial Markets",
+  "site_url": null,
+  "category": "Cryptocurrency"
+ },
+ {
+  "url": "https://feeds.soundcloud.com/users/soundcloud:users:844321453/sounds.rss",
+  "title": "Today in Web 3",
+  "description": "Coming Soon by Matthew Diemer",
+  "site_url": null,
+  "category": "Cryptocurrency"
+ },
+ {
+  "url": "https://zebpay.com/feed/",
+  "title": "ZebPay",
+  "description": "Buy Bitcoin and Cryptocurrency at India’s Leading Exchange",
+  "site_url": null,
+  "category": "Cryptocurrency"
+ },
+ {
+  "url": "https://www.reddit.com/r/blackhat/.rss",
+  "title": "Blackhat Library: Hacking techniques and research",
+  "description": "Focused on the ongoing discussion and documentation of vulnerabilities and exploitation techniques. Please read the rules before posting here.",
+  "site_url": null,
+  "category": "Cyber security"
+ },
+ {
+  "url": "https://www.reddit.com/r/cybersecurity/.rss",
+  "title": "cybersecurity",
+  "description": "This subreddit is for discussing cybersecurity topics, research, and emergent threats/findings.",
+  "site_url": null,
+  "category": "Cyber security"
+ },
+ {
+  "url": "https://techcrunch.com/tag/cybersecurity/feed/",
+  "title": "cybersecurity | TechCrunch",
+  "description": "Startup and Technology News",
+  "site_url": null,
+  "category": "Cyber security"
+ },
+ {
+  "url": "https://feeds.megaphone.fm/cyberwire-daily-podcast",
+  "title": "CyberWire Daily",
+  "description": "The daily cybersecurity news and analysis industry leaders depend on. Published each weekday, the program also includes interviews with a wide spectrum of experts from industry, academia, and research organizations all over the world.",
+  "site_url": null,
+  "category": "Cyber security"
+ },
+ {
+  "url": "https://feeds.megaphone.fm/darknetdiaries",
+  "title": "Darknet Diaries",
+  "description": "<p>Explore true stories of the dark side of the Internet with host Jack Rhysider as he takes you on a journey through the chilling world of hacking, data breaches, and cyber crime.</p><p>¿Hablas español? Escucha en español aquí ➔ <a href=\"https://darknetdiaries.com/es/\">https://darknetdiaries.com/es/</a></p>",
+  "site_url": null,
+  "category": "Cyber security"
+ },
+ {
+  "url": "http://feeds.feedburner.com/darknethackers",
+  "title": "Darknet – Hacking Tools, Hacker News & Cyber Security",
+  "description": "Darknet is your best source for the latest hacking tools, hacker news, cyber security best practices, ethical hacking & pen-testing.",
+  "site_url": null,
+  "category": "Cyber security"
+ },
+ {
+  "url": "http://googleonlinesecurity.blogspot.com/atom.xml",
+  "title": "Google Online Security Blog",
+  "description": "The latest news and insights from Google on security and safety on the Internet.",
+  "site_url": null,
+  "category": "Cyber security"
+ },
+ {
+  "url": "https://feeds.megaphone.fm/hacking-humans",
+  "title": "Hacking Humans",
+  "description": "Deception, influence, and social engineering in the world of cyber crime.",
+  "site_url": null,
+  "category": "Cyber security"
+ },
+ {
+  "url": "https://audioboom.com/channels/4991893.rss",
+  "title": "ISF Podcast",
+  "description": "<h1>The ISF Podcast brings you cutting-edge conversation, tailored to CISOs, CTOs, CROs, and other global security pros. In every episode of the ISF Podcast, Chief Executive, Steve Durbin speaks with rule-breakers, collaborators, culture builders, and business creatives who manage their enterprise with vision, transparency, authenticity, and integrity. From the Information Security Forum, the leading authority on cyber, information security, and risk management.</h1>",
+  "site_url": null,
+  "category": "Cyber security"
+ },
+ {
+  "url": "http://krebsonsecurity.com/feed/",
+  "title": "Krebs on Security",
+  "description": "In-depth security news and investigation",
+  "site_url": null,
+  "category": "Cyber security"
+ },
+ {
+  "url": "https://www.zdnet.com/topic/security/rss.xml",
+  "title": "Latest news",
+  "description": "Most recent news",
+  "site_url": null,
+  "category": "Cyber security"
+ },
+ {
+  "url": "https://malicious.life/feed/podcast/",
+  "title": "Malicious Life",
+  "description": "<p>Malicious Life by Cybereason tells the unknown stories of the history of cybersecurity, with comments and reflections by real hackers, security experts, journalists, and politicians.</p>",
+  "site_url": null,
+  "category": "Cyber security"
+ },
+ {
+  "url": "https://risky.biz/feeds/risky-business",
+  "title": "Risky Business",
+  "description": "Risky Business is a weekly information security podcast featuring news and in-depth interviews with industry luminaries. Launched in February 2007, Risky Business is a must-listen digest for information security pros. With a running time of approximately 50-60 minutes, Risky Business is pacy; a security podcast without the waffle.",
+  "site_url": null,
+  "category": "Cyber security"
+ },
+ {
+  "url": "http://www.schneier.com/blog/index.rdf",
+  "title": "Schneier on Security",
+  "description": null,
+  "site_url": null,
+  "category": "Cyber security"
+ },
+ {
+  "url": "http://securityaffairs.co/wordpress/feed",
+  "title": "Security Affairs",
+  "description": "Read, think, share … Security is everyone's responsibility",
+  "site_url": null,
+  "category": "Cyber security"
+ },
+ {
+  "url": "http://www.smashingsecurity.com/rss",
+  "title": "Smashing Security",
+  "description": "<p>Stories from the world of hacking, cybersecurity, and rogue AI.</p><p>Smashing Security isn’t your typical tech podcast. Hosted by cybersecurity keynote speaker and industry veteran Graham Cluley, it serves up weekly tales of cybercrime, hacking horror stories, privacy blunders, and tech mishaps - all with sharp insight, a sense of humour, and zero tolerance for tech waffle.</p><p>Winner of the best and most entertaining cybersecurity podcast awards in 2018, 2019, 2022, 2023, and 2024, Smashing Security has had over ten million downloads. Past guests include Garry Kasparov, Mikko Hyppönen, and Jack Rhysider.</p><p>Follow the podcast on Bluesky at <a href=\"https://bsky.app/profile/smashingsecurity.com\" rel=\"nofollow\">@smashingsecurity.com</a>, and subscribe for free in your favourite podcast app.</p><p>New episodes released at 7pm EST every Wednesday (midnight UK).</p>",
+  "site_url": null,
+  "category": "Cyber security"
+ },
+ {
+  "url": "https://www.reddit.com/r/netsec/.rss",
+  "title": "Technical Information Security Content & Discussion",
+  "description": "/r/netsec is a community-curated aggregator of technical information security content. Our mission is to extract signal from the noise — to provide value to security practitioners, students, researchers, and hackers everywhere. ‎",
+  "site_url": null,
+  "category": "Cyber security"
+ },
+ {
+  "url": "http://thehackernews.com/feeds/posts/default",
+  "title": "The Hacker News",
+  "description": "Most trusted, widely-read independent cybersecurity news source for everyone; supported by hackers and IT professionals — Send TIPs to admin@thehackernews.com",
+  "site_url": null,
+  "category": "Cyber security"
+ },
+ {
+  "url": "http://feeds.soundcloud.com/users/soundcloud:users:261098918/sounds.rss",
+  "title": "The Privacy, Security, & OSINT Show",
+  "description": "Show status update: https://inteltechniques.com/blog/2023/11/20/my-irish-exit/",
+  "site_url": null,
+  "category": "Cyber security"
+ },
+ {
+  "url": "http://threatpost.com/feed",
+  "title": "Threatpost",
+  "description": "The First Stop For Security News",
+  "site_url": null,
+  "category": "Cyber security"
+ },
+ {
+  "url": "http://www.theregister.co.uk/security/headlines.atom",
+  "title": "www.theregister.com - Articles",
+  "description": "Articles from www.theregister.com",
+  "site_url": null,
+  "category": "Cyber security"
+ },
+ {
+  "url": "https://abeautifulmess.com/feed",
+  "title": "A Beautiful Mess",
+  "description": "Crafts, Home Décor, Recipes",
+  "site_url": null,
+  "category": "DIY"
+ },
+ {
+  "url": "https://hackaday.com/blog/feed/",
+  "title": "Blog – Hackaday",
+  "description": "Fresh hacks every day",
+  "site_url": null,
+  "category": "DIY"
+ },
+ {
+  "url": "https://centsationalstyle.com/feed/",
+  "title": "Centsational Style",
+  "description": "Design, Decorating & DIY",
+  "site_url": null,
+  "category": "DIY"
+ },
+ {
+  "url": "https://www.howtogeek.com/feed/",
+  "title": "How-To Geek",
+  "description": "We explain technology. Learn more with our articles, reviews, tips, and the best answers to your most pressing tech questions.",
+  "site_url": null,
+  "category": "DIY"
+ },
+ {
+  "url": "https://www.ikeahackers.net/feed",
+  "title": "IKEA Hackers",
+  "description": "Clever ideas and hacks for your IKEA Furniture",
+  "site_url": null,
+  "category": "DIY"
+ },
+ {
+  "url": "https://www.makeuseof.com/feed/",
+  "title": "MakeUseOf",
+  "description": "MUO is your guide to modern tech. Learn how to make use of the tech and gadgets around you, and discover cool stuff on the internet.",
+  "site_url": null,
+  "category": "DIY"
+ },
+ {
+  "url": "http://ohhappyday.com/feed/",
+  "title": "Oh Happy Day!",
+  "description": "Oh Happy Day is a party and lifestyle blog based in San Francisco. We love to throw parties and make things!",
+  "site_url": null,
+  "category": "DIY"
+ },
+ {
+  "url": "https://www.wonderhowto.com/rss.xml",
+  "title": "WonderHowTo",
+  "description": "Wonder How To is your guide to free how to videos on the Web. Search, Browse and Discover the best how to videos across the web using the largest how to video index on the web. Watch the best online video instructions, tutorials, &amp; How-Tos for free. Have your own how to videos? Submit them to share with the world.",
+  "site_url": null,
+  "category": "DIY"
+ },
+ {
+  "url": "http://feeds.feedburner.com/ConservationInternationalBlog",
+  "title": "\"Human Nature\" Blog Feed",
+  "description": "RSS feed for news, views and features from the front lines of conservation",
+  "site_url": null,
+  "category": "Environment"
+ },
+ {
+  "url": "https://bionicplanet.libsyn.com/rss",
+  "title": "Bionic Planet: Reversing Climate Change by Restoring Nature",
+  "description": "We've entered a new epoch: the Anthropocene, and nothing is as it was. Not the trees, not the seas – not the forests, farms, or fields – and not the global economy that depends on all of these. What does this mean for your investments, your family's future, and the future of man? Each week, we dive into these issues to help you Navigate the New Reality.",
+  "site_url": null,
+  "category": "Environment"
+ },
+ {
+  "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCam5sCp6mzGBcn8ZBB2RBJg",
+  "title": "Conservation International",
+  "description": null,
+  "site_url": null,
+  "category": "Environment"
+ },
+ {
+  "url": "https://www.reddit.com/r/environment/.rss",
+  "title": "Environment",
+  "description": "Current news, information and issues related to the environment.",
+  "site_url": null,
+  "category": "Environment"
+ },
+ {
+  "url": "https://theconversation.com/au/environment/articles.atom",
+  "title": "Environment + Energy – The Conversation",
+  "description": null,
+  "site_url": null,
+  "category": "Environment"
+ },
+ {
+  "url": "https://timesofindia.indiatimes.com/rssfeeds/2647163.cms",
+  "title": "Environment News, Earth News, Global Warming, Wild Life, Carbon Trading, Climate Business, Climate Change & Pollution News",
+  "description": "World news on global warming, climate change, wildlife, pollution, carbon business and climate politics. News from Indian environment including wildlife like tiger, lion, elephants. Also, news from United Nations.",
+  "site_url": null,
+  "category": "Environment"
+ },
+ {
+  "url": "https://www.theguardian.com/us/environment/rss",
+  "title": "Environment | The Guardian",
+  "description": "Latest environmental news, opinion and analysis from the Guardian.",
+  "site_url": null,
+  "category": "Environment"
+ },
+ {
+  "url": "https://www.goodgoodgood.co/articles/rss.xml",
+  "title": "Good Good Good",
+  "description": "At Good Good Good we help you feel more hopeful and do more good.",
+  "site_url": null,
+  "category": "Environment"
+ },
+ {
+  "url": "https://feeds.npr.org/1025/rss.xml",
+  "title": "NPR Topics: Environment",
+  "description": "Breaking news on the environment, climate change, pollution, and endangered species. Also featuring Climate Connections, a special series on climate change co-produced by NPR and National Geographic.",
+  "site_url": null,
+  "category": "Environment"
+ },
+ {
+  "url": "https://rss.nytimes.com/services/xml/rss/nyt/Climate.xml",
+  "title": "NYT > Climate and Environment",
+  "description": null,
+  "site_url": null,
+  "category": "Environment"
+ },
+ {
+  "url": "https://www.prakati.in/feed/",
+  "title": "Prakati India",
+  "description": "Eco Friendly Natural Organic Sustainable Living",
+  "site_url": null,
+  "category": "Environment"
+ },
+ {
+  "url": "https://www.vox.com/rss/energy-and-environment/index.xml",
+  "title": "Vox",
+  "description": "Our world has too much noise and too little context. Vox helps you understand what matters.",
+  "site_url": null,
+  "category": "Environment"
+ },
+ {
+  "url": "https://www.elle.com/rss/fashion.xml/",
+  "title": "Fashion - ELLE",
+  "description": "RSS feed for Fashion - ELLE",
+  "site_url": null,
+  "category": "Fashion"
+ },
+ {
+  "url": "https://www.theguardian.com/fashion/rss",
+  "title": "Fashion | The Guardian",
+  "description": "The latest fashion news, advice and comment from the Guardian",
+  "site_url": null,
+  "category": "Fashion"
+ },
+ {
+  "url": "https://www.fashionbeans.com/rss-feed/?category=fashion",
+  "title": "fashionbeans.com",
+  "description": "Men's Fashion Tips and Men's Style Guide - Updated Daily",
+  "site_url": null,
+  "category": "Fashion"
+ },
+ {
+  "url": "https://fashionista.com/.rss/excerpt/",
+  "title": "Fashionista Full",
+  "description": "Fashionista Full",
+  "site_url": null,
+  "category": "Fashion"
+ },
+ {
+  "url": "https://www.whowhatwear.com/rss",
+  "title": "Latest from Who What Wear",
+  "description": "All the latest content from the Who What Wear team",
+  "site_url": null,
+  "category": "Fashion"
+ },
+ {
+  "url": "https://rss.nytimes.com/services/xml/rss/nyt/FashionandStyle.xml",
+  "title": "NYT > Style",
+  "description": null,
+  "site_url": null,
+  "category": "Fashion"
+ },
+ {
+  "url": "https://www.popsugar.com/fashion/feed",
+  "title": "POPSUGAR Fashion",
+  "description": "Top Fashion Stories",
+  "site_url": null,
+  "category": "Fashion"
+ },
+ {
+  "url": "https://www.refinery29.com/fashion/rss.xml",
+  "title": "Refinery29",
+  "description": "Refinery29",
+  "site_url": null,
+  "category": "Fashion"
+ },
+ {
+  "url": "https://www.youtube.com/feeds/videos.xml?user=bgfilms",
+  "title": "Binging with Babish",
+  "description": null,
+  "site_url": null,
+  "category": "Food"
+ },
+ {
+  "url": "https://www.youtube.com/feeds/videos.xml?user=BonAppetitDotCom",
+  "title": "Bon Appétit",
+  "description": null,
+  "site_url": null,
+  "category": "Food"
+ },
+ {
+  "url": "http://budgetbytes.blogspot.com/feeds/posts/default",
+  "title": "Budget Bytes",
+  "description": "Delicious Recipes Designed for Small Budgets",
+  "site_url": null,
+  "category": "Food"
+ },
+ {
+  "url": "https://cnz.to/feed/",
+  "title": "Chocolate & Zucchini",
+  "description": "Simple Recipes from my Paris Kitchen",
+  "site_url": null,
+  "category": "Food"
+ },
+ {
+  "url": "https://www.davidlebovitz.com/feed/",
+  "title": "David Lebovitz",
+  "description": "Baking and cooking recipes for everyone",
+  "site_url": null,
+  "category": "Food"
+ },
+ {
+  "url": "http://www.dinneralovestory.com/feed/",
+  "title": "Dinner: A Love Story",
+  "description": "It All Begins At the Family Table",
+  "site_url": null,
+  "category": "Food"
+ },
+ {
+  "url": "http://feeds.feedburner.com/food52-TheAandMBlog",
+  "title": "Food52",
+  "description": "Eat thoughtfully, live joyfully.",
+  "site_url": null,
+  "category": "Food"
+ },
+ {
+  "url": "https://greenkitchenstories.com/feed/",
+  "title": "Green Kitchen Stories",
+  "description": "Healthy Vegetarian Recipes.",
+  "site_url": null,
+  "category": "Food"
+ },
+ {
+  "url": "https://www.howsweeteats.com/feed/",
+  "title": "How Sweet Eats",
+  "description": "For people who, like, totally love food.",
+  "site_url": null,
+  "category": "Food"
+ },
+ {
+  "url": "https://www.thekitchn.com/main.rss",
+  "title": "Kitchn | Inspiring cooks, nourishing homes",
+  "description": "Inspiring cooks, nourishing homes",
+  "site_url": null,
+  "category": "Food"
+ },
+ {
+  "url": "https://www.youtube.com/feeds/videos.xml?user=LauraVitalesKitchen",
+  "title": "Laura in the Kitchen",
+  "description": null,
+  "site_url": null,
+  "category": "Food"
+ },
+ {
+  "url": "http://www.loveandlemons.com/feed/",
+  "title": "Love and Lemons",
+  "description": "Healthy, whole food, vegan and vegetarian recipes",
+  "site_url": null,
+  "category": "Food"
+ },
+ {
+  "url": "https://www.loveandoliveoil.com/feed",
+  "title": "Love and Olive Oil",
+  "description": "Eat to Live. Cook to Love.",
+  "site_url": null,
+  "category": "Food"
+ },
+ {
+  "url": "https://rss.nytimes.com/services/xml/rss/nyt/DiningandWine.xml",
+  "title": "NYT > Food",
+  "description": null,
+  "site_url": null,
+  "category": "Food"
+ },
+ {
+  "url": "https://www.youtube.com/feeds/videos.xml?user=SeriousEats",
+  "title": "Serious Eats",
+  "description": null,
+  "site_url": null,
+  "category": "Food"
+ },
+ {
+  "url": "http://feeds.feedburner.com/seriouseats/recipes",
+  "title": "Serious Eats: Recipes",
+  "description": "Our Favorite Recipes, Curated and Collected",
+  "site_url": null,
+  "category": "Food"
+ },
+ {
+  "url": "http://www.shutterbean.com/feed/",
+  "title": "Shutterbean",
+  "description": "food, photography & creative inspiration",
+  "site_url": null,
+  "category": "Food"
+ },
+ {
+  "url": "http://feeds.feedburner.com/smittenkitchen",
+  "title": "smitten kitchen",
+  "description": "Fearless cooking from a tiny NYC kitchen.",
+  "site_url": null,
+  "category": "Food"
+ },
+ {
+  "url": "https://www.sproutedkitchen.com/home?format=rss",
+  "title": "Sprouted Kitchen",
+  "description": null,
+  "site_url": null,
+  "category": "Food"
+ },
+ {
+  "url": "https://feeds.bbci.co.uk/sport/football/rss.xml",
+  "title": "BBC Sport",
+  "description": "BBC Sport - Football",
+  "site_url": null,
+  "category": "Football"
+ },
+ {
+  "url": "http://rss.cnn.com/rss/edition_football.rss",
+  "title": "CNN.com - RSS Channel - Sport - Football",
+  "description": "CNN.com delivers up-to-the-minute news and information on the latest top stories, weather, entertainment, politics and more.",
+  "site_url": null,
+  "category": "Football"
+ },
+ {
+  "url": "https://www.reddit.com/r/Championship/.rss?format=xml",
+  "title": "EFL Championship",
+  "description": "Home of the EFL Championship on Reddit",
+  "site_url": null,
+  "category": "Football"
+ },
+ {
+  "url": "https://www.reddit.com/r/football/.rss?format=xml",
+  "title": "Football - The People's Sport",
+  "description": "Home of Football. Official Sponsors of Redditch United. News, Rumours, Analysis, gossip and much more.",
+  "site_url": null,
+  "category": "Football"
+ },
+ {
+  "url": "https://www.thehindu.com/sport/football/feeder/default.rss",
+  "title": "Football News, Football Scores, Premier League, La Liga, ISL | The Hindu",
+  "description": "Get Football News, Updates, Fixtures, Commentary &amp;amp; Live Scores From Top Leagues Like The Premier League, La Liga, ISL &amp;amp; Bundesliga At The Hindu",
+  "site_url": null,
+  "category": "Football"
+ },
+ {
+  "url": "https://www.theguardian.com/football/rss",
+  "title": "Football | The Guardian",
+  "description": "Latest Football news, comment and analysis from the Guardian, the world's leading liberal voice",
+  "site_url": null,
+  "category": "Football"
+ },
+ {
+  "url": "https://rss.nytimes.com/services/xml/rss/nyt/Soccer.xml",
+  "title": "NYT > Sports > Soccer",
+  "description": null,
+  "site_url": null,
+  "category": "Football"
+ },
+ {
+  "url": "https://www.soccernews.com/feed",
+  "title": "Soccer News",
+  "description": "The Latest Soccer News from around the globe.",
+  "site_url": null,
+  "category": "Football"
+ },
+ {
+  "url": "http://feeds.feedburner.com/CrackedRSS",
+  "title": "Cracked: All Posts",
+  "description": "Every post that goes up on Cracked.com",
+  "site_url": null,
+  "category": "Funny"
+ },
+ {
+  "url": "http://feeds.feedburner.com/Explosm",
+  "title": "Explosm.net",
+  "description": "Flash Animations, Daily Comics and more!",
+  "site_url": null,
+  "category": "Funny"
+ },
+ {
+  "url": "http://feeds.feedburner.com/failblog",
+  "title": "FAIL Blog",
+  "description": "The internet has generated a huge amount of laughs from cats and FAILS. And we all out of cats.",
+  "site_url": null,
+  "category": "Funny"
+ },
+ {
+  "url": "http://feeds.feedburner.com/icanhascheezburger",
+  "title": "I Can Has Cheezburger?",
+  "description": "World's largest collection of cat memes and other animals",
+  "site_url": null,
+  "category": "Funny"
+ },
+ {
+  "url": "https://www.penny-arcade.com/feed",
+  "title": "Penny Arcade",
+  "description": "Penny Arcade comics and news.",
+  "site_url": null,
+  "category": "Funny"
+ },
+ {
+  "url": "http://phdcomics.com/gradfeed.php",
+  "title": "PHD Comics",
+  "description": "Providing global up-to-the-minute procrastination!",
+  "site_url": null,
+  "category": "Funny"
+ },
+ {
+  "url": "https://postsecret.com/feed/?alt=rss",
+  "title": "PostSecret",
+  "description": "Discover true secrets that have never been shared. Explore the surprising stories behind the secrets.",
+  "site_url": null,
+  "category": "Funny"
+ },
+ {
+  "url": "https://www.smbc-comics.com/comic/rss",
+  "title": "Saturday Morning Breakfast Cereal",
+  "description": "Latest Saturday Morning Breakfast Cereal comics and news",
+  "site_url": null,
+  "category": "Funny"
+ },
+ {
+  "url": "https://thebloggess.com/feed/",
+  "title": "The Bloggess",
+  "description": "Like Mother Teresa, only better.",
+  "site_url": null,
+  "category": "Funny"
+ },
+ {
+  "url": "http://syndication.thedailywtf.com/TheDailyWtf",
+  "title": "The Daily WTF",
+  "description": "Curious Perversions in Information Technology",
+  "site_url": null,
+  "category": "Funny"
+ },
+ {
+  "url": "http://feeds.feedburner.com/oatmealfeed",
+  "title": "The Oatmeal - Comics by Matthew Inman",
+  "description": "I make comics about science, cats, social media, and sometimes goats.",
+  "site_url": null,
+  "category": "Funny"
+ },
+ {
+  "url": "https://www.theonion.com/rss",
+  "title": "The Onion",
+  "description": "America’s Finest News Source",
+  "site_url": null,
+  "category": "Funny"
+ },
+ {
+  "url": "https://xkcd.com/rss.xml",
+  "title": "xkcd.com",
+  "description": "xkcd.com: A webcomic of romance and math humor.",
+  "site_url": null,
+  "category": "Funny"
+ },
+ {
+  "url": "https://www.eurogamer.net/?format=rss",
+  "title": "Eurogamer.net Latest Articles Feed",
+  "description": "This is a feed of the latest articles from Eurogamer.net.",
+  "site_url": null,
+  "category": "Gaming"
+ },
+ {
+  "url": "https://www.gamespot.com/feeds/mashup/",
+  "title": "GameSpot - All Content",
+  "description": "GameSpot's Everything Feed! All the latest from GameSpot",
+  "site_url": null,
+  "category": "Gaming"
+ },
+ {
+  "url": "http://feeds.ign.com/ign/all",
+  "title": "IGN Articles",
+  "description": "This feed contains the latest 20 articles from IGN",
+  "site_url": null,
+  "category": "Gaming"
+ },
+ {
+  "url": "https://indiegamesplus.com/feed",
+  "title": "Indie Games Plus",
+  "description": "Creative, Personal, Passionate Digital Experiences",
+  "site_url": null,
+  "category": "Gaming"
+ },
+ {
+  "url": "https://kotaku.com/rss",
+  "title": "Kotaku",
+  "description": "Gaming Reviews, News, Tips and More.",
+  "site_url": null,
+  "category": "Gaming"
+ },
+ {
+  "url": "https://www.makeupandbeautyblog.com/feed/",
+  "title": "Makeup and Beauty Blog | Makeup Reviews, Swatches and How-To Makeup",
+  "description": "A beauty blog blooming with fresh makeup reviews, swatches and beauty tips from your friendly neighborhood beauty addict",
+  "site_url": null,
+  "category": "Gaming"
+ },
+ {
+  "url": "http://feeds.feedburner.com/psblog",
+  "title": "PlayStation.Blog",
+  "description": "Official PlayStation Blog for news and video updates on PlayStation, PS5, PS4, PS VR, PlayStation Plus and more.",
+  "site_url": null,
+  "category": "Gaming"
+ },
+ {
+  "url": "https://www.polygon.com/rss/index.xml",
+  "title": "Polygon.com",
+  "description": "Your source for the latest in video games, sci-fi, fantasy, tabletop games, anime, horror, books, and comics.",
+  "site_url": null,
+  "category": "Gaming"
+ },
+ {
+  "url": "https://www.reddit.com/r/gaming.rss",
+  "title": "r/gaming",
+  "description": "The Number One Gaming forum on the Internet.",
+  "site_url": null,
+  "category": "Gaming"
+ },
+ {
+  "url": "http://feeds.feedburner.com/RockPaperShotgun",
+  "title": "Rock, Paper, Shotgun",
+  "description": null,
+  "site_url": null,
+  "category": "Gaming"
+ },
+ {
+  "url": "https://store.steampowered.com/feeds/news.xml",
+  "title": "Steam RSS News Feed",
+  "description": "All Steam news, all the time!",
+  "site_url": null,
+  "category": "Gaming"
+ },
+ {
+  "url": "http://feeds.feedburner.com/TheAncientGamingNoob",
+  "title": "The Ancient Gaming Noob",
+  "description": "Veni, Vidi, Scripsi",
+  "site_url": null,
+  "category": "Gaming"
+ },
+ {
+  "url": "https://www.escapistmagazine.com/v2/feed/",
+  "title": "The Escapist",
+  "description": "Everything fun",
+  "site_url": null,
+  "category": "Gaming"
+ },
+ {
+  "url": "https://toucharcade.com/community/forums/-/index.rss",
+  "title": "TouchArcade - iPhone, iPad, Android Games Forum",
+  "description": "iPhone and iPad Games and News",
+  "site_url": null,
+  "category": "Gaming"
+ },
+ {
+  "url": "https://feeds.megaphone.fm/ESP5765452710",
+  "title": "30 for 30 Podcasts",
+  "description": "Original audio documentaries from the makers of the acclaimed 30 for 30 film series, featuring stories from the world of sports and beyond. 30 for 30 offers captivating storytelling for sports fans and general interest listeners alike, going beyond the field to explore how sports, competition, athleticism and adventure affect our lives and our world. Sports stories like you've never heard before.",
+  "site_url": null,
+  "category": "History"
+ },
+ {
+  "url": "https://feeds.feedburner.com/dancarlin/history?format=xml",
+  "title": "Dan Carlin's Hardcore History",
+  "description": "In \"Hardcore History\" journalist and broadcaster Dan Carlin takes his \"Martian\", unorthodox way of thinking and applies it to the past. Was Alexander the Great as bad a person as Adolf Hitler? What would Apaches with modern weapons be like? Will our modern civilization ever fall like civilizations from past eras? This isn't academic history (and Carlin isn't a historian) but the podcast's unique blend of high drama, masterful narration and Twilight Zone-style twists has entertained millions of listeners.",
+  "site_url": null,
+  "category": "History"
+ },
+ {
+  "url": "https://www.historyisnowmagazine.com/blog?format=RSS",
+  "title": "History in 28-minutes",
+  "description": "We create a variety of exclusive modern international and American history content! We create free history audio podcasts as part of History in 28-minutes, a magazine called History is Now, and books as part of Required History. Our works explain some of history's most important events concisely and quickly.",
+  "site_url": null,
+  "category": "History"
+ },
+ {
+  "url": "http://www.historynet.com/feed",
+  "title": "HistoryNet",
+  "description": "The most comprehensive and authoritative history site on the Internet.",
+  "site_url": null,
+  "category": "History"
+ },
+ {
+  "url": "http://feeds.thememorypalace.us/thememorypalace",
+  "title": "the memory palace",
+  "description": "<p>the memory palace</p>",
+  "site_url": null,
+  "category": "History"
+ },
+ {
+  "url": "https://feeds.npr.org/510333/podcast.xml",
+  "title": "Throughline",
+  "description": "<em>Throughline</em> is a time machine. Each episode, we travel beyond the headlines to answer the question, \"How did we get here?\" We use sound and stories to bring history to life and put you into the middle of it. From ancient civilizations to forgotten figures, we take you directly to the moments that shaped our world. <em>Throughline</em> is hosted by Peabody Award-winning journalist Rund Abdelfatah.<br><br><em>Subscribe to Throughline+. You'll be supporting the history-reframing, perspective-shifting, time-warping stories you can't get enough of - and you'll unlock sponsor-free listening. Learn more at </em><a href=\"https://plus.npr.org/throughline\"target=\"_blank\"   ><em>plus.npr.org/throughline</em></a>",
+  "site_url": null,
+  "category": "History"
+ },
+ {
+  "url": "https://feeds.megaphone.fm/YMRT7068253588",
+  "title": "You Must Remember This",
+  "description": "You Must Remember This is a storytelling podcast exploring the secret and/or forgotten histories of Hollywood’s first century. It’s the brainchild and passion project of Karina Longworth (founder of Cinematical.com, former film critic for LA Weekly), who writes, narrates, records and edits each episode. It is a heavily-researched work of creative nonfiction: navigating through conflicting reports, mythology, and institutionalized spin, Karina tries to sort out what really happened behind the films, stars and scandals of the 20th century.",
+  "site_url": null,
+  "category": "History"
+ },
+ {
+  "url": "https://www.decor8blog.com/blog?format=rss",
+  "title": "BLOG - decor8",
+  "description": null,
+  "site_url": null,
+  "category": "Interior design"
+ },
+ {
+  "url": "http://feeds.feedburner.com/core77/blog",
+  "title": "Core77",
+  "description": "Launched in 1995, Core77 serves a devoted global audience of design professionals, corporations, students, enthusiasts and fans.",
+  "site_url": null,
+  "category": "Interior design"
+ },
+ {
+  "url": "https://www.decoist.com/feed/",
+  "title": "decoist",
+  "description": "Obsessed with the cult of beauty",
+  "site_url": null,
+  "category": "Interior design"
+ },
+ {
+  "url": "https://www.designboom.com/design/feed",
+  "title": "design archives | designboom | architecture & design magazine",
+  "description": "designboom magazine | your first source for architecture, design & art news",
+  "site_url": null,
+  "category": "Interior design"
+ },
+ {
+  "url": "https://design-milk.com/category/interior-design/feed/",
+  "title": "Design MilkInterior Design Ideas for Your Modern Home | Design Milk",
+  "description": "Dedicated to modern design",
+  "site_url": null,
+  "category": "Interior design"
+ },
+ {
+  "url": "http://feeds.feedburner.com/fubiz",
+  "title": "Fubiz Media",
+  "description": "The latest creative news from Fubiz about art, design and pop-culture.",
+  "site_url": null,
+  "category": "Interior design"
+ },
+ {
+  "url": "https://inmyownstyle.com/feed",
+  "title": "In My Own Style",
+  "description": "Top Budget DIY Home Decorating Blog and Creative Lifestyle Ideas",
+  "site_url": null,
+  "category": "Interior design"
+ },
+ {
+  "url": "https://www.interiordesign.net/rss/",
+  "title": "Interior Design",
+  "description": "The leading authority for the Architecture & Design community",
+  "site_url": null,
+  "category": "Interior design"
+ },
+ {
+  "url": "https://www.reddit.com/r/InteriorDesign/.rss",
+  "title": "Interior Design (Interior Architecture)",
+  "description": "Interior Design is the art and science of understanding people's behavior to create functional spaces within a building. It is a multi-faceted profession in which creative and technical solutions are applied within a structure to achieve a built interior environment.",
+  "site_url": null,
+  "category": "Interior design"
+ },
+ {
+  "url": "http://www.home-designing.com/feed",
+  "title": "Interior Design Ideas",
+  "description": "Inspirational Interior Design Ideas",
+  "site_url": null,
+  "category": "Interior design"
+ },
+ {
+  "url": "https://www.dezeen.com/interiors/feed/",
+  "title": "Interior design | Dezeen",
+  "description": "architecture and design magazine",
+  "site_url": null,
+  "category": "Interior design"
+ },
+ {
+  "url": "https://www.idealhome.co.uk/feed",
+  "title": "Latest from Ideal Home in News",
+  "description": "All the latest news content from the Ideal Home team",
+  "site_url": null,
+  "category": "Interior design"
+ },
+ {
+  "url": "https://www.lizmarieblog.com/feed/",
+  "title": "Liz Marie Blog",
+  "description": null,
+  "site_url": null,
+  "category": "Interior design"
+ },
+ {
+  "url": "https://theinspiredroom.net/feed/",
+  "title": "The Inspired Room",
+  "description": "Voted Readers' Favorite Top Decorating Blog Better Homes and Gardens, Decorating Ideas, How to Organize, How to Decorate, HomeBody",
+  "site_url": null,
+  "category": "Interior design"
+ },
+ {
+  "url": "http://feeds.feedburner.com/blogspot/ZBcZ",
+  "title": "Thrifty Decor Chick | Thrifty DIY, Decor and Organizing",
+  "description": "Thrifty decorating blog with easy DIY, decor, entertaining and organizing ideas. Make your home beautiful for less.",
+  "site_url": null,
+  "category": "Interior design"
+ },
+ {
+  "url": "https://www.trendir.com/feed/",
+  "title": "Trendir",
+  "description": "The Latest Trends in Modern House Design and Decorating",
+  "site_url": null,
+  "category": "Interior design"
+ },
+ {
+  "url": "http://feeds.feedburner.com/yankodesign",
+  "title": "Yanko Design",
+  "description": "Modern Industrial Design News",
+  "site_url": null,
+  "category": "Interior design"
+ },
+ {
+  "url": "https://www.yatzer.com/rss.xml",
+  "title": "Yatzer | Live Beautifully. Explore Endlessly.",
+  "description": "Since 2006, Yatzer has explored the many ways design shapes our lives,curating soulful interiors, visionary creatives, and immersive destinations — celebrating the art of living beautifully.",
+  "site_url": null,
+  "category": "Interior design"
+ },
+ {
+  "url": "https://www.younghouselove.com/feed/",
+  "title": "Young House Love",
+  "description": "Home Decorating & DIY Tutorials",
+  "site_url": null,
+  "category": "Interior design"
+ },
+ {
+  "url": "https://www.reddit.com/r/memes/.rss",
+  "title": "/r/Memes the original since 2008",
+  "description": "Memes! A way of describing cultural information being shared. An element of a culture or system of behavior that may be considered to be passed from one individual to another by nongenetic means, especially imitation.",
+  "site_url": null,
+  "category": "Memes"
+ },
+ {
+  "url": "https://www.reddit.com/r/historymemes/.rss",
+  "title": "A sub for History Memes",
+  "description": "A place for history memes about events occurring over 20 years ago.",
+  "site_url": null,
+  "category": "Memes"
+ },
+ {
+  "url": "https://www.reddit.com/r/AdviceAnimals/.rss",
+  "title": "Advice Animals",
+  "description": "Reddit's Gold Mine",
+  "site_url": null,
+  "category": "Memes"
+ },
+ {
+  "url": "https://www.reddit.com/r/dankmemes/.rss",
+  "title": "dankmemes",
+  "description": "*le dank",
+  "site_url": null,
+  "category": "Memes"
+ },
+ {
+  "url": "https://indianmemetemplates.com/feed/",
+  "title": "Indian Meme Templates",
+  "description": "Download Meme Templates, Indian Funny Photos, Movie Dialogues",
+  "site_url": null,
+  "category": "Memes"
+ },
+ {
+  "url": "https://www.reddit.com/r/IndianMeyMeys/.rss",
+  "title": "Indian Memes",
+  "description": "Only the most normiest of the memes are allowed. tags : India , Indian Memes , Normie.",
+  "site_url": null,
+  "category": "Memes"
+ },
+ {
+  "url": "https://www.reddit.com/r/wholesomememes/.rss",
+  "title": "Internet for the Spirit",
+  "description": "Welcome to the wholesome side of the internet! This community is for those searching for a way to capture virtue on the internet.",
+  "site_url": null,
+  "category": "Memes"
+ },
+ {
+  "url": "https://knowyourmeme.com/newsfeed.rss",
+  "title": "Know Your Meme Newsfeed",
+  "description": "New items added to the News Feed",
+  "site_url": null,
+  "category": "Memes"
+ },
+ {
+  "url": "https://memebase.cheezburger.com/rss",
+  "title": "Memebase",
+  "description": "Funny memes that \"GET IT\" and want you to too. Get the latest funniest memes and keep up what is going on in the meme-o-sphere.",
+  "site_url": null,
+  "category": "Memes"
+ },
+ {
+  "url": "https://www.reddit.com/r/PrequelMemes/.rss",
+  "title": "PrequelMemes - Memes of the Star Wars Prequels",
+  "description": "Memes of the Star Wars Prequels.",
+  "site_url": null,
+  "category": "Memes"
+ },
+ {
+  "url": "https://www.reddit.com/r/IndianDankMemes/.rss",
+  "title": "r/IndianDankMemes - India's Largest Meme Subreddit",
+  "description": "Meme Banao, Chutiya Nahi.",
+  "site_url": null,
+  "category": "Memes"
+ },
+ {
+  "url": "http://feeds.feedburner.com/blogspot/GlZMR",
+  "title": "Rabbit Ramblings",
+  "description": null,
+  "site_url": null,
+  "category": "Memes"
+ },
+ {
+  "url": "https://www.reddit.com/r/me_irl/.rss",
+  "title": "selfies of the soul",
+  "description": "selfies of the soul | human posters only, bots go home | be excellent to each other",
+  "site_url": null,
+  "category": "Memes"
+ },
+ {
+  "url": "https://www.reddit.com/r/2meirl4meirl/.rss",
+  "title": "when things get too real for meirl",
+  "description": "For relatable posts that are too real for /r/meirl or /r/me_irl. Meaning jokes/posts about mental health issues and self deprecating humour.",
+  "site_url": null,
+  "category": "Memes"
+ },
+ {
+  "url": "https://yucksauce.com/feed/",
+  "title": "YuckSauce",
+  "description": "Curated Dumpster Fire: Meme Maker",
+  "site_url": null,
+  "category": "Memes"
+ },
+ {
+  "url": "https://www.reddit.com/r/terriblefacebookmemes/.rss",
+  "title": "😎HAHA DAE MINIONS!!!😎",
+  "description": "Community for all those terrible memes your uncle posts on facebook",
+  "site_url": null,
+  "category": "Memes"
+ },
+ {
+  "url": "https://feeds2.feedburner.com/slashfilm",
+  "title": "/Film",
+  "description": "Movie News and Reviews This feed is for non commercial use. Content Copyright Slashfilm.com.",
+  "site_url": null,
+  "category": "Movies"
+ },
+ {
+  "url": "https://www.aintitcool.com/node/feed/",
+  "title": "Ain't It Cool News Feed",
+  "description": "The best in movie, TV, DVD and comic book news.",
+  "site_url": null,
+  "category": "Movies"
+ },
+ {
+  "url": "https://www.comingsoon.net/feed",
+  "title": "ComingSoon.net – Movie Trailers, TV & Streaming News, and More",
+  "description": "ComingSoon.net features the latest movie trailers and news, TV updates, video game reviews, anime releases, and more.",
+  "site_url": null,
+  "category": "Movies"
+ },
+ {
+  "url": "https://deadline.com/feed/",
+  "title": "Deadline",
+  "description": "Hollywood Entertainment Breaking News",
+  "site_url": null,
+  "category": "Movies"
+ },
+ {
+  "url": "https://www.firstshowing.net/feed/",
+  "title": "FirstShowing.net",
+  "description": "Connecting Hollywood with its Audience",
+  "site_url": null,
+  "category": "Movies"
+ },
+ {
+  "url": "https://www.indiewire.com/feed",
+  "title": "IndieWire",
+  "description": "The Voice of Creative Independence",
+  "site_url": null,
+  "category": "Movies"
+ },
+ {
+  "url": "https://reddit.com/r/movies/.rss",
+  "title": "Movie News and Discussion",
+  "description": "/r/movies is the world's largest online film community, with over 37,000,000 members. Come on in and talk about movies with us!",
+  "site_url": null,
+  "category": "Movies"
+ },
+ {
+  "url": "https://www.bleedingcool.com/movies/feed/",
+  "title": "Movies",
+  "description": "Comics, Movies, TV, Games",
+  "site_url": null,
+  "category": "Movies"
+ },
+ {
+  "url": "https://variety.com/feed/",
+  "title": "Variety",
+  "description": "Entertainment news, film reviews, awards, film festivals, box office, entertainment industry conferences",
+  "site_url": null,
+  "category": "Movies"
+ },
+ {
+  "url": "http://consequenceofsound.net/feed",
+  "title": "Consequence",
+  "description": "Music, Film, TV and Pop Culture News for the Mainstream and Underground",
+  "site_url": null,
+  "category": "Music"
+ },
+ {
+  "url": "http://feeds.feedburner.com/metalinjection",
+  "title": "Metal Injection",
+  "description": "Heavy metal news, metal music videos, tour dates, live footage, exclusive documentaries, funny clips and more.",
+  "site_url": null,
+  "category": "Music"
+ },
+ {
+  "url": "https://www.musicbusinessworldwide.com/feed/",
+  "title": "Music Business Worldwide",
+  "description": "News, jobs and analysis for the global music industry",
+  "site_url": null,
+  "category": "Music"
+ },
+ {
+  "url": "http://pitchfork.com/rss/news",
+  "title": "RSS: News",
+  "description": "News content RSS feed",
+  "site_url": null,
+  "category": "Music"
+ },
+ {
+  "url": "http://feed.songexploder.net/songexploder",
+  "title": "Song Exploder",
+  "description": "<p>Song Exploder is a podcast where musicians take apart their songs, and piece by piece, tell the story of how they were made. Each episode features an artist discussing a song of theirs, breaking down the sounds and ideas that went into the writing and recording. Hosted and produced by Hrishikesh Hirway.</p>",
+  "site_url": null,
+  "category": "Music"
+ },
+ {
+  "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCwmZiChSryoWQCZMIQezgTg",
+  "title": "BBC Earth",
+  "description": null,
+  "site_url": null,
+  "category": "Nature"
+ },
+ {
+  "url": "https://rss.acast.com/bbcearthpodcast",
+  "title": "BBC Earth Podcast",
+  "description": "<p>Each week the BBC Earth podcast brings you entertainment, humour, an abundance of amazing animal stories and unbelievable unheard sounds. Explore the world of animals with superpowers, deep dive into death, hear from heroes passionately protecting the planet and get expert insights into corners of the natural world you’ve never explored before.</p><br><p>Hosted by zoologists Rutendo Shackleton and Sebastian Echeverri, each episode features special guests including the world’s most respected scientists and naturalists, stars of film and television, nature Instagrammers and more.</p><br><p>Listen, laugh and learn – whether you’re a nature lover, nature curious or haven’t yet realised nature is for you, there’ll be a story here to captivate your ears.</p><hr><p style='color:grey; font-size:0.75em;'> Hosted on Acast. See <a style='color:grey;' target='_blank' rel='noopener noreferrer' href='https://acast.com/privacy'>acast.com/privacy</a> for more information.</p>",
+  "site_url": null,
+  "category": "Nature"
+ },
+ {
+  "url": "https://markavery.info/blog/feed/",
+  "title": "BLOG POSTS – Mark Avery",
+  "description": "Standing up for Nature",
+  "site_url": null,
+  "category": "Nature"
+ },
+ {
+  "url": "https://www.pbs.org/wnet/nature/blog/feed/",
+  "title": "Blog | Nature | PBS",
+  "description": "The premiere natural history program on television.",
+  "site_url": null,
+  "category": "Nature"
+ },
+ {
+  "url": "https://www.reddit.com/r/EarthPorn/.rss",
+  "title": "EarthPorn: Amazing images of light and landscape",
+  "description": "The internet's largest community of landscape photographers and Earth lovers.",
+  "site_url": null,
+  "category": "Nature"
+ },
+ {
+  "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCSyg9cb3Iq-NtlbxqNB9wGw",
+  "title": "Explore Oceans",
+  "description": null,
+  "site_url": null,
+  "category": "Nature"
+ },
+ {
+  "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCpVm7bg6pXKo1Pr6k5kxG9A",
+  "title": "National Geographic",
+  "description": null,
+  "site_url": null,
+  "category": "Nature"
+ },
+ {
+  "url": "http://feeds.nature.com/nature/rss/current?x=1",
+  "title": "Nature",
+  "description": "Nature is the foremost international weekly scientific journal in the world and is the flagship journal for Nature Portfolio. It publishes the finest peer-reviewed research in all fields of science and technology on the basis of its originality, importance, interdisciplinary interest, timeliness, accessibility, elegance and surprising conclusions. Nature publishes landmark papers, award winning news, leading comment and expert opinion on important, topical scientific news and events that enable readers to share the latest discoveries in science and evolve the discussion amongst the global scientific community.",
+  "site_url": null,
+  "category": "Nature"
+ },
+ {
+  "url": "https://www.reddit.com/r/nature/.rss",
+  "title": "Nature",
+  "description": "* Share your fascinating links about nature * Discuss endangered parts of nature * Contribute news about the wonders of nature * Meet other nature enthusiasts * Enjoy our functional design including * user flair * links to many related subreddits in the header menu * links to reddit specific information in the header menu",
+  "site_url": null,
+  "category": "Nature"
+ },
+ {
+  "url": "https://www.reddit.com/r/NatureGifs/.rss",
+  "title": "Nature Gifs",
+  "description": null,
+  "site_url": null,
+  "category": "Nature"
+ },
+ {
+  "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCcBp_9YPyma4c3HTadmRJ3Q",
+  "title": "Nature on PBS",
+  "description": null,
+  "site_url": null,
+  "category": "Nature"
+ },
+ {
+  "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UC7c8mE90qCtu11z47U0KErg",
+  "title": "nature video",
+  "description": null,
+  "site_url": null,
+  "category": "Nature"
+ },
+ {
+  "url": "https://reflectionsofthenaturalworld.com/feed/",
+  "title": "Reflections of the Natural World",
+  "description": "Travel with me as I explore the wild things and wild places of our planet. - Jim Gain",
+  "site_url": null,
+  "category": "Nature"
+ },
+ {
+  "url": "https://naturecanada.ca/category/news/blog/feed/",
+  "title": "Stories Archives - Nature Canada",
+  "description": "Your voice for nature!",
+  "site_url": null,
+  "category": "Nature"
+ },
+ {
+  "url": "http://feeds.bbci.co.uk/news/world/rss.xml",
+  "title": "BBC News",
+  "description": "BBC News - World",
+  "site_url": null,
+  "category": "News"
+ },
+ {
+  "url": "http://rss.cnn.com/rss/edition_world.rss",
+  "title": "CNN.com - RSS Channel - World",
+  "description": "CNN.com delivers up-to-the-minute news and information on the latest top stories, weather, entertainment, politics and more.",
+  "site_url": null,
+  "category": "News"
+ },
+ {
+  "url": "https://www.cnbc.com/id/100727362/device/rss/rss.html",
+  "title": "International: Top News And Analysis",
+  "description": "CNBC International is the world leader for news on business, technology, China, trade, oil prices, the Middle East and markets.",
+  "site_url": null,
+  "category": "News"
+ },
+ {
+  "url": "http://feeds.feedburner.com/ndtvnews-world-news",
+  "title": "NDTV News Search Records Found 1000",
+  "description": "NDTV.com provides the latest information from and in-depth coverage of India and the world. Find breaking news, India news, top stories, elections, politics, business, cricket, movies, lifestyle, health, live TV, videos, photos and more.",
+  "site_url": null,
+  "category": "News"
+ },
+ {
+  "url": "https://rss.nytimes.com/services/xml/rss/nyt/World.xml",
+  "title": "NYT > World News",
+  "description": null,
+  "site_url": null,
+  "category": "News"
+ },
+ {
+  "url": "https://news.google.com/rss",
+  "title": "Top stories - Google News",
+  "description": "Google News",
+  "site_url": null,
+  "category": "News"
+ },
+ {
+  "url": "http://feeds.washingtonpost.com/rss/world",
+  "title": "World",
+  "description": "The Washington Post World section provides information and analysis of breaking world news stories. In addition to our world news and video, Post World News offers discussions and blogs on major international news and economic issues.",
+  "site_url": null,
+  "category": "News"
+ },
+ {
+  "url": "https://www.reddit.com/r/worldnews/.rss",
+  "title": "World News",
+  "description": "A place for major news from around the world, excluding US-internal news.",
+  "site_url": null,
+  "category": "News"
+ },
+ {
+  "url": "https://www.theguardian.com/world/rss",
+  "title": "World news | The Guardian",
+  "description": "Latest World news news, comment and analysis from the Guardian, the world's leading liberal voice",
+  "site_url": null,
+  "category": "News"
+ },
+ {
+  "url": "https://timesofindia.indiatimes.com/rssfeeds/296589292.cms",
+  "title": "World News, Today World News, Latest International News, World Breaking News, Trending News of World - Times of India",
+  "description": "World News Today: Read the latest world news headlines, Current International breaking news world wide. In depth analysis and top news headlines world wide.",
+  "site_url": null,
+  "category": "News"
+ },
+ {
+  "url": "https://affordanything.com/feed/",
+  "title": "Afford Anything®",
+  "description": "You Can Afford Anything ... Just Not Everything™. What's It Gonna Be?",
+  "site_url": null,
+  "category": "Personal finance"
+ },
+ {
+  "url": "https://feeds.feedburner.com/AffordAnythingFeed",
+  "title": "Afford Anything®",
+  "description": "You Can Afford Anything ... Just Not Everything™. What's It Gonna Be?",
+  "site_url": null,
+  "category": "Personal finance"
+ },
+ {
+  "url": "https://feeds2.feedburner.com/budgetsaresexy",
+  "title": "Budgets Are Sexy",
+  "description": "Money | Minimalism | Mohawks",
+  "site_url": null,
+  "category": "Personal finance"
+ },
+ {
+  "url": "https://www.financialsamurai.com/feed/",
+  "title": "Financial Samurai",
+  "description": "Slicing Through Money's Mysteries",
+  "site_url": null,
+  "category": "Personal finance"
+ },
+ {
+  "url": "https://feeds.feedburner.com/Frugalwoods",
+  "title": "Frugalwoods",
+  "description": "Financial independence and simple living",
+  "site_url": null,
+  "category": "Personal finance"
+ },
+ {
+  "url": "https://www.goodfinancialcents.com/feed/",
+  "title": "Good Financial Cents®",
+  "description": null,
+  "site_url": null,
+  "category": "Personal finance"
+ },
+ {
+  "url": "http://investlikethebest.libsyn.com/rss",
+  "title": "Invest Like the Best with Patrick O'Shaughnessy",
+  "description": "Conversations with the best investors and business leaders in the world. We explore their ideas, methods, and stories to help you better invest your time and money. Hear stock market and boardroom insights you can't find anywhere else. If you're a professional investor, CEO, entrepreneur, or business strategist, this is for you. Explore all our episodes and learn more at https://www.colossus.com",
+  "site_url": null,
+  "category": "Personal finance"
+ },
+ {
+  "url": "https://www.learntotradethemarket.com/feed",
+  "title": "Learn To Trade The Market",
+  "description": "Learn Price Action Trading with Nial Fuller",
+  "site_url": null,
+  "category": "Personal finance"
+ },
+ {
+  "url": "https://feeds.megaphone.fm/listen-money-matters",
+  "title": "Listen Money Matters - Free your inner financial badass. All the stuff you should know about personal finance.",
+  "description": "Honest and uncensored - this is not your father’s boring finance show. This show brings much needed ACTIONABLE advice to a people who hate being lectured about personal finance from the out-of-touch one percent. Andrew and Matt are relatable, funny, and brash. Their down-to-earth discussions about money are entertaining whether you’re a financial whiz or just starting out. To be a part of the show and get your financial questions answered, send an email to listenmoneymatters@gmail.com.",
+  "site_url": null,
+  "category": "Personal finance"
+ },
+ {
+  "url": "https://www.makingsenseofcents.com/feed",
+  "title": "Making Sense Of Cents",
+  "description": "Learn how to make extra money, how to save money, how to start a blog, and more.",
+  "site_url": null,
+  "category": "Personal finance"
+ },
+ {
+  "url": "https://millennialmoney.com/feed/",
+  "title": "Millennial Money",
+  "description": "Next Level Personal Finance",
+  "site_url": null,
+  "category": "Personal finance"
+ },
+ {
+  "url": "https://www.moneycrashers.com/feed/",
+  "title": "Money Crashers",
+  "description": "Turn the Tables on Money",
+  "site_url": null,
+  "category": "Personal finance"
+ },
+ {
+  "url": "https://rss.art19.com/money-for-the-rest-of-us",
+  "title": "Money For the Rest of Us",
+  "description": "<p>A personal finance and investing podcast on money, how it works, how to invest it and how to live without worrying about it. J. David Stein is a former Chief Investment Strategist and money manager. For close to two decades, he has been teaching individuals and institutions how to invest and handle their finances in ways that are simple to understand. More info at moneyfortherestofus.com</p>",
+  "site_url": null,
+  "category": "Personal finance"
+ },
+ {
+  "url": "https://moneysavingmom.com/feed/",
+  "title": "Money Saving Mom®",
+  "description": "Saving Families Money Since 2007",
+  "site_url": null,
+  "category": "Personal finance"
+ },
+ {
+  "url": "https://www.moneyunder30.com/feed",
+  "title": "Money Under 30",
+  "description": null,
+  "site_url": null,
+  "category": "Personal finance"
+ },
+ {
+  "url": "http://feeds.feedburner.com/MoneyNing",
+  "title": "MoneyNing",
+  "description": "Sharing insights since 2007 on carefully saving money, investing, frugal living, coupons, promo codes because the little things matter in achieving financial freedom!",
+  "site_url": null,
+  "category": "Personal finance"
+ },
+ {
+  "url": "https://mywifequitherjob.com/feed/",
+  "title": "MyWifeQuitHerJob.com",
+  "description": "Starting An Online Store So Your Spouse Can Quit And Stay At Home With The Kids",
+  "site_url": null,
+  "category": "Personal finance"
+ },
+ {
+  "url": "http://feeds.feedblitz.com/kitcesnerdseyeview&x=1",
+  "title": "Nerd's Eye View | Kitces.com",
+  "description": "Commentary from Michael Kitces on Financial Planning News & Strategies",
+  "site_url": null,
+  "category": "Personal finance"
+ },
+ {
+  "url": "https://www.nerdwallet.com/blog/feed/",
+  "title": "NerdWallet",
+  "description": "NerdWallet is a free tool to find you the best credit cards, cd rates, savings, checking accounts, scholarships, healthcare and airlines. Start here to maximize your rewards or minimize your interest rates.",
+  "site_url": null,
+  "category": "Personal finance"
+ },
+ {
+  "url": "https://obliviousinvestor.com/feed/",
+  "title": "Oblivious Investor",
+  "description": "Low-Maintenance Investing with Index Funds and ETFs",
+  "site_url": null,
+  "category": "Personal finance"
+ },
+ {
+  "url": "https://reddit.com/r/personalfinance/.rss",
+  "title": "Personal Finance",
+  "description": "Learn about budgeting, saving, getting out of debt, credit, investing, and retirement planning. Join our community, read the PF Wiki, and get on top of your finances!",
+  "site_url": null,
+  "category": "Personal finance"
+ },
+ {
+  "url": "https://www.savingadvice.com/feed/",
+  "title": "SavingAdvice.com Blog",
+  "description": "SavingAdvice.com is a trusted personal finance community with expert articles on saving money, budgeting, debt reduction, and investing — plus active forums and tools to guide your financial journey.",
+  "site_url": null,
+  "category": "Personal finance"
+ },
+ {
+  "url": "https://www.sidehustlenation.com/feed",
+  "title": "Side Hustle Nation",
+  "description": "Amplify your earning power",
+  "site_url": null,
+  "category": "Personal finance"
+ },
+ {
+  "url": "https://feeds.megaphone.fm/somoney",
+  "title": "So Money with Farnoosh Torabi",
+  "description": "*** Named a Best Podcast By The New York Times, Time Magazine, Real Simple and MSNBC *** Host Farnoosh Torabi is an award-winning financial strategist, TV host and bestselling author. With over 40 million downloads and multiple Webby wins, So Money is dedicated to sharing inspiring money strategies and stories straight from today's financial leaders, bestselling authors and entrepreneurs. One day, hear an intimate money conversation with industry greats like Queen Latifah, Barbara Corcoran or Margaret Cho. Another day learn the basics of cryptocurrency and its impact on our wallets. On Fridays, tune in as Farnoosh answers our most pressing financial questions about saving, investing and building wealth. Advice and insights always delivered through a lens of equity, inclusivity and the changing world we live in. Want more? Join the So Money Members Club at SoMoneyMembers.com. <hr><p style='color:grey; font-size:0.75em;'> Hosted on Acast. See <a style='color:grey;' target='_blank' rel='noopener noreferrer' href='https://acast.com/privacy'>acast.com/privacy</a> for more information.</p>",
+  "site_url": null,
+  "category": "Personal finance"
+ },
+ {
+  "url": "https://feeds.megaphone.fm/clarkhoward",
+  "title": "The Clark Howard Podcast",
+  "description": "Save more and spend less is more than just a motto for money expert Clark Howard; it’s a way of life. Clark and his crew — Team Clark — are on a mission to empower people to take control of their personal finances by providing money-saving tips, consumer advice, hot deals and economic news to help everyone achieve financial freedom. Clark is a nationally syndicated radio talk show host and a consumer reporter for television stations around the country. His podcast, The Clark Howard Show, receives more than one million downloads each month and is a hub for listeners to get valuable advice on-demand any time. Clark answers questions on the most popular business and consumer topics including; how to buy a cars, financing a home, retirement planning, shopping for insurance and getting the most out of your savings. Join the conversation and submit your question to www.clark.com/askclark . Clark spearheads two free resources — Clark.com and ClarkDeals.com — to encourage consumers to save more, spend less and avoid ripoffs.",
+  "site_url": null,
+  "category": "Personal finance"
+ },
+ {
+  "url": "https://thecollegeinvestor.com/feed/",
+  "title": "The College Investor",
+  "description": "Navigating Money And Education",
+  "site_url": null,
+  "category": "Personal finance"
+ },
+ {
+  "url": "https://daveramsey.libsyn.com/rss",
+  "title": "The Ramsey Show",
+  "description": "The Ramsey Show believes you can build wealth and take control of your life—no matter what stupid mistakes you've made with money. Join as Dave Ramsey and his team of experts answer your questions on the top problems holding you back. Listen now or ask your question live by calling 888.825.5225 weekdays from 2–5 p.m. ET. Learn more at www.ramseysolutions.com",
+  "site_url": null,
+  "category": "Personal finance"
+ },
+ {
+  "url": "https://feeds.megaphone.fm/stacking-benjamins",
+  "title": "The Stacking Benjamins Show",
+  "description": "<p>Named Best Personal Finance Podcast by Bankrate.com and Kiplinger — and the only podcast the Plutus Awards retired from competition after winning twice — The Stacking Benjamins Show is personal finance that doesn’t put you to sleep.</p><p>Hosts Joe Saul-Sehy (former 16-year financial advisor, ex-WXYZ-TV “Money Man”) and Josh “OG” Bannerman, CFP (Certified Financial Planner, Bannerman Wealth) sit around the card table in Joe’s mom’s half-finished basement in Texarkana and talk money with the smartest guests in personal finance, investing, and behavioral economics. As Fast Company wrote, the show “strikes a great balance of fun and functional.”</p><p>Every Monday, Wednesday, and Friday: expert guests, real headlines, listener questions, and Doug’s trivia. Topics include investing, retirement planning, budgeting, real estate, behavioral finance, taxes, and financial independence — for anyone who wants to be smarter about money without being talked down to.</p><p>Subscribe to The 201 — the free newsletter that goes deeper than the show — at <a href=\"http://stackingbenjamins.com/201\" rel=\"noopener noreferrer\" target=\"_blank\">stackingbenjamins.com/201</a></p>",
+  "site_url": null,
+  "category": "Personal finance"
+ },
+ {
+  "url": "https://wellkeptwallet.com/feed/",
+  "title": "Well Kept Wallet",
+  "description": "Helping you save money, make money and pay off debt.",
+  "site_url": null,
+  "category": "Personal finance"
+ },
+ {
+  "url": "http://feeds.killeraces.com/wisebread",
+  "title": "Wise Bread",
+  "description": "Living large on a small budget",
+  "site_url": null,
+  "category": "Personal finance"
+ },
+ {
+  "url": "https://iso.500px.com/feed/",
+  "title": "500px",
+  "description": null,
+  "site_url": null,
+  "category": "Photography"
+ },
+ {
+  "url": "https://feeds.feedburner.com/DigitalPhotographySchool",
+  "title": "Digital Photography School",
+  "description": "Digital Photography Tips and Tutorials",
+  "site_url": null,
+  "category": "Photography"
+ },
+ {
+  "url": "https://www.lightstalking.com/feed/",
+  "title": "Light Stalking",
+  "description": "Illuminating Your Passion",
+  "site_url": null,
+  "category": "Photography"
+ },
+ {
+  "url": "http://feeds.feedburner.com/OneBigPhoto",
+  "title": "One Big Photo",
+  "description": "a Picture is Worth a Thousand Words | Submit Your Photo | World's Best Photography",
+  "site_url": null,
+  "category": "Photography"
+ },
+ {
+  "url": "https://petapixel.com/feed/",
+  "title": "PetaPixel",
+  "description": "Photography and Camera News, Reviews, and Inspiration",
+  "site_url": null,
+  "category": "Photography"
+ },
+ {
+  "url": "http://feeds.feedburner.com/blogspot/WOBq",
+  "title": "Strobist",
+  "description": "Learn How to Light.",
+  "site_url": null,
+  "category": "Photography"
+ },
+ {
+  "url": "https://stuckincustoms.com/feed/",
+  "title": "Stuck in Customs",
+  "description": "Trey Ratcliff's Travel Photography blog with daily inspiration to motivate you!",
+  "site_url": null,
+  "category": "Photography"
+ },
+ {
+  "url": "https://www.bostonglobe.com/rss/bigpicture",
+  "title": "The Boston Globe",
+  "description": "The Boston Globe News Feed",
+  "site_url": null,
+  "category": "Photography"
+ },
+ {
+  "url": "https://medium.com/feed/better-programming",
+  "title": "Better Programming - Medium",
+  "description": "Advice for programmers. - Medium",
+  "site_url": null,
+  "category": "Programming"
+ },
+ {
+  "url": "http://feeds.codenewbie.org/cnpodcast.xml",
+  "title": "CodeNewbie",
+  "description": "The CodeNewbie podcast was born from CodeNewbie, an organization which fosters a supportive, international community of people learning to code. Each season, host Saron Yitbarek delivers stories and interviews from people of diverse backgrounds and expertise about their coding journeys, as well as beginner friendly discussions about the tech you should know about.",
+  "site_url": null,
+  "category": "Programming"
+ },
+ {
+  "url": "https://feeds.feedburner.com/codinghorror",
+  "title": "Coding Horror",
+  "description": "programming and human factors",
+  "site_url": null,
+  "category": "Programming"
+ },
+ {
+  "url": "https://feeds.simplecast.com/dLRotFGk",
+  "title": "Developer Tea",
+  "description": "Developer Tea exists to help driven developers connect to their ultimate purpose and excel at their work so that they can positively impact the people they influence. With over 17 million downloads to date, Developer Tea is a short podcast hosted by Jonathan Cutrell, engineering leader with over 15 years of industry experience. We hope you'll take the topics from this podcast and continue the conversation, either online or in person with your peers. Email: developertea@gmail.com",
+  "site_url": null,
+  "category": "Programming"
+ },
+ {
+  "url": "https://engineering.fb.com/feed/",
+  "title": "Engineering at Meta",
+  "description": "Engineering at Meta Blog",
+  "site_url": null,
+  "category": "Programming"
+ },
+ {
+  "url": "https://slack.engineering/feed",
+  "title": "Engineering at Slack",
+  "description": "Hear directly from Slack's engineers about what we build, why and how we build it, and how you can use it.",
+  "site_url": null,
+  "category": "Programming"
+ },
+ {
+  "url": "https://codeascraft.com/feed/atom/",
+  "title": "Etsy Engineering | Code as Craft",
+  "description": "The engineers who make Etsy make our living with a craft we love: software. This is where we'll write about our craft and our collective experience building and running the world's most vibrant handmade marketplace.",
+  "site_url": null,
+  "category": "Programming"
+ },
+ {
+  "url": "https://feeds.twit.tv/floss.xml",
+  "title": "FLOSS Weekly (Audio)",
+  "description": "We're not talking dentistry here; FLOSS is all about Free Libre Open Source Software. Join host Doc Searls and his rotating panel of co-hosts as they talk with the most interesting and important people in the Open Source and Free Software community. Although the show is no longer in production at TWiT, you can enjoy episodes from our archives.",
+  "site_url": null,
+  "category": "Programming"
+ },
+ {
+  "url": "https://about.gitlab.com/atom.xml",
+  "title": "GitLab",
+  "description": "GitLab Blog RSS feed",
+  "site_url": null,
+  "category": "Programming"
+ },
+ {
+  "url": "http://feeds.feedburner.com/GDBcode",
+  "title": "Google Developers Blog",
+  "description": "Updates on changes and additions to the Google Developers Blog.",
+  "site_url": null,
+  "category": "Programming"
+ },
+ {
+  "url": "https://www.youtube.com/feeds/videos.xml?user=GoogleTechTalks",
+  "title": "Google TechTalks",
+  "description": null,
+  "site_url": null,
+  "category": "Programming"
+ },
+ {
+  "url": "https://medium.com/feed/hackernoon",
+  "title": "HackerNoon.com - Medium",
+  "description": "Elijah McClain, George Floyd, Eric Garner, Breonna Taylor, Ahmaud Arbery, Michael Brown, Oscar Grant, Atatiana Jefferson, Tamir Rice, Bettie Jones, Botham Jean - Medium",
+  "site_url": null,
+  "category": "Programming"
+ },
+ {
+  "url": "https://feeds.simplecast.com/gvtxUiIf",
+  "title": "Hanselminutes with Scott Hanselman",
+  "description": "Hanselminutes is Fresh Air for Developers. A weekly commute-time podcast that promotes fresh technology and fresh voices. Talk and Tech for Developers, Life-long Learners, and Technologists.",
+  "site_url": null,
+  "category": "Programming"
+ },
+ {
+  "url": "https://feed.infoq.com",
+  "title": "InfoQ",
+  "description": "InfoQ feed",
+  "site_url": null,
+  "category": "Programming"
+ },
+ {
+  "url": "https://blog.jooq.org/feed",
+  "title": "Java, SQL and jOOQ.",
+  "description": "Best Practices and Lessons Learned from Writing Awesome Java and SQL Code. Get some hands-on insight on what's behind developing jOOQ.",
+  "site_url": null,
+  "category": "Programming"
+ },
+ {
+  "url": "https://www.joelonsoftware.com/feed/",
+  "title": "Joel on Software",
+  "description": null,
+  "site_url": null,
+  "category": "Programming"
+ },
+ {
+  "url": "https://martinfowler.com/feed.atom",
+  "title": "Martin Fowler",
+  "description": "Master feed of news and updates from martinfowler.com",
+  "site_url": null,
+  "category": "Programming"
+ },
+ {
+  "url": "https://buffer.com/resources/overflow/rss/",
+  "title": "Overflow - Buffer Resources",
+  "description": "In-depth ideas and guides to social media & online marketing strategy, published by the team at Buffer",
+  "site_url": null,
+  "category": "Programming"
+ },
+ {
+  "url": "https://overreacted.io/rss.xml",
+  "title": "overreacted — A blog by Dan Abramov",
+  "description": "A blog by Dan Abramov",
+  "site_url": null,
+  "category": "Programming"
+ },
+ {
+  "url": "https://softwareengineeringdaily.com/category/podcast/feed",
+  "title": "Podcast Archives - Software Engineering Daily",
+  "description": null,
+  "site_url": null,
+  "category": "Programming"
+ },
+ {
+  "url": "https://www.reddit.com/r/programming/.rss",
+  "title": "programming",
+  "description": "Computer Programming",
+  "site_url": null,
+  "category": "Programming"
+ },
+ {
+  "url": "https://www.thecrazyprogrammer.com/category/programming/feed",
+  "title": "Programming Archives - The Crazy Programmer",
+  "description": "Programming, Design and Development",
+  "site_url": null,
+  "category": "Programming"
+ },
+ {
+  "url": "http://feeds.feedburner.com/ProgrammingThrowdown",
+  "title": "Programming Throwdown",
+  "description": "Programming Throwdown educates Computer Scientists and Software Engineers on a cavalcade of programming and tech topics. Every show will cover a new programming language, so listeners will be able to speak intelligently about any programming language.",
+  "site_url": null,
+  "category": "Programming"
+ },
+ {
+  "url": "https://robertheaton.com/feed.xml",
+  "title": "Robert Heaton | Blog",
+  "description": "Software engineer. One-track lover down a two-way lane",
+  "site_url": null,
+  "category": "Programming"
+ },
+ {
+  "url": "http://feeds.hanselman.com/ScottHanselman",
+  "title": "Scott Hanselman's Blog",
+  "description": "Scott Hanselman on Programming, User Experience, The Zen of Computers and Life in General",
+  "site_url": null,
+  "category": "Programming"
+ },
+ {
+  "url": "http://scripting.com/rss.xml",
+  "title": "Scripting News",
+  "description": "Dave Winer, OG blogger, podcaster, developed first apps in many categories. Old enough to know better. It's even worse than it appears.",
+  "site_url": null,
+  "category": "Programming"
+ },
+ {
+  "url": "https://feeds.fireside.fm/sdt/rss",
+  "title": "Software Defined Talk",
+  "description": "Get ready for a weekly dose of all things Enterprise Software and Cloud Computing! Join us as we dive into topics including Kubernetes, DevOps, Serverless, Security and Coding. Plus, we’ll keep you entertained with plenty of off-topic banter and nonsense. Don’t worry if you miss the latest industry conference - we’ve got you covered with recaps of all the latest news from AWS, Microsoft Azure, Google Cloud Platform (GCP) and the Cloud Native Computing Foundation (CNCF).",
+  "site_url": null,
+  "category": "Programming"
+ },
+ {
+  "url": "http://feeds.feedburner.com/se-radio",
+  "title": "Software Engineering Radio - The Podcast for Professional Software Developers",
+  "description": "Software Engineering Radio is a podcast targeted at the professional software developer. The goal is to be a lasting educational resource, not a newscast. Every 10 days, a new episode is published that covers all topics software engineering. Episodes are either tutorials on a specific topic, or an interview with a well-known character from the software engineering world. All SE Radio episodes are original content — we do not record conferences or talks given in other venues. Each episode comprises two speakers to ensure a lively listening experience. SE Radio is an independent and non-commercial organization. All content is licensed under the Creative Commons 2.5 license.",
+  "site_url": null,
+  "category": "Programming"
+ },
+ {
+  "url": "https://developers.soundcloud.com/blog/blog.rss",
+  "title": "SoundCloud Backstage Blog",
+  "description": "SoundCloud's developer blog.",
+  "site_url": null,
+  "category": "Programming"
+ },
+ {
+  "url": "https://labs.spotify.com/feed/",
+  "title": "Spotify Engineering",
+  "description": "Spotify’s official technology blog",
+  "site_url": null,
+  "category": "Programming"
+ },
+ {
+  "url": "https://stackabuse.com/rss/",
+  "title": "Stack Abuse",
+  "description": "Learn Python, Java, JavaScript/Node, Machine Learning, and Web Development through articles, code examples, and tutorials for developers of all skill levels.",
+  "site_url": null,
+  "category": "Programming"
+ },
+ {
+  "url": "https://stackoverflow.blog/feed/",
+  "title": "Stack Overflow Blog",
+  "description": "Essays, opinions, and advice on the act of computer programming from Stack Overflow.",
+  "site_url": null,
+  "category": "Programming"
+ },
+ {
+  "url": "http://6figuredev.com/feed/rss/",
+  "title": "The 6 Figure Developer",
+  "description": "Helping others reach their potential",
+  "site_url": null,
+  "category": "Programming"
+ },
+ {
+  "url": "https://medium.com/feed/airbnb-engineering",
+  "title": "The Airbnb Tech Blog - Medium",
+  "description": "Creative engineers and data scientists building a world where you can belong anywhere. http://airbnb.io - Medium",
+  "site_url": null,
+  "category": "Programming"
+ },
+ {
+  "url": "https://cynicaldeveloper.com/feed/podcast",
+  "title": "The Cynical Developer",
+  "description": "A UK based Technology and Software Developer Podcast that helps you to improve your development knowledge and career, through explaining the latest and greatest in development technology and providing you with what you need to succeed as a developer.",
+  "site_url": null,
+  "category": "Programming"
+ },
+ {
+  "url": "https://github.blog/feed/",
+  "title": "The GitHub Blog",
+  "description": "Updates, ideas, and inspiration from GitHub to help developers build and design software.",
+  "site_url": null,
+  "category": "Programming"
+ },
+ {
+  "url": "https://blog.jetbrains.com/feed",
+  "title": "The JetBrains Blog",
+  "description": "Developer Tools for Professionals and Teams",
+  "site_url": null,
+  "category": "Programming"
+ },
+ {
+  "url": "https://feeds.transistor.fm/productivity-in-tech-podcast",
+  "title": "The PIT Show: Reflections and Interviews in the Tech World",
+  "description": "This is the show where I sit down with people in the tech space and talk about what they are doing and how they get it all done.",
+  "site_url": null,
+  "category": "Programming"
+ },
+ {
+  "url": "https://feeds.simplecast.com/XA_851k3",
+  "title": "The Stack Overflow Podcast",
+  "description": "<p>For well over a decade, the Stack Overflow Podcast has been exploring what it means to be a developer and how the art and practice of software engineering is changing our world. From creating code to running it in production, we host important conversations and fascinating guests that will help you understand how technology is made and where it’s headed. Hosted by Ryan Donovan, the Stack Overflow Podcast is your home for all things software.</p>",
+  "site_url": null,
+  "category": "Programming"
+ },
+ {
+  "url": "https://thewomenintechshow.com/category/podcast/feed/",
+  "title": "The Women in Tech Show: A Technical Podcast",
+  "description": "A podcast about what we work on, not what it feels like to be a woman in tech. Hosted by Edaena Salinas, Software Engineer at Microsoft. Website: wit.fm",
+  "site_url": null,
+  "category": "Programming"
+ },
+ {
+  "url": "http://rss.sciam.com/sciam/60secsciencepodcast",
+  "title": "60-Second Science",
+  "description": "Tune in every weekday for quick reports and commentaries on the world of science—it'll just take a minute",
+  "site_url": null,
+  "category": "Science"
+ },
+ {
+  "url": "http://feeds.bbci.co.uk/news/science_and_environment/rss.xml",
+  "title": "BBC News",
+  "description": "BBC News - Science & Environment",
+  "site_url": null,
+  "category": "Science"
+ },
+ {
+  "url": "https://podcasts.files.bbci.co.uk/p002w557.rss",
+  "title": "Discovery",
+  "description": "<p>Explorations in the world of science.</p>",
+  "site_url": null,
+  "category": "Science"
+ },
+ {
+  "url": "https://flowingdata.com/feed",
+  "title": "FlowingData",
+  "description": "Strength in Numbers",
+  "site_url": null,
+  "category": "Science"
+ },
+ {
+  "url": "https://www.omnycontent.com/d/playlist/aaea4e69-af51-495e-afc9-a9760146922b/2a195077-f014-41d2-8313-ab190186b4c2/277bcd5c-0a05-4c14-8ba6-ab190186b4d5/podcast.rss",
+  "title": "Gastropod",
+  "description": "Food with a side of science and history. Every other week, co-hosts Cynthia Graber and Nicola Twilley serve up a brand new episode exploring the hidden history and surprising science behind a different food- or farming-related topic, from aquaculture to ancient feasts, from cutlery to chile peppers, and from microbes to Malbec. We interview experts, visit labs, fields, and archaeological digs, and generally have lots of fun while discovering new ways to think about and understand the world through food. Find us online at gastropod.com, follow us on Twitter @gastropodcast, and like us on Facebook at facebook.com/gastropodcast.",
+  "site_url": null,
+  "category": "Science"
+ },
+ {
+  "url": "https://feeds.npr.org/510308/podcast.xml",
+  "title": "Hidden Brain",
+  "description": "Why do I feel stuck? How can I become more creative? What can I do to improve my relationships? If you’ve ever asked yourself these questions, you’re not alone. On Hidden Brain, we help you understand your own mind — and the minds of the people around you. (We're routinely rated the #1 science podcast in the United States.) Hosted by veteran science journalist Shankar Vedantam.",
+  "site_url": null,
+  "category": "Science"
+ },
+ {
+  "url": "https://feeds.npr.org/510307/podcast.xml",
+  "title": "Invisibilia",
+  "description": "Unseeable forces control human behavior and shape our ideas, beliefs, and assumptions. Invisibilia—Latin for invisible things—fuses narrative storytelling with science that will make you see your own life differently.",
+  "site_url": null,
+  "category": "Science"
+ },
+ {
+  "url": "https://www.sciencedaily.com/rss/all.xml",
+  "title": "Latest Science News -- ScienceDaily",
+  "description": null,
+  "site_url": null,
+  "category": "Science"
+ },
+ {
+  "url": "https://www.nature.com/nature.rss",
+  "title": "Nature",
+  "description": "Nature is the foremost international weekly scientific journal in the world and is the flagship journal for Nature Portfolio. It publishes the finest peer-reviewed research in all fields of science and technology on the basis of its originality, importance, interdisciplinary interest, timeliness, accessibility, elegance and surprising conclusions. Nature publishes landmark papers, award winning news, leading comment and expert opinion on important, topical scientific news and events that enable readers to share the latest discoveries in science and evolve the discussion amongst the global scientific community.",
+  "site_url": null,
+  "category": "Science"
+ },
+ {
+  "url": "https://rss.nytimes.com/services/xml/rss/nyt/Science.xml",
+  "title": "NYT > Science",
+  "description": null,
+  "site_url": null,
+  "category": "Science"
+ },
+ {
+  "url": "https://phys.org/rss-feed/",
+  "title": "Phys.org - latest science and technology news stories",
+  "description": "Phys.org internet news portal provides the latest news on science including: Physics, Nanotechnology, Life Sciences, Space Science, Earth Science, Environment, Health and Medicine.",
+  "site_url": null,
+  "category": "Science"
+ },
+ {
+  "url": "https://www.popsci.com/arcio/rss/",
+  "title": "Popular Science",
+  "description": "Awe-inspiring science reporting, technology news, and DIY projects. Skunks to space robots, primates to climates. That&#039;s Popular Science, 150 years strong.",
+  "site_url": null,
+  "category": "Science"
+ },
+ {
+  "url": "https://probablyscience.libsyn.com/rss",
+  "title": "Probably Science",
+  "description": "Professional comedians with so-so STEM pedigrees take you through this week in science. Incompetently. Featuring hosts Matt Kirshen, Andy Wood (and sometimes Jesse Case or Brooks Wheelan) along with a rotating cast of special guests from the worlds of comedy and science.",
+  "site_url": null,
+  "category": "Science"
+ },
+ {
+  "url": "http://feeds.wnyc.org/radiolab",
+  "title": "Radiolab",
+  "description": "Radiolab is on a curiosity bender. We ask deep questions and use investigative journalism to get the answers. A given episode might whirl you through science, legal history, and into the home of someone halfway across the world. The show is known for innovative sound design, smashing information into music. It is hosted by Lulu Miller and Latif Nasser.",
+  "site_url": null,
+  "category": "Science"
+ },
+ {
+  "url": "https://reddit.com/r/science/.rss",
+  "title": "Reddit Science",
+  "description": "This community is a place to share and discuss new scientific research. Read about the latest advances in astronomy, biology, medicine, physics, social science, and more. Find and submit new publications and popular science coverage of current research.",
+  "site_url": null,
+  "category": "Science"
+ },
+ {
+  "url": "https://feeds.simplecast.com/y1LF_sn2",
+  "title": "Sawbones: A Marital Tour of Misguided Medicine",
+  "description": "Join Dr. Sydnee McElroy and her husband Justin McElroy for a tour of all the dumb, bad, gross, weird and wrong ways we've tried to fix people.",
+  "site_url": null,
+  "category": "Science"
+ },
+ {
+  "url": "https://gizmodo.com/tag/science/rss",
+  "title": "Science",
+  "description": "The Future Is Here",
+  "site_url": null,
+  "category": "Science"
+ },
+ {
+  "url": "https://www.wired.com/feed/category/science/latest/rss",
+  "title": "Science Latest",
+  "description": "Channel Description",
+  "site_url": null,
+  "category": "Science"
+ },
+ {
+  "url": "http://rss.sciam.com/ScientificAmerican-Global",
+  "title": "Scientific American Content: Global",
+  "description": "Scientific American is the essential guide to the most awe-inspiring advances in science and technology, explaining how they change our understanding of the world and shape our lives.",
+  "site_url": null,
+  "category": "Science"
+ },
+ {
+  "url": "https://shirtloadsofscience.libsyn.com/rss",
+  "title": "Shirtloads of Science",
+  "description": "Dr Karl's a curious optimist – a great combination for a science lover. Join him and his guests for weird facts, amazing conversation and remember, it's never too late for a happy childhood.   Series Producer: Isabelle Benton Technical Producer: Maya Cook",
+  "site_url": null,
+  "category": "Science"
+ },
+ {
+  "url": "https://pa.tedcdn.com/feeds/talks.rss",
+  "title": "TED Talks Daily",
+  "description": "Want TED Talks on the go? Everyday, this feed brings you our latest talks in audio format. Hear thought-provoking ideas on every subject imaginable – from Artificial Intelligence to Zoology, and everything in between – given by the world's leading thinkers and doers. This collection of talks, given at TED and TEDx conferences around the globe, is also available in video format.<hr><p style='color:grey; font-size:0.75em;'> Hosted on Acast. See <a style='color:grey;' target='_blank' rel='noopener noreferrer' href='https://acast.com/privacy'>acast.com/privacy</a> for more information.</p>",
+  "site_url": null,
+  "category": "Science"
+ },
+ {
+  "url": "https://podcasts.files.bbci.co.uk/b00snr0w.rss",
+  "title": "The Infinite Monkey Cage",
+  "description": "<p>Professor Brian Cox and Robin Ince host a witty, irreverent look at the world through scientists’ eyes. Joined by a panel of scientists, experts and celebrity science enthusiasts they investigate life, the universe and everything in between on The Infinite Monkey Cage from the BBC. </p><p>From the smallest building blocks of life to the furthest stars, the curious monkeys pull apart the latest science to reveal fascinating and often bizarre insights into the world around us and what lies beyond. Can trees talk to each other? Can science help you commit the perfect murder? What might aliens look like and the burning question of our time, are strawberries alive or dead? Join them as each episode they put a different scientific topic under the microscope, from aliens, black holes and hedgehogs, to bacteria, poison and the Big Bang.   With past guests including actors Dame Judi Dench and Sir Patrick Stewart, comedians Steve Martin and Conan O’Brien, astronaut Tim Peake, primatologist Jane Goodall and mathematician Hannah Fry, The Infinite Monkey Cage promises to make you laugh, enrich your knowledge and leave you with a deeper appreciation for the universe that we call home.   Whether you’re a seasoned scientist or someone who nodded off in physics class, listen in to learn all about funny, fascinating and sometimes ridiculous topics – with the occasional monkey business.</p>",
+  "site_url": null,
+  "category": "Science"
+ },
+ {
+  "url": "http://www.twis.org/feed/",
+  "title": "This Week in Science – The Kickass Science Podcast",
+  "description": "The kickass science and technology radio show that delivers an irreverent look at the week in science and technology.",
+  "site_url": null,
+  "category": "Science"
+ },
+ {
+  "url": "https://www.reddit.com/r/space/.rss?format=xml",
+  "title": "/r/space: news, articles and discussion",
+  "description": "Share & discuss informative content on: * Astrophysics * Cosmology * Space Exploration * Planetary Science * Astrobiology",
+  "site_url": null,
+  "category": "Space"
+ },
+ {
+  "url": "https://www.space.com/feeds/all",
+  "title": "Latest from Space.com",
+  "description": "All the latest content from the Space.com team",
+  "site_url": null,
+  "category": "Space"
+ },
+ {
+  "url": "https://www.nasa.gov/rss/dyn/breaking_news.rss",
+  "title": "NASA",
+  "description": "Official National Aeronautics and Space Administration Website",
+  "site_url": null,
+  "category": "Space"
+ },
+ {
+  "url": "https://www.newscientist.com/subject/space/feed/",
+  "title": "New Scientist - Space",
+  "description": "New Scientist - Space",
+  "site_url": null,
+  "category": "Space"
+ },
+ {
+  "url": "https://www.theguardian.com/science/space/rss",
+  "title": "Space | The Guardian",
+  "description": "Latest news and features from theguardian.com, the world's leading liberal voice",
+  "site_url": null,
+  "category": "Space"
+ },
+ {
+  "url": "https://www.youtube.com/feeds/videos.xml?user=spacexchannel",
+  "title": "SpaceX",
+  "description": null,
+  "site_url": null,
+  "category": "Space"
+ },
+ {
+  "url": "http://feeds.bbci.co.uk/sport/rss.xml",
+  "title": "BBC Sport",
+  "description": "BBC Sport - Sport Front Page",
+  "site_url": null,
+  "category": "Sports"
+ },
+ {
+  "url": "http://rss.cnn.com/rss/edition_sport.rss",
+  "title": "CNN.com - RSS Channel - Sport",
+  "description": "CNN.com delivers up-to-the-minute news and information on the latest top stories, weather, entertainment, politics and more.",
+  "site_url": null,
+  "category": "Sports"
+ },
+ {
+  "url": "https://rss.nytimes.com/services/xml/rss/nyt/Sports.xml",
+  "title": "NYT > Sports",
+  "description": null,
+  "site_url": null,
+  "category": "Sports"
+ },
+ {
+  "url": "https://www.reddit.com/r/sports.rss",
+  "title": "Reddit Sports",
+  "description": "Sports News and Highlights from the NFL, NBA, NHL, MLB, MLS, NCAA, F1, and other leagues around the world.",
+  "site_url": null,
+  "category": "Sports"
+ },
+ {
+  "url": "https://www.theguardian.com/uk/sport/rss",
+  "title": "Sport | The Guardian",
+  "description": "Latest Sport news, comment and analysis from the Guardian, the world's leading liberal voice",
+  "site_url": null,
+  "category": "Sports"
+ },
+ {
+  "url": "http://feeds.skynews.com/feeds/rss/sports.xml",
+  "title": "Sports News - Latest Sports and Football News | Sky News",
+  "description": "The best sports coverage from around the world, covering: Football, Cricket, Golf, Rugby, WWE, Boxing, Tennis and much more.",
+  "site_url": null,
+  "category": "Sports"
+ },
+ {
+  "url": "https://timesofindia.indiatimes.com/rssfeeds/4719148.cms",
+  "title": "Sports News: Cricket Live Scorecard, Latest Cricket News, Football, NBA, NFL, WWE, NHL, MLB News & More",
+  "description": "Get the latest sports news, live cricket scores and in-depth coverage of Cricket, Football, NBA, NFL, WWE, F1, Tennis, and more on The Times of India. Stay updated with breaking sports stories, player stats, and event highlights.",
+  "site_url": null,
+  "category": "Sports"
+ },
+ {
+  "url": "https://indianexpress.com/section/sports/feed/",
+  "title": "Sports | The Indian Express",
+  "description": "Latest News Today, Breaking News, India News, Top Headlines",
+  "site_url": null,
+  "category": "Sports"
+ },
+ {
+  "url": "https://sports.yahoo.com/rss/",
+  "title": "sports.yahoo.com",
+  "description": "Yahoo! Sports - Comprehensive news, scores, standings, fantasy games, rumors, and more",
+  "site_url": null,
+  "category": "Sports"
+ },
+ {
+  "url": "https://www.sportskeeda.com/feed",
+  "title": "Sportskeeda",
+  "description": "Latest Sports News & Live Updates",
+  "site_url": null,
+  "category": "Sports"
+ },
+ {
+  "url": "https://www.espn.com/espn/rss/news",
+  "title": "www.espn.com - TOP",
+  "description": "Latest TOP news from www.espn.com",
+  "site_url": null,
+  "category": "Sports"
+ },
+ {
+  "url": "https://avc.com/feed/",
+  "title": "AVC",
+  "description": "Musings of a VC in NYC",
+  "site_url": null,
+  "category": "Startups"
+ },
+ {
+  "url": "https://feld.com/archives/tag/blog/feed",
+  "title": "Blog on Feld Thoughts",
+  "description": "Recent content in Blog on Feld Thoughts",
+  "site_url": null,
+  "category": "Startups"
+ },
+ {
+  "url": "http://feeds.feedburner.com/entrepreneur/latest",
+  "title": "Entrepreneur – Latest",
+  "description": "The latest small business tips and advice from Entrepreneur",
+  "site_url": null,
+  "category": "Startups"
+ },
+ {
+  "url": "https://feld.com/feed",
+  "title": "Feld Thoughts",
+  "description": "Recent content on Feld Thoughts",
+  "site_url": null,
+  "category": "Startups"
+ },
+ {
+  "url": "https://www.youtube.com/feeds/videos.xml?user=GaryVaynerchuk",
+  "title": "GaryVee",
+  "description": null,
+  "site_url": null,
+  "category": "Startups"
+ },
+ {
+  "url": "https://hnrss.org/frontpage",
+  "title": "Hacker News: Front Page",
+  "description": "Hacker News RSS",
+  "site_url": null,
+  "category": "Startups"
+ },
+ {
+  "url": "https://www.inc.com/rss/",
+  "title": "Inc.com",
+  "description": "Inc.com, the daily resource for entrepreneurs.",
+  "site_url": null,
+  "category": "Startups"
+ },
+ {
+  "url": "https://www.youtube.com/feeds/videos.xml?user=marieforleo",
+  "title": "Marie Forleo",
+  "description": null,
+  "site_url": null,
+  "category": "Startups"
+ },
+ {
+  "url": "https://rss.art19.com/masters-of-scale",
+  "title": "Masters of Scale",
+  "description": "<p>On Masters of Scale, iconic business leaders share lessons and strategies that have helped them grow the world's most fascinating companies. Founders, CEOs, and dynamic innovators join candid conversations about their triumphs and challenges with a set of luminary hosts, including founding host Reid Hoffman (LinkedIn co-founder and Greylock partner). From navigating early prototypes to expanding brands globally, Masters of Scale provides priceless insights to help anyone grow their dream enterprise.</p>",
+  "site_url": null,
+  "category": "Startups"
+ },
+ {
+  "url": "http://www.aaronsw.com/2002/feeds/pgessays.rss",
+  "title": "Paul Graham: Essays",
+  "description": "Scraped feed provided by aaronsw.com",
+  "site_url": null,
+  "category": "Startups"
+ },
+ {
+  "url": "https://www.producthunt.com/feed",
+  "title": "Product Hunt — The best new products, every day",
+  "description": null,
+  "site_url": null,
+  "category": "Startups"
+ },
+ {
+  "url": "https://feeds2.feedburner.com/SmallBusinessTrends",
+  "title": "Small Business Trends",
+  "description": "Founded in 2003, Small Business Trends is an award-winning online publication for small business owners, entrepreneurs and the people who interact with them. It is one of the most popular independent small business publications on the web. Together with hundreds of expert contributors, Small Business Trends brings you the news, tips, advice and resources you need. \"Small business success... delivered daily.\"",
+  "site_url": null,
+  "category": "Startups"
+ },
+ {
+  "url": "http://feeds.feedburner.com/smartpassiveincome",
+  "title": "Smart Passive Income",
+  "description": "Become the entrepreneur you want to be",
+  "site_url": null,
+  "category": "Startups"
+ },
+ {
+  "url": "https://steveblank.com/feed/",
+  "title": "Steve Blank",
+  "description": "Innovation and Entrepreneurship",
+  "site_url": null,
+  "category": "Startups"
+ },
+ {
+  "url": "https://www.intercom.com/blog/feed",
+  "title": "The Intercom Blog",
+  "description": "Articles and Podcasts on Customer Service, AI and Automation, Product, and more",
+  "site_url": null,
+  "category": "Startups"
+ },
+ {
+  "url": "https://startupjunkie.libsyn.com/rss",
+  "title": "The Startup Junkies Podcast",
+  "description": "The Startup Junkies podcast is hosted by Jeff Amerine and his team at Startup Junkie Consulting. We’ll cover topics ranging from getting started, planning, growing your business, proving your concept, leadership, marketing, exit strategies and so much more. We’ll interview business owners, entrepreneurs, experts and people we think will bring value to our audience. Subscribe and together we will move your business to the next level.",
+  "site_url": null,
+  "category": "Startups"
+ },
+ {
+  "url": "https://rss.art19.com/tim-ferriss-show",
+  "title": "The Tim Ferriss Show",
+  "description": "Tim Ferriss is a self-experimenter and bestselling author, best known for The 4-Hour Workweek, which has been translated into 40+ languages.  Newsweek calls him \"the world's best human guinea pig,\" and The New York Times calls him \"a cross between Jack Welch and a Buddhist monk.\"  In this show, he deconstructs world-class performers from eclectic areas (investing, chess, pro sports, etc.), digging deep to find the tools, tactics, and tricks that listeners can use.",
+  "site_url": null,
+  "category": "Startups"
+ },
+ {
+  "url": "https://feeds.feedburner.com/venturebeat/SZYF",
+  "title": "VentureBeat",
+  "description": "Transformative tech coverage that matters",
+  "site_url": null,
+  "category": "Startups"
+ },
+ {
+  "url": "https://atp.fm/rss",
+  "title": "Accidental Tech Podcast",
+  "description": "Three nerds discussing tech, Apple, programming, and loosely related matters.",
+  "site_url": null,
+  "category": "Tech"
+ },
+ {
+  "url": "https://www.relay.fm/analogue/feed",
+  "title": "Analog(ue)",
+  "description": "So many podcasts are about our digital devices. Analog(ue) is a show about how these devices make us feel and how they change our lives for the better, but also for the worse. Hosted by Casey Liss and Myke Hurley.",
+  "site_url": null,
+  "category": "Tech"
+ },
+ {
+  "url": "http://feeds.arstechnica.com/arstechnica/index",
+  "title": "Ars Technica - All content",
+  "description": "All Ars Technica stories",
+  "site_url": null,
+  "category": "Tech"
+ },
+ {
+  "url": "https://www.relay.fm/clockwise/feed",
+  "title": "Clockwise",
+  "description": "Clockwise is a rapid-fire discussion of current technology issues hosted by Dan Moren and Mikah Sargent and featuring two special guests each week. Four people, four topics--and because we're always watching the clock, no episode is longer than 30 minutes. Hosted by Dan Moren and Mikah Sargent.",
+  "site_url": null,
+  "category": "Tech"
+ },
+ {
+  "url": "https://www.cnet.com/rss/news/",
+  "title": "CNET",
+  "description": "CNET news editors and reporters provide top technology news, with investigative reporting and in-depth coverage of tech issues and events.",
+  "site_url": null,
+  "category": "Tech"
+ },
+ {
+  "url": "https://www.youtube.com/feeds/videos.xml?user=CNETTV",
+  "title": "CNET",
+  "description": null,
+  "site_url": null,
+  "category": "Tech"
+ },
+ {
+  "url": "http://feeds.feedburner.com/TechCrunch",
+  "title": "Crunch Hype",
+  "description": "Tech Crunch is a free Digital Marketing Site. The main goal of this site is to provide quality tutorials, tips, courses, tools and other resources that allows anyone to work online and master digital marketing based on real case study and deep research.",
+  "site_url": null,
+  "category": "Tech"
+ },
+ {
+  "url": "https://www.engadget.com/rss.xml",
+  "title": "Engadget - Technology News & Expert Reviews",
+  "description": "Breaking news from the worlds of technology and entertainment, and expert reviews of the latest consumer tech products.",
+  "site_url": null,
+  "category": "Tech"
+ },
+ {
+  "url": "https://gizmodo.com/rss",
+  "title": "Gizmodo",
+  "description": "The Future Is Here",
+  "site_url": null,
+  "category": "Tech"
+ },
+ {
+  "url": "https://news.ycombinator.com/rss",
+  "title": "Hacker News",
+  "description": "Links for the intellectually curious, ranked by readers.",
+  "site_url": null,
+  "category": "Tech"
+ },
+ {
+  "url": "https://lifehacker.com/rss",
+  "title": "Lifehacker",
+  "description": "Do everything better.",
+  "site_url": null,
+  "category": "Tech"
+ },
+ {
+  "url": "https://www.youtube.com/feeds/videos.xml?user=LinusTechTips",
+  "title": "Linus Tech Tips",
+  "description": null,
+  "site_url": null,
+  "category": "Tech"
+ },
+ {
+  "url": "https://www.youtube.com/feeds/videos.xml?user=marquesbrownlee",
+  "title": "Marques Brownlee",
+  "description": null,
+  "site_url": null,
+  "category": "Tech"
+ },
+ {
+  "url": "http://feeds.mashable.com/Mashable",
+  "title": "Mashable",
+  "description": "Mashable is a leading source for news, information & resources for the Connected Generation. Mashable reports on the importance of digital innovation and how it empowers and inspires people around the world. Mashable's 25 million monthly unique visitors and 10 million social media followers have become one of the most engaged online news communities. Founded in 2005, Mashable is headquartered in New York City with an office in San Francisco.",
+  "site_url": null,
+  "category": "Tech"
+ },
+ {
+  "url": "https://rss.nytimes.com/services/xml/rss/nyt/Technology.xml",
+  "title": "NYT > Technology",
+  "description": null,
+  "site_url": null,
+  "category": "Tech"
+ },
+ {
+  "url": "https://readwrite.com/feed/",
+  "title": "ReadWrite",
+  "description": "Crypto, Gaming & Emerging Tech News",
+  "site_url": null,
+  "category": "Tech"
+ },
+ {
+  "url": "https://feeds.megaphone.fm/replyall",
+  "title": "Reply All",
+  "description": "\"'A podcast about the internet' that is actually an unfailingly original exploration of modern life and how to survive it.\" - The Guardian. Hosted by Alex Goldman and Emmanuel Dzotsi from Gimlet.",
+  "site_url": null,
+  "category": "Tech"
+ },
+ {
+  "url": "https://www.relay.fm/rocket/feed",
+  "title": "Rocket",
+  "description": "Countdown to excitement! Every week Christina Warren, Brianna Wu and Simone de Rochefort had accelerated geek conversation. Tech, comics, movies, games and books, no galaxy is off limits! Hosted by Christina Warren, Brianna Wu, and Simone De Rochefort.",
+  "site_url": null,
+  "category": "Tech"
+ },
+ {
+  "url": "http://rss.slashdot.org/Slashdot/slashdotMain",
+  "title": "Slashdot",
+  "description": "News for nerds, stuff that matters",
+  "site_url": null,
+  "category": "Tech"
+ },
+ {
+  "url": "http://stratechery.com/feed/",
+  "title": "Stratechery by Ben Thompson",
+  "description": "On the business, strategy, and impact of technology.",
+  "site_url": null,
+  "category": "Tech"
+ },
+ {
+  "url": "https://www.blog.google/rss/",
+  "title": "The Keyword",
+  "description": "The Keyword",
+  "site_url": null,
+  "category": "Tech"
+ },
+ {
+  "url": "https://thenextweb.com/feed/",
+  "title": "The Next Web",
+  "description": "Original and proudly opinionated perspectives for Generation T",
+  "site_url": null,
+  "category": "Tech"
+ },
+ {
+  "url": "https://www.theverge.com/rss/index.xml",
+  "title": "The Verge",
+  "description": "The Verge is about technology and how it makes us feel. Founded in 2011, we offer our audience everything from breaking news to reviews to award-winning features and investigations, on our site, in video, and in podcasts.",
+  "site_url": null,
+  "category": "Tech"
+ },
+ {
+  "url": "https://www.youtube.com/feeds/videos.xml?user=TheVerge",
+  "title": "The Verge",
+  "description": null,
+  "site_url": null,
+  "category": "Tech"
+ },
+ {
+  "url": "https://feeds.megaphone.fm/vergecast",
+  "title": "The Vergecast",
+  "description": "The Vergecast is the flagship podcast from The Verge about small gadgets, Big Tech, and everything in between. Every Friday, hosts Nilay Patel and David Pierce hang out and make sense of the week’s most important technology news. And every Tuesday, David leads a selection of The Verge’s expert staffers in an exploration of how gadgets and software affect our lives – and which ones you should bring into yours.",
+  "site_url": null,
+  "category": "Tech"
+ },
+ {
+  "url": "https://feeds.twit.tv/twit.xml",
+  "title": "This Week in Tech (Audio)",
+  "description": "This Week in Tech is the top-ranked flagship tech podcast from TWiT.tv. Every Sunday, Leo Laporte and a roundtable of insiders explore the week's hottest tech news from AI to robots, and PCs to privacy. When it comes to tech, TWiT is IT. You can join Club TWiT for $10 per month and get ad-free audio and video feeds for all our shows plus everything else the club offers...or get just this podcast ad-free for $5 per month. New episodes every Sunday.",
+  "site_url": null,
+  "category": "Tech"
+ },
+ {
+  "url": "https://www.youtube.com/feeds/videos.xml?user=unboxtherapy",
+  "title": "Unbox Therapy",
+  "description": null,
+  "site_url": null,
+  "category": "Tech"
+ },
+ {
+  "url": "https://www.theregister.com/headlines.rss",
+  "title": "www.theregister.com - Articles",
+  "description": "Articles from www.theregister.com",
+  "site_url": null,
+  "category": "Tech"
+ },
+ {
+  "url": "http://feeds.feedburner.com/thetvaddict/AXob",
+  "title": "the TV addict",
+  "description": "TV News, Previews, Spoilers and Reviews",
+  "site_url": null,
+  "category": "Television"
+ },
+ {
+  "url": "https://www.bleedingcool.com/tv/feed/",
+  "title": "TV",
+  "description": "Comics, Movies, TV, Games",
+  "site_url": null,
+  "category": "Television"
+ },
+ {
+  "url": "https://www.tvfanatic.com/rss.xml",
+  "title": "TV Fanatic",
+  "description": "Your Home for TV Show Reviews, Opinions, Spoilers, and News!",
+  "site_url": null,
+  "category": "Television"
+ },
+ {
+  "url": "https://tvline.com/feed/",
+  "title": "TVLine - All TV. No Interference. TV News & Spoilers by TVLine",
+  "description": "Stay up to date with the latest TV news, previews, spoilers, casting updates, interviews, and more from TVLine. Your go-to source for all things TV.",
+  "site_url": null,
+  "category": "Television"
+ },
+ {
+  "url": "https://reddit.com/r/television/.rss",
+  "title": "📺Television News and Discussion",
+  "description": "Subreddit for content primarily about and related to scripted television programming",
+  "site_url": null,
+  "category": "Television"
+ },
+ {
+  "url": "http://feeds.bbci.co.uk/sport/tennis/rss.xml",
+  "title": "BBC Sport",
+  "description": "BBC Sport - Tennis",
+  "site_url": null,
+  "category": "Tennis"
+ },
+ {
+  "url": "http://rss.cnn.com/rss/edition_tennis.rss",
+  "title": "CNN.com - RSS Channel - Sport - Tennis",
+  "description": "CNN.com delivers up-to-the-minute news and information on the latest top stories, weather, entertainment, politics and more.",
+  "site_url": null,
+  "category": "Tennis"
+ },
+ {
+  "url": "https://feed.podbean.com/essentialtennis/feed.xml",
+  "title": "Essential Tennis Podcast - Instruction, Lessons, Tips",
+  "description": "Improve your tennis with the Essential Tennis Podcast, the very first podcast dedicated to tennis lessons and instruction! Tennis professional Ian Westermann answers listener questions about technique, strategy, mental toughness, and much more.",
+  "site_url": null,
+  "category": "Tennis"
+ },
+ {
+  "url": "https://rss.nytimes.com/services/xml/rss/nyt/Tennis.xml",
+  "title": "NYT > Sports > Tennis",
+  "description": null,
+  "site_url": null,
+  "category": "Tennis"
+ },
+ {
+  "url": "https://www.perfect-tennis.com/feed/",
+  "title": "Perfect Tennis",
+  "description": "Tennis Blog",
+  "site_url": null,
+  "category": "Tennis"
+ },
+ {
+  "url": "https://www.reddit.com/r/tennis/.rss",
+  "title": "Tennis News & Discussion",
+  "description": "Professional tennis discussion. Feel free to visit our sister sub for more information on technique, r/10s.",
+  "site_url": null,
+  "category": "Tennis"
+ },
+ {
+  "url": "https://www.thehindu.com/sport/tennis/feeder/default.rss",
+  "title": "Tennis News, Updates, Tennis Scores, ATP, WTA, Grand Slams | The Hindu",
+  "description": "Find Tennis Results, Commentary, Highlights, Live Scores, Latest News From The ATP Tour, WTA Tour &amp;amp; All The Grand Slams At The Hindu",
+  "site_url": null,
+  "category": "Tennis"
+ },
+ {
+  "url": "https://www.theguardian.com/sport/tennis/rss",
+  "title": "Tennis | The Guardian",
+  "description": "Latest news and features from theguardian.com, the world's leading liberal voice",
+  "site_url": null,
+  "category": "Tennis"
+ },
+ {
+  "url": "https://indianexpress.com/section/sports/tennis/feed/",
+  "title": "Tennis | The Indian Express",
+  "description": "Latest News Today, Breaking News, India News, Top Headlines",
+  "site_url": null,
+  "category": "Tennis"
+ },
+ {
+  "url": "https://www.espn.com/espn/rss/tennis/news",
+  "title": "www.espn.com - TENNIS",
+  "description": "Latest TENNIS news from www.espn.com",
+  "site_url": null,
+  "category": "Tennis"
+ },
+ {
+  "url": "http://adventure.com/feed/",
+  "title": "Adventure.com",
+  "description": null,
+  "site_url": null,
+  "category": "Travel"
+ },
+ {
+  "url": "https://www.atlasobscura.com/feeds/latest",
+  "title": "Atlas Obscura - Latest Articles and Places",
+  "description": "New wonders and curiosities added to the Atlas.",
+  "site_url": null,
+  "category": "Travel"
+ },
+ {
+  "url": "http://rss.cnn.com/rss/cnn_travel.rss",
+  "title": "CNN.com - RSS Channel - App Travel Section",
+  "description": "CNN.com delivers up-to-the-minute news and information on the latest top stories, weather, entertainment, politics and more.",
+  "site_url": null,
+  "category": "Travel"
+ },
+ {
+  "url": "http://feeds2.feedburner.com/EverythingEverywhere/",
+  "title": "Everything Everywhere",
+  "description": "Learn Something New Every Day!",
+  "site_url": null,
+  "category": "Travel"
+ },
+ {
+  "url": "https://www.livelifetravel.world/feed/",
+  "title": "Live Life Travel",
+  "description": "Your travel partner for life",
+  "site_url": null,
+  "category": "Travel"
+ },
+ {
+  "url": "http://feeds.feedburner.com/MillionMileSecrets",
+  "title": "Million Mile Secrets",
+  "description": null,
+  "site_url": null,
+  "category": "Travel"
+ },
+ {
+  "url": "https://rss.nytimes.com/services/xml/rss/nyt/Travel.xml",
+  "title": "NYT > Travel",
+  "description": null,
+  "site_url": null,
+  "category": "Travel"
+ },
+ {
+  "url": "https://www.youtube.com/feeds/videos.xml?user=ECastee",
+  "title": "TFIL (Traveling to EVERY COUNTRY in A-Z Order)",
+  "description": null,
+  "site_url": null,
+  "category": "Travel"
+ },
+ {
+  "url": "http://feeds.feedburner.com/thepointsguy",
+  "title": "The Points Guy Articles",
+  "description": "The Points Guy Articles Feed",
+  "site_url": null,
+  "category": "Travel"
+ },
+ {
+  "url": "https://www.nomadicmatt.com/travel-blog/feed/",
+  "title": "Travel Blog -",
+  "description": "Travel Better, Cheaper, Longer",
+  "site_url": null,
+  "category": "Travel"
+ },
+ {
+  "url": "https://www.traveldudes.com/feed/",
+  "title": "Travel Dudes",
+  "description": "For Travelers, By Travelers!",
+  "site_url": null,
+  "category": "Travel"
+ },
+ {
+  "url": "https://www.theguardian.com/uk/travel/rss",
+  "title": "Travel | The Guardian",
+  "description": "Latest travel news and reviews on UK and world holidays, travel guides to global destinations, city breaks, hotels and restaurant information from the Guardian, the world's leading liberal voice",
+  "site_url": null,
+  "category": "Travel"
+ },
+ {
+  "url": "https://www.smashingmagazine.com/feed",
+  "title": "Articles on Smashing Magazine — For Web Designers And Developers",
+  "description": "Recent content in Articles on Smashing Magazine — For Web Designers And Developers",
+  "site_url": null,
+  "category": "UI - UX"
+ },
+ {
+  "url": "http://boxesandarrows.com/rss/",
+  "title": "Boxes and Arrows",
+  "description": "The design behind the design",
+  "site_url": null,
+  "category": "UI - UX"
+ },
+ {
+  "url": "https://feeds.feedburner.com/JustCreativeDesignBlog",
+  "title": "JUST™ Creative",
+  "description": "Logo Designer, Graphic Designer, Graphic Design Portfolio, Logo Design, Logo, Graphic, Design, Graphic Design, Brand Strategy, Branding",
+  "site_url": null,
+  "category": "UI - UX"
+ },
+ {
+  "url": "https://www.nngroup.com/feed/rss/",
+  "title": "NN/g latest articles and announcements",
+  "description": "The latest articles and announcements from Nielsen Norman Group",
+  "site_url": null,
+  "category": "UI - UX"
+ },
+ {
+  "url": "https://usabilitygeek.com/feed/",
+  "title": "Usability Geek",
+  "description": "Usability & User Experience (UX) Blog",
+  "site_url": null,
+  "category": "UI - UX"
+ },
+ {
+  "url": "https://www.reddit.com/r/userexperience/.rss",
+  "title": "User Experience",
+  "description": "A community where professionals, enthusiasts, and individuals interested in the field of user experience can share knowledge, ask questions, and engage in discussions about various UX-related topics.",
+  "site_url": null,
+  "category": "UI - UX"
+ },
+ {
+  "url": "https://uxdesign.cc/feed",
+  "title": "UX Collective - Medium",
+  "description": "We believe designers are thinkers as much as they are makers. https://linktr.ee/uxc - Medium",
+  "site_url": null,
+  "category": "UI - UX"
+ },
+ {
+  "url": "https://uxmovement.com/feed/",
+  "title": "UX Movement",
+  "description": null,
+  "site_url": null,
+  "category": "UI - UX"
+ },
+ {
+  "url": "https://alistapart.com/main/feed/",
+  "title": "A List Apart: The Full Feed",
+  "description": "Articles for people who make web sites.",
+  "site_url": null,
+  "category": "Web Development"
+ },
+ {
+  "url": "https://www.codewall.co.uk/feed/",
+  "title": "Code Wall",
+  "description": null,
+  "site_url": null,
+  "category": "Web Development"
+ },
+ {
+  "url": "https://css-tricks.com/feed/",
+  "title": "CSS-Tricks",
+  "description": "Tips, Tricks, and Techniques on using Cascading Style Sheets.",
+  "site_url": null,
+  "category": "Web Development"
+ },
+ {
+  "url": "https://davidwalsh.name/feed",
+  "title": "David Walsh Blog",
+  "description": "A blog featuring tutorials about JavaScript, HTML5, AJAX, PHP, CSS, WordPress, and everything else development.",
+  "site_url": null,
+  "category": "Web Development"
+ },
+ {
+  "url": "https://gosink.in/rss/",
+  "title": "Sink In - Tech Learnings",
+  "description": "Sink In - Tech Learnings (Shah Code Exporters - FZCO)",
+  "site_url": null,
+  "category": "Web Development"
+ },
+ {
+  "url": "https://albertodebortoli.com/rss/",
+  "title": "Alberto De Bortoli",
+  "description": "Principal Software Engineer @ Just Eat Takeaway, London.",
+  "site_url": null,
+  "category": "iOS Development"
+ },
+ {
+  "url": "https://augmentedcode.io/feed/",
+  "title": "Augmented Code",
+  "description": "Performant, sleek and elegant.",
+  "site_url": null,
+  "category": "iOS Development"
+ },
+ {
+  "url": "https://benoitpasquier.com/index.xml",
+  "title": "Benoit Pasquier",
+  "description": "Recent content on Benoit Pasquier",
+  "site_url": null,
+  "category": "iOS Development"
+ },
+ {
+  "url": "https://swiftrocks.com/rss.xml",
+  "title": "Bruno Rocha",
+  "description": "SwiftRocks is Bruno Rocha's blog about Swift / iOS and the software engineering industry.",
+  "site_url": null,
+  "category": "iOS Development"
+ },
+ {
+  "url": "https://inessential.com/xml/rss.xml",
+  "title": "inessential.com",
+  "description": "Brent Simmons's weblog.",
+  "site_url": null,
+  "category": "iOS Development"
+ },
+ {
+  "url": "https://developer.apple.com/news/rss/news.rss",
+  "title": "Latest News - Apple Developer",
+  "description": null,
+  "site_url": null,
+  "category": "iOS Development"
+ },
+ {
+  "url": "https://mobilea11y.com/index.xml",
+  "title": "Mobile A11y",
+  "description": "Recent content on Mobile A11y",
+  "site_url": null,
+  "category": "iOS Development"
+ },
+ {
+  "url": "https://oleb.net/blog/atom.xml",
+  "title": "Ole Begemann",
+  "description": null,
+  "site_url": null,
+  "category": "iOS Development"
+ },
+ {
+  "url": "https://www.swiftbysundell.com/feed.rss",
+  "title": "Swift by Sundell",
+  "description": "Weekly Swift articles, podcasts and tips by John Sundell",
+  "site_url": null,
+  "category": "iOS Development"
+ },
+ {
+  "url": "https://swiftbysundell.com/feed.rss",
+  "title": "Swift by Sundell",
+  "description": "Weekly Swift articles, podcasts and tips by John Sundell",
+  "site_url": null,
+  "category": "iOS Development"
+ },
+ {
+  "url": "https://atomicbird.com/index.xml",
+  "title": "The Atomic Birdhouse",
+  "description": "Recent content on The Atomic Birdhouse",
+  "site_url": null,
+  "category": "iOS Development"
+ },
+ {
+  "url": "https://www.fabisevi.ch/feed.xml",
+  "title": "The One And Only Blog Of Joe Fabisevich",
+  "description": "The personal website of the one and only Joe Fabisevich, and indie developer building Red Panda Club Inc. Formerly an iOS developer working on civic integrity, societal health, misinformation, and other wild things @Twitter.",
+  "site_url": null,
+  "category": "iOS Development"
+ },
+ {
+  "url": "https://tyler.io/feed/",
+  "title": "tyler.io",
+  "description": "mostly nonsense",
+  "site_url": null,
+  "category": "iOS Development"
+ },
+ {
+  "url": "https://www.relay.fm/radar/feed",
+  "title": "Under the Radar",
+  "description": "From development and design to marketing and support, Under the Radar was all about independent app development. It was rarely longer than 30 minutes. Hosted by Marco Arment and David Smith.",
+  "site_url": null,
+  "category": "iOS Development"
+ },
+ {
+  "url": "https://useyourloaf.com/blog/rss.xml",
+  "title": "Use Your Loaf - iOS Development News & Tips",
+  "description": "Recent content on Use Your Loaf - iOS Development News & Tips",
+  "site_url": null,
+  "category": "iOS Development"
+ }
+]
