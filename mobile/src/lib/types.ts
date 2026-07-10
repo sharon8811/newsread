@@ -23,6 +23,23 @@ export type ServerInfo = {
   min_client_version: string;
 };
 
+// One entry in the curated feed directory (GET /catalog).
+export type CatalogEntry = {
+  id: number;
+  url: string;
+  title: string;
+  description: string | null;
+  site_url: string | null;
+  category: string;
+  feed_id: number | null; // my Feed id when already subscribed to this URL
+  subscribed: boolean;
+};
+
+export type CatalogCategory = {
+  name: string;
+  count: number;
+};
+
 export type EntityBadge = {
   id: number;
   kind: string;

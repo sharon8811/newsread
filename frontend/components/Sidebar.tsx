@@ -10,6 +10,7 @@ import FeedSettingsModal from "./FeedSettingsModal";
 import {
   ActivityIcon,
   BookmarkIcon,
+  CompassIcon,
   FolderIcon,
   GearIcon,
   InboxIcon,
@@ -159,6 +160,12 @@ export default function Sidebar() {
           label="Saved"
         />
         <NavLink
+          href="/catalog"
+          active={pathname === "/catalog"}
+          icon={<CompassIcon />}
+          label="Catalog"
+        />
+        <NavLink
           href="/projects"
           active={pathname.startsWith("/projects")}
           icon={<FolderIcon />}
@@ -224,7 +231,11 @@ export default function Sidebar() {
             className="px-3 pt-2 text-[12.5px] leading-relaxed"
             style={{ color: "var(--ink-faint)" }}
           >
-            No feeds yet. Add one with the + above.
+            No feeds yet. Add one with the + above, or browse the{" "}
+            <Link href="/catalog" className="underline" style={{ color: "var(--accent)" }}>
+              catalog
+            </Link>
+            .
           </p>
         )}
         {feeds?.map((feed) => {

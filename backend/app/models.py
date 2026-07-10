@@ -152,6 +152,23 @@ class Subscription(Base):
     feed: Mapped[Feed] = relationship()
 
 
+class CatalogEntry(Base):
+    """A curated directory entry pointing at a known feed URL, powering the
+    catalog browse/search page. Seeded from data/catalog_seed.json at startup
+    (seeds.py); subscribing goes through the normal POST /feeds flow with the
+    entry's url, so an entry may or may not have a matching Feed row."""
+
+    __tablename__ = "catalog_entries"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    url: Mapped[str] = mapped_column(String(2048), unique=True, index=True)
+    title: Mapped[str] = mapped_column(String(512))
+    description: Mapped[str | None] = mapped_column(Text)
+    site_url: Mapped[str | None] = mapped_column(String(2048))
+    category: Mapped[str] = mapped_column(String(64), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class Article(Base):
     """Global: one row per (feed, guid); per-user state lives in UserArticleState."""
 

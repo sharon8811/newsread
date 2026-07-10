@@ -100,6 +100,7 @@ async def init_db(max_attempts: int = 30) -> None:
     global vector_enabled
 
     from . import models  # noqa: F401  (register mappings)
+    from .seeds import seed_catalog
 
     for attempt in range(1, max_attempts + 1):
         try:
@@ -129,3 +130,4 @@ async def init_db(max_attempts: int = 30) -> None:
         await conn.run_sync(lambda sync: Base.metadata.create_all(sync, tables=tables))
         for statement in MIGRATIONS:
             await conn.execute(text(statement))
+        await seed_catalog(conn)
