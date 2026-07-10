@@ -29,3 +29,6 @@ htmlcov/
 # Agents
 .agents/
 skills-lock.json
+
+# Personal Claude Code settings
+.claude/settings.local.json
