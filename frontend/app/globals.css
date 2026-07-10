@@ -345,6 +345,19 @@ body {
   animation: fadeUp 0.35s cubic-bezier(0.2, 0.7, 0.3, 1) both;
 }
 
+/* Media reveal: a pure cross-fade for images landing inside overflow-hidden
+   frames. No translate (a moving image would expose the frame background at
+   its edge) and no `to`/fill-mode, so the element settles at its natural
+   opacity — inline read-state dimming keeps working after the entrance. */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+}
+.fade-in {
+  animation: fadeIn 0.5s ease;
+}
+
 @keyframes pulseDot {
   0%,
   100% {
@@ -413,6 +426,7 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   .fade-up,
+  .fade-in,
   .dot-new,
   .spinning,
   .shimmer,

@@ -43,28 +43,26 @@ export default function ArticleCard({
         if (!selected) e.currentTarget.style.boxShadow = "0 1px 3px rgba(28,30,34,0.05)";
       }}
     >
-      {/* The media frame only exists when there is (or may soon be) an image:
-          text-only articles stay compact instead of carrying an empty banner. */}
-      {(article.image_url || article.enriching) && (
+      {/* The media frame only appears once there is a real image. Text-only or
+          not-yet-illustrated articles stay compact rather than reserving an
+          empty banner that could linger forever; a generated illustration pops
+          in on the next list refresh (the article page renders it live). */}
+      {article.image_url && (
         <div
-          className={`relative aspect-[2/1] w-full shrink-0 overflow-hidden ${
-            article.image_url ? "" : "shimmer"
-          }`}
+          className="relative aspect-[2/1] w-full shrink-0 overflow-hidden"
           style={{ background: "var(--bg-hover)" }}
         >
-          {article.image_url && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={imageSrc(article.image_url)}
-              alt=""
-              loading="lazy"
-              className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
-              style={{ opacity: article.is_read ? 0.55 : 1 }}
-              onError={(e) => {
-                e.currentTarget.style.display = "none";
-              }}
-            />
-          )}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={imageSrc(article.image_url)}
+            alt=""
+            loading="lazy"
+            className="fade-in h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+            style={{ opacity: article.is_read ? 0.55 : 1 }}
+            onError={(e) => {
+              e.currentTarget.style.display = "none";
+            }}
+          />
         </div>
       )}
 

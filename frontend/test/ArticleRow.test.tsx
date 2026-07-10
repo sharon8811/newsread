@@ -88,10 +88,11 @@ describe("<ArticleRow>", () => {
     expect(img.style.display).toBe("none");
   });
 
-  it("reserves an image frame while enriching", () => {
+  it("reserves no image frame while merely enriching (image not yet available)", () => {
     const { container } = render(<ArticleRow article={makeArticle({ enriching: true })} index={0}
       onToggleSaved={noop} onShare={noop} onAddToProject={noop} />);
-    expect(container.querySelector(".shimmer")).toBeInTheDocument();
+    expect(container.querySelector("img")).toBeNull();
+    expect(container.querySelector(".shimmer")).toBeNull();
   });
 
   it("applies hover background styles for a selected row", async () => {

@@ -155,28 +155,25 @@ export default function ArticleRow({
         </a>
       </div>
 
-      {/* Fixed-size frame: reserved while enrichment may still backfill an
-          image, so thumbnails popping in never reflow the row. */}
-      {(article.image_url || article.enriching) && (
+      {/* The thumbnail frame only appears once a real image exists, so rows
+          never carry an empty box for text-only or not-yet-illustrated
+          articles; a generated image pops in on the next list refresh. */}
+      {article.image_url && (
         <div
-          className={`h-[58px] w-[86px] shrink-0 overflow-hidden rounded-lg border sm:h-[84px] sm:w-[126px] ${
-            article.image_url ? "" : "shimmer"
-          }`}
+          className="h-[58px] w-[86px] shrink-0 overflow-hidden rounded-lg border sm:h-[84px] sm:w-[126px]"
           style={{ borderColor: "var(--line-soft)", background: "var(--bg-hover)" }}
         >
-          {article.image_url && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={imageSrc(article.image_url)}
-              alt=""
-              loading="lazy"
-              className="h-full w-full object-cover"
-              style={{ opacity: article.is_read ? 0.6 : 1 }}
-              onError={(e) => {
-                e.currentTarget.style.display = "none";
-              }}
-            />
-          )}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={imageSrc(article.image_url)}
+            alt=""
+            loading="lazy"
+            className="fade-in h-full w-full object-cover"
+            style={{ opacity: article.is_read ? 0.6 : 1 }}
+            onError={(e) => {
+              e.currentTarget.style.display = "none";
+            }}
+          />
         </div>
       )}
     </div>
