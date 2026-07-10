@@ -202,6 +202,9 @@ export default function ArticleListScreen() {
           headerShown: true,
           headerRight: () => (
             <View style={styles.headerButtons}>
+              <Pressable onPress={() => router.push("/catalog")} hitSlop={8}>
+                <Ionicons name="compass-outline" size={22} color={colors.tint} />
+              </Pressable>
               <Pressable onPress={cycleMode} hitSlop={8}>
                 <Ionicons name={MODE_ICON[mode]} size={22} color={colors.tint} />
               </Pressable>
@@ -277,8 +280,15 @@ export default function ArticleListScreen() {
                   ? "You're all caught up."
                   : filter === "saved"
                     ? "No saved articles yet."
-                    : "No articles yet. Subscribe to feeds in the NewsRead web app to start reading."}
+                    : "No articles yet. Subscribe to feeds to start reading."}
               </Text>
+              {filter === "all" && (
+                <Pressable onPress={() => router.push("/catalog")}>
+                  <Text style={[styles.emptyText, { color: colors.tint, marginTop: 8 }]}>
+                    Browse the feed catalog
+                  </Text>
+                </Pressable>
+              )}
             </View>
           }
           contentContainerStyle={articles.length === 0 ? styles.fill : undefined}
