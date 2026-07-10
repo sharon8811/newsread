@@ -218,3 +218,35 @@ describe("<ArticleList>", () => {
     expect(String(fetchMock.mock.calls[0][0])).toContain("/articles/9/state");
   });
 });
+
+describe("<ArticleList> image-generation polling", () => {
+  beforeEach(() => {
+    swrMock.mockReset();
+    Element.prototype.scrollIntoView = vi.fn();
+  });
+
+  function swrOptions() {
+    return swrMock.mock.calls[0][2] as {
+      refreshInterval: (data?: unknown) => number;
+    };
+  }
+
+  it("polls fast while any article has an illustration rendering", () => {
+    stub([makeArticle({ image_pending: true })]);
+    render(<ArticleList filter="all" emptyTitle="empty" />);
+    const { refreshInterval } = swrOptions();
+    expect(refreshInterval([makeArticle({ image_pending: true })])).toBe(3000);
+  });
+
+  it("falls back to the configured interval once nothing is pending", () => {
+    stub([makeArticle()]);
+    render(<ArticleList filter="all" emptyTitle="empty" refreshInterval={4000} />);
+    const { refreshInterval } = swrOptions();
+    expect(refreshInterval([makeArticle()])).toBe(4000);
+    expect(refreshInterval(undefined)).toBe(4000);
+    // A pending article whose image already landed no longer forces the fast poll.
+    expect(
+      refreshInterval([makeArticle({ image_pending: true, image_url: "https://x/i.png" })]),
+    ).toBe(4000);
+  });
+});

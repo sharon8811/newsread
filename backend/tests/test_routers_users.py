@@ -54,3 +54,25 @@ async def test_search_users_requires_query(client, users):
     me = await users.create()
     resp = await client.get("/api/users/search", params={"q": ""}, headers=users.auth(me))
     assert resp.status_code == 422
+
+
+async def test_update_me_sets_image_gen_monthly_limit(client, users):
+    user = await users.create()
+    resp = await client.patch("/api/users/me", json={"image_gen_monthly_limit": 50},
+                              headers=users.auth(user))
+    assert resp.status_code == 200
+    assert resp.json()["image_gen_monthly_limit"] == 50
+    # Omitting the field leaves it unchanged; explicit null clears to unlimited.
+    resp = await client.patch("/api/users/me", json={"default_view": "list"},
+                              headers=users.auth(user))
+    assert resp.json()["image_gen_monthly_limit"] == 50
+    resp = await client.patch("/api/users/me", json={"image_gen_monthly_limit": None},
+                              headers=users.auth(user))
+    assert resp.json()["image_gen_monthly_limit"] is None
+
+
+async def test_update_me_rejects_negative_image_limit(client, users):
+    user = await users.create()
+    resp = await client.patch("/api/users/me", json={"image_gen_monthly_limit": -1},
+                              headers=users.auth(user))
+    assert resp.status_code == 422

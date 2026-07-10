@@ -44,6 +44,10 @@ export type Article = {
   excerpt: string;
   image_url: string | null;
   enriching: boolean;
+  // True while an AI illustration is rendering in the background for this
+  // article (~10-60s). The server stops reporting it after ~3min, which
+  // halts the fast polls on its own.
+  image_pending: boolean;
   is_read: boolean;
   is_saved: boolean;
   summary: string;
@@ -55,10 +59,6 @@ export type Article = {
 export type ArticleDetail = Omit<Article, "entities"> & {
   content_html: string;
   summary_model: string | null;
-  // True while an AI illustration is rendering in the background for this
-  // article (lazy, one-at-a-time; ~10-60s). The server stops reporting it
-  // after ~3min, which halts the detail-screen poll on its own.
-  image_pending: boolean;
 };
 
 export type AiStatus = {

@@ -7,21 +7,26 @@ IMAGE_GENERATION_* default when they haven't configured one. The result is
 stored in generated_images and article.image_url points at the serving route,
 so every subscriber sees it.
 
-Two wire shapes: OpenRouter serves image models through chat completions with
-the `modalities` extension (base64 data URL in the message); everything else
-gets the OpenAI images API.
+Two wire shapes: OpenRouter serves image models through its dedicated
+`POST {base}/images` endpoint (the only one that accepts generation knobs like
+aspect_ratio); everything else gets the OpenAI images API. Model-specific
+extra parameters — a JSON object from IMAGE_GENERATION_EXTRA_PARAMS or the
+user's image block — are merged verbatim into either request.
 """
 
 import base64
+import json
 import logging
 import time
+from datetime import datetime, timezone
 
 import httpx
 from openai import AsyncOpenAI
+from sqlalchemy import func, select
 
 from . import crypto, db, llm
 from .config import settings
-from .models import Article, GeneratedImage, UserAISettings
+from .models import Article, GeneratedImage, User, UserAISettings
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +52,22 @@ def is_configured() -> bool:
     return bool(settings.image_generation_api_key and settings.image_generation_model)
 
 
+def parse_extra_params(raw: str | None) -> dict:
+    """The extra-parameters JSON object, or {}. A malformed value must degrade
+    to plain generation rather than break it, so it only logs a warning."""
+    if not raw or not raw.strip():
+        return {}
+    try:
+        params = json.loads(raw)
+    except ValueError:
+        logger.warning("Ignoring invalid image extra params (not JSON): %.100s", raw)
+        return {}
+    if not isinstance(params, dict):
+        logger.warning("Ignoring image extra params (not a JSON object): %.100s", raw)
+        return {}
+    return params
+
+
 def system_config() -> llm.LLMConfig | None:
     if not is_configured():
         return None
@@ -55,6 +76,7 @@ def system_config() -> llm.LLMConfig | None:
         api_key=settings.image_generation_api_key,
         base_url=settings.image_generation_base_url or None,
         model=settings.image_generation_model,
+        extra_params=parse_extra_params(settings.image_generation_extra_params),
     )
 
 
@@ -71,8 +93,36 @@ async def resolve_config(session, user_id: int) -> llm.LLMConfig | None:
             base_url=llm.resolve_base_url(row.image_provider, row.image_base_url),
             model=row.image_model,
             user_owned=True,
+            extra_params=parse_extra_params(row.image_extra_params),
         )
     return system_config()
+
+
+async def generations_this_month(session, user_id: int) -> int:
+    """Image generations this user started this calendar month (UTC). Counts
+    claims rather than stored images: failed attempts spend money too, and the
+    claim is written synchronously so the budget can't be raced past by
+    generations that haven't finished yet."""
+    month_start = datetime.now(timezone.utc).replace(
+        day=1, hour=0, minute=0, second=0, microsecond=0
+    )
+    count = await session.scalar(
+        select(func.count())
+        .select_from(Article)
+        .where(
+            Article.image_gen_user_id == user_id,
+            Article.image_gen_attempted_at >= month_start,
+        )
+    )
+    return count or 0
+
+
+async def remaining_budget(session, user: User) -> int | None:
+    """Generations the user may still start this month; None = unlimited."""
+    if user.image_gen_monthly_limit is None:
+        return None
+    used = await generations_this_month(session, user.id)
+    return max(0, user.image_gen_monthly_limit - used)
 
 
 def public_image_url(article_id: int) -> str:
@@ -84,20 +134,8 @@ def public_image_url(article_id: int) -> str:
     return f"/api/articles/{article_id}/generated-image"
 
 
-def _uses_chat_modalities(config: llm.LLMConfig) -> bool:
+def _uses_openrouter_images(config: llm.LLMConfig) -> bool:
     return "openrouter" in (config.base_url or "")
-
-
-def _image_url_of(entry) -> str:
-    """The data/hosted URL out of one chat-modalities image entry, which the
-    SDK surfaces either as a plain dict or an extra-field object."""
-    if isinstance(entry, dict):
-        image_url = entry.get("image_url") or {}
-        return (image_url.get("url") if isinstance(image_url, dict) else "") or ""
-    image_url = getattr(entry, "image_url", None)
-    if isinstance(image_url, dict):
-        return image_url.get("url") or ""
-    return getattr(image_url, "url", "") or ""
 
 
 async def _fetch_image(url: str) -> tuple[bytes, str]:
@@ -112,33 +150,47 @@ async def _fetch_image(url: str) -> tuple[bytes, str]:
         return response.content, response.headers.get("content-type", "image/png")
 
 
+async def _generate_openrouter(
+    config: llm.LLMConfig, prompt: str, usage: llm.TokenUsage
+) -> tuple[bytes, str, llm.TokenUsage]:
+    """OpenRouter's dedicated images endpoint: POST {base}/images. Unlike the
+    chat-completions modalities route, it accepts generation parameters such
+    as aspect_ratio, which is why extra_params merge into the body here."""
+    payload = {"model": config.model, "prompt": prompt, **config.extra_params}
+    async with httpx.AsyncClient(timeout=_GENERATION_TIMEOUT) as client:
+        response = await client.post(
+            f"{(config.base_url or '').rstrip('/')}/images",
+            headers={"Authorization": f"Bearer {config.api_key}"},
+            json=payload,
+        )
+        response.raise_for_status()
+        body = response.json()
+    reported = body.get("usage") or {}
+    usage.add(reported.get("prompt_tokens"), reported.get("completion_tokens"))
+    data_items = body.get("data") or []
+    first = data_items[0] if data_items else {}
+    if first.get("b64_json"):
+        content_type = first.get("media_type") or "image/png"
+        return base64.b64decode(first["b64_json"]), content_type, usage
+    if first.get("url"):
+        data, content_type = await _fetch_image(first["url"])
+        return data, content_type, usage
+    raise RuntimeError("The model returned no image")
+
+
 async def generate(config: llm.LLMConfig, prompt: str) -> tuple[bytes, str, llm.TokenUsage]:
     """One image from the configured endpoint: (bytes, content_type, usage)."""
     usage = llm.TokenUsage()
+    if _uses_openrouter_images(config):
+        return await _generate_openrouter(config, prompt, usage)
+
     async with AsyncOpenAI(
         api_key=config.api_key, base_url=config.base_url, timeout=_GENERATION_TIMEOUT
     ) as client:
-        if _uses_chat_modalities(config):
-            response = await client.chat.completions.create(
-                model=config.model,
-                messages=[{"role": "user", "content": prompt}],
-                extra_body={"modalities": ["image", "text"]},
-            )
-            if response.usage is not None:
-                usage.add(response.usage.prompt_tokens, response.usage.completion_tokens)
-            message = response.choices[0].message
-            images = (
-                getattr(message, "images", None)
-                or (message.model_extra or {}).get("images")
-                or []
-            )
-            url = _image_url_of(images[0]) if images else ""
-            if not url:
-                raise RuntimeError("The model returned no image")
-            data, content_type = await _fetch_image(url)
-            return data, content_type, usage
-
-        response = await client.images.generate(model=config.model, prompt=prompt, n=1)
+        response = await client.images.generate(
+            model=config.model, prompt=prompt, n=1,
+            extra_body=config.extra_params or None,
+        )
         datum = response.data[0]
         if datum.b64_json:
             return base64.b64decode(datum.b64_json), "image/png", usage

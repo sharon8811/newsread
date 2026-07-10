@@ -757,3 +757,116 @@ async def test_generated_image_404_when_missing(client, users, data):
     art = await data.article(feed)
     resp = await client.get(f"/api/articles/{art.id}/generated-image")
     assert resp.status_code == 404
+
+
+# --- list-triggered generation, per-feed switch, monthly budget ---
+
+async def test_list_triggers_generation_batch(client, users, data, session, monkeypatch):
+    user, feed = await _setup(users, data)
+    for _ in range(6):
+        await data.article(feed)
+    calls = _capture_generation(monkeypatch, _image_config())
+
+    resp = await client.get("/api/articles", headers=users.auth(user))
+    assert resp.status_code == 200
+    body = resp.json()
+    # Only a batch of generations starts per response; those articles read as
+    # pending, the rest keep their compact no-image state.
+    assert len(calls) == articles_router.LIST_GENERATION_BATCH
+    pending_ids = {a["id"] for a in body if a["image_pending"]}
+    assert pending_ids == {c["article_id"] for c in calls}
+    assert len(body) == 6
+    # Claims are attributed to the requesting user for the monthly budget.
+    attributed = (await session.scalars(
+        select(Article).where(Article.image_gen_user_id == user.id)
+    )).all()
+    assert {a.id for a in attributed} == pending_ids
+
+    # While the batch is in flight, another poll starts nothing new.
+    resp = await client.get("/api/articles", headers=users.auth(user))
+    assert len(calls) == articles_router.LIST_GENERATION_BATCH
+    assert {a["id"] for a in resp.json() if a["image_pending"]} == pending_ids
+
+
+async def test_list_no_generation_without_config(client, users, data, monkeypatch):
+    user, feed = await _setup(users, data)
+    await data.article(feed)
+    calls = _capture_generation(monkeypatch, config=None)
+
+    resp = await client.get("/api/articles", headers=users.auth(user))
+    assert calls == []
+    assert all(a["image_pending"] is False for a in resp.json())
+
+
+async def test_feed_toggle_blocks_list_generation(client, users, data, session, monkeypatch):
+    user, feed = await _setup(users, data)
+    await data.article(feed)
+    feed.image_gen_enabled = False
+    await session.commit()
+    calls = _capture_generation(monkeypatch, _image_config())
+
+    resp = await client.get("/api/articles", headers=users.auth(user))
+    assert calls == []
+    assert all(a["image_pending"] is False for a in resp.json())
+
+
+async def test_feed_toggle_blocks_detail_generation(client, users, data, session, monkeypatch):
+    user, feed = await _setup(users, data)
+    art = await data.article(feed)
+    feed.image_gen_enabled = False
+    await session.commit()
+    calls = _capture_generation(monkeypatch, _image_config())
+
+    resp = await client.get(f"/api/articles/{art.id}", headers=users.auth(user))
+    assert resp.json()["image_pending"] is False
+    assert calls == []
+
+
+async def test_monthly_budget_caps_list_generation(client, users, data, session, monkeypatch):
+    user, feed = await _setup(users, data)
+    for _ in range(4):
+        await data.article(feed)
+    user.image_gen_monthly_limit = 2
+    await session.commit()
+    calls = _capture_generation(monkeypatch, _image_config())
+
+    resp = await client.get("/api/articles", headers=users.auth(user))
+    assert len(calls) == 2
+    assert sum(a["image_pending"] for a in resp.json()) == 2
+
+    # The budget is spent by the claims: nothing more starts, on lists...
+    resp = await client.get("/api/articles", headers=users.auth(user))
+    assert len(calls) == 2
+    # ...or on the article view.
+    unclaimed = next(a for a in resp.json() if not a["image_pending"])
+    resp = await client.get(f"/api/articles/{unclaimed['id']}", headers=users.auth(user))
+    assert resp.json()["image_pending"] is False
+    assert len(calls) == 2
+
+
+async def test_monthly_budget_counts_current_month_only(client, users, data, session, monkeypatch):
+    user, feed = await _setup(users, data)
+    # A claim from a previous month must not count against this month.
+    old = await data.article(feed, image_url="https://x/old.png")
+    old.image_gen_attempted_at = datetime.now(timezone.utc) - timedelta(days=40)
+    old.image_gen_user_id = user.id
+    fresh = await data.article(feed)
+    user.image_gen_monthly_limit = 1
+    await session.commit()
+    calls = _capture_generation(monkeypatch, _image_config())
+
+    resp = await client.get(f"/api/articles/{fresh.id}", headers=users.auth(user))
+    assert resp.json()["image_pending"] is True
+    assert len(calls) == 1
+
+
+async def test_zero_budget_blocks_generation(client, users, data, session, monkeypatch):
+    user, feed = await _setup(users, data)
+    art = await data.article(feed)
+    user.image_gen_monthly_limit = 0
+    await session.commit()
+    calls = _capture_generation(monkeypatch, _image_config())
+
+    resp = await client.get(f"/api/articles/{art.id}", headers=users.auth(user))
+    assert resp.json()["image_pending"] is False
+    assert calls == []

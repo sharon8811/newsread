@@ -226,15 +226,17 @@ async def test_settings_global_feed_fields(client, users, data, session):
     await data.subscribe(user, feed)
     resp = await client.patch(
         f"/api/feeds/{feed.id}/settings",
-        json={"ai_enabled": False, "refresh_interval_minutes": 60},
+        json={"ai_enabled": False, "image_gen_enabled": False, "refresh_interval_minutes": 60},
         headers=users.auth(user),
     )
     body = resp.json()
     assert body["ai_enabled"] is False
+    assert body["image_gen_enabled"] is False
     assert body["refresh_interval_minutes"] == 60
     session.expunge_all()
     stored = await session.get(Feed, feed.id)
     assert stored.ai_enabled is False
+    assert stored.image_gen_enabled is False
     assert stored.refresh_interval_minutes == 60
 
 
@@ -331,7 +333,7 @@ async def test_unsubscribe_not_subscribed(client, users, data):
 
 async def test_to_feed_out_title_fallback_to_url():
     feed = Feed(id=1, url="https://x.com/feed", title="", site_url=None,
-                description=None, last_fetched_at=None, ai_enabled=True,
+                description=None, last_fetched_at=None, ai_enabled=True, image_gen_enabled=True,
                 refresh_interval_minutes=15)
     sub = Subscription(id=1, user_id=1, feed_id=1, is_muted=False)
     out = feeds_router._to_feed_out(feed, 0, 0, 0, sub)

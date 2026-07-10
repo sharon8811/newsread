@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { imageSrc, type Article } from "@/lib/api";
 import { domainOf, timeAgo } from "@/lib/format";
 import EntityBadges from "./EntityBadges";
+import GeneratingIndicator from "./GeneratingIndicator";
 import { BookmarkIcon, ExternalIcon, FolderIcon, ShareIcon } from "./icons";
 
 export default function ArticleRow({
@@ -155,25 +156,32 @@ export default function ArticleRow({
         </a>
       </div>
 
-      {/* The thumbnail frame only appears once a real image exists, so rows
-          never carry an empty box for text-only or not-yet-illustrated
-          articles; a generated image pops in on the next list refresh. */}
-      {article.image_url && (
+      {/* The thumbnail frame appears once a real image exists — or right away,
+          shimmering, while an AI illustration renders in the background (the
+          list polls and the image pops in when it lands). Text-only articles
+          with nothing on the way never carry an empty box. */}
+      {(article.image_url || article.image_pending) && (
         <div
-          className="h-[58px] w-[86px] shrink-0 overflow-hidden rounded-lg border sm:h-[84px] sm:w-[126px]"
+          className={`relative h-[58px] w-[86px] shrink-0 overflow-hidden rounded-lg border sm:h-[84px] sm:w-[126px] ${
+            article.image_url ? "" : "shimmer"
+          }`}
           style={{ borderColor: "var(--line-soft)", background: "var(--bg-hover)" }}
         >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={imageSrc(article.image_url)}
-            alt=""
-            loading="lazy"
-            className="fade-in h-full w-full object-cover"
-            style={{ opacity: article.is_read ? 0.6 : 1 }}
-            onError={(e) => {
-              e.currentTarget.style.display = "none";
-            }}
-          />
+          {article.image_url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={imageSrc(article.image_url)}
+              alt=""
+              loading="lazy"
+              className="fade-in h-full w-full object-cover"
+              style={{ opacity: article.is_read ? 0.6 : 1 }}
+              onError={(e) => {
+                e.currentTarget.style.display = "none";
+              }}
+            />
+          ) : (
+            <GeneratingIndicator compact />
+          )}
         </div>
       )}
     </div>

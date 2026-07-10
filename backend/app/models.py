@@ -32,6 +32,8 @@ class User(Base):
     # Template for generated article images ({article_title}/{article_excerpt}
     # tags); NULL = image_gen.DEFAULT_IMAGE_PROMPT.
     image_prompt: Mapped[str | None] = mapped_column(Text)
+    # Cap on image generations started per calendar month; NULL = unlimited.
+    image_gen_monthly_limit: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -62,6 +64,9 @@ class UserAISettings(Base):
     image_api_key_enc: Mapped[str | None] = mapped_column(Text)
     image_key_hint: Mapped[str | None] = mapped_column(String(8))
     image_base_url: Mapped[str | None] = mapped_column(String(2048))
+    # JSON object merged into every generation request for this model
+    # (e.g. {"aspect_ratio": "16:9"}); NULL = no extra parameters.
+    image_extra_params: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
@@ -121,6 +126,9 @@ class Feed(Base):
     # Global switch: skip auto-summaries/embeddings for this feed (shared by
     # all subscribers; on-demand summaries in the article view still work).
     ai_enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    # Global switch: generate AI illustrations for this feed's imageless
+    # articles (shared by all subscribers, like ai_enabled).
+    image_gen_enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     articles: Mapped[list["Article"]] = relationship(back_populates="feed", cascade="all, delete-orphan")
@@ -176,6 +184,11 @@ class Article(Base):
     # Claim marker for lazy image generation (set once, attempt-once policy);
     # doubles as the "in flight" signal while image_url is still NULL.
     image_gen_attempted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Who claimed the generation — counted against that user's monthly image
+    # budget (claims, not successes: failed attempts spend provider money too).
+    image_gen_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
 
     feed: Mapped[Feed] = relationship(back_populates="articles")
 

@@ -115,3 +115,21 @@ describe("<ArticleCard>", () => {
     expect(screen.getByTitle("Unsave").className).toContain("active");
   });
 });
+
+describe("<ArticleCard> generating illustration", () => {
+  it("shows a shimmering generating placeholder while pending", () => {
+    const { container } = renderCard({ image_pending: true });
+    expect(container.querySelector("img")).toBeNull();
+    expect(container.querySelector(".shimmer")).not.toBeNull();
+    expect(screen.getByRole("status")).toHaveAccessibleName("Generating illustration");
+  });
+
+  it("prefers the finished image over the pending state", () => {
+    const { container } = renderCard({
+      image_pending: true,
+      image_url: "https://img.example/a.jpg",
+    });
+    expect(container.querySelector("img")).toHaveAttribute("src", "https://img.example/a.jpg");
+    expect(container.querySelector(".shimmer")).toBeNull();
+  });
+});
