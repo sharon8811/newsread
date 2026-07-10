@@ -22,6 +22,7 @@ const UNCONFIGURED: AISettings = {
   model: null,
   base_url: null,
   key_hint: null,
+  supports_vision: false,
   image: null,
   image_generation_available: false,
   image_prompt: null,
@@ -35,6 +36,7 @@ const CONFIGURED: AISettings = {
   model: "gpt-5",
   base_url: null,
   key_hint: "5678",
+  supports_vision: false,
   image: null,
   image_generation_available: false,
   image_prompt: null,
@@ -100,7 +102,12 @@ describe("<AISettingsSection>", () => {
     const call = lastCall(fetchMock);
     expect(call.url).toContain("/ai/settings");
     expect(call.method).toBe("PUT");
-    expect(call.body).toEqual({ provider: "openai", model: "gpt-5", api_key: "sk-test-12345678" });
+    expect(call.body).toEqual({
+      provider: "openai",
+      model: "gpt-5",
+      api_key: "sk-test-12345678",
+      supports_vision: false,
+    });
     expect(mutateMock).toHaveBeenCalledWith("/ai/settings");
     expect(mutateMock).toHaveBeenCalledWith("/ai/status");
     // The typed key never lingers in the field.
@@ -139,7 +146,29 @@ describe("<AISettingsSection>", () => {
     await userEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-    expect(lastCall(fetchMock).body).toEqual({ provider: "openai", model: "gpt-6" });
+    expect(lastCall(fetchMock).body).toEqual({
+      provider: "openai",
+      model: "gpt-6",
+      supports_vision: false,
+    });
+  });
+
+  it("sends supports_vision when the vision toggle is on", async () => {
+    withSettings(CONFIGURED);
+    const fetchMock = okFetch(CONFIGURED);
+    render(<AISettingsSection />);
+
+    await userEvent.click(screen.getByRole("checkbox", { name: /Model can read images/ }));
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    expect(lastCall(fetchMock).body.supports_vision).toBe(true);
+  });
+
+  it("prefills the vision toggle from the stored settings", () => {
+    withSettings({ ...CONFIGURED, supports_vision: true });
+    render(<AISettingsSection />);
+    expect(screen.getByRole("checkbox", { name: /Model can read images/ })).toBeChecked();
   });
 
   it("switching provider demands a fresh key", async () => {
@@ -217,7 +246,7 @@ describe("<AISettingsSection>", () => {
     await userEvent.selectOptions(screen.getByLabelText("Model provider"), "openai");
     await userEvent.type(screen.getByLabelText("API key"), "sk-test-12345678");
     await userEvent.type(screen.getByLabelText("Model"), "gpt-5");
-    await userEvent.click(screen.getByRole("checkbox"));
+    await userEvent.click(screen.getByRole("checkbox", { name: /Image generation/ }));
     expect(screen.getByText("optional — uses your main key")).toBeInTheDocument();
     await userEvent.type(screen.getByLabelText("Image model"), "gpt-image-1");
     await userEvent.click(screen.getByRole("button", { name: "Save" }));

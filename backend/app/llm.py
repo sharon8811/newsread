@@ -5,6 +5,7 @@ config.py or a user's own key (UserAISettings, "bring your own key"). Anthropic
 is reached through its OpenAI-compatible endpoint, so one wire format covers
 every provider in the dropdown."""
 
+import base64
 import logging
 import re
 from dataclasses import dataclass
@@ -35,6 +36,7 @@ class LLMConfig:
     base_url: str | None
     model: str
     user_owned: bool = False
+    supports_vision: bool = False  # model accepts image input (user/operator-declared)
 
 
 class TokenUsage:
@@ -62,6 +64,7 @@ def system_config() -> LLMConfig | None:
         api_key=settings.openai_api_key,
         base_url=settings.openai_base_url or None,
         model=settings.openai_model,
+        supports_vision=settings.openai_model_vision,
     )
 
 
@@ -83,6 +86,7 @@ def config_for_user_settings(row: UserAISettings) -> LLMConfig:
         base_url=resolve_base_url(row.provider, row.base_url),
         model=row.model,
         user_owned=True,
+        supports_vision=row.supports_vision,
     )
 
 
@@ -224,6 +228,44 @@ async def summarize(
         [
             {"role": "system", "content": SUMMARY_SYSTEM},
             {"role": "user", "content": f"Article title: {title}\n\nArticle text:\n{text}"},
+        ],
+        max_tokens=1500,
+        config=config,
+        usage=usage,
+    )
+    return _parse_levels(raw)
+
+
+_SCREENSHOT_NOTE = (
+    "The article's page has no extractable text — attached is a screenshot of "
+    "the rendered page (often a comic, chart or infographic). Read the image "
+    "and summarize what it shows."
+)
+
+
+async def summarize_screenshot(
+    title: str,
+    image_jpeg: bytes,
+    *,
+    config: LLMConfig | None = None,
+    usage: TokenUsage | None = None,
+) -> tuple[str, str, str]:
+    """Same three-level summary, grounded on a screenshot of the rendered page
+    instead of prose. Only called for vision-capable configs."""
+    image_b64 = base64.b64encode(image_jpeg).decode()
+    raw = await _complete(
+        [
+            {"role": "system", "content": SUMMARY_SYSTEM},
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": f"Article title: {title}\n\n{_SCREENSHOT_NOTE}"},
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"},
+                    },
+                ],
+            },
         ],
         max_tokens=1500,
         config=config,

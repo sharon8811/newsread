@@ -70,6 +70,7 @@ def _out(row: UserAISettings | None, user: User) -> AISettingsOut:
         model=row.model,
         base_url=row.base_url or None,
         key_hint=row.key_hint,
+        supports_vision=row.supports_vision,
         image=image,
         **prompt_fields,
     )
@@ -145,6 +146,7 @@ async def put_ai_settings(
     row.provider = body.provider
     row.model = body.model
     row.base_url = base_url if body.provider == "custom" else ""
+    row.supports_vision = body.supports_vision
     row.api_key_enc = api_key_enc
     row.key_hint = key_hint
     row.image_provider = image_provider

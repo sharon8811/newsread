@@ -156,3 +156,29 @@ async def test_share_message_from_scratch(monkeypatch):
     await llm.share_message("T", "")
     assert "Write the message from scratch." in captured["user"]
     assert "Article summary" not in captured["user"]
+
+
+async def test_summarize_screenshot_sends_data_url(monkeypatch):
+    captured = {}
+
+    async def create(**kwargs):
+        captured.update(kwargs)
+        msg = types.SimpleNamespace(
+            content="ONELINER: gist\nPARAGRAPH: para.\nFULL:\nfrom the image"
+        )
+        return types.SimpleNamespace(
+            choices=[types.SimpleNamespace(message=msg)], usage=None
+        )
+
+    client = types.SimpleNamespace(
+        chat=types.SimpleNamespace(completions=types.SimpleNamespace(create=create))
+    )
+    monkeypatch.setattr(llm, "get_client", lambda: client)
+
+    short, medium, full = await llm.summarize_screenshot("Title", b"\xff\xd8jpeg")
+    assert (short, medium, full) == ("gist", "para.", "from the image")
+    text_part, image_part = captured["messages"][1]["content"]
+    assert text_part["type"] == "text"
+    assert "Title" in text_part["text"]
+    assert image_part["type"] == "image_url"
+    assert image_part["image_url"]["url"].startswith("data:image/jpeg;base64,")

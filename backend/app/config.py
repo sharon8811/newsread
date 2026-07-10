@@ -35,6 +35,13 @@ class Settings(BaseSettings):
     openai_model: str = Field(
         default="", validation_alias=AliasChoices("NEWSREAD_OPENAI_MODEL", "OPENAI_MODEL")
     )
+    # Whether openai_model accepts image input. When set, image-only pages
+    # (comics, infographics) that yield no prose are summarized from a
+    # rendered screenshot instead of failing with "couldn't fetch full text".
+    openai_model_vision: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("NEWSREAD_OPENAI_MODEL_VISION", "OPENAI_MODEL_VISION"),
+    )
     # Embedding model for semantic search over articles; served by the same
     # endpoint as openai_model. Unset -> search falls back to keyword matching.
     openai_embedding_model: str = Field(

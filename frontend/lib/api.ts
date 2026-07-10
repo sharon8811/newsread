@@ -263,6 +263,7 @@ export type AISettings = {
   model: string | null;
   base_url: string | null;
   key_hint: string | null; // keys are write-only; this is all that comes back
+  supports_vision: boolean; // the model accepts image input (screenshot summaries)
   image: AIImageSettings | null;
   image_generation_available: boolean;
   image_prompt: string | null; // null = the default prompt applies
@@ -281,6 +282,7 @@ export type AISettingsSave = {
   model: string;
   api_key?: string; // omitted keeps the stored key
   base_url?: string;
+  supports_vision?: boolean;
   image?: AIImageSettingsSave | null;
 };
 

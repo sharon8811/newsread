@@ -53,6 +53,10 @@ class UserAISettings(Base):
     key_hint: Mapped[str] = mapped_column(String(8), default="")
     base_url: Mapped[str] = mapped_column(String(2048), default="")  # custom only
     model: Mapped[str] = mapped_column(String(120))
+    # The model accepts image input — lets image-only pages be summarized from
+    # a rendered screenshot. User-declared: capability can't be probed
+    # reliably across arbitrary OpenAI-compatible endpoints.
+    supports_vision: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     image_provider: Mapped[str | None] = mapped_column(String(16))
     image_model: Mapped[str | None] = mapped_column(String(120))
     image_api_key_enc: Mapped[str | None] = mapped_column(Text)
