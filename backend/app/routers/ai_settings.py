@@ -44,12 +44,16 @@ def _require_crypto() -> None:
         )
 
 
-def _out(row: UserAISettings | None, user: User) -> AISettingsOut:
+def _out(
+    row: UserAISettings | None, user: User, generations_this_month: int = 0
+) -> AISettingsOut:
     has_image_block = row is not None and bool(row.image_provider and row.image_model)
     prompt_fields = dict(
         image_generation_available=has_image_block or image_gen.is_configured(),
         image_prompt=user.image_prompt,
         default_image_prompt=image_gen.DEFAULT_IMAGE_PROMPT,
+        image_gen_monthly_limit=user.image_gen_monthly_limit,
+        image_generations_this_month=generations_this_month,
     )
     if row is None:
         return AISettingsOut(
@@ -81,7 +85,11 @@ async def get_ai_settings(
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
-    return _out(await session.get(UserAISettings, user.id), user)
+    return _out(
+        await session.get(UserAISettings, user.id),
+        user,
+        await image_gen.generations_this_month(session, user.id),
+    )
 
 
 @router.put("", response_model=AISettingsOut)
@@ -155,7 +163,7 @@ async def put_ai_settings(
     row.image_api_key_enc = image_api_key_enc
     row.image_key_hint = image_key_hint
     await session.commit()
-    return _out(row, user)
+    return _out(row, user, await image_gen.generations_this_month(session, user.id))
 
 
 @router.delete("", status_code=204)

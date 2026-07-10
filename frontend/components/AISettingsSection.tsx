@@ -70,6 +70,10 @@ function AISettingsForm({ settings }: { settings: AISettings }) {
   const [imageApiKey, setImageApiKey] = useState("");
   const [imageBaseUrl, setImageBaseUrl] = useState(stored?.image?.base_url ?? "");
   const [imagePrompt, setImagePrompt] = useState(settings.image_prompt ?? "");
+  // Kept as text so the field can be emptied while typing; "" = unlimited.
+  const [imageBudget, setImageBudget] = useState(
+    settings.image_gen_monthly_limit == null ? "" : String(settings.image_gen_monthly_limit),
+  );
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
 
@@ -116,9 +120,18 @@ function AISettingsForm({ settings }: { settings: AISettings }) {
         setImageApiKey("");
         setNote({ kind: "ok", text: "AI settings saved." });
       }
+      // Prompt and budget live on the user, not the AI-settings row
+      // ("" = back to default / unlimited).
+      const userPatch: { image_prompt?: string; image_gen_monthly_limit?: number | null } = {};
       if (imagePrompt.trim() !== (settings.image_prompt ?? "")) {
-        // Lives on the user, not the AI-settings row ("" = back to default).
-        await api("/users/me", { method: "PATCH", body: { image_prompt: imagePrompt.trim() } });
+        userPatch.image_prompt = imagePrompt.trim();
+      }
+      const budgetValue = imageBudget.trim() === "" ? null : Number(imageBudget);
+      if (budgetValue !== settings.image_gen_monthly_limit) {
+        userPatch.image_gen_monthly_limit = budgetValue;
+      }
+      if (Object.keys(userPatch).length > 0) {
+        await api("/users/me", { method: "PATCH", body: userPatch });
       }
       mutate("/ai/settings");
       mutate("/ai/status");
@@ -365,6 +378,30 @@ function AISettingsForm({ settings }: { settings: AISettings }) {
                 Reset to default
               </button>
             )}
+            <div className="mt-3.5">
+              <Field
+                label="Monthly image budget"
+                hint="maximum generated images per month; leave empty for no limit"
+              >
+                <input
+                  className="input"
+                  style={{ fontSize: 13.5, width: 140 }}
+                  type="number"
+                  min={0}
+                  placeholder="unlimited"
+                  aria-label="Monthly image budget"
+                  value={imageBudget}
+                  onChange={(e) => setImageBudget(e.target.value.replace(/[^\d]/g, ""))}
+                />
+              </Field>
+              <p className="mt-1.5 text-[12px]" style={{ color: "var(--ink-faint)" }}>
+                {settings.image_generations_this_month} image
+                {settings.image_generations_this_month === 1 ? "" : "s"} generated this month
+                {settings.image_gen_monthly_limit != null
+                  ? ` of ${settings.image_gen_monthly_limit}`
+                  : ""}
+              </p>
+            </div>
           </div>
         )}
 

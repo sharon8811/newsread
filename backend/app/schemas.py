@@ -27,6 +27,7 @@ class UserOut(BaseModel):
     username: str
     name: str
     default_view: ViewMode = "cards"
+    image_gen_monthly_limit: int | None = None  # None = unlimited
 
     model_config = {"from_attributes": True}
 
@@ -35,6 +36,9 @@ class UserUpdateIn(BaseModel):
     default_view: ViewMode | None = None  # PATCH semantics: omitted/None = unchanged
     # Template for generated article images; "" resets to the default prompt.
     image_prompt: str | None = Field(default=None, max_length=2000)
+    # Monthly cap on image generations; explicit null = unlimited (this field
+    # is applied only when present in the request — see users.update_me).
+    image_gen_monthly_limit: int | None = Field(default=None, ge=0, le=100_000)
 
 
 class UserPublic(BaseModel):
@@ -92,6 +96,7 @@ class FeedOut(BaseModel):
     is_muted: bool = False
     # Global per-feed settings (shared by all subscribers).
     ai_enabled: bool = True
+    image_gen_enabled: bool = True
     refresh_interval_minutes: int = 15
 
 
@@ -109,6 +114,7 @@ class FeedSettingsIn(BaseModel):
     retention_days: int | None = Field(default=None, ge=1, le=3650)
     is_muted: bool | None = None
     ai_enabled: bool | None = None
+    image_gen_enabled: bool | None = None
     refresh_interval_minutes: int | None = Field(default=None, ge=5, le=10080)
 
 
@@ -153,6 +159,9 @@ class ArticleListItem(BaseModel):
     # Background enrichment hasn't visited this article yet; an image may
     # still be backfilled, so the UI keeps the thumbnail slot reserved.
     enriching: bool = False
+    # An AI illustration is being rendered right now — the client shows a
+    # generating placeholder and refetches soon.
+    image_pending: bool = False
     is_read: bool
     is_saved: bool
     summary: str = ""
@@ -165,8 +174,6 @@ class ArticleDetail(ArticleListItem):
     content_html: str
     summary_model: str | None = None
     entities: list[EntityFull] = []
-    # An AI illustration is being rendered right now — worth one refetch soon.
-    image_pending: bool = False
 
 
 class ArticleStateIn(BaseModel):
@@ -490,6 +497,9 @@ class AISettingsOut(BaseModel):
     image_generation_available: bool = False
     image_prompt: str | None = None  # None = default_image_prompt applies
     default_image_prompt: str = ""
+    # Monthly budget: the user's cap (None = unlimited) and this month's spend.
+    image_gen_monthly_limit: int | None = None
+    image_generations_this_month: int = 0
 
 
 class AITestIn(BaseModel):

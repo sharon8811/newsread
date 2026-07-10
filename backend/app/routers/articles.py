@@ -59,7 +59,11 @@ def to_list_item(
     feed_title: str,
     state: UserArticleState | None,
     entities: list[EntityBadge] | None = None,
+    *,
+    image_pending: bool | None = None,
 ) -> ArticleListItem:
+    if image_pending is None:
+        image_pending = _image_pending(article)
     return ArticleListItem(
         id=article.id,
         feed_id=article.feed_id,
@@ -73,6 +77,7 @@ def to_list_item(
         image_url=article.image_url,
         enriching=article.full_text_fetched_at is None
         and (article.full_text == "" or article.image_url is None),
+        image_pending=image_pending,
         is_read=bool(state and state.is_read),
         is_saved=bool(state and state.is_saved),
         summary=article.summary,
@@ -277,6 +282,7 @@ async def _hybrid_search_ids(
 @router.get("", response_model=list[ArticleListItem])
 async def list_articles(
     response: Response,
+    background: BackgroundTasks,
     feed_id: int | None = None,
     filter: Literal["all", "unread", "saved"] = "all",
     q: str | None = Query(default=None, max_length=200),
@@ -293,7 +299,7 @@ async def list_articles(
     if cursor is not None and q:
         raise HTTPException(status_code=422, detail="cursor cannot be combined with q")
     stmt = (
-        select(Article, Feed.title, UserArticleState)
+        select(Article, Feed.title, Feed.image_gen_enabled, UserArticleState)
         .join(Feed, Article.feed_id == Feed.id)
         .join(
             Subscription,
@@ -361,15 +367,17 @@ async def list_articles(
             # Ranked/ILIKE search stays offset-based, so no cursor for q.
             if not q:
                 response.headers["X-Next-Cursor"] = _encode_cursor(rows[-1][0])
-    entity_map = await _entities_for_articles(session, [a.id for a, _, _ in rows])
+    just_claimed = await _generate_listed_images(session, background, user, rows)
+    entity_map = await _entities_for_articles(session, [a.id for a, _, _, _ in rows])
     return [
         to_list_item(
             article,
             feed_title,
             state,
             [_to_badge(link, entity) for link, entity in entity_map.get(article.id, [])],
+            image_pending=article.id in just_claimed or _image_pending(article),
         )
-        for article, feed_title, state in rows
+        for article, feed_title, _, state in rows
     ]
 
 
@@ -377,43 +385,125 @@ async def list_articles(
 # anything older is a failed/abandoned attempt and stops reporting pending.
 IMAGE_PENDING_WINDOW = timedelta(minutes=3)
 
+# Generations one list response may start. Polling responses keep topping this
+# up until the page is illustrated, so it bounds concurrent renders (and
+# provider load), not the total.
+LIST_GENERATION_BATCH = 4
+
+
+def _image_pending(article: Article) -> bool:
+    """An illustration is being rendered for this article right now."""
+    return (
+        article.image_url is None
+        and article.image_gen_attempted_at is not None
+        and datetime.now(timezone.utc) - article.image_gen_attempted_at
+        < IMAGE_PENDING_WINDOW
+    )
+
+
+async def _resolve_image_config(session: AsyncSession, user: User):
+    try:
+        return await image_gen.resolve_config(session, user.id)
+    except crypto.TokenCryptoError:
+        return None  # broken stored key must not break reading
+
+
+async def _claim_image_generation(
+    session: AsyncSession, user: User, article: Article
+) -> bool:
+    """Atomically claim the once-ever generation attempt for an article,
+    charging it to the user's monthly budget. False = someone else owns it."""
+    claimed = await session.execute(
+        update(Article)
+        .where(Article.id == article.id, Article.image_gen_attempted_at.is_(None))
+        .values(image_gen_attempted_at=func.now(), image_gen_user_id=user.id)
+        # Don't sync the in-session object: the default strategy expires
+        # image_gen_attempted_at (func.now() can't be evaluated in Python) and
+        # the next read would lazy-load outside the greenlet. Callers track
+        # freshly claimed articles explicitly instead.
+        .execution_options(synchronize_session=False)
+    )
+    return claimed.rowcount == 1
+
+
+def _generation_prompt(user: User, article: Article) -> str:
+    return image_gen.render_prompt(
+        user.image_prompt or image_gen.DEFAULT_IMAGE_PROMPT,
+        title=article.title,
+        excerpt=article.excerpt or "",
+    )
+
 
 async def _maybe_generate_image(
-    session: AsyncSession, background: BackgroundTasks, user: User, article: Article
+    session: AsyncSession,
+    background: BackgroundTasks,
+    user: User,
+    article: Article,
+    feed: Feed,
 ) -> bool:
     """Kick off lazy image generation on first view of an imageless article;
     returns whether an image is (now or already) being rendered."""
     if article.image_url is not None:
         return False
     if article.image_gen_attempted_at is not None:
-        return (
-            datetime.now(timezone.utc) - article.image_gen_attempted_at
-            < IMAGE_PENDING_WINDOW
-        )
-    try:
-        config = await image_gen.resolve_config(session, user.id)
-    except crypto.TokenCryptoError:
-        config = None  # broken stored key must not break reading
+        return _image_pending(article)
+    if not feed.image_gen_enabled:
+        return False
+    config = await _resolve_image_config(session, user)
     if config is None:
         return False
+    if await image_gen.remaining_budget(session, user) == 0:
+        return False
     # The claim is the once-ever guard: whoever flips NULL owns the attempt.
-    claimed = await session.execute(
-        update(Article)
-        .where(Article.id == article.id, Article.image_gen_attempted_at.is_(None))
-        .values(image_gen_attempted_at=func.now())
-    )
+    owned = await _claim_image_generation(session, user, article)
+    prompt = _generation_prompt(user, article)
     await session.commit()
-    if claimed.rowcount != 1:
+    if not owned:
         return True  # a concurrent view just claimed it
-    prompt = image_gen.render_prompt(
-        user.image_prompt or image_gen.DEFAULT_IMAGE_PROMPT,
-        title=article.title,
-        excerpt=article.excerpt or "",
-    )
     background.add_task(
         image_gen.generate_for_article, article.id, user.id, config, prompt
     )
     return True
+
+
+async def _generate_listed_images(
+    session: AsyncSession,
+    background: BackgroundTasks,
+    user: User,
+    rows: list,
+) -> set[int]:
+    """Start illustrations for the first few imageless articles on a list page
+    (top of the page first), so cards fill in without the article being opened.
+    Returns the ids claimed by this request — they're pending in the response
+    even though the ORM rows predate the claim."""
+    in_flight = sum(1 for article, _, _, _ in rows if _image_pending(article))
+    slots = LIST_GENERATION_BATCH - in_flight
+    candidates = [
+        article
+        for article, _, gen_enabled, _ in rows
+        if gen_enabled
+        and article.image_url is None
+        and article.image_gen_attempted_at is None
+    ]
+    if slots <= 0 or not candidates:
+        return set()
+    config = await _resolve_image_config(session, user)
+    if config is None:
+        return set()
+    remaining = await image_gen.remaining_budget(session, user)
+    if remaining is not None:
+        slots = min(slots, remaining)
+    claimed: list[tuple[Article, str]] = []
+    for article in candidates[:slots]:
+        if await _claim_image_generation(session, user, article):
+            claimed.append((article, _generation_prompt(user, article)))
+    # Commit before scheduling: a task must never run for an unclaimed article.
+    await session.commit()
+    for article, prompt in claimed:
+        background.add_task(
+            image_gen.generate_for_article, article.id, user.id, config, prompt
+        )
+    return {article.id for article, _ in claimed}
 
 
 @router.get("/{article_id}", response_model=ArticleDetail)
@@ -426,8 +516,8 @@ async def get_article(
     article = await session.get(Article, article_id)
     if article is None or not await user_can_access(session, user.id, article):
         raise HTTPException(status_code=404, detail="Article not found")
-    image_pending = await _maybe_generate_image(session, background, user, article)
     feed = await session.get(Feed, article.feed_id)
+    image_pending = await _maybe_generate_image(session, background, user, article, feed)
     state = await session.scalar(
         select(UserArticleState).where(
             UserArticleState.user_id == user.id, UserArticleState.article_id == article.id
@@ -460,7 +550,7 @@ async def get_article(
 
     item = to_list_item(article, feed.title or feed.url, state)
     return ArticleDetail(
-        **item.model_dump(exclude={"entities"}),
+        **item.model_dump(exclude={"entities", "image_pending"}),
         content_html=article.content_html,
         summary_model=article.summary_model,
         entities=full_entities,

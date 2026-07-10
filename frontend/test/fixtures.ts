@@ -38,6 +38,7 @@ export function makeFeed(over: Partial<Feed> = {}): Feed {
     retention_days: null,
     is_muted: false,
     ai_enabled: true,
+    image_gen_enabled: true,
     refresh_interval_minutes: 15,
     ...over,
   };
@@ -68,6 +69,7 @@ export function makeArticle(over: Partial<Article> = {}): Article {
     excerpt: "an excerpt",
     image_url: null,
     enriching: false,
+    image_pending: false,
     is_read: false,
     is_saved: false,
     summary: "",

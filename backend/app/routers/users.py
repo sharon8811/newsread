@@ -20,6 +20,9 @@ async def update_me(
         user.default_view = body.default_view
     if body.image_prompt is not None:
         user.image_prompt = body.image_prompt.strip() or None
+    # Presence-based PATCH: an explicit null means "back to unlimited".
+    if "image_gen_monthly_limit" in body.model_fields_set:
+        user.image_gen_monthly_limit = body.image_gen_monthly_limit
     session.add(user)
     await session.commit()
     await session.refresh(user)

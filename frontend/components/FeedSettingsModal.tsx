@@ -94,6 +94,7 @@ export default function FeedSettingsModal({
   const [retention, setRetention] = useState(feed.retention_days ?? 0);
   const [muted, setMuted] = useState(feed.is_muted);
   const [aiEnabled, setAiEnabled] = useState(feed.ai_enabled);
+  const [imageGenEnabled, setImageGenEnabled] = useState(feed.image_gen_enabled);
   const [refreshMinutes, setRefreshMinutes] = useState(feed.refresh_interval_minutes);
   const [confirmingRemove, setConfirmingRemove] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -119,6 +120,8 @@ export default function FeedSettingsModal({
     if (retentionValue !== feed.retention_days) patch.retention_days = retentionValue;
     if (muted !== feed.is_muted) patch.is_muted = muted;
     if (aiEnabled !== feed.ai_enabled) patch.ai_enabled = aiEnabled;
+    if (imageGenEnabled !== feed.image_gen_enabled)
+      patch.image_gen_enabled = imageGenEnabled;
     if (refreshMinutes !== feed.refresh_interval_minutes)
       patch.refresh_interval_minutes = refreshMinutes;
     return patch;
@@ -265,6 +268,17 @@ export default function FeedSettingsModal({
 
           <Row label="AI summaries" hint="Applies to everyone subscribed to this feed">
             <Toggle checked={aiEnabled} onChange={setAiEnabled} label="AI summaries" />
+          </Row>
+
+          <Row
+            label="AI images"
+            hint="Generate illustrations for articles without one; applies to everyone subscribed"
+          >
+            <Toggle
+              checked={imageGenEnabled}
+              onChange={setImageGenEnabled}
+              label="AI images"
+            />
           </Row>
 
           <Row label="Check for new articles" hint="Applies to everyone subscribed to this feed">

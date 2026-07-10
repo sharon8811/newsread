@@ -44,8 +44,13 @@ export default function ArticleList({
 }) {
   const router = useRouter();
   const key = articlesKey({ filter, feedId, q });
+  // While any listed article has an AI illustration rendering, poll fast so
+  // the "generating" cards resolve into images (and each poll lets the server
+  // start the next few generations). Server-side pending stops reporting
+  // after ~3 min, which halts the fast poll on its own.
   const { data: articles, isLoading } = useSWR<Article[]>(key, fetcher, {
-    refreshInterval,
+    refreshInterval: (data) =>
+      data?.some((a) => a.image_pending && !a.image_url) ? 3000 : refreshInterval,
   });
   const [selected, setSelected] = useState(0);
   const [sharing, setSharing] = useState<Article | null>(null);

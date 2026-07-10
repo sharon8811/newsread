@@ -105,6 +105,7 @@ def _to_feed_out(
         retention_days=subscription.retention_days,
         is_muted=subscription.is_muted,
         ai_enabled=feed.ai_enabled,
+        image_gen_enabled=feed.image_gen_enabled,
         refresh_interval_minutes=feed.refresh_interval_minutes,
     )
 
@@ -213,6 +214,8 @@ async def update_feed_settings(
     # Global feed settings, shared by every subscriber.
     if updates.get("ai_enabled") is not None:
         feed.ai_enabled = updates["ai_enabled"]
+    if updates.get("image_gen_enabled") is not None:
+        feed.image_gen_enabled = updates["image_gen_enabled"]
     if updates.get("refresh_interval_minutes") is not None:
         feed.refresh_interval_minutes = updates["refresh_interval_minutes"]
 

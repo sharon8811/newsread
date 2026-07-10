@@ -84,6 +84,12 @@ MIGRATIONS = [
     # Screenshot summaries: whether the user's own model accepts image input.
     "ALTER TABLE user_ai_settings ADD COLUMN IF NOT EXISTS supports_vision "
     "BOOLEAN NOT NULL DEFAULT FALSE",
+    # Per-feed image-generation switch + per-user monthly budget; the article
+    # column attributes each generation claim to the user whose budget it spends.
+    "ALTER TABLE feeds ADD COLUMN IF NOT EXISTS image_gen_enabled BOOLEAN NOT NULL DEFAULT TRUE",
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS image_gen_monthly_limit INTEGER",
+    "ALTER TABLE articles ADD COLUMN IF NOT EXISTS image_gen_user_id INTEGER "
+    "REFERENCES users(id) ON DELETE SET NULL",
 ]
 
 

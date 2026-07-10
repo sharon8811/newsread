@@ -6,6 +6,7 @@ import useSWR, { mutate } from "swr";
 import AiSummary from "@/components/AiSummary";
 import { mutateArticleLists } from "@/components/ArticleList";
 import EntityCard from "@/components/EntityCard";
+import GeneratingIndicator from "@/components/GeneratingIndicator";
 import ProjectPickerModal from "@/components/ProjectPickerModal";
 import QAPanel from "@/components/QAPanel";
 import ShareModal from "@/components/ShareModal";
@@ -139,25 +140,7 @@ export default function ArticlePage() {
               }}
             />
           ) : (
-            <span
-              role="status"
-              className="font-mono-nr absolute inset-0 flex items-center justify-center gap-2 text-[11px]"
-              style={{ color: "var(--ink-faint)" }}
-            >
-              <span aria-hidden="true" style={{ color: "var(--accent)" }}>
-                ✦
-              </span>
-              generating illustration
-              <span aria-hidden="true" className="inline-flex items-center gap-1">
-                {[0, 1, 2].map((i) => (
-                  <span
-                    key={i}
-                    className="typing-dot"
-                    style={{ animationDelay: `${i * 0.18}s` }}
-                  />
-                ))}
-              </span>
-            </span>
+            <GeneratingIndicator />
           )}
         </div>
       )}

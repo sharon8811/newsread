@@ -27,6 +27,8 @@ const UNCONFIGURED: AISettings = {
   image_generation_available: false,
   image_prompt: null,
   default_image_prompt: DEFAULT_PROMPT,
+  image_gen_monthly_limit: null,
+  image_generations_this_month: 0,
 };
 
 const CONFIGURED: AISettings = {
@@ -41,6 +43,8 @@ const CONFIGURED: AISettings = {
   image_generation_available: false,
   image_prompt: null,
   default_image_prompt: DEFAULT_PROMPT,
+  image_gen_monthly_limit: null,
+  image_generations_this_month: 0,
 };
 
 function withSettings(settings: AISettings | undefined) {
@@ -350,5 +354,60 @@ describe("<AISettingsSection> image prompt", () => {
       expect(screen.getByText("Using the system default model.")).toBeInTheDocument(),
     );
     expect(fetchMock.mock.calls.some(([url]) => (url as string).includes("/users/me"))).toBe(false);
+  });
+});
+
+describe("<AISettingsSection> monthly image budget", () => {
+  beforeEach(() => {
+    swrMock.mockReset();
+    mutateMock.mockClear();
+    vi.unstubAllGlobals();
+  });
+
+  it("shows this month's usage against the limit", () => {
+    withSettings({
+      ...UNCONFIGURED,
+      image_generation_available: true,
+      image_gen_monthly_limit: 100,
+      image_generations_this_month: 7,
+    });
+    const { container } = render(<AISettingsSection />);
+    expect(screen.getByLabelText("Monthly image budget")).toHaveValue(100);
+    expect(container.textContent).toContain("7 images generated this month of 100");
+  });
+
+  it("saves the budget via PATCH /users/me", async () => {
+    withSettings({ ...UNCONFIGURED, image_generation_available: true });
+    const fetchMock = okFetch();
+    render(<AISettingsSection />);
+
+    await userEvent.type(screen.getByLabelText("Monthly image budget"), "25");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const patch = fetchMock.mock.calls.find(([url]) => (url as string).includes("/users/me"));
+    expect(patch).toBeTruthy();
+    expect(JSON.parse((patch![1] as RequestInit).body as string)).toEqual({
+      image_gen_monthly_limit: 25,
+    });
+  });
+
+  it("clears the budget back to unlimited", async () => {
+    withSettings({
+      ...UNCONFIGURED,
+      image_generation_available: true,
+      image_gen_monthly_limit: 25,
+    });
+    const fetchMock = okFetch();
+    render(<AISettingsSection />);
+
+    await userEvent.clear(screen.getByLabelText("Monthly image budget"));
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const patch = fetchMock.mock.calls.find(([url]) => (url as string).includes("/users/me"));
+    expect(JSON.parse((patch![1] as RequestInit).body as string)).toEqual({
+      image_gen_monthly_limit: null,
+    });
   });
 });

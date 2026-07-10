@@ -13,6 +13,7 @@ import {
   View,
 } from "react-native";
 
+import GeneratingImage from "@/components/GeneratingImage";
 import StoriesView from "@/components/StoriesView";
 import { api, imageSrc } from "@/lib/api";
 import { useArticles, type ArticleFilter } from "@/lib/articles";
@@ -67,14 +68,16 @@ function ListRow({ article, colors, onPress }: {
           {article.is_saved ? " · Saved" : ""}
         </Text>
       </View>
-      {article.image_url && (
+      {article.image_url ? (
         <Image
           source={{ uri: imageSrc(article.image_url) }}
           style={styles.thumb}
           contentFit="cover"
           transition={150}
         />
-      )}
+      ) : article.image_pending ? (
+        <GeneratingImage colors={colors} style={styles.thumb} compact />
+      ) : null}
     </Pressable>
   );
 }
@@ -97,14 +100,16 @@ function CardRow({ article, colors, onPress }: {
       ]}
       onPress={onPress}
     >
-      {article.image_url && (
+      {article.image_url ? (
         <Image
           source={{ uri: imageSrc(article.image_url) }}
           style={[styles.cardImage, dim && { opacity: 0.55 }]}
           contentFit="cover"
           transition={150}
         />
-      )}
+      ) : article.image_pending ? (
+        <GeneratingImage colors={colors} style={styles.cardImage} />
+      ) : null}
       <View style={styles.cardBody}>
         <Text style={[styles.rowMeta, { color: colors.muted }]} numberOfLines={1}>
           {!dim && <Text style={{ color: colors.tint }}>● </Text>}

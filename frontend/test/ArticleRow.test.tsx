@@ -122,4 +122,12 @@ describe("<ArticleRow>", () => {
       onToggleSaved={noop} onShare={noop} onAddToProject={noop} />);
     expect(screen.getByText(/Jane Reporter/)).toBeInTheDocument();
   });
+
+  it("shows a compact shimmering placeholder while an illustration renders", () => {
+    const { container } = render(<ArticleRow article={makeArticle({ image_pending: true })} index={0}
+      onToggleSaved={noop} onShare={noop} onAddToProject={noop} />);
+    expect(container.querySelector("img")).toBeNull();
+    expect(container.querySelector(".shimmer")).not.toBeNull();
+    expect(screen.getByRole("status")).toHaveAccessibleName("Generating illustration");
+  });
 });

@@ -192,3 +192,29 @@ describe("<FeedSettingsModal>", () => {
     expect(onClose).toHaveBeenCalledTimes(2);
   });
 });
+
+describe("<FeedSettingsModal> AI images", () => {
+  it("patches the AI images toggle", async () => {
+    const fetchMock = okFetch(makeFeed());
+    vi.stubGlobal("fetch", fetchMock);
+    render(<FeedSettingsModal feed={makeFeed()} onClose={vi.fn()} />);
+    await userEvent.click(screen.getByRole("switch", { name: "AI images" }));
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    expect(await lastBody(fetchMock)).toEqual({ image_gen_enabled: false });
+  });
+
+  it("reflects a disabled feed and can re-enable it", async () => {
+    const fetchMock = okFetch(makeFeed());
+    vi.stubGlobal("fetch", fetchMock);
+    render(
+      <FeedSettingsModal feed={makeFeed({ image_gen_enabled: false })} onClose={vi.fn()} />,
+    );
+    const toggle = screen.getByRole("switch", { name: "AI images" });
+    expect(toggle).toHaveAttribute("aria-checked", "false");
+    await userEvent.click(toggle);
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    expect(await lastBody(fetchMock)).toEqual({ image_gen_enabled: true });
+  });
+});

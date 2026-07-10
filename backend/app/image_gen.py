@@ -15,13 +15,15 @@ gets the OpenAI images API.
 import base64
 import logging
 import time
+from datetime import datetime, timezone
 
 import httpx
 from openai import AsyncOpenAI
+from sqlalchemy import func, select
 
 from . import crypto, db, llm
 from .config import settings
-from .models import Article, GeneratedImage, UserAISettings
+from .models import Article, GeneratedImage, User, UserAISettings
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +75,33 @@ async def resolve_config(session, user_id: int) -> llm.LLMConfig | None:
             user_owned=True,
         )
     return system_config()
+
+
+async def generations_this_month(session, user_id: int) -> int:
+    """Image generations this user started this calendar month (UTC). Counts
+    claims rather than stored images: failed attempts spend money too, and the
+    claim is written synchronously so the budget can't be raced past by
+    generations that haven't finished yet."""
+    month_start = datetime.now(timezone.utc).replace(
+        day=1, hour=0, minute=0, second=0, microsecond=0
+    )
+    count = await session.scalar(
+        select(func.count())
+        .select_from(Article)
+        .where(
+            Article.image_gen_user_id == user_id,
+            Article.image_gen_attempted_at >= month_start,
+        )
+    )
+    return count or 0
+
+
+async def remaining_budget(session, user: User) -> int | None:
+    """Generations the user may still start this month; None = unlimited."""
+    if user.image_gen_monthly_limit is None:
+        return None
+    used = await generations_this_month(session, user.id)
+    return max(0, user.image_gen_monthly_limit - used)
 
 
 def public_image_url(article_id: int) -> str:

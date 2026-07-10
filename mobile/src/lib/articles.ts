@@ -24,6 +24,18 @@ export function useArticles(filter: ArticleFilter) {
   const { data, error, size, setSize, isValidating, isLoading, mutate } = useSWRInfinite(
     getKey,
     (path: string) => apiPage<Article[]>(path),
+    {
+      // While any listed article has an AI illustration rendering, poll fast
+      // so the "generating" cards resolve into images (each poll also lets
+      // the server start the next few generations). Server-side pending stops
+      // reporting after ~3 min, which halts the fast poll on its own.
+      refreshInterval: (pages: ArticlePage[] | undefined) =>
+        pages?.some((page) =>
+          page.items.some((a) => a.image_pending && !a.image_url),
+        )
+          ? 3000
+          : 0,
+    },
   );
 
   const articles = data ? data.flatMap((page) => page.items) : [];
