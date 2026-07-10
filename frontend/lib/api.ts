@@ -185,6 +185,24 @@ export type FeedSettingsPatch = Partial<{
   refresh_interval_minutes: number;
 }>;
 
+// ——— feed catalog (curated directory) ———
+
+export type CatalogEntry = {
+  id: number;
+  url: string;
+  title: string;
+  description: string | null;
+  site_url: string | null;
+  category: string;
+  feed_id: number | null; // my Feed id when I already subscribe to this URL
+  subscribed: boolean;
+};
+
+export type CatalogCategory = {
+  name: string;
+  count: number;
+};
+
 export type EntityBadge = {
   id: number;
   kind: string; // github | hf_model | hf_dataset | arxiv | pypi | npm | youtube

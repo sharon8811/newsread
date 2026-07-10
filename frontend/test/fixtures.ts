@@ -2,6 +2,7 @@ import type {
   Article,
   ArticleDetail,
   ArticleProjectStatus,
+  CatalogEntry,
   EntityBadge,
   EntityFull,
   Feed,
@@ -40,6 +41,20 @@ export function makeFeed(over: Partial<Feed> = {}): Feed {
     ai_enabled: true,
     image_gen_enabled: true,
     refresh_interval_minutes: 15,
+    ...over,
+  };
+}
+
+export function makeCatalogEntry(over: Partial<CatalogEntry> = {}): CatalogEntry {
+  return {
+    id: 1,
+    url: "https://blog.example/rss",
+    title: "Example Blog",
+    description: "A blog about examples",
+    site_url: "https://blog.example",
+    category: "Tech",
+    feed_id: null,
+    subscribed: false,
     ...over,
   };
 }
