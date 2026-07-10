@@ -433,3 +433,25 @@ async def test_patch_image_prompt_roundtrip(client, users):
     await client.patch("/api/users/me", json={"image_prompt": ""}, headers=users.auth(user))
     body = (await client.get("/api/ai/settings", headers=users.auth(user))).json()
     assert body["image_prompt"] is None
+
+
+async def test_put_supports_vision_round_trip(client, users):
+    user = await users.create()
+    resp = await _put(client, users, user, {**BODY, "supports_vision": True})
+    assert resp.json()["supports_vision"] is True
+    resp = await client.get("/api/ai/settings", headers=users.auth(user))
+    assert resp.json()["supports_vision"] is True
+
+
+async def test_put_supports_vision_defaults_off(client, users):
+    user = await users.create()
+    resp = await _put(client, users, user)
+    assert resp.json()["supports_vision"] is False
+
+
+async def test_supports_vision_reaches_llm_config(client, users, session):
+    user = await users.create()
+    await _put(client, users, user, {**BODY, "supports_vision": True})
+    row = await session.get(UserAISettings, user.id)
+    config = llm.config_for_user_settings(row)
+    assert config.supports_vision is True

@@ -463,6 +463,7 @@ class AISettingsIn(BaseModel):
     model: str = Field(min_length=1, max_length=120)
     api_key: str | None = Field(default=None, max_length=512)  # None = keep stored key
     base_url: str = Field(default="", max_length=2048)  # custom only
+    supports_vision: bool = False  # model accepts image input (screenshot summaries)
     image: AIImageSettingsIn | None = None  # None clears the image model
 
     _check_base_url = field_validator("base_url")(_ai_base_url)
@@ -482,6 +483,7 @@ class AISettingsOut(BaseModel):
     model: str | None = None
     base_url: str | None = None
     key_hint: str | None = None  # keys are write-only; this is all that comes back
+    supports_vision: bool = False
     image: AIImageSettingsOut | None = None
     # Article image generation: whether any image model would serve this user
     # (their own block or the server-wide default), plus their prompt template.

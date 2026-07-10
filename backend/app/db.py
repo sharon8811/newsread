@@ -81,6 +81,9 @@ MIGRATIONS = [
     # rows are excluded by the NOT LIKE.
     "UPDATE articles SET image_url = '/api/articles/' || id || '/generated-image' "
     "WHERE image_url LIKE '%/api/articles/%/generated-image' AND image_url NOT LIKE '/api/%'",
+    # Screenshot summaries: whether the user's own model accepts image input.
+    "ALTER TABLE user_ai_settings ADD COLUMN IF NOT EXISTS supports_vision "
+    "BOOLEAN NOT NULL DEFAULT FALSE",
 ]
 
 

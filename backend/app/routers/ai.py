@@ -109,7 +109,9 @@ async def summarize_article(
     usage = llm.TokenUsage()
     started = time.monotonic()
     try:
-        await generate_summaries(session, article, config=config, usage=usage)
+        await generate_summaries(
+            session, article, config=config, usage=usage, allow_vision=True
+        )
     except ThinContentError:
         # Summarizing a headline stub just makes the model invent details.
         # No LLM call happened, so nothing lands in llm_usage.

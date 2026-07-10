@@ -61,6 +61,7 @@ function AISettingsForm({ settings }: { settings: AISettings }) {
   const [model, setModel] = useState(stored?.model ?? "");
   const [apiKey, setApiKey] = useState("");
   const [baseUrl, setBaseUrl] = useState(stored?.base_url ?? "");
+  const [supportsVision, setSupportsVision] = useState(stored?.supports_vision ?? false);
   const [imageEnabled, setImageEnabled] = useState(stored?.image != null);
   const [imageProvider, setImageProvider] = useState<AIProvider>(
     stored?.image?.provider ?? "openai",
@@ -88,6 +89,7 @@ function AISettingsForm({ settings }: { settings: AISettings }) {
     const body: AISettingsSave = {
       provider: choice as AIProvider,
       model: model.trim(),
+      supports_vision: supportsVision,
     };
     if (apiKey.trim()) body.api_key = apiKey.trim();
     if (choice === "custom") body.base_url = baseUrl.trim();
@@ -248,6 +250,20 @@ function AISettingsForm({ settings }: { settings: AISettings }) {
                 onChange={(e) => setModel(e.target.value)}
               />
             </Field>
+
+            <label className="flex items-center gap-2 text-[13px]">
+              <input
+                type="checkbox"
+                checked={supportsVision}
+                onChange={(e) => setSupportsVision(e.target.checked)}
+              />
+              <span>
+                Model can read images
+                <span className="ml-1.5" style={{ color: "var(--ink-faint)" }}>
+                  summarizes image-only pages (comics, charts) from a screenshot
+                </span>
+              </span>
+            </label>
 
             <div className="border-t pt-3.5" style={{ borderColor: "var(--line-soft)" }}>
               <label className="flex items-center gap-2 text-[13px]">
