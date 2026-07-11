@@ -387,7 +387,7 @@ async def _stream_agent(
                     yield {"type": "delta", "text": event.delta.content_delta}
             elif isinstance(event, AgentRunResultEvent):
                 output = str(event.result.output)
-                run_usage = event.result.usage()
+                run_usage = event.result.usage
                 usage = {
                     "prompt_tokens": run_usage.input_tokens or 0,
                     "completion_tokens": run_usage.output_tokens or 0,
