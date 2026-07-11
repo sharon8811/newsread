@@ -362,10 +362,10 @@ def _new(cls, **attrs):
 
 
 def _final(output, prompt=3, completion=7):
-    """A fake AgentRunResultEvent with the usage() the stream reads."""
+    """A fake AgentRunResultEvent with the usage the stream reads."""
     return _new(AgentRunResultEvent, result=types.SimpleNamespace(
         output=output,
-        usage=lambda: types.SimpleNamespace(input_tokens=prompt, output_tokens=completion),
+        usage=types.SimpleNamespace(input_tokens=prompt, output_tokens=completion),
     ))
 
 
