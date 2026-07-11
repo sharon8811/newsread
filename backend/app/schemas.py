@@ -76,6 +76,12 @@ class DeviceOut(BaseModel):
 
 class AddFeedIn(BaseModel):
     url: str = Field(min_length=4, max_length=2048)
+    # Quick settings applied at subscribe time (all optional; omitted = defaults).
+    # ai_enabled/image_gen_enabled are global per-feed switches (same semantics
+    # as PATCH /feeds/{id}/settings); is_muted is per-subscription.
+    ai_enabled: bool | None = None
+    image_gen_enabled: bool | None = None
+    is_muted: bool | None = None
 
 
 class FeedOut(BaseModel):
@@ -148,7 +154,9 @@ class CatalogCategoryOut(BaseModel):
 
 class CatalogPreviewItemOut(BaseModel):
     title: str
-    url: str
+    # Feeds may omit item links entirely (guid-only items); render those as
+    # plain text instead of dead anchors.
+    url: str | None = None
     author: str | None = None
     published_at: datetime | None = None
     summary: str | None = None
@@ -162,6 +170,27 @@ class CatalogPreviewOut(BaseModel):
     site_url: str | None = None
     fetched_at: datetime
     items: list[CatalogPreviewItemOut] = []
+
+
+class SmartFeedOut(BaseModel):
+    """A topic-parameterized feed source (e.g. any subreddit) the user can
+    subscribe to by typing a topic — or pasting the topic's page URL."""
+
+    key: str
+    name: str
+    description: str
+    site_url: str
+    category: str
+    topic_label: str  # what the input asks for, e.g. "Subreddit"
+    topic_hint: str  # input placeholder, e.g. "programming or reddit.com/r/programming"
+    example_topics: list[str] = []
+
+
+class SmartFeedResolveOut(BaseModel):
+    key: str
+    topic: str  # normalized topic, echoed back for display
+    url: str  # the concrete feed URL to subscribe to
+    title: str  # suggested feed display title, e.g. "r/programming"
 
 
 class CatalogSubmissionIn(BaseModel):
