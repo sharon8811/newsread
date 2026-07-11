@@ -19,10 +19,14 @@ const CATEGORIES = [
   { name: "Tech", count: 2 },
 ];
 
-function setSwr(entries: CatalogEntry[] | undefined) {
+function setSwr(
+  entries: CatalogEntry[] | undefined,
+  categories = CATEGORIES,
+  state: { error?: Error; isLoading?: boolean } = {},
+) {
   swrMock.mockImplementation((key: string) => {
-    if (key === "/catalog/categories") return { data: CATEGORIES };
-    return { data: entries };
+    if (key === "/catalog/categories") return { data: categories };
+    return { data: entries, ...state };
   });
 }
 
@@ -47,6 +51,52 @@ describe("CatalogPage", () => {
     expect(swrMock).toHaveBeenCalledWith("/catalog", expect.anything());
   });
 
+  it("renders feed types, previews, freshness, match reasons, and singular counts", () => {
+    const now = Date.now();
+    setSwr([
+      makeCatalogEntry({
+        id: 1,
+        title: "Atom Feed",
+        content_type: "application/atom+xml",
+        item_count: 1,
+        subscriber_count: 1,
+        latest_item_at: new Date(now).toISOString(),
+        match_reason: "Semantic match",
+        preview_items: [{ title: "Latest story", url: "https://x/1", published_at: null }],
+      }),
+      makeCatalogEntry({
+        id: 2,
+        title: "JSON Feed",
+        content_type: "application/feed+json",
+        latest_item_at: new Date(now - 45 * 86_400_000).toISOString(),
+      }),
+      makeCatalogEntry({
+        id: 3,
+        title: "Old RSS",
+        content_type: null,
+        latest_item_at: new Date(now - 400 * 86_400_000).toISOString(),
+      }),
+    ]);
+    render(<CatalogPage />);
+    expect(screen.getByText(/example.com · Atom/)).toBeInTheDocument();
+    expect(screen.getByText(/example.com · JSON Feed/)).toBeInTheDocument();
+    expect(screen.getByText("1 recent item")).toBeInTheDocument();
+    expect(screen.getByText("1 reader")).toBeInTheDocument();
+    expect(screen.getByText("Semantic match")).toBeInTheDocument();
+    expect(screen.getByText("Preview latest stories")).toBeInTheDocument();
+    expect(screen.getByText(/Updated 1 month ago/)).toBeInTheDocument();
+    expect(screen.getByText(/Updated 1 year ago/)).toBeInTheDocument();
+  });
+
+  it("shows loading and load errors", () => {
+    setSwr(undefined, CATEGORIES, { isLoading: true });
+    const { rerender } = render(<CatalogPage />);
+    expect(screen.getByLabelText("Loading catalog")).toBeInTheDocument();
+    setSwr(undefined, CATEGORIES, { error: new Error("offline") });
+    rerender(<CatalogPage />);
+    expect(screen.getByRole("alert")).toHaveTextContent("Could not load the catalog");
+  });
+
   it("switches to personalized and popularity ranking", async () => {
     render(<CatalogPage />);
     await userEvent.click(screen.getByRole("button", { name: "For you" }));
@@ -64,6 +114,18 @@ describe("CatalogPage", () => {
     // Clicking the active chip clears the filter.
     await userEvent.click(screen.getByRole("button", { name: /Food/ }));
     await waitFor(() => expect(catalogKeys().at(-1)).toBe("/catalog"));
+  });
+
+  it("expands topics and incrementally renders a large catalog", async () => {
+    const manyCategories = Array.from({ length: 14 }, (_, index) => ({ name: `Topic ${index}`, count: 1 }));
+    const manyEntries = Array.from({ length: 61 }, (_, index) => makeCatalogEntry({ id: index + 1, title: `Feed ${index + 1}` }));
+    setSwr(manyEntries, manyCategories);
+    render(<CatalogPage />);
+    expect(screen.getAllByRole("article")).toHaveLength(60);
+    await userEvent.click(screen.getByRole("button", { name: "Load more feeds" }));
+    expect(screen.getAllByRole("article")).toHaveLength(61);
+    await userEvent.click(screen.getByRole("button", { name: "More topics (2)" }));
+    expect(screen.getByRole("button", { name: "Fewer topics" })).toBeInTheDocument();
   });
 
   it("debounces search into the swr key", async () => {
@@ -134,5 +196,14 @@ describe("CatalogPage", () => {
       body: { url: "https://new.example/rss", category: null },
     }));
     expect(await screen.findByText(/queued for review/)).toBeInTheDocument();
+  });
+
+  it("shows a suggested-feed validation error", async () => {
+    apiMock.mockRejectedValue(new Error("Private network feed URLs are not allowed"));
+    render(<CatalogPage />);
+    await userEvent.click(screen.getByRole("button", { name: /Suggest feed/ }));
+    await userEvent.type(screen.getByLabelText("Feed URL"), "http://127.0.0.1/feed");
+    await userEvent.click(screen.getByRole("button", { name: "Submit" }));
+    expect(await screen.findByText(/Private network feed URLs/)).toBeInTheDocument();
   });
 });
