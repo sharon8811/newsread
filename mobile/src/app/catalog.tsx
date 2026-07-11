@@ -41,11 +41,19 @@ function EntryCard({ entry, colors, busy, onSubscribe }: {
           {entry.category}
         </Text>
       </View>
+      <Text style={[styles.cardSource, { color: colors.muted }]} numberOfLines={1}>
+        {entry.source_host} · {entry.content_type?.includes("atom") ? "Atom" : entry.content_type?.includes("json") ? "JSON Feed" : "RSS"}
+      </Text>
       {entry.description ? (
         <Text style={[styles.cardDescription, { color: colors.muted }]} numberOfLines={3}>
           {entry.description}
         </Text>
       ) : null}
+      <View style={styles.cardMeta}>
+        {entry.item_count !== null ? <Text style={{ color: colors.muted, fontSize: 11 }}>{entry.item_count} recent {entry.item_count === 1 ? "item" : "items"}</Text> : null}
+        {entry.subscriber_count > 0 ? <Text style={{ color: colors.muted, fontSize: 11 }}>{entry.subscriber_count} {entry.subscriber_count === 1 ? "reader" : "readers"}</Text> : null}
+        {entry.match_reason ? <Text style={{ color: colors.tint, fontSize: 11 }}>{entry.match_reason}</Text> : null}
+      </View>
       {entry.subscribed ? (
         <View style={styles.subscribeRow}>
           <Ionicons name="checkmark" size={16} color={colors.tint} />
@@ -82,7 +90,7 @@ export default function CatalogScreen() {
   const [busyUrl, setBusyUrl] = useState<string | null>(null);
 
   useEffect(() => {
-    const t = setTimeout(() => setQ(search.trim()), 250);
+    const t = setTimeout(() => setQ(search.trim()), 450);
     return () => clearTimeout(t);
   }, [search]);
 
@@ -245,6 +253,8 @@ const styles = StyleSheet.create({
   },
   cardHeader: { flexDirection: "row", alignItems: "flex-start", gap: 8 },
   cardTitle: { flex: 1, fontSize: 16, fontWeight: "600", lineHeight: 21 },
+  cardSource: { fontSize: 11 },
+  cardMeta: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   cardCategory: {
     fontSize: 11,
     borderWidth: StyleSheet.hairlineWidth,

@@ -51,6 +51,21 @@ async def test_embed_texts(monkeypatch):
     assert out == [[0.1, 0.2]]
 
 
+async def test_embed_query_caches_normalized_text(monkeypatch):
+    embeddings._query_cache.clear()
+    calls = []
+
+    async def fake_embed(texts):
+        calls.append(texts)
+        return [[0.3, 0.7]]
+
+    monkeypatch.setattr(embeddings, "embed_texts", fake_embed)
+    monkeypatch.setattr(embeddings.settings, "openai_embedding_model", "emb")
+    assert await embeddings.embed_query("  Climate   NEWS ") == [0.3, 0.7]
+    assert await embeddings.embed_query("climate news") == [0.3, 0.7]
+    assert calls == [["climate news"]]
+
+
 async def test_embed_articles_empty(session):
     assert await embeddings.embed_articles(session, []) == 0
 

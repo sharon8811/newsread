@@ -51,6 +51,23 @@ MIGRATIONS = [
     "(to_tsvector('english', coalesce(title, '') || ' ' || coalesce(excerpt, '') || ' ' "
     "|| coalesce(summary_medium, ''))) STORED",
     "CREATE INDEX IF NOT EXISTS ix_articles_search_tsv ON articles USING gin (search_tsv)",
+    # Catalog health metadata and full-text search. The vector leg lives in
+    # catalog_entry_embeddings and intentionally uses exact scans at this scale.
+    "ALTER TABLE catalog_entries ADD COLUMN IF NOT EXISTS source VARCHAR(64) NOT NULL DEFAULT 'awesome-rss-feeds'",
+    "ALTER TABLE catalog_entries ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE",
+    "ALTER TABLE catalog_entries ADD COLUMN IF NOT EXISTS health_status VARCHAR(24) NOT NULL DEFAULT 'unchecked'",
+    "ALTER TABLE catalog_entries ADD COLUMN IF NOT EXISTS checked_at TIMESTAMPTZ",
+    "ALTER TABLE catalog_entries ADD COLUMN IF NOT EXISTS item_count INTEGER",
+    "ALTER TABLE catalog_entries ADD COLUMN IF NOT EXISTS latest_item_at TIMESTAMPTZ",
+    "ALTER TABLE catalog_entries ADD COLUMN IF NOT EXISTS final_url VARCHAR(2048)",
+    "ALTER TABLE catalog_entries ADD COLUMN IF NOT EXISTS content_type VARCHAR(120)",
+    "ALTER TABLE catalog_entries ADD COLUMN IF NOT EXISTS preview_items JSONB NOT NULL DEFAULT '[]'::jsonb",
+    "ALTER TABLE catalog_entries ADD COLUMN IF NOT EXISTS search_tsv tsvector GENERATED ALWAYS AS "
+    "(setweight(to_tsvector('english', coalesce(title, '')), 'A') || "
+    "setweight(to_tsvector('english', coalesce(description, '')), 'B') || "
+    "setweight(to_tsvector('english', coalesce(category, '') || ' ' || coalesce(site_url, '') || ' ' || coalesce(url, '')), 'C')) STORED",
+    "CREATE INDEX IF NOT EXISTS ix_catalog_entries_search_tsv ON catalog_entries USING gin (search_tsv)",
+    "CREATE INDEX IF NOT EXISTS ix_catalog_entries_active_category ON catalog_entries (is_active, category)",
     # Per-member project push mute (project_members predates the column).
     "ALTER TABLE project_members ADD COLUMN IF NOT EXISTS is_muted BOOLEAN NOT NULL DEFAULT FALSE",
     # Project-wide Q&A threads: conversations gain an optional project scope.
@@ -125,7 +142,8 @@ async def init_db(max_attempts: int = 30) -> None:
         tables = [
             table
             for table in Base.metadata.sorted_tables
-            if vector_enabled or table.name != "article_embeddings"
+            if vector_enabled
+            or table.name not in {"article_embeddings", "catalog_entry_embeddings"}
         ]
         await conn.run_sync(lambda sync: Base.metadata.create_all(sync, tables=tables))
         for statement in MIGRATIONS:

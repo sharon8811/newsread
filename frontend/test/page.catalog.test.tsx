@@ -40,9 +40,19 @@ describe("CatalogPage", () => {
     render(<CatalogPage />);
     expect(screen.getByText("Example Blog")).toBeInTheDocument();
     expect(screen.getByText("A blog about examples")).toBeInTheDocument();
+    expect(screen.getByText(/example.com/)).toBeInTheDocument();
+    expect(screen.getByText("12 recent items")).toBeInTheDocument();
     // The chip row and the card badge both say "Tech".
     expect(screen.getAllByText("Tech").length).toBeGreaterThanOrEqual(2);
     expect(swrMock).toHaveBeenCalledWith("/catalog", expect.anything());
+  });
+
+  it("switches to personalized and popularity ranking", async () => {
+    render(<CatalogPage />);
+    await userEvent.click(screen.getByRole("button", { name: "For you" }));
+    await waitFor(() => expect(catalogKeys()).toContain("/catalog?sort=recommended"));
+    await userEvent.click(screen.getByRole("button", { name: "Popular" }));
+    await waitFor(() => expect(catalogKeys()).toContain("/catalog?sort=popular"));
   });
 
   it("shows category chips with counts and filters on click", async () => {
@@ -111,5 +121,18 @@ describe("CatalogPage", () => {
     setSwr([]);
     render(<CatalogPage />);
     expect(screen.getByText(/No feeds match/)).toBeInTheDocument();
+  });
+
+  it("validates and submits a suggested feed", async () => {
+    apiMock.mockResolvedValue({ id: 1, status: "pending" });
+    render(<CatalogPage />);
+    await userEvent.click(screen.getByRole("button", { name: /Suggest feed/ }));
+    await userEvent.type(screen.getByLabelText("Feed URL"), "https://new.example/rss");
+    await userEvent.click(screen.getByRole("button", { name: "Submit" }));
+    await waitFor(() => expect(apiMock).toHaveBeenCalledWith("/catalog/submissions", {
+      method: "POST",
+      body: { url: "https://new.example/rss", category: null },
+    }));
+    expect(await screen.findByText(/queued for review/)).toBeInTheDocument();
   });
 });

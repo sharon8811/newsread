@@ -412,7 +412,7 @@ def test_worker_settings_shape():
     assert worker.WorkerSettings.functions == [
         worker.enrich_feed, worker.send_share_push, worker.send_project_pin_push,
     ]
-    assert len(worker.WorkerSettings.cron_jobs) == 2
+    assert len(worker.WorkerSettings.cron_jobs) == 3
 
 
 # --- send_share_push ---

@@ -246,7 +246,7 @@ async def _hybrid_search_ids(
     if not embeddings.is_configured():
         return None
     try:
-        [query_vector] = await embeddings.embed_texts([q])
+        query_vector = await embeddings.embed_query(q)
     except Exception as exc:
         logger.warning("Query embedding failed, falling back to keyword search: %s", exc)
         return None

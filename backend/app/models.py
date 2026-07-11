@@ -166,6 +166,47 @@ class CatalogEntry(Base):
     description: Mapped[str | None] = mapped_column(Text)
     site_url: Mapped[str | None] = mapped_column(String(2048))
     category: Mapped[str] = mapped_column(String(64), index=True)
+    source: Mapped[str] = mapped_column(String(64), default="awesome-rss-feeds", server_default="awesome-rss-feeds")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true", index=True)
+    health_status: Mapped[str] = mapped_column(String(24), default="unchecked", server_default="unchecked", index=True)
+    checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    item_count: Mapped[int | None] = mapped_column(Integer)
+    latest_item_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    final_url: Mapped[str | None] = mapped_column(String(2048))
+    content_type: Mapped[str | None] = mapped_column(String(120))
+    preview_items: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class CatalogEntryEmbedding(Base):
+    """One embedding per catalog entry. The content hash avoids re-embedding
+    unchanged feed metadata while the model field makes model switches safe."""
+
+    __tablename__ = "catalog_entry_embeddings"
+
+    catalog_entry_id: Mapped[int] = mapped_column(
+        ForeignKey("catalog_entries.id", ondelete="CASCADE"), primary_key=True
+    )
+    model: Mapped[str] = mapped_column(String(120))
+    content_hash: Mapped[str] = mapped_column(String(64))
+    embedding: Mapped[list] = mapped_column(Vector())
+    embedded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class CatalogSubmission(Base):
+    """A user-proposed feed waiting for catalog curation."""
+
+    __tablename__ = "catalog_submissions"
+    __table_args__ = (UniqueConstraint("url"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    url: Mapped[str] = mapped_column(String(2048))
+    category: Mapped[str | None] = mapped_column(String(64))
+    note: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(16), default="pending", server_default="pending")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

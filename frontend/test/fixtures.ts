@@ -55,6 +55,14 @@ export function makeCatalogEntry(over: Partial<CatalogEntry> = {}): CatalogEntry
     category: "Tech",
     feed_id: null,
     subscribed: false,
+    source_host: "example.com",
+    content_type: "application/rss+xml",
+    health_status: "healthy",
+    item_count: 12,
+    latest_item_at: "2026-07-10T12:00:00Z",
+    preview_items: [],
+    subscriber_count: 0,
+    match_reason: null,
     ...over,
   };
 }

@@ -119,6 +119,8 @@ async def _clean():
     async with engine.begin() as conn:
         tables = ", ".join(t.name for t in reversed(Base.metadata.sorted_tables))
         await conn.execute(text(f"TRUNCATE {tables} RESTART IDENTITY CASCADE"))
+    from app import embeddings
+    embeddings._query_cache.clear()
     yield
 
 

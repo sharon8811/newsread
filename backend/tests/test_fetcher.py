@@ -6,6 +6,7 @@ import respx
 from sqlalchemy import select
 
 from app.fetcher import (
+    FeedParseError,
     ParsedArticle,
     derive_excerpt,
     fetch_feed_data,
@@ -16,6 +17,7 @@ from app.fetcher import (
     strip_html,
     _parse_date,
     _to_utc,
+    _validate_public_url,
 )
 from app.models import Article, Feed
 
@@ -214,6 +216,20 @@ async def test_fetch_feed_data_raises_on_http_error():
     respx.get("https://feed.example/bad").mock(return_value=httpx.Response(500))
     with pytest.raises(httpx.HTTPStatusError):
         await fetch_feed_data("https://feed.example/bad")
+
+
+@respx.mock
+async def test_fetch_feed_data_rejects_empty_when_required():
+    respx.get("https://feed.example/empty").mock(
+        return_value=httpx.Response(200, json={"title": "Empty", "items": []})
+    )
+    with pytest.raises(FeedParseError, match="no items"):
+        await fetch_feed_data("https://feed.example/empty", require_articles=True)
+
+
+async def test_private_feed_targets_are_rejected():
+    with pytest.raises(FeedParseError, match="Private network"):
+        await _validate_public_url("http://127.0.0.1:8000/private")
 
 
 # --- refresh_feed (DB) ---

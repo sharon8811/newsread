@@ -139,6 +139,19 @@ async def add_feed(
             raise HTTPException(
                 status_code=400, detail="Could not fetch or parse a feed at that URL"
             )
+    else:
+        has_articles = await session.scalar(
+            select(func.count()).select_from(Article).where(Article.feed_id == feed.id)
+        )
+        if not has_articles:
+            try:
+                await refresh_feed(session, feed)
+            except Exception as exc:
+                await session.rollback()
+                logger.warning("Existing empty feed is no longer valid %s: %s", url, exc)
+                raise HTTPException(
+                    status_code=400, detail="This feed is empty or no longer available"
+                ) from exc
 
     already = await session.scalar(
         select(Subscription).where(
