@@ -1,4 +1,7 @@
+import html
 import logging
+import time
+from datetime import datetime, timezone
 from typing import Literal
 from urllib.parse import urlsplit
 
@@ -10,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .. import embeddings
 from ..config import settings
 from ..db import get_session
-from ..fetcher import FeedParseError, fetch_feed_data
+from ..fetcher import FeedParseError, fetch_feed_data, strip_html
 from ..models import (
     CatalogEntry,
     CatalogEntryEmbedding,
@@ -22,6 +25,8 @@ from ..models import (
 from ..schemas import (
     CatalogCategoryOut,
     CatalogEntryOut,
+    CatalogPreviewItemOut,
+    CatalogPreviewOut,
     CatalogSubmissionIn,
     CatalogSubmissionOut,
 )
@@ -31,6 +36,12 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/catalog", tags=["catalog"])
 SEARCH_POOL = 60
 RRF_K = 60
+PREVIEW_ITEM_LIMIT = 8
+PREVIEW_SUMMARY_CHARS = 240
+PREVIEW_TTL_SECONDS = 600
+# Repeated modal opens shouldn't re-hit publishers; the catalog is small
+# (hundreds of entries), so an unbounded per-process cache is fine.
+_preview_cache: dict[int, tuple[float, CatalogPreviewOut]] = {}
 
 
 def _catalog_filter(category: str | None):
@@ -239,6 +250,60 @@ async def list_categories(
         .order_by(CatalogEntry.category)
     )
     return [CatalogCategoryOut(name=name, count=count) for name, count in rows]
+
+
+def _preview_summary(content_html: str) -> str | None:
+    # nh3 re-escapes entities when stripping tags; this text renders as-is.
+    text = html.unescape(strip_html(content_html))
+    if not text:
+        return None
+    if len(text) <= PREVIEW_SUMMARY_CHARS:
+        return text
+    clipped = text[:PREVIEW_SUMMARY_CHARS].rsplit(" ", 1)[0].rstrip(".,;:")
+    return f"{clipped}…"
+
+
+@router.get("/{entry_id}/preview", response_model=CatalogPreviewOut)
+async def preview_entry(
+    entry_id: int,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Fetch a live snapshot of a catalog feed for the detail view."""
+    entry = await session.scalar(
+        select(CatalogEntry).where(CatalogEntry.id == entry_id, CatalogEntry.is_active.is_(True))
+    )
+    if entry is None:
+        raise HTTPException(status_code=404, detail="Catalog entry not found")
+    cached = _preview_cache.get(entry_id)
+    if cached and cached[0] > time.monotonic():
+        return cached[1]
+    try:
+        parsed = await fetch_feed_data(entry.url)
+    except (FeedParseError, ValueError, OSError) as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502, detail="The feed could not be reached right now"
+        ) from exc
+    preview = CatalogPreviewOut(
+        title=parsed.title or entry.title,
+        description=parsed.description or entry.description,
+        site_url=parsed.site_url or entry.site_url,
+        fetched_at=datetime.now(timezone.utc),
+        items=[
+            CatalogPreviewItemOut(
+                title=article.title,
+                url=article.url,
+                author=article.author,
+                published_at=article.published_at,
+                summary=_preview_summary(article.content_html),
+            )
+            for article in parsed.articles[:PREVIEW_ITEM_LIMIT]
+        ],
+    )
+    _preview_cache[entry_id] = (time.monotonic() + PREVIEW_TTL_SECONDS, preview)
+    return preview
 
 
 @router.post("/submissions", response_model=CatalogSubmissionOut, status_code=201)

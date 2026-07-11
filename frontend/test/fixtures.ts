@@ -3,6 +3,7 @@ import type {
   ArticleDetail,
   ArticleProjectStatus,
   CatalogEntry,
+  CatalogPreview,
   EntityBadge,
   EntityFull,
   Feed,
@@ -63,6 +64,32 @@ export function makeCatalogEntry(over: Partial<CatalogEntry> = {}): CatalogEntry
     preview_items: [],
     subscriber_count: 0,
     match_reason: null,
+    ...over,
+  };
+}
+
+export function makeCatalogPreview(over: Partial<CatalogPreview> = {}): CatalogPreview {
+  return {
+    title: "Example Blog",
+    description: "A blog about examples",
+    site_url: "https://blog.example",
+    fetched_at: "2026-07-12T09:00:00Z",
+    items: [
+      {
+        title: "Fresh story",
+        url: "https://blog.example/fresh",
+        author: "Ann Author",
+        published_at: "2026-07-12T08:00:00Z",
+        summary: "A short plain-text summary of the story.",
+      },
+      {
+        title: "Undated story",
+        url: "https://blog.example/undated",
+        author: null,
+        published_at: null,
+        summary: null,
+      },
+    ],
     ...over,
   };
 }

@@ -146,6 +146,24 @@ class CatalogCategoryOut(BaseModel):
     count: int
 
 
+class CatalogPreviewItemOut(BaseModel):
+    title: str
+    url: str
+    author: str | None = None
+    published_at: datetime | None = None
+    summary: str | None = None
+
+
+class CatalogPreviewOut(BaseModel):
+    """Live snapshot of a catalog feed, fetched on demand for the detail view."""
+
+    title: str
+    description: str | None = None
+    site_url: str | None = None
+    fetched_at: datetime
+    items: list[CatalogPreviewItemOut] = []
+
+
 class CatalogSubmissionIn(BaseModel):
     url: str = Field(min_length=4, max_length=2048)
     category: str | None = Field(default=None, max_length=64)

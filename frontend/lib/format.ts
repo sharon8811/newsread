@@ -12,6 +12,28 @@ export function timeAgo(iso: string | null): string {
   return `${Math.floor(days / 365)}y ago`;
 }
 
+/** Coarse catalog freshness: "Updated today" … "Updated 2 years ago". */
+export function freshness(value: string | null): string | null {
+  if (!value) return null;
+  const days = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 86_400_000));
+  if (days === 0) return "Updated today";
+  if (days === 1) return "Updated yesterday";
+  if (days < 30) return `Updated ${days} days ago`;
+  if (days < 365) {
+    const months = Math.floor(days / 30);
+    return `Updated ${months} ${months === 1 ? "month" : "months"} ago`;
+  }
+  const years = Math.floor(days / 365);
+  return `Updated ${years} ${years === 1 ? "year" : "years"} ago`;
+}
+
+export function formatFeedType(value: string | null): string {
+  if (!value) return "RSS";
+  if (value.includes("atom")) return "Atom";
+  if (value.includes("json")) return "JSON Feed";
+  return "RSS";
+}
+
 export function humanCount(value: number | null | undefined): string {
   if (value == null) return "";
   if (value < 1000) return String(value);

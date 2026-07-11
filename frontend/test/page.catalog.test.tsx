@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import CatalogPage from "@/app/(app)/catalog/page";
-import { makeCatalogEntry, makeFeed } from "./fixtures";
-import type { CatalogEntry } from "@/lib/api";
+import { makeCatalogEntry, makeCatalogPreview, makeFeed } from "./fixtures";
+import type { CatalogEntry, CatalogPreview } from "@/lib/api";
 
 const { swrMock, mutateMock, apiMock } = vi.hoisted(() => ({
   swrMock: vi.fn(),
@@ -23,9 +23,11 @@ function setSwr(
   entries: CatalogEntry[] | undefined,
   categories = CATEGORIES,
   state: { error?: Error; isLoading?: boolean } = {},
+  preview: { data?: CatalogPreview; error?: Error; isLoading?: boolean } = {},
 ) {
   swrMock.mockImplementation((key: string) => {
     if (key === "/catalog/categories") return { data: categories };
+    if (key.endsWith("/preview")) return preview;
     return { data: entries, ...state };
   });
 }
@@ -83,7 +85,6 @@ describe("CatalogPage", () => {
     expect(screen.getByText("1 recent item")).toBeInTheDocument();
     expect(screen.getByText("1 reader")).toBeInTheDocument();
     expect(screen.getByText("Semantic match")).toBeInTheDocument();
-    expect(screen.getByText("Preview latest stories")).toBeInTheDocument();
     expect(screen.getByText(/Updated 1 month ago/)).toBeInTheDocument();
     expect(screen.getByText(/Updated 1 year ago/)).toBeInTheDocument();
   });
@@ -205,5 +206,128 @@ describe("CatalogPage", () => {
     await userEvent.type(screen.getByLabelText("Feed URL"), "http://127.0.0.1/feed");
     await userEvent.click(screen.getByRole("button", { name: "Submit" }));
     expect(await screen.findByText(/Private network feed URLs/)).toBeInTheDocument();
+  });
+});
+
+describe("catalog detail modal", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  async function openModal() {
+    await userEvent.click(screen.getByRole("button", { name: "Example Blog" }));
+    return screen.getByRole("dialog", { name: "Example Blog" });
+  }
+
+  it("opens from the card and shows metadata plus live stories", async () => {
+    setSwr([makeCatalogEntry()], CATEGORIES, {}, { data: makeCatalogPreview() });
+    render(<CatalogPage />);
+    const dialog = await openModal();
+
+    expect(swrMock).toHaveBeenCalledWith("/catalog/1/preview", expect.anything());
+    expect(within(dialog).getByText(/Tech · RSS/)).toBeInTheDocument();
+    expect(within(dialog).getByText("A blog about examples")).toBeInTheDocument();
+    expect(within(dialog).getByText("12 recent items")).toBeInTheDocument();
+    expect(within(dialog).getByText("Healthy")).toBeInTheDocument();
+    expect(within(dialog).getByText("https://blog.example/rss")).toBeInTheDocument();
+    const site = within(dialog).getByRole("link", { name: /example.com/ });
+    expect(site).toHaveAttribute("href", "https://blog.example");
+    const story = within(dialog).getByRole("link", { name: /Fresh story/ });
+    expect(story).toHaveAttribute("href", "https://blog.example/fresh");
+    expect(within(dialog).getByText("A short plain-text summary of the story.")).toBeInTheDocument();
+    expect(within(dialog).getByText("Undated story")).toBeInTheDocument();
+  });
+
+  it("shows a loading skeleton, then an empty-stories message", () => {
+    setSwr([makeCatalogEntry()], CATEGORIES, {}, { isLoading: true });
+    const { rerender } = render(<CatalogPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Example Blog" }));
+    expect(screen.getByLabelText("Loading stories")).toBeInTheDocument();
+
+    setSwr([makeCatalogEntry()], CATEGORIES, {}, { data: makeCatalogPreview({ items: [] }) });
+    rerender(<CatalogPage />);
+    expect(screen.getByText("This feed has no stories right now.")).toBeInTheDocument();
+  });
+
+  it("falls back to the cached snapshot when the live preview fails", async () => {
+    const entry = makeCatalogEntry({
+      preview_items: [{ title: "Cached story", url: "https://x/1", published_at: "2026-07-10T12:00:00Z" }],
+    });
+    setSwr([entry], CATEGORIES, {}, { error: new Error("bad gateway") });
+    render(<CatalogPage />);
+    const dialog = await openModal();
+    expect(within(dialog).getByText(/showing a recent snapshot/)).toBeInTheDocument();
+    expect(within(dialog).getByText("Cached story")).toBeInTheDocument();
+  });
+
+  it("shows an error when the live preview fails without a snapshot", async () => {
+    setSwr([makeCatalogEntry()], CATEGORIES, {}, { error: new Error("bad gateway") });
+    render(<CatalogPage />);
+    const dialog = await openModal();
+    expect(within(dialog).getByRole("alert")).toHaveTextContent("Could not load stories");
+  });
+
+  it("subscribes from the modal and flips to a feed link in place", async () => {
+    const entry = makeCatalogEntry();
+    setSwr([entry], CATEGORIES, {}, { data: makeCatalogPreview() });
+    apiMock.mockResolvedValue(makeFeed({ id: 42 }));
+    render(<CatalogPage />);
+    const dialog = await openModal();
+
+    await userEvent.click(within(dialog).getByRole("button", { name: /Subscribe/ }));
+    await waitFor(() =>
+      expect(apiMock).toHaveBeenCalledWith("/feeds", {
+        method: "POST",
+        body: { url: entry.url },
+      }),
+    );
+
+    // Once the SWR cache reflects the subscription, the open modal follows.
+    setSwr([{ ...entry, subscribed: true, feed_id: 42 }], CATEGORIES, {}, { data: makeCatalogPreview() });
+    await userEvent.click(screen.getByRole("button", { name: "Popular" })); // trigger re-render
+    expect(within(screen.getByRole("dialog")).getByRole("link", { name: /View feed/ })).toHaveAttribute(
+      "href",
+      "/?feed=42",
+    );
+  });
+
+  it("surfaces subscribe failures inside the modal", async () => {
+    setSwr([makeCatalogEntry()], CATEGORIES, {}, { data: makeCatalogPreview() });
+    apiMock.mockRejectedValue(new Error("boom"));
+    render(<CatalogPage />);
+    const dialog = await openModal();
+    await userEvent.click(within(dialog).getByRole("button", { name: /Subscribe/ }));
+    expect(await within(dialog).findByText(/Could not subscribe to Example Blog: boom/)).toBeInTheDocument();
+  });
+
+  it("closes via the close button, Escape, and the scrim", async () => {
+    setSwr([makeCatalogEntry()], CATEGORIES, {}, { data: makeCatalogPreview() });
+    render(<CatalogPage />);
+
+    let dialog = await openModal();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    dialog = await openModal();
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    dialog = await openModal();
+    fireEvent.click(dialog.parentElement!);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("does not open when the card's subscribe button or subscribed link is clicked", async () => {
+    setSwr([makeCatalogEntry()], CATEGORIES, {}, { data: makeCatalogPreview() });
+    apiMock.mockResolvedValue(makeFeed({ id: 42 }));
+    const first = render(<CatalogPage />);
+    await userEvent.click(screen.getByRole("button", { name: /Subscribe/ }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    first.unmount();
+
+    setSwr([makeCatalogEntry({ subscribed: true, feed_id: 7 })], CATEGORIES, {}, { data: makeCatalogPreview() });
+    render(<CatalogPage />);
+    fireEvent.click(screen.getByRole("link", { name: /Subscribed/ }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 });
