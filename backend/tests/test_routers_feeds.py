@@ -16,7 +16,7 @@ def test_normalize_url():
 @pytest.fixture(autouse=True)
 def _mock_refresh(monkeypatch):
     """Stub refresh_feed so add/refresh routes don't hit the network."""
-    async def fake_refresh(session, feed):
+    async def fake_refresh(session, feed, *, require_articles=False):
         if not feed.title:
             feed.title = "Fetched Title"
         # A refresh normally inserts articles; add one so listing has data.
@@ -107,7 +107,7 @@ async def test_add_feed_already_subscribed(client, users, data):
 
 
 async def test_add_feed_fetch_failure(client, users, monkeypatch):
-    async def boom(session, feed):
+    async def boom(session, feed, *, require_articles=False):
         raise RuntimeError("cannot fetch")
 
     monkeypatch.setattr(feeds_router, "refresh_feed", boom)
@@ -115,6 +115,23 @@ async def test_add_feed_fetch_failure(client, users, monkeypatch):
     resp = await client.post("/api/feeds", json={"url": "https://broken.example/rss"},
                              headers=users.auth(user))
     assert resp.status_code == 400
+
+
+async def test_add_existing_empty_feed_revalidates(client, users, data, monkeypatch):
+    """Subscribing to a known feed that has no articles re-fetches it with
+    require_articles=True and rejects it when it is still empty."""
+    user = await users.create()
+    feed = await data.feed(url="https://empty.example/rss")
+
+    async def still_empty(session, feed, *, require_articles=False):
+        assert require_articles is True
+        raise RuntimeError("no items")
+
+    monkeypatch.setattr(feeds_router, "refresh_feed", still_empty)
+    resp = await client.post("/api/feeds", json={"url": feed.url},
+                             headers=users.auth(user))
+    assert resp.status_code == 400
+    assert "empty" in resp.json()["detail"]
 
 
 async def test_refresh_feed_route(client, users, data):
@@ -137,7 +154,7 @@ async def test_refresh_feed_failure(client, users, data, monkeypatch):
     feed = await data.feed()
     await data.subscribe(user, feed)
 
-    async def boom(session, feed):
+    async def boom(session, feed, *, require_articles=False):
         raise RuntimeError("down")
 
     monkeypatch.setattr(feeds_router, "refresh_feed", boom)

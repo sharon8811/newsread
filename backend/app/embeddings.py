@@ -4,6 +4,8 @@ endpoint as summarization (see llm.py). Requires the pgvector extension
 search silently stays keyword-only."""
 
 import logging
+import time
+from collections import OrderedDict
 
 from sqlalchemy import func
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -17,6 +19,9 @@ logger = logging.getLogger(__name__)
 
 # Keep inputs comfortably under typical 8k-token embedding model limits.
 MAX_CHARS = 6000
+QUERY_CACHE_TTL = 24 * 60 * 60
+QUERY_CACHE_SIZE = 256
+_query_cache: OrderedDict[str, tuple[float, list[float]]] = OrderedDict()
 
 
 def is_configured() -> bool:
@@ -38,6 +43,23 @@ async def embed_texts(texts: list[str]) -> list[list[float]]:
         input=texts,
     )
     return [item.embedding for item in response.data]
+
+
+async def embed_query(text: str) -> list[float]:
+    """Embed a normalized search query with a small process-local TTL cache."""
+    normalized = " ".join(text.casefold().split())
+    key = f"{settings.openai_embedding_model}:{normalized}"
+    now = time.monotonic()
+    cached = _query_cache.get(key)
+    if cached and now - cached[0] < QUERY_CACHE_TTL:
+        _query_cache.move_to_end(key)
+        return cached[1]
+    [vector] = await embed_texts([normalized])
+    _query_cache[key] = (now, vector)
+    _query_cache.move_to_end(key)
+    while len(_query_cache) > QUERY_CACHE_SIZE:
+        _query_cache.popitem(last=False)
+    return vector
 
 
 async def embed_articles(session: AsyncSession, articles: list[Article]) -> int:

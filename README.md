@@ -22,7 +22,8 @@ Traditional readers like Feedly treat sharing as an afterthought — you get a r
 - **💬 Ask the Article** — A Q&A agent grounded in the article's full text, with per-article conversation history — and honest "the article doesn't say" answers
 - **📖 Read Continuity** — Per-user read/unread tracking, save-for-later, mark-all-read
 - **⌨️ Power-user keyboard** — `j`/`k` navigate, `enter` opens, `s` saves, `m` toggles read
-- **🔍 Search** — Full-text search across titles and excerpts
+- **🔍 Hybrid Search** — PostgreSQL full-text search fused with pgvector similarity across articles and the curated feed catalog
+- **🧭 Feed Catalog** — Health-checked feeds with live previews, semantic discovery, personalized and popularity sorting, and one-click subscribe
 - **📱 iOS & Android app** — Expo-based reader that connects to your own server: point it at your NewsRead URL, sign in, and read — unread/all/saved lists, AI summaries, save and share
 
 **Planned:**
@@ -76,6 +77,26 @@ self-hosted, so each install points at its owner's server. For local dev use
 your machine's LAN IP (e.g. `http://192.168.1.20:8000`), not `localhost`
 (which would be the phone itself). Push notifications need a development
 build with an EAS project id; in Expo Go the app simply skips registration.
+
+### Catalog maintenance
+
+Catalog cleanup is dry-run by default and always emits a reviewable JSON report:
+
+```bash
+cd backend
+PYTHONPATH=. .venv/bin/python scripts/audit_catalog.py --report catalog-audit-report.json
+PYTHONPATH=. .venv/bin/python scripts/audit_catalog.py --apply --remove-stale
+PYTHONPATH=. .venv/bin/python scripts/embed_catalog.py
+```
+
+The audit retries transient failures, removes empty/invalid/undocumented feeds,
+hides temporarily blocked feeds, refreshes descriptions and preview headlines,
+and deactivates managed rows removed from the seed. A monthly GitHub workflow
+opens a cleanup PR when the catalog changes.
+
+Feed URLs that resolve to private or loopback addresses are rejected as an
+SSRF guard. If your self-hosted instance subscribes to feeds on your own LAN,
+set `NEWSREAD_BLOCK_PRIVATE_FEED_URLS=false`.
 
 ## Tech Stack
 

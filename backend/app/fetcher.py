@@ -1,9 +1,13 @@
 """Feed fetching and parsing: JSON Feed + RSS/Atom, sanitized on ingest."""
 
 import logging
+import ipaddress
 import re
+import socket
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
+from urllib.parse import urljoin, urlsplit
+import asyncio
 
 import feedparser
 import httpx
@@ -12,6 +16,7 @@ from dateutil import parser as dateparser
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from .config import settings
 from .models import Article, Feed
 
 logger = logging.getLogger(__name__)
@@ -41,6 +46,12 @@ class ParsedFeed:
     site_url: str | None = None
     description: str | None = None
     articles: list[ParsedArticle] = field(default_factory=list)
+    final_url: str | None = None
+    content_type: str | None = None
+
+
+class FeedParseError(ValueError):
+    pass
 
 
 def _to_utc(dt: datetime | None) -> datetime | None:
@@ -84,6 +95,8 @@ def derive_excerpt(content_html: str, max_len: int = 320) -> str:
 
 
 def parse_json_feed(data: dict) -> ParsedFeed:
+    if not isinstance(data, dict):
+        raise FeedParseError("The response is not a JSON Feed object")
     articles: list[ParsedArticle] = []
     for item in data.get("items", []):
         url = item.get("url") or item.get("external_url") or ""
@@ -113,7 +126,7 @@ def parse_json_feed(data: dict) -> ParsedFeed:
     return ParsedFeed(
         title=data.get("title") or "",
         site_url=data.get("home_page_url"),
-        description=data.get("description"),
+        description=strip_html(data.get("description") or "") or None,
         articles=articles,
     )
 
@@ -162,27 +175,87 @@ def parse_xml_feed(text: str) -> ParsedFeed:
     return ParsedFeed(
         title=feed_info.get("title") or "",
         site_url=feed_info.get("link"),
-        description=feed_info.get("subtitle"),
+        description=strip_html(feed_info.get("subtitle") or "") or None,
         articles=articles,
     )
 
 
-async def fetch_feed_data(url: str) -> ParsedFeed:
+async def _validate_public_url(url: str) -> None:
+    """Reject non-web and private-network feed targets, including DNS names."""
+    parsed = urlsplit(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise FeedParseError("Feed URL must use http or https")
+    # Self-hosted deployments may legitimately subscribe to feeds on their
+    # own LAN; they can turn the private-network guard off.
+    if not settings.block_private_feed_urls:
+        return
+    hostname = parsed.hostname.rstrip(".").lower()
+    if hostname == "localhost" or hostname.endswith(".localhost"):
+        raise FeedParseError("Private network feed URLs are not allowed")
+    try:
+        literal = ipaddress.ip_address(hostname)
+        addresses = [literal]
+    except ValueError:
+        try:
+            infos = await asyncio.to_thread(socket.getaddrinfo, hostname, None)
+        except socket.gaierror as exc:
+            raise FeedParseError("Feed hostname could not be resolved") from exc
+        addresses = list({ipaddress.ip_address(info[4][0]) for info in infos})
+    if any(
+        address.is_private
+        or address.is_loopback
+        or address.is_link_local
+        or address.is_multicast
+        or address.is_reserved
+        or address.is_unspecified
+        for address in addresses
+    ):
+        raise FeedParseError("Private network feed URLs are not allowed")
+
+
+async def _get_public_feed(url: str) -> httpx.Response:
+    current = url
     async with httpx.AsyncClient(
-        follow_redirects=True, timeout=25, headers={"User-Agent": USER_AGENT}
+        follow_redirects=False, timeout=25, headers={"User-Agent": USER_AGENT}
     ) as client:
-        response = await client.get(url)
-        response.raise_for_status()
+        for _ in range(6):
+            await _validate_public_url(current)
+            response = await client.get(current)
+            if response.status_code not in {301, 302, 303, 307, 308}:
+                response.raise_for_status()
+                return response
+            location = response.headers.get("location")
+            if not location:
+                response.raise_for_status()
+            current = urljoin(str(response.url), location)
+    raise FeedParseError("Feed redirected too many times")
+
+
+async def fetch_feed_data(url: str, *, require_articles: bool = False) -> ParsedFeed:
+    response = await _get_public_feed(url)
     content_type = response.headers.get("content-type", "")
     body = response.text
     if "json" in content_type or body.lstrip().startswith("{"):
-        return parse_json_feed(response.json())
-    return parse_xml_feed(body)
+        parsed = parse_json_feed(response.json())
+    else:
+        parsed = parse_xml_feed(body)
+    if not parsed.title and not parsed.articles:
+        raise FeedParseError("The URL did not return a recognizable RSS, Atom, or JSON feed")
+    if require_articles and not parsed.articles:
+        raise FeedParseError("The feed currently contains no items")
+    parsed.final_url = str(response.url)
+    parsed.content_type = content_type.split(";", 1)[0].strip() or None
+    return parsed
 
 
-async def refresh_feed(session: AsyncSession, feed: Feed) -> int:
-    """Fetch a feed and insert new articles. Returns the number of new articles."""
-    parsed = await fetch_feed_data(feed.url)
+async def refresh_feed(
+    session: AsyncSession, feed: Feed, *, require_articles: bool = False
+) -> int:
+    """Fetch a feed and insert new articles. Returns the number of new articles.
+
+    Polling tolerates feeds that are temporarily empty (require_articles=False);
+    subscribing rejects them so users don't add dead feeds."""
+    parsed = await fetch_feed_data(feed.url, require_articles=require_articles)
 
     if parsed.title and not feed.title:
         feed.title = parsed.title

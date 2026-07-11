@@ -13,7 +13,7 @@ from arq.connections import RedisSettings
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import selectinload
 
-from . import embeddings, llm, push
+from . import catalog_embeddings, embeddings, llm, push
 from .config import settings
 from .db import SessionLocal, init_db
 from .enrichers.pipeline import extract_entities, refresh_stale_entities
@@ -247,6 +247,21 @@ async def refresh_entities(ctx: dict) -> None:
         logger.warning("Entity refresh failed: %s", exc)
 
 
+async def refresh_catalog_embeddings(ctx: dict) -> None:
+    """Converge the small catalog in one worker pass after seeds change."""
+    if not embeddings.is_configured():
+        return
+    total = 0
+    for _ in range(10):
+        async with SessionLocal() as session:
+            count = await catalog_embeddings.embed_catalog_batch(session)
+        total += count
+        if count == 0:
+            break
+    if total:
+        logger.info("Embedded %d new or changed catalog entries", total)
+
+
 async def poll_feeds(ctx: dict) -> None:
     now = datetime.now(timezone.utc)
     async with SessionLocal() as session:
@@ -276,4 +291,5 @@ class WorkerSettings:
     cron_jobs = [
         cron(poll_feeds, minute=set(range(0, 60, 3)), run_at_startup=True),
         cron(refresh_entities, minute={7, 37}),
+        cron(refresh_catalog_embeddings, minute=17, run_at_startup=True),
     ]

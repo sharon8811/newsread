@@ -31,6 +31,14 @@ export type CatalogEntry = {
   description: string | null;
   site_url: string | null;
   category: string;
+  source_host: string;
+  content_type: string | null;
+  health_status: string;
+  item_count: number | null;
+  latest_item_at: string | null;
+  preview_items: { title: string; url: string; published_at: string | null }[];
+  subscriber_count: number;
+  match_reason: string | null;
   feed_id: number | null; // my Feed id when already subscribed to this URL
   subscribed: boolean;
 };

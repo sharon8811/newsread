@@ -1,0 +1,51 @@
+name: Catalog health
+
+on:
+  schedule:
+    - cron: "23 4 1 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - run: pip install -r requirements.txt
+      - name: Audit and clean catalog
+        env:
+          PYTHONPATH: .
+        run: python scripts/audit_catalog.py --apply --remove-stale --report catalog-audit-report.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: catalog-audit-report
+          path: backend/catalog-audit-report.json
+      # PRs opened with the default GITHUB_TOKEN don't trigger CI; review them
+      # with a manual re-run or close/reopen to kick off checks.
+      - name: Open cleanup pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if git diff --quiet -- app/data/catalog_seed.json; then
+            echo "Catalog is already healthy"
+            exit 0
+          fi
+          branch="automation/catalog-health-${GITHUB_RUN_ID}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$branch"
+          git add app/data/catalog_seed.json
+          git commit -m "Refresh RSS catalog health data"
+          git push origin "$branch"
+          gh pr create --title "Refresh RSS catalog health data" --body "Monthly automated feed validation and metadata refresh." --base main --head "$branch"

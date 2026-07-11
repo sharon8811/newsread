@@ -119,7 +119,20 @@ async def _clean():
     async with engine.begin() as conn:
         tables = ", ".join(t.name for t in reversed(Base.metadata.sorted_tables))
         await conn.execute(text(f"TRUNCATE {tables} RESTART IDENTITY CASCADE"))
+    from app import embeddings
+    embeddings._query_cache.clear()
     yield
+
+
+@pytest.fixture(autouse=True)
+def _skip_feed_url_validation(monkeypatch):
+    """Feed fetches use respx-mocked hosts that must never hit real DNS.
+    Tests exercising the guard call the imported _validate_public_url directly,
+    which keeps its original binding."""
+    async def allow(url: str) -> None:
+        return None
+
+    monkeypatch.setattr("app.fetcher._validate_public_url", allow)
 
 
 @pytest_asyncio.fixture

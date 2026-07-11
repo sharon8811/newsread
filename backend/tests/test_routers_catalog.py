@@ -4,8 +4,10 @@ import pytest
 import pytest_asyncio
 from sqlalchemy import func, select
 
-from app.models import CatalogEntry
+from app.fetcher import ParsedArticle, ParsedFeed
+from app.models import CatalogEntry, CatalogEntryEmbedding
 from app.routers import feeds as feeds_router
+from app.routers import catalog as catalog_router
 from app.seeds import CATALOG_SEED_PATH, seed_catalog
 
 
@@ -126,9 +128,94 @@ async def test_categories_with_counts(client, users, catalog):
     ]
 
 
+async def test_inactive_entries_are_hidden_from_browse_and_categories(
+    client, users, catalog, session
+):
+    user = await users.create()
+    await catalog(title="Active", category="Tech")
+    inactive = await catalog(title="Blocked", category="Hidden")
+    inactive.is_active = False
+    await session.commit()
+
+    resp = await client.get("/api/catalog", headers=users.auth(user))
+    assert [entry["title"] for entry in resp.json()] == ["Active"]
+    resp = await client.get("/api/catalog/categories", headers=users.auth(user))
+    assert resp.json() == [{"name": "Tech", "count": 1}]
+
+
+async def test_popular_sort_uses_subscriber_counts(client, users, data, catalog):
+    viewer = await users.create()
+    reader1 = await users.create()
+    reader2 = await users.create()
+    quiet = await catalog(url="https://quiet.example/rss", title="Quiet")
+    popular = await catalog(url="https://popular.example/rss", title="Popular")
+    quiet_feed = await data.feed(url=quiet.url)
+    popular_feed = await data.feed(url=popular.url)
+    await data.subscribe(reader1, popular_feed)
+    await data.subscribe(reader2, popular_feed)
+    await data.subscribe(reader1, quiet_feed)
+
+    resp = await client.get("/api/catalog?sort=popular", headers=users.auth(viewer))
+    body = resp.json()
+    assert [entry["title"] for entry in body] == ["Popular", "Quiet"]
+    assert body[0]["subscriber_count"] == 2
+
+
+async def test_recommended_sort_falls_back_for_new_users(client, users, catalog):
+    user = await users.create()
+    await catalog(title="Starter feed", description="Useful reading")
+    resp = await client.get("/api/catalog?sort=recommended", headers=users.auth(user))
+    assert [entry["title"] for entry in resp.json()] == ["Starter feed"]
+
+
+async def test_semantic_search_ranks_by_catalog_embedding(
+    client, users, catalog, session, monkeypatch
+):
+    user = await users.create()
+    climate = await catalog(title="Climate Desk", description="environment reporting")
+    chess = await catalog(title="Chess Board", description="tournaments and openings")
+    session.add_all([
+        CatalogEntryEmbedding(catalog_entry_id=climate.id, model="emb", content_hash="a", embedding=[1.0, 0.0]),
+        CatalogEntryEmbedding(catalog_entry_id=chess.id, model="emb", content_hash="b", embedding=[0.0, 1.0]),
+    ])
+    await session.commit()
+    monkeypatch.setattr(catalog_router.embeddings, "is_configured", lambda: True)
+    monkeypatch.setattr(catalog_router.settings, "openai_embedding_model", "emb")
+
+    async def fake_embed(texts):
+        return [[1.0, 0.0]]
+
+    monkeypatch.setattr(catalog_router.embeddings, "embed_texts", fake_embed)
+    resp = await client.get("/api/catalog?q=independent+planet+journalism", headers=users.auth(user))
+    assert resp.json()[0]["title"] == "Climate Desk"
+    assert resp.json()[0]["match_reason"] == "Semantic match"
+
+
+async def test_catalog_submission_is_validated(client, users, monkeypatch):
+    user = await users.create()
+
+    async def valid_feed(url, *, require_articles=False):
+        assert require_articles is True
+        return ParsedFeed(
+            title="Proposed",
+            description="A useful independent publication",
+            articles=[ParsedArticle(guid="1", url="https://proposed.example/1", title="One")],
+        )
+
+    monkeypatch.setattr(catalog_router, "fetch_feed_data", valid_feed)
+    resp = await client.post(
+        "/api/catalog/submissions",
+        json={"url": "https://proposed.example/rss", "category": "Tech"},
+        headers=users.auth(user),
+    )
+    assert resp.status_code == 201
+    assert resp.json()["status"] == "pending"
+
+
+
 @pytest.fixture
 def _mock_refresh(monkeypatch):
-    async def fake_refresh(session, feed):
+    async def fake_refresh(session, feed, *, require_articles=False):
         feed.title = feed.title or "Fetched Title"
         await session.commit()
 
@@ -171,3 +258,21 @@ async def test_seed_catalog_idempotent_upsert(session):
     assert entry.title == original_title
     count = await session.scalar(select(func.count()).select_from(CatalogEntry))
     assert count == expected
+
+
+async def test_seed_deactivates_removed_managed_entries(session):
+    from tests.conftest import engine
+
+    stale = CatalogEntry(
+        url="https://removed.example/rss",
+        title="Removed",
+        description="Was managed",
+        category="Tech",
+        source="awesome-rss-feeds",
+    )
+    session.add(stale)
+    await session.commit()
+    async with engine.begin() as conn:
+        await seed_catalog(conn)
+    await session.refresh(stale)
+    assert stale.is_active is False

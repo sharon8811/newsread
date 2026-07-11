@@ -6,6 +6,7 @@ import respx
 from sqlalchemy import select
 
 from app.fetcher import (
+    FeedParseError,
     ParsedArticle,
     derive_excerpt,
     fetch_feed_data,
@@ -16,6 +17,7 @@ from app.fetcher import (
     strip_html,
     _parse_date,
     _to_utc,
+    _validate_public_url,
 )
 from app.models import Article, Feed
 
@@ -216,7 +218,42 @@ async def test_fetch_feed_data_raises_on_http_error():
         await fetch_feed_data("https://feed.example/bad")
 
 
+@respx.mock
+async def test_fetch_feed_data_rejects_empty_when_required():
+    respx.get("https://feed.example/empty").mock(
+        return_value=httpx.Response(200, json={"title": "Empty", "items": []})
+    )
+    with pytest.raises(FeedParseError, match="no items"):
+        await fetch_feed_data("https://feed.example/empty", require_articles=True)
+
+
+async def test_private_feed_targets_are_rejected():
+    with pytest.raises(FeedParseError, match="Private network"):
+        await _validate_public_url("http://127.0.0.1:8000/private")
+
+
+async def test_private_feed_guard_can_be_disabled(monkeypatch):
+    monkeypatch.setattr("app.fetcher.settings.block_private_feed_urls", False)
+    await _validate_public_url("http://127.0.0.1:8000/private")  # does not raise
+
+
 # --- refresh_feed (DB) ---
+
+@respx.mock
+async def test_refresh_feed_tolerates_empty_feed(session):
+    """Polling must not error on a feed that is temporarily empty; only
+    subscribing (require_articles=True) rejects it."""
+    feed = Feed(url="https://feed.example/empty", title="Empty")
+    session.add(feed)
+    await session.commit()
+    await session.refresh(feed)
+
+    respx.get("https://feed.example/empty").mock(
+        return_value=httpx.Response(200, json={"title": "Empty", "items": []})
+    )
+    assert await refresh_feed(session, feed) == 0
+    assert feed.last_fetched_at is not None
+
 
 @respx.mock
 async def test_refresh_feed_inserts_new_articles(session):

@@ -128,6 +128,14 @@ class CatalogEntryOut(BaseModel):
     description: str | None
     site_url: str | None
     category: str
+    source_host: str
+    content_type: str | None = None
+    health_status: str
+    item_count: int | None = None
+    latest_item_at: datetime | None = None
+    preview_items: list[dict] = []
+    subscriber_count: int = 0
+    match_reason: str | None = None
     # The viewer's Feed id when they already subscribe to this URL, else null.
     feed_id: int | None = None
     subscribed: bool = False
@@ -136,6 +144,19 @@ class CatalogEntryOut(BaseModel):
 class CatalogCategoryOut(BaseModel):
     name: str
     count: int
+
+
+class CatalogSubmissionIn(BaseModel):
+    url: str = Field(min_length=4, max_length=2048)
+    category: str | None = Field(default=None, max_length=64)
+    note: str | None = Field(default=None, max_length=1000)
+
+
+class CatalogSubmissionOut(BaseModel):
+    id: int
+    url: str
+    category: str | None
+    status: str
 
 
 # --- Entities (smart link enrichment) ---
