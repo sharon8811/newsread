@@ -24,11 +24,15 @@ jobs:
           cache-dependency-path: backend/requirements.txt
       - run: pip install -r requirements.txt
       - name: Audit and clean catalog
+        env:
+          PYTHONPATH: .
         run: python scripts/audit_catalog.py --apply --remove-stale --report catalog-audit-report.json
       - uses: actions/upload-artifact@v4
         with:
           name: catalog-audit-report
           path: backend/catalog-audit-report.json
+      # PRs opened with the default GITHUB_TOKEN don't trigger CI; review them
+      # with a manual re-run or close/reopen to kick off checks.
       - name: Open cleanup pull request
         env:
           GH_TOKEN: ${{ github.token }}

@@ -215,7 +215,7 @@ async def test_catalog_submission_is_validated(client, users, monkeypatch):
 
 @pytest.fixture
 def _mock_refresh(monkeypatch):
-    async def fake_refresh(session, feed):
+    async def fake_refresh(session, feed, *, require_articles=False):
         feed.title = feed.title or "Fetched Title"
         await session.commit()
 

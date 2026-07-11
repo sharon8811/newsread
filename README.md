@@ -94,6 +94,10 @@ hides temporarily blocked feeds, refreshes descriptions and preview headlines,
 and deactivates managed rows removed from the seed. A monthly GitHub workflow
 opens a cleanup PR when the catalog changes.
 
+Feed URLs that resolve to private or loopback addresses are rejected as an
+SSRF guard. If your self-hosted instance subscribes to feeds on your own LAN,
+set `NEWSREAD_BLOCK_PRIVATE_FEED_URLS=false`.
+
 ## Tech Stack
 
 | Component | Technology |

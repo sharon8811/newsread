@@ -16,6 +16,7 @@ from dateutil import parser as dateparser
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from .config import settings
 from .models import Article, Feed
 
 logger = logging.getLogger(__name__)
@@ -184,6 +185,10 @@ async def _validate_public_url(url: str) -> None:
     parsed = urlsplit(url)
     if parsed.scheme not in {"http", "https"} or not parsed.hostname:
         raise FeedParseError("Feed URL must use http or https")
+    # Self-hosted deployments may legitimately subscribe to feeds on their
+    # own LAN; they can turn the private-network guard off.
+    if not settings.block_private_feed_urls:
+        return
     hostname = parsed.hostname.rstrip(".").lower()
     if hostname == "localhost" or hostname.endswith(".localhost"):
         raise FeedParseError("Private network feed URLs are not allowed")
@@ -191,10 +196,6 @@ async def _validate_public_url(url: str) -> None:
         literal = ipaddress.ip_address(hostname)
         addresses = [literal]
     except ValueError:
-        # RFC-reserved .example hosts are used by the test suite and never
-        # resolve in production.
-        if hostname.endswith(".example"):
-            return
         try:
             infos = await asyncio.to_thread(socket.getaddrinfo, hostname, None)
         except socket.gaierror as exc:
@@ -247,9 +248,14 @@ async def fetch_feed_data(url: str, *, require_articles: bool = False) -> Parsed
     return parsed
 
 
-async def refresh_feed(session: AsyncSession, feed: Feed) -> int:
-    """Fetch a feed and insert new articles. Returns the number of new articles."""
-    parsed = await fetch_feed_data(feed.url, require_articles=True)
+async def refresh_feed(
+    session: AsyncSession, feed: Feed, *, require_articles: bool = False
+) -> int:
+    """Fetch a feed and insert new articles. Returns the number of new articles.
+
+    Polling tolerates feeds that are temporarily empty (require_articles=False);
+    subscribing rejects them so users don't add dead feeds."""
+    parsed = await fetch_feed_data(feed.url, require_articles=require_articles)
 
     if parsed.title and not feed.title:
         feed.title = parsed.title

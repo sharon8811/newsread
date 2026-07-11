@@ -132,7 +132,7 @@ async def add_feed(
         session.add(feed)
         await session.flush()
         try:
-            await refresh_feed(session, feed)
+            await refresh_feed(session, feed, require_articles=True)
         except Exception as exc:
             await session.rollback()
             logger.warning("Failed to fetch feed %s: %s", url, exc)
@@ -145,7 +145,7 @@ async def add_feed(
         )
         if not has_articles:
             try:
-                await refresh_feed(session, feed)
+                await refresh_feed(session, feed, require_articles=True)
             except Exception as exc:
                 await session.rollback()
                 logger.warning("Existing empty feed is no longer valid %s: %s", url, exc)

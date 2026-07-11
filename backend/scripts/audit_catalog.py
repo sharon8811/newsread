@@ -120,7 +120,10 @@ async def run(args: argparse.Namespace) -> None:
         if result.status in removals:
             continue
         entry["health_status"] = result.status
-        entry["checked_at"] = report["checked_at"]
+        # The check timestamp lives in the report, not the seed: stamping all
+        # entries would make every audit run dirty the seed file and force the
+        # monthly workflow to open a churn-only PR.
+        entry.pop("checked_at", None)
         entry["is_active"] = result.status == "healthy"
         if result.status == "healthy":
             # Prefer canonical live metadata, but retain the curated title when

@@ -19,6 +19,10 @@ class Settings(BaseSettings):
     bcrypt_rounds: int = 12
     cors_origins: str = "http://localhost:3000"
     feed_refresh_minutes: int = 15
+    # SSRF guard: reject feed URLs that resolve to private/loopback networks.
+    # Self-hosted deployments subscribing to feeds on their own LAN can set
+    # NEWSREAD_BLOCK_PRIVATE_FEED_URLS=false.
+    block_private_feed_urls: bool = True
 
     # Optional API tokens for link enrichers (raise rate limits, never required).
     github_token: str = ""  # NEWSREAD_GITHUB_TOKEN: 60/hr -> 5000/hr
