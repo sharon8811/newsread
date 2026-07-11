@@ -211,6 +211,23 @@ export type CatalogCategory = {
   count: number;
 };
 
+export type CatalogPreviewItem = {
+  title: string;
+  url: string;
+  author: string | null;
+  published_at: string | null;
+  summary: string | null;
+};
+
+// Live snapshot of a catalog feed, fetched on demand for the detail modal.
+export type CatalogPreview = {
+  title: string;
+  description: string | null;
+  site_url: string | null;
+  fetched_at: string;
+  items: CatalogPreviewItem[];
+};
+
 export type EntityBadge = {
   id: number;
   kind: string; // github | hf_model | hf_dataset | arxiv | pypi | npm | youtube

@@ -10,6 +10,8 @@ import {
   type CatalogEntry,
   type Feed,
 } from "@/lib/api";
+import { formatFeedType, freshness } from "@/lib/format";
+import CatalogFeedModal from "@/components/CatalogFeedModal";
 import { CheckIcon, PlusIcon, SearchIcon } from "@/components/icons";
 
 type CatalogSort = "name" | "popular" | "recommended";
@@ -23,27 +25,6 @@ function catalogKey(q: string, category: string | null, sort: CatalogSort): stri
   return qs ? `/catalog?${qs}` : "/catalog";
 }
 
-function freshness(value: string | null): string | null {
-  if (!value) return null;
-  const days = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 86_400_000));
-  if (days === 0) return "Updated today";
-  if (days === 1) return "Updated yesterday";
-  if (days < 30) return `Updated ${days} days ago`;
-  if (days < 365) {
-    const months = Math.floor(days / 30);
-    return `Updated ${months} ${months === 1 ? "month" : "months"} ago`;
-  }
-  const years = Math.floor(days / 365);
-  return `Updated ${years} ${years === 1 ? "year" : "years"} ago`;
-}
-
-function formatType(value: string | null): string {
-  if (!value) return "RSS";
-  if (value.includes("atom")) return "Atom";
-  if (value.includes("json")) return "JSON Feed";
-  return "RSS";
-}
-
 export default function CatalogPage() {
   const [search, setSearch] = useState("");
   const [q, setQ] = useState("");
@@ -54,6 +35,7 @@ export default function CatalogPage() {
   const [showAllTopics, setShowAllTopics] = useState(false);
   const [showSubmit, setShowSubmit] = useState(false);
   const [visibleCount, setVisibleCount] = useState(60);
+  const [detailId, setDetailId] = useState<number | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -67,6 +49,8 @@ export default function CatalogPage() {
   const { data: entries, error: loadError, isLoading } = useSWR<CatalogEntry[]>(key, fetcher);
   const { data: categories } = useSWR<CatalogCategory[]>("/catalog/categories", fetcher);
   const visibleCategories = showAllTopics ? categories : categories?.slice(0, 12);
+  // Derived from the SWR cache so a subscribe flips the open modal in place.
+  const detailEntry = entries?.find((entry) => entry.id === detailId) ?? null;
 
   async function subscribe(entry: CatalogEntry) {
     if (busyUrl) return;
@@ -158,7 +142,7 @@ export default function CatalogPage() {
           </div>
         )}
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {entries?.slice(0, visibleCount).map((entry) => <FeedCard key={entry.id} entry={entry} busy={busyUrl === entry.url} disabled={busyUrl !== null} onSubscribe={() => subscribe(entry)} />)}
+          {entries?.slice(0, visibleCount).map((entry) => <FeedCard key={entry.id} entry={entry} busy={busyUrl === entry.url} disabled={busyUrl !== null} onSubscribe={() => subscribe(entry)} onOpen={() => setDetailId(entry.id)} />)}
         </div>
         {entries && entries.length > visibleCount && (
           <div className="pt-5 text-center">
@@ -168,30 +152,34 @@ export default function CatalogPage() {
           </div>
         )}
       </main>
+      {detailEntry && (
+        <CatalogFeedModal
+          entry={detailEntry}
+          busy={busyUrl === detailEntry.url}
+          disabled={busyUrl !== null}
+          error={error}
+          onSubscribe={() => subscribe(detailEntry)}
+          onClose={() => setDetailId(null)}
+        />
+      )}
     </>
   );
 }
 
-function FeedCard({ entry, busy, disabled, onSubscribe }: { entry: CatalogEntry; busy: boolean; disabled: boolean; onSubscribe: () => void }) {
+function FeedCard({ entry, busy, disabled, onSubscribe, onOpen }: { entry: CatalogEntry; busy: boolean; disabled: boolean; onSubscribe: () => void; onOpen: () => void }) {
   const updated = freshness(entry.latest_item_at);
   return (
-    <article className="flex min-h-[230px] flex-col rounded-lg border p-4" style={{ borderColor: "var(--line-soft)", background: "var(--bg-inset)" }}>
+    <article className="flex min-h-[230px] cursor-pointer flex-col rounded-lg border bg-[var(--bg-inset)] p-4 transition-colors hover:bg-[var(--bg-hover)]" style={{ borderColor: "var(--line-soft)" }} onClick={onOpen}>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <h2 className="truncate text-[14px] font-semibold leading-snug">{entry.title}</h2>
-          <p className="mt-0.5 truncate font-mono-nr text-[10.5px]" style={{ color: "var(--ink-faint)" }}>{entry.source_host} · {formatType(entry.content_type)}</p>
+          <h2 className="truncate text-[14px] font-semibold leading-snug">
+            <button className="block max-w-full truncate text-left" onClick={onOpen}>{entry.title}</button>
+          </h2>
+          <p className="mt-0.5 truncate font-mono-nr text-[10.5px]" style={{ color: "var(--ink-faint)" }}>{entry.source_host} · {formatFeedType(entry.content_type)}</p>
         </div>
         <span className="mono-label shrink-0 rounded-full border px-2 py-0.5 text-[10px]" style={{ borderColor: "var(--line-soft)", color: "var(--ink-faint)" }}>{entry.category}</span>
       </div>
       <p className="mt-2 line-clamp-3 text-[12.5px] leading-relaxed" style={{ color: "var(--ink-dim)" }}>{entry.description}</p>
-      {entry.preview_items.length > 0 && (
-        <details className="mt-2 text-[11.5px]" style={{ color: "var(--ink-dim)" }}>
-          <summary className="cursor-pointer select-none">Preview latest stories</summary>
-          <ul className="mt-1.5 space-y-1.5 border-l pl-2.5" style={{ borderColor: "var(--line)" }}>
-            {entry.preview_items.slice(0, 3).map((item) => <li key={`${item.url}-${item.title}`} className="line-clamp-1">{item.title}</li>)}
-          </ul>
-        </details>
-      )}
       <div className="mt-auto flex flex-wrap items-center gap-x-2 pt-3 text-[10.5px]" style={{ color: "var(--ink-faint)" }}>
         {updated && <span>{updated}</span>}
         {entry.item_count !== null && <span>{entry.item_count} recent {entry.item_count === 1 ? "item" : "items"}</span>}
@@ -200,9 +188,9 @@ function FeedCard({ entry, busy, disabled, onSubscribe }: { entry: CatalogEntry;
       </div>
       <div className="pt-2.5">
         {entry.subscribed ? (
-          <Link href={`/?feed=${entry.feed_id}`} className="btn w-full" style={{ color: "var(--accent)" }}><CheckIcon size={13} /> Subscribed, view feed</Link>
+          <Link href={`/?feed=${entry.feed_id}`} className="btn w-full" style={{ color: "var(--accent)" }} onClick={(e) => e.stopPropagation()}><CheckIcon size={13} /> Subscribed, view feed</Link>
         ) : (
-          <button className="btn btn-accent w-full" disabled={disabled} onClick={onSubscribe}>{busy ? "Subscribing…" : <><PlusIcon size={13} /> Subscribe</>}</button>
+          <button className="btn btn-accent w-full" disabled={disabled} onClick={(e) => { e.stopPropagation(); onSubscribe(); }}>{busy ? "Subscribing…" : <><PlusIcon size={13} /> Subscribe</>}</button>
         )}
       </div>
     </article>

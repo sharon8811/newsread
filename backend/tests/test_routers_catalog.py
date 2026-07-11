@@ -1,10 +1,11 @@
 import json
+from datetime import datetime, timezone
 
 import pytest
 import pytest_asyncio
 from sqlalchemy import func, select
 
-from app.fetcher import ParsedArticle, ParsedFeed
+from app.fetcher import FeedParseError, ParsedArticle, ParsedFeed
 from app.models import CatalogEntry, CatalogEntryEmbedding
 from app.routers import feeds as feeds_router
 from app.routers import catalog as catalog_router
@@ -31,6 +32,13 @@ async def catalog(session):
         return entry
 
     return make
+
+
+@pytest.fixture(autouse=True)
+def _clear_preview_cache():
+    """Entry ids repeat across tests (tables are truncated between them), so a
+    warm cache from a previous test would mask the fetch under test."""
+    catalog_router._preview_cache.clear()
 
 
 async def test_browse_requires_auth(client):
@@ -211,6 +219,133 @@ async def test_catalog_submission_is_validated(client, users, monkeypatch):
     assert resp.status_code == 201
     assert resp.json()["status"] == "pending"
 
+
+
+async def test_preview_requires_auth(client):
+    resp = await client.get("/api/catalog/1/preview")
+    assert resp.status_code == 401
+
+
+async def test_preview_unknown_entry_is_404(client, users, session, catalog):
+    user = await users.create()
+    resp = await client.get("/api/catalog/999/preview", headers=users.auth(user))
+    assert resp.status_code == 404
+
+    inactive = await catalog(title="Retired")
+    inactive.is_active = False
+    await session.commit()
+    resp = await client.get(f"/api/catalog/{inactive.id}/preview", headers=users.auth(user))
+    assert resp.status_code == 404
+
+
+async def test_preview_returns_live_items(client, users, catalog, monkeypatch):
+    user = await users.create()
+    entry = await catalog(url="https://live.example/rss", title="Stored Title",
+                          description="Stored description", site_url="https://stored.example")
+
+    async def fake_fetch(url):
+        assert url == entry.url
+        articles = [
+            ParsedArticle(
+                guid="1",
+                url="https://live.example/1",
+                title="First story",
+                content_html="<p>Hello <b>world</b> &amp; a fine read.</p>",
+                author="Ann Author",
+                published_at=datetime(2026, 7, 11, 8, 0, tzinfo=timezone.utc),
+            ),
+            ParsedArticle(
+                guid="2",
+                url="https://live.example/2",
+                title="Long story",
+                content_html="<p>" + "lorem ipsum " * 60 + "</p>",
+            ),
+        ] + [
+            ParsedArticle(guid=str(i), url=f"https://live.example/{i}", title=f"Story {i}")
+            for i in range(3, 13)
+        ]
+        return ParsedFeed(title="Live Title", description="Live description",
+                          site_url="https://live.example", articles=articles)
+
+    monkeypatch.setattr(catalog_router, "fetch_feed_data", fake_fetch)
+    resp = await client.get(f"/api/catalog/{entry.id}/preview", headers=users.auth(user))
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["title"] == "Live Title"
+    assert body["description"] == "Live description"
+    assert body["site_url"] == "https://live.example"
+    assert body["fetched_at"] is not None
+    assert len(body["items"]) == catalog_router.PREVIEW_ITEM_LIMIT
+    first = body["items"][0]
+    assert first == {
+        "title": "First story",
+        "url": "https://live.example/1",
+        "author": "Ann Author",
+        "published_at": "2026-07-11T08:00:00Z",
+        "summary": "Hello world & a fine read.",
+    }
+    long_summary = body["items"][1]["summary"]
+    assert long_summary.endswith("…")
+    assert len(long_summary) <= catalog_router.PREVIEW_SUMMARY_CHARS + 1
+    # Articles without content have no summary rather than an empty string.
+    assert body["items"][2]["summary"] is None
+
+
+async def test_preview_falls_back_to_stored_metadata(client, users, catalog, monkeypatch):
+    user = await users.create()
+    entry = await catalog(title="Stored Title", description="Stored description",
+                          site_url="https://stored.example")
+
+    async def sparse_feed(url):
+        return ParsedFeed(title="", articles=[
+            ParsedArticle(guid="1", url="https://x.example/1", title="Only story"),
+        ])
+
+    monkeypatch.setattr(catalog_router, "fetch_feed_data", sparse_feed)
+    resp = await client.get(f"/api/catalog/{entry.id}/preview", headers=users.auth(user))
+    body = resp.json()
+    assert body["title"] == "Stored Title"
+    assert body["description"] == "Stored description"
+    assert body["site_url"] == "https://stored.example"
+
+
+async def test_preview_is_cached(client, users, catalog, monkeypatch):
+    user = await users.create()
+    entry = await catalog()
+    calls = 0
+
+    async def counting_fetch(url):
+        nonlocal calls
+        calls += 1
+        return ParsedFeed(title="Live", articles=[])
+
+    monkeypatch.setattr(catalog_router, "fetch_feed_data", counting_fetch)
+    first = await client.get(f"/api/catalog/{entry.id}/preview", headers=users.auth(user))
+    second = await client.get(f"/api/catalog/{entry.id}/preview", headers=users.auth(user))
+    assert calls == 1
+    assert first.json() == second.json()
+
+
+async def test_preview_fetch_failure_is_502(client, users, catalog, monkeypatch):
+    user = await users.create()
+    entry = await catalog()
+
+    async def broken_feed(url):
+        raise FeedParseError("The URL did not return a recognizable RSS, Atom, or JSON feed")
+
+    monkeypatch.setattr(catalog_router, "fetch_feed_data", broken_feed)
+    resp = await client.get(f"/api/catalog/{entry.id}/preview", headers=users.auth(user))
+    assert resp.status_code == 502
+    assert "recognizable" in resp.json()["detail"]
+
+    async def crashing_feed(url):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(catalog_router, "fetch_feed_data", crashing_feed)
+    catalog_router._preview_cache.clear()
+    resp = await client.get(f"/api/catalog/{entry.id}/preview", headers=users.auth(user))
+    assert resp.status_code == 502
+    assert resp.json()["detail"] == "The feed could not be reached right now"
 
 
 @pytest.fixture
