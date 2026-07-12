@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .. import embeddings
 from ..config import settings
 from ..db import get_session
-from ..fetcher import FeedParseError, fetch_feed_data, strip_html
+from ..fetcher import FeedParseError, FeedRateLimited, fetch_feed_data, strip_html
 from ..models import (
     CatalogEntry,
     CatalogEntryEmbedding,
@@ -47,6 +47,10 @@ PREVIEW_TTL_SECONDS = 600
 # (hundreds of entries), so an unbounded per-process cache is fine. Keyed by
 # feed URL so catalog entries and smart-feed topics share one cache.
 _preview_cache: dict[str, tuple[float, CatalogPreviewOut]] = {}
+# When a publisher 429s us, back off instead of burning its rate-limit bucket
+# on every modal open: remember the refusal and answer 503 without re-fetching.
+RATE_LIMIT_TTL_SECONDS = 60
+_preview_rate_limited: dict[str, tuple[float, str]] = {}
 
 
 @dataclass(frozen=True)
@@ -426,8 +430,18 @@ async def _cached_preview(
     cached = _preview_cache.get(feed_url)
     if cached and cached[0] > time.monotonic():
         return cached[1]
+    limited = _preview_rate_limited.get(feed_url)
+    if limited and limited[0] > time.monotonic():
+        raise HTTPException(status_code=503, detail=limited[1])
     try:
         parsed = await fetch_feed_data(feed_url)
+    except FeedRateLimited as exc:
+        detail = (
+            f"{exc.host} is rate-limiting our preview requests right now. "
+            "Try again in a minute or two."
+        )
+        _preview_rate_limited[feed_url] = (time.monotonic() + RATE_LIMIT_TTL_SECONDS, detail)
+        raise HTTPException(status_code=503, detail=detail) from exc
     except (FeedParseError, ValueError, OSError) as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     except Exception as exc:
@@ -537,6 +551,11 @@ async def submit_feed(
     url = body.url.strip()
     try:
         parsed = await fetch_feed_data(url, require_articles=True)
+    except FeedRateLimited as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"{exc.host} is rate-limiting our requests right now. Try again in a minute or two.",
+        ) from exc
     except (FeedParseError, ValueError, OSError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:

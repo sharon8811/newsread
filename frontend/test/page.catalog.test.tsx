@@ -12,7 +12,11 @@ const { swrMock, mutateMock, apiMock } = vi.hoisted(() => ({
 }));
 
 vi.mock("swr", () => ({ default: swrMock, mutate: mutateMock }));
-vi.mock("@/lib/api", () => ({ api: apiMock, fetcher: vi.fn() }));
+vi.mock("@/lib/api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/api")>()),
+  api: apiMock,
+  fetcher: vi.fn(),
+}));
 
 const CATEGORIES = [
   { name: "Food", count: 1 },

@@ -5,7 +5,7 @@ import pytest
 import pytest_asyncio
 from sqlalchemy import func, select
 
-from app.fetcher import FeedParseError, ParsedArticle, ParsedFeed
+from app.fetcher import FeedParseError, FeedRateLimited, ParsedArticle, ParsedFeed
 from app.models import CatalogEntry, CatalogEntryEmbedding
 from app.routers import feeds as feeds_router
 from app.routers import catalog as catalog_router
@@ -39,6 +39,7 @@ def _clear_preview_cache():
     """Entry ids repeat across tests (tables are truncated between them), so a
     warm cache from a previous test would mask the fetch under test."""
     catalog_router._preview_cache.clear()
+    catalog_router._preview_rate_limited.clear()
 
 
 async def test_browse_requires_auth(client):
@@ -346,6 +347,28 @@ async def test_preview_fetch_failure_is_502(client, users, catalog, monkeypatch)
     resp = await client.get(f"/api/catalog/{entry.id}/preview", headers=users.auth(user))
     assert resp.status_code == 502
     assert resp.json()["detail"] == "The feed could not be reached right now"
+
+
+async def test_preview_rate_limited_is_503_and_backs_off(client, users, catalog, monkeypatch):
+    """A publisher 429 surfaces as an honest 503, and the refusal is cached so
+    reopening the modal doesn't burn the publisher's rate-limit bucket."""
+    user = await users.create()
+    entry = await catalog()
+    calls = 0
+
+    async def limited_feed(url):
+        nonlocal calls
+        calls += 1
+        raise FeedRateLimited("www.reddit.com")
+
+    monkeypatch.setattr(catalog_router, "fetch_feed_data", limited_feed)
+    first = await client.get(f"/api/catalog/{entry.id}/preview", headers=users.auth(user))
+    second = await client.get(f"/api/catalog/{entry.id}/preview", headers=users.auth(user))
+    assert first.status_code == 503
+    assert "rate-limiting" in first.json()["detail"]
+    assert second.status_code == 503
+    assert second.json()["detail"] == first.json()["detail"]
+    assert calls == 1
 
 
 async def test_preview_resolves_relative_and_missing_item_urls(

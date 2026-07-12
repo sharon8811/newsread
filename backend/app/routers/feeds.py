@@ -5,7 +5,7 @@ from sqlalchemy import and_, exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db import get_session
-from ..fetcher import refresh_feed
+from ..fetcher import FeedRateLimited, refresh_feed
 from ..queue import enqueue
 from ..models import Article, Feed, Share, Subscription, User, UserArticleState
 from ..schemas import AddFeedIn, FeedOut, FeedSettingsIn
@@ -133,6 +133,11 @@ async def add_feed(
         await session.flush()
         try:
             await refresh_feed(session, feed, require_articles=True)
+        except FeedRateLimited as exc:
+            # The feed exists — the publisher is just throttling server-side
+            # fetches. Subscribe now (title falls back to the URL) and let the
+            # poller backfill stories once the limit clears.
+            logger.info("Subscribing to %s without an initial fetch: %s", url, exc)
         except Exception as exc:
             await session.rollback()
             logger.warning("Failed to fetch feed %s: %s", url, exc)
@@ -146,6 +151,8 @@ async def add_feed(
         if not has_articles:
             try:
                 await refresh_feed(session, feed, require_articles=True)
+            except FeedRateLimited as exc:
+                logger.info("Subscribing to %s without a revalidation fetch: %s", url, exc)
             except Exception as exc:
                 await session.rollback()
                 logger.warning("Existing empty feed is no longer valid %s: %s", url, exc)

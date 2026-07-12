@@ -54,6 +54,15 @@ class FeedParseError(ValueError):
     pass
 
 
+class FeedRateLimited(Exception):
+    """The publisher answered 429: the feed exists, it's just throttling us
+    (reddit does this aggressively for server-side clients)."""
+
+    def __init__(self, host: str):
+        super().__init__(f"{host} is rate-limiting our requests right now")
+        self.host = host
+
+
 def _to_utc(dt: datetime | None) -> datetime | None:
     if dt is None:
         return None
@@ -221,6 +230,8 @@ async def _get_public_feed(url: str) -> httpx.Response:
         for _ in range(6):
             await _validate_public_url(current)
             response = await client.get(current)
+            if response.status_code == 429:
+                raise FeedRateLimited(urlsplit(current).netloc)
             if response.status_code not in {301, 302, 303, 307, 308}:
                 response.raise_for_status()
                 return response

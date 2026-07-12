@@ -10,7 +10,7 @@ import {
   type SmartFeed,
   type SmartFeedResolve,
 } from "@/lib/api";
-import { fetchPreview, type LoadedPreview } from "@/lib/feedPreview";
+import { fetchPreview, previewErrorMessage, type LoadedPreview } from "@/lib/feedPreview";
 import SubscribeQuickSettings, {
   DEFAULT_SUBSCRIBE_SETTINGS,
   toSubscribeOptions,
@@ -203,7 +203,7 @@ export default function SmartFeedModal({
               )}
               {previewError && (
                 <p className="mt-2 text-[12.5px]" role="alert" style={{ color: "var(--danger)" }}>
-                  Could not load stories for this topic right now.
+                  {previewErrorMessage(previewError, "Could not load stories for this topic right now.")}
                 </p>
               )}
             </>
@@ -224,6 +224,11 @@ export default function SmartFeedModal({
               {subscribeError && (
                 <p className="mt-1 text-[12px]" role="alert" style={{ color: "var(--danger)" }}>
                   {subscribeError}
+                </p>
+              )}
+              {feed && feed.article_count === 0 && (
+                <p className="mt-1 text-[12px]" style={{ color: "var(--ink-faint)" }}>
+                  Subscribed — first stories will appear within a few minutes.
                 </p>
               )}
             </div>

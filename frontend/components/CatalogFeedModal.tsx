@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import useSWR from "swr";
 import { type CatalogEntry, type CatalogPreviewItem, type SubscribeOptions } from "@/lib/api";
-import { fetchPreview, type LoadedPreview } from "@/lib/feedPreview";
+import { fetchPreview, previewErrorMessage, type LoadedPreview } from "@/lib/feedPreview";
 import { formatFeedType, freshness, timeAgo } from "@/lib/format";
 import SubscribeQuickSettings, {
   DEFAULT_SUBSCRIBE_SETTINGS,
@@ -202,7 +202,7 @@ export default function CatalogFeedModal({
           )}
           {previewError && cachedStories.length === 0 && (
             <p className="mt-2 text-[12.5px]" role="alert" style={{ color: "var(--danger)" }}>
-              Could not load stories from this feed right now.
+              {previewErrorMessage(previewError, "Could not load stories from this feed right now.")}
             </p>
           )}
         </div>
