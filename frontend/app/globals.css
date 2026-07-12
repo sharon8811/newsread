@@ -317,6 +317,73 @@ body {
   margin-bottom: 0;
 }
 
+/* ——— AI summary card (markdown) ——— */
+
+.summary-md {
+  font-family: var(--sans);
+  font-size: 14.5px;
+  line-height: 1.7;
+  color: var(--ink);
+  overflow-wrap: break-word;
+}
+.summary-md p {
+  margin: 0 0 0.85em;
+}
+.summary-md strong {
+  font-weight: 600;
+}
+.summary-md ul,
+.summary-md ol {
+  margin: 0 0 0.85em;
+  padding-left: 1.3em;
+}
+.summary-md ul {
+  list-style: disc;
+}
+.summary-md ol {
+  list-style: decimal;
+}
+.summary-md li {
+  margin-bottom: 0.45em;
+  padding-left: 0.15em;
+}
+.summary-md li::marker {
+  color: var(--accent);
+}
+.summary-md table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+  margin: 0.4em 0 0.95em;
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+.summary-md th,
+.summary-md td {
+  border: 1px solid var(--accent-border);
+  padding: 6px 11px;
+  text-align: left;
+  vertical-align: top;
+}
+.summary-md th {
+  font-weight: 600;
+  font-size: 12.5px;
+  letter-spacing: 0.02em;
+  color: var(--ink-dim);
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+}
+.summary-md code {
+  font-family: var(--mono);
+  font-size: 0.85em;
+  background: var(--bg-inset);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+.summary-md > :last-child {
+  margin-bottom: 0;
+}
+
 /* ——— marginalia (share notes) ——— */
 
 .note-quote {

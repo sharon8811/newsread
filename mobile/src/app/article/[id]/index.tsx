@@ -13,6 +13,7 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
+import Markdown from "react-native-markdown-display";
 import RenderHTML, { type MixedStyleDeclaration } from "react-native-render-html";
 import useSWR from "swr";
 
@@ -24,6 +25,33 @@ import { usePalette, type Palette } from "@/lib/theme";
 import type { AiStatus, ArticleDetail } from "@/lib/types";
 
 const openLink = (url: string) => WebBrowser.openBrowserAsync(url).catch(() => {});
+
+/** Summaries generated before the markdown prompt use "• " bullet lines —
+ * rewrite them into list items so they render the same as new ones. */
+const asMarkdown = (summary: string) => summary.replace(/^[ \t]*•\s*/gm, "- ");
+
+/** Styles for the AI summary markdown (bullets, bold, small tables). */
+function summaryMdStyles(colors: Palette) {
+  return StyleSheet.create({
+    body: { color: colors.text, fontSize: 15, lineHeight: 22 },
+    paragraph: { marginTop: 0, marginBottom: 8 },
+    bullet_list: { marginBottom: 8 },
+    ordered_list: { marginBottom: 8 },
+    list_item: { marginBottom: 4 },
+    table: {
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 6,
+      marginBottom: 8,
+    },
+    thead: { backgroundColor: colors.card },
+    th: { padding: 6, fontWeight: "600", fontSize: 13 },
+    tr: { borderColor: colors.border, flexDirection: "row" },
+    td: { padding: 6, fontSize: 13 },
+    code_inline: { backgroundColor: colors.card, borderRadius: 4, fontSize: 13 },
+    link: { color: colors.tint },
+  });
+}
 
 function htmlStyles(colors: Palette, isDark: boolean): Record<string, MixedStyleDeclaration> {
   return {
@@ -89,6 +117,7 @@ export default function ArticleScreen() {
   };
 
   const tagsStyles = useMemo(() => htmlStyles(colors, isDark), [colors, isDark]);
+  const summaryStyles = useMemo(() => summaryMdStyles(colors), [colors]);
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
@@ -157,11 +186,15 @@ export default function ArticleScreen() {
           {data.summary !== "" && (
             <View style={[styles.summary, { borderColor: colors.border }]}>
               <Text style={[styles.summaryLabel, { color: colors.muted }]}>AI summary</Text>
-              {data.summary.split(/\n+/).map((paragraph, index) => (
-                <Text key={index} style={[styles.summaryText, { color: colors.text }]}>
-                  {paragraph}
-                </Text>
-              ))}
+              <Markdown
+                style={summaryStyles}
+                onLinkPress={(url) => {
+                  openLink(url);
+                  return false;
+                }}
+              >
+                {asMarkdown(data.summary)}
+              </Markdown>
             </View>
           )}
 
@@ -215,7 +248,6 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     letterSpacing: 0.6,
   },
-  summaryText: { fontSize: 15, lineHeight: 22 },
   links: { marginTop: 24, paddingTop: 16, borderTopWidth: StyleSheet.hairlineWidth, gap: 14 },
   linkRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   linkText: { fontSize: 16, fontWeight: "600" },

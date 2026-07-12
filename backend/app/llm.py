@@ -190,14 +190,16 @@ async def _create(
 
 SUMMARY_SYSTEM = """You summarize news articles for a busy reader, at three levels of depth.
 
-Output EXACTLY this structure (plain text, no markdown):
+Output EXACTLY this structure:
 
-ONELINER: one sentence of at most 20 words with the gist
-PARAGRAPH: two to four sentences with the essential information
+ONELINER: one sentence of at most 20 words with the gist (plain text, no markdown)
+PARAGRAPH: two to four sentences with the essential information (plain text, no markdown)
 FULL:
 One or two sentences with the core takeaway.
 
-Three to five key points, each on its own line starting with "• ".
+Three to five key points as a markdown bullet list ("- " items). Bold the key term or figure of each point with **double asterisks**.
+
+The FULL section is GitHub-flavored markdown. When the article compares several things (laws, products, versions, numbers), put that comparison in a small markdown table instead of bullets. Only lists, bold, and tables — no headings, no code blocks, no links.
 
 Be concrete and specific. Never pad, never editorialize, never mention that you are summarizing."""
 
