@@ -4,7 +4,7 @@
 // content, network errors) fall back to the server preview endpoint, which
 // fetches with SSRF protection and a shared cache.
 
-import { api, type CatalogPreview, type CatalogPreviewItem } from "./api";
+import { api, ApiError, type CatalogPreview, type CatalogPreviewItem } from "./api";
 
 const PREVIEW_ITEM_LIMIT = 8;
 const SUMMARY_CHARS = 240;
@@ -177,6 +177,14 @@ export function parseFeed(body: string, contentType: string, baseUrl: string): C
     return parseJsonFeed(JSON.parse(body), baseUrl);
   }
   return parseXmlFeed(body, baseUrl);
+}
+
+/** The message to show for a failed preview. A 503 from the server fallback
+ * carries an honest, actionable detail ("reddit.com is rate-limiting our
+ * preview requests…"); anything else gets the caller's generic fallback. */
+export function previewErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof ApiError && error.status === 503 && error.message) return error.message;
+  return fallback;
 }
 
 /** Fetch a feed preview straight from the browser, falling back to the given

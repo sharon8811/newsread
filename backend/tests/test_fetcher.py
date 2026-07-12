@@ -7,6 +7,7 @@ from sqlalchemy import select
 
 from app.fetcher import (
     FeedParseError,
+    FeedRateLimited,
     ParsedArticle,
     derive_excerpt,
     fetch_feed_data,
@@ -216,6 +217,13 @@ async def test_fetch_feed_data_raises_on_http_error():
     respx.get("https://feed.example/bad").mock(return_value=httpx.Response(500))
     with pytest.raises(httpx.HTTPStatusError):
         await fetch_feed_data("https://feed.example/bad")
+
+
+@respx.mock
+async def test_fetch_feed_data_raises_rate_limited_on_429():
+    respx.get("https://www.reddit.com/r/x/.rss").mock(return_value=httpx.Response(429))
+    with pytest.raises(FeedRateLimited, match="www.reddit.com"):
+        await fetch_feed_data("https://www.reddit.com/r/x/.rss")
 
 
 @respx.mock

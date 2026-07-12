@@ -12,7 +12,11 @@ const { swrMock, mutateMock, apiMock } = vi.hoisted(() => ({
 }));
 
 vi.mock("swr", () => ({ default: swrMock, mutate: mutateMock }));
-vi.mock("@/lib/api", () => ({ api: apiMock, fetcher: vi.fn() }));
+vi.mock("@/lib/api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/api")>()),
+  api: apiMock,
+  fetcher: vi.fn(),
+}));
 
 const CATEGORIES = [
   { name: "Food", count: 1 },
@@ -463,6 +467,22 @@ describe("smart feeds", () => {
     );
     expect(mutateMock).toHaveBeenCalledWith("/feeds");
     expect(within(dialog).getByRole("link", { name: /View feed/ })).toHaveAttribute("href", "/?feed=9");
+  });
+
+  it("notes that a rate-limited subscription starts empty and fills in later", async () => {
+    // A publisher 429 lets the subscribe through with zero articles; the
+    // poller backfills, and the modal should say so.
+    setSmartSwr({ resolve: RESOLVE, preview: makeCatalogPreview() });
+    apiMock.mockResolvedValue(makeFeed({ id: 9, article_count: 0 }));
+    render(<CatalogPage />);
+    const dialog = await openSmartModal();
+    await userEvent.type(within(dialog).getByLabelText("Subreddit"), "rust");
+    await waitFor(
+      () => expect(within(dialog).getByRole("button", { name: /Subscribe/ })).toBeEnabled(),
+      { timeout: 1000 },
+    );
+    await userEvent.click(within(dialog).getByRole("button", { name: /Subscribe/ }));
+    expect(await within(dialog).findByText(/first stories will appear within a few minutes/)).toBeInTheDocument();
   });
 
   it("sends quick-settings deviations when subscribing", async () => {

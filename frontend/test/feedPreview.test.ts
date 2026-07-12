@@ -1,8 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fetchPreview, parseFeed } from "@/lib/feedPreview";
+import { fetchPreview, parseFeed, previewErrorMessage } from "@/lib/feedPreview";
+import { ApiError } from "@/lib/api";
 
 const { apiMock } = vi.hoisted(() => ({ apiMock: vi.fn() }));
-vi.mock("@/lib/api", () => ({ api: apiMock }));
+vi.mock("@/lib/api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/api")>()),
+  api: apiMock,
+}));
 
 const BASE = "https://blog.example/feed.xml";
 
@@ -189,5 +193,23 @@ describe("fetchPreview", () => {
     expect((await fetchPreview(BASE, "/x")).source).toBe("server");
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(okResponse("<html><body>a página</body></html>", "text/html")));
     expect((await fetchPreview(BASE, "/x")).source).toBe("server");
+  });
+});
+
+describe("previewErrorMessage", () => {
+  const fallback = "Could not load stories.";
+
+  it("surfaces the server detail for a 503 (publisher rate limit)", () => {
+    const error = new ApiError("reddit.com is rate-limiting our preview requests right now.", 503);
+    expect(previewErrorMessage(error, fallback)).toBe(
+      "reddit.com is rate-limiting our preview requests right now.",
+    );
+  });
+
+  it("uses the fallback for other statuses, empty messages, and non-API errors", () => {
+    expect(previewErrorMessage(new ApiError("upstream broke", 502), fallback)).toBe(fallback);
+    expect(previewErrorMessage(new ApiError("", 503), fallback)).toBe(fallback);
+    expect(previewErrorMessage(new TypeError("CORS"), fallback)).toBe(fallback);
+    expect(previewErrorMessage(undefined, fallback)).toBe(fallback);
   });
 });

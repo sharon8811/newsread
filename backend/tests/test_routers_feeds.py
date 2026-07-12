@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 import pytest
 from sqlalchemy import select
 
+from app.fetcher import FeedRateLimited
 from app.models import Feed, Subscription
 from app.routers import feeds as feeds_router
 
@@ -154,6 +155,39 @@ async def test_add_feed_fetch_failure(client, users, monkeypatch):
     resp = await client.post("/api/feeds", json={"url": "https://broken.example/rss"},
                              headers=users.auth(user))
     assert resp.status_code == 400
+
+
+async def test_add_feed_rate_limited_subscribes_anyway(client, users, monkeypatch):
+    """A 429 from the publisher is not a bad feed: the subscription is created
+    with no articles and the poller backfills once the limit clears."""
+    async def limited(session, feed, *, require_articles=False):
+        raise FeedRateLimited("www.reddit.com")
+
+    monkeypatch.setattr(feeds_router, "refresh_feed", limited)
+    user = await users.create()
+    resp = await client.post("/api/feeds", json={"url": "https://www.reddit.com/r/programming/.rss"},
+                             headers=users.auth(user))
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["article_count"] == 0
+    # No fetched title yet — the URL stands in until the first refresh.
+    assert body["title"] == "https://www.reddit.com/r/programming/.rss"
+    assert body["last_fetched_at"] is None
+
+
+async def test_add_existing_empty_feed_rate_limited_subscribes_anyway(
+    client, users, data, monkeypatch
+):
+    user = await users.create()
+    feed = await data.feed(url="https://www.reddit.com/r/rust/.rss")
+
+    async def limited(session, feed, *, require_articles=False):
+        raise FeedRateLimited("www.reddit.com")
+
+    monkeypatch.setattr(feeds_router, "refresh_feed", limited)
+    resp = await client.post("/api/feeds", json={"url": feed.url},
+                             headers=users.auth(user))
+    assert resp.status_code == 201
 
 
 async def test_add_existing_empty_feed_revalidates(client, users, data, monkeypatch):
