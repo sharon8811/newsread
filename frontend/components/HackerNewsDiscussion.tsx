@@ -102,6 +102,7 @@ export default function HackerNewsDiscussion({ article }: { article: ArticleDeta
   const { data: story, error: storyError, isLoading: storyLoading, mutate } = useStory(ref);
   const [open, setOpen] = useState(false);
   const [snapshot, setSnapshot] = useState<DiscussionSnapshot | null>(null);
+  const [fetchedLimit, setFetchedLimit] = useState(0);
   const [threadError, setThreadError] = useState<string | null>(null);
   const [threadLoading, setThreadLoading] = useState(false);
   const [prefill, setPrefill] = useState<{ key: string; text: string } | null>(null);
@@ -120,9 +121,18 @@ export default function HackerNewsDiscussion({ article }: { article: ArticleDeta
 
   if (!ref) return null;
 
-  async function loadThread(limit: number): Promise<DiscussionSnapshot> {
+  async function loadThread(limit: number, force = false): Promise<DiscussionSnapshot> {
     if (!story) throw new Error("The Hacker News story is still loading");
-    if (snapshot && snapshot.included_total >= Math.min(limit, story.descendants ?? limit)) {
+    const target = Math.min(limit, 300);
+    // A snapshot smaller than what was asked for means the walk exhausted the
+    // thread (unfetchable items aside), so a larger limit cannot add comments.
+    // Q&A reuses such snapshots instead of re-walking the thread on every
+    // question; the explicit "Load more" button forces a retry past this.
+    if (
+      !force &&
+      snapshot &&
+      (fetchedLimit >= target || snapshot.included_total < fetchedLimit)
+    ) {
       return snapshot;
     }
     abortRef.current?.abort();
@@ -131,15 +141,24 @@ export default function HackerNewsDiscussion({ article }: { article: ArticleDeta
     setThreadLoading(true);
     setThreadError(null);
     try {
-      const next = await fetchHNThread(story, limit, controller.signal);
-      setSnapshot(next);
+      const next = await fetchHNThread(story, target, controller.signal);
+      if (abortRef.current === controller) {
+        setSnapshot(next);
+        setFetchedLimit(target);
+      }
       return next;
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Could not load the discussion";
-      setThreadError(message);
+      // A superseded load must not clobber its replacement's state.
+      if (abortRef.current === controller && !controller.signal.aborted) {
+        setThreadError(
+          error instanceof Error ? error.message : "Could not load the discussion",
+        );
+      }
       throw error;
     } finally {
-      setThreadLoading(false);
+      if (abortRef.current === controller) {
+        setThreadLoading(false);
+      }
     }
   }
 
@@ -233,7 +252,11 @@ export default function HackerNewsDiscussion({ article }: { article: ArticleDeta
                   Loaded {snapshot.included_total} of {snapshot.reported_total} comments
                 </span>
                 {snapshot.included_total < Math.min(snapshot.reported_total, 300) && (
-                  <button className="btn" disabled={threadLoading} onClick={() => loadThread(300)}>
+                  <button
+                    className="btn"
+                    disabled={threadLoading}
+                    onClick={() => loadThread(300, true).catch(() => {})}
+                  >
                     {threadLoading ? "Loading" : "Load more for analysis"}
                   </button>
                 )}

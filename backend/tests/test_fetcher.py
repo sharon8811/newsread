@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 import httpx
 import pytest
 import respx
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from app.fetcher import (
     FeedParseError,
@@ -93,6 +93,19 @@ def test_detect_comments_url_from_hnrss_content_only():
         "https://example.com/story",
         '<a href="https://news.ycombinator.com/item?id=123">unrelated link</a>',
     ) is None
+
+
+def test_detect_comments_url_prefers_link_after_label():
+    # Self-post bodies may link other HN threads; only the link following the
+    # hnrss "Comments URL:" boilerplate is this article's own discussion.
+    content = (
+        '<p>See <a href="https://news.ycombinator.com/item?id=555">another thread</a></p>'
+        "<p>Points: 12 # Comments: 3 Comments URL: "
+        '<a href="https://news.ycombinator.com/item?id=123">thread</a></p>'
+    )
+    assert detect_comments_url(None, "https://example.com/story", content) == (
+        "https://news.ycombinator.com/item?id=123"
+    )
 
 
 def test_detect_comments_url_for_hn_self_post():
@@ -368,6 +381,47 @@ async def test_refresh_feed_repairs_missing_comments_url(session):
     assert await refresh_feed(session, feed) == 0
     await session.refresh(article)
     assert article.comments_url == "https://site.example/1/comments"
+
+
+async def test_hn_comments_url_backfill_migration(session):
+    from app.db import ONE_SHOT_MIGRATIONS
+
+    feed = Feed(url="https://feed.example/hn")
+    session.add(feed)
+    await session.commit()
+    await session.refresh(feed)
+    self_post = Article(
+        feed_id=feed.id, guid="g1", url="https://news.ycombinator.com/item?id=42", title="t"
+    )
+    boilerplate = Article(
+        feed_id=feed.id,
+        guid="g2",
+        url="https://example.com/story",
+        title="t",
+        content_html=(
+            '<p>See <a href="https://news.ycombinator.com/item?id=555">other</a></p>'
+            "<p>Comments URL: "
+            '<a href="https://news.ycombinator.com/item?id=123">thread</a></p>'
+        ),
+    )
+    plain_link = Article(
+        feed_id=feed.id,
+        guid="g3",
+        url="https://example.com/other",
+        title="t",
+        content_html='<a href="https://news.ycombinator.com/item?id=9">link</a>',
+    )
+    session.add_all([self_post, boilerplate, plain_link])
+    await session.commit()
+
+    for statement in ONE_SHOT_MIGRATIONS["backfill_hn_comments_url"]:
+        await session.execute(text(statement))
+    await session.commit()
+    for article in (self_post, boilerplate, plain_link):
+        await session.refresh(article)
+    assert self_post.comments_url == "https://news.ycombinator.com/item?id=42"
+    assert boilerplate.comments_url == "https://news.ycombinator.com/item?id=123"
+    assert plain_link.comments_url is None
 
 
 @respx.mock

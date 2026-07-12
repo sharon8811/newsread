@@ -16,6 +16,7 @@ import nh3
 from dateutil import parser as dateparser
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import load_only
 
 from .config import settings
 from .models import Article, Feed
@@ -30,6 +31,7 @@ _HN_COMMENTS_RE = re.compile(r"#\s*Comments:\s*(\d+)")
 _HN_ITEM_URL_RE = re.compile(
     r"https?://news\.ycombinator\.com/item\?[^\s\"'<>]+", re.IGNORECASE
 )
+_HN_COMMENTS_URL_LABEL_RE = re.compile(r"comments\s+url\s*:", re.IGNORECASE)
 
 
 @dataclass
@@ -141,7 +143,11 @@ def detect_comments_url(
         _HN_POINTS_RE.search(plain) and _HN_COMMENTS_RE.search(plain)
     ):
         return None
-    for match in _HN_ITEM_URL_RE.finditer(text):
+    # Self-posts may link other HN threads in their body; only the link
+    # following the boilerplate label is the article's own discussion.
+    label = _HN_COMMENTS_URL_LABEL_RE.search(text)
+    scan = text[label.end():] if label else text
+    for match in _HN_ITEM_URL_RE.finditer(scan):
         canonical = canonical_hn_comments_url(match.group(0))
         if canonical:
             return canonical
@@ -342,8 +348,12 @@ async def refresh_feed(
     guids = [a.guid for a in parsed.articles]
     existing: dict[str, Article] = {}
     if guids:
+        # load_only keeps the dedupe pass from dragging every existing
+        # article's content and summaries out of the DB on each refresh.
         rows = await session.scalars(
-            select(Article).where(Article.feed_id == feed.id, Article.guid.in_(guids))
+            select(Article)
+            .where(Article.feed_id == feed.id, Article.guid.in_(guids))
+            .options(load_only(Article.guid, Article.comments_url))
         )
         existing = {article.guid: article for article in rows}
 

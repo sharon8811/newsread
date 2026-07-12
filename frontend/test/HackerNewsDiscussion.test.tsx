@@ -226,6 +226,50 @@ describe("Hacker News discussion UI", () => {
     expect(fetchHNThreadMock).toHaveBeenCalledOnce();
   });
 
+  it("reuses a gapped snapshot for Q&A instead of re-walking the thread", async () => {
+    // included < requested limit means the walk exhausted the thread, so the
+    // Q&A path must not refetch on every question just because of the gaps.
+    fetchHNThreadMock.mockResolvedValueOnce(
+      snapshot({
+        included_total: 2,
+        reported_total: 5,
+        comments: [comment({}), comment({ id: 103, position: 1, text: "Second point" })],
+      }),
+    );
+    render(<HackerNewsDiscussion article={article} />);
+    await userEvent.click(screen.getByRole("button", { name: "Read comments" }));
+    await screen.findByText("Top-level point");
+    await userEvent.click(screen.getByRole("button", { name: "Run discussion stream" }));
+    await waitFor(() =>
+      expect(streamDiscussionQAMock).toHaveBeenCalledWith(
+        9,
+        "question",
+        expect.objectContaining({ included_total: 2 }),
+        expect.any(Function),
+      ),
+    );
+    expect(fetchHNThreadMock).toHaveBeenCalledOnce();
+    expect(screen.getByRole("button", { name: "Load more for analysis" })).toBeInTheDocument();
+  });
+
+  it("lets a superseding load replace an aborted one without surfacing its error", async () => {
+    fetchHNThreadMock
+      .mockImplementationOnce(
+        (_story, _limit, signal: AbortSignal) =>
+          new Promise((_resolve, reject) => {
+            signal.addEventListener("abort", () =>
+              reject(new DOMException("The user aborted a request.", "AbortError")),
+            );
+          }),
+      )
+      .mockResolvedValueOnce(snapshot());
+    render(<HackerNewsDiscussion article={article} />);
+    await userEvent.click(screen.getByRole("button", { name: "Read comments" }));
+    await userEvent.click(screen.getByRole("button", { name: "Run discussion stream" }));
+    expect(await screen.findByText("Top-level point")).toBeInTheDocument();
+    expect(screen.queryByText(/aborted/i)).toBeNull();
+  });
+
   it("aborts an in-flight thread request when unmounted", async () => {
     fetchHNThreadMock.mockReturnValueOnce(new Promise(() => {}));
     const { unmount } = render(<HackerNewsDiscussion article={article} />);
