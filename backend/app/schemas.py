@@ -773,3 +773,50 @@ class UsageEventOut(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+# --- Not interested (dislike rules) ---
+
+DislikeRuleKind = Literal["article", "entity", "topic", "story"]
+
+
+class DislikeOptionEntity(BaseModel):
+    entity_id: int
+    kind: str
+    key: str
+    label: str
+
+
+class DislikeOptionsOut(BaseModel):
+    entities: list[DislikeOptionEntity]
+    topics: list[str]  # LLM-suggested mutable subjects; [] when LLM/embeddings unavailable
+    story_available: bool  # the article has a current-model embedding to mute against
+
+
+class DislikeRuleIn(BaseModel):
+    kind: DislikeRuleKind
+    article_id: int | None = None
+    entity_id: int | None = None
+    phrase: str | None = Field(default=None, max_length=200)
+
+
+class DislikeRuleOut(BaseModel):
+    id: int
+    kind: DislikeRuleKind
+    label: str
+    phrase: str | None
+    entity_id: int | None
+    article_id: int | None
+    expires_at: datetime | None
+    hidden_count: int
+    created_at: datetime
+
+
+class DislikeRulePreviewItem(BaseModel):
+    id: int
+    title: str
+
+
+class DislikeRuleCreateOut(BaseModel):
+    rule: DislikeRuleOut  # rule.hidden_count doubles as the "also hid N recent" figure
+    preview: list[DislikeRulePreviewItem]

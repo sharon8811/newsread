@@ -22,6 +22,12 @@ vi.mock("@/components/ProjectPickerModal", () => ({
   ),
 }));
 
+vi.mock("@/components/NotInterestedModal", () => ({
+  default: ({ onClose }: { onClose: () => void }) => (
+    <div data-testid="not-interested-modal" onClick={onClose} />
+  ),
+}));
+
 function stub(articles: unknown, isLoading = false) {
   swrMock.mockReturnValue({ data: articles, isLoading });
 }
@@ -206,6 +212,17 @@ describe("<ArticleList>", () => {
     expect(pushMock).not.toHaveBeenCalled();
     await userEvent.click(screen.getByTestId("project-picker"));
     expect(screen.queryByTestId("project-picker")).not.toBeInTheDocument();
+  });
+
+  it("opens the not-interested modal and suspends keyboard nav while open", async () => {
+    stub([makeArticle({ id: 1, title: "Dismissible" })]);
+    render(<ArticleList filter="all" emptyTitle="Empty" />);
+    await userEvent.click(screen.getByTitle("Not interested"));
+    expect(screen.getByTestId("not-interested-modal")).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: "Enter" });
+    expect(pushMock).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByTestId("not-interested-modal"));
+    expect(screen.queryByTestId("not-interested-modal")).not.toBeInTheDocument();
   });
 
   it("saves via the row save button (onToggleSaved callback)", async () => {

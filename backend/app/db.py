@@ -168,7 +168,8 @@ async def init_db(max_attempts: int = 30) -> None:
             table
             for table in Base.metadata.sorted_tables
             if vector_enabled
-            or table.name not in {"article_embeddings", "catalog_entry_embeddings"}
+            or table.name
+            not in {"article_embeddings", "catalog_entry_embeddings", "dislike_rule_embeddings"}
         ]
         await conn.run_sync(lambda sync: Base.metadata.create_all(sync, tables=tables))
         for statement in MIGRATIONS:

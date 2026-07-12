@@ -5,7 +5,7 @@ import { imageSrc, type Article } from "@/lib/api";
 import { domainOf, timeAgo } from "@/lib/format";
 import EntityBadges from "./EntityBadges";
 import GeneratingIndicator from "./GeneratingIndicator";
-import { BookmarkIcon, ExternalIcon, FolderIcon, ShareIcon } from "./icons";
+import { BookmarkIcon, ExternalIcon, EyeOffIcon, FolderIcon, ShareIcon } from "./icons";
 
 export default function ArticleCard({
   article,
@@ -14,6 +14,7 @@ export default function ArticleCard({
   onToggleSaved,
   onShare,
   onAddToProject,
+  onNotInterested,
 }: {
   article: Article;
   selected?: boolean;
@@ -21,6 +22,7 @@ export default function ArticleCard({
   onToggleSaved: (article: Article) => void;
   onShare: (article: Article) => void;
   onAddToProject: (article: Article) => void;
+  onNotInterested: (article: Article) => void;
 }) {
   const router = useRouter();
   const summary = article.summary_short || article.excerpt;
@@ -155,6 +157,16 @@ export default function ArticleCard({
               }}
             >
               <FolderIcon size={15} />
+            </button>
+            <button
+              className="icon-btn"
+              title="Not interested"
+              onClick={(e) => {
+                e.stopPropagation();
+                onNotInterested(article);
+              }}
+            >
+              <EyeOffIcon size={15} />
             </button>
             <a
               className="icon-btn"

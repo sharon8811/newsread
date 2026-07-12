@@ -182,3 +182,39 @@ async def test_summarize_screenshot_sends_data_url(monkeypatch):
     assert "Title" in text_part["text"]
     assert image_part["type"] == "image_url"
     assert image_part["image_url"]["url"].startswith("data:image/jpeg;base64,")
+
+
+async def test_dislike_topics_parses_and_dedupes(monkeypatch):
+    raw = ("Sure, here are topics:\n"
+           "TOPIC: cryptocurrency price movements.\n"
+           "TOPIC:   Cryptocurrency  Price Movements\n"
+           "TOPIC: celebrity gossip\n"
+           "TOPIC: US college sports\n"
+           "not a topic line\n")
+
+    async def fake_complete(messages, max_tokens, **kwargs):
+        assert "not interested" in messages[0]["content"]
+        assert "Article title: T" in messages[1]["content"]
+        return raw
+
+    monkeypatch.setattr(llm, "_complete", fake_complete)
+    topics = await llm.dislike_topics("T", "summary")
+    # Case-insensitive dedupe, trailing dot stripped, capped at 3.
+    assert topics == ["cryptocurrency price movements", "celebrity gossip", "US college sports"]
+
+
+async def test_dislike_topics_garbage_output(monkeypatch):
+    async def fake_complete(messages, max_tokens, **kwargs):
+        return "I could not determine topics for this article."
+
+    monkeypatch.setattr(llm, "_complete", fake_complete)
+    assert await llm.dislike_topics("T", "s") == []
+
+
+async def test_dislike_topics_caps_phrase_length(monkeypatch):
+    async def fake_complete(messages, max_tokens, **kwargs):
+        return "TOPIC: " + "very " * 40 + "long topic"
+
+    monkeypatch.setattr(llm, "_complete", fake_complete)
+    [topic] = await llm.dislike_topics("T", "s")
+    assert len(topic) <= 80

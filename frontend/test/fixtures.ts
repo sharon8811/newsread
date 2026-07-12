@@ -4,6 +4,8 @@ import type {
   ArticleProjectStatus,
   CatalogEntry,
   CatalogPreview,
+  DislikeOptions,
+  DislikeRule,
   EntityBadge,
   EntityFull,
   Feed,
@@ -262,6 +264,30 @@ export function makeShareTarget(
     target_type: "channel",
     meta: {},
     last_used_at: null,
+    ...over,
+  };
+}
+
+export function makeDislikeRule(over: Partial<DislikeRule> = {}): DislikeRule {
+  return {
+    id: 1,
+    kind: "topic",
+    label: "crypto prices",
+    phrase: "crypto prices",
+    entity_id: null,
+    article_id: null,
+    expires_at: null,
+    hidden_count: 3,
+    created_at: "2024-01-01T00:00:00Z",
+    ...over,
+  };
+}
+
+export function makeDislikeOptions(over: Partial<DislikeOptions> = {}): DislikeOptions {
+  return {
+    entities: [{ entity_id: 5, kind: "github", key: "acme/widget", label: "acme/widget" }],
+    topics: ["crypto prices", "celebrity gossip"],
+    story_available: true,
     ...over,
   };
 }

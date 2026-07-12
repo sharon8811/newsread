@@ -16,6 +16,7 @@ from .routers import (
     devices,
     feeds,
     integrations,
+    interests,
     projects,
     shares,
     usage,
@@ -60,6 +61,7 @@ app.include_router(devices.router, prefix="/api")
 app.include_router(integrations.router, prefix="/api")
 app.include_router(activity.router, prefix="/api")
 app.include_router(usage.router, prefix="/api")
+app.include_router(interests.router, prefix="/api")
 
 
 @app.get("/api/health")
