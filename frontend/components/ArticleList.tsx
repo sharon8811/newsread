@@ -6,6 +6,7 @@ import useSWR, { mutate } from "swr";
 import { api, fetcher, type Article } from "@/lib/api";
 import ArticleCard from "./ArticleCard";
 import ArticleRow from "./ArticleRow";
+import NotInterestedModal from "./NotInterestedModal";
 import ProjectPickerModal from "./ProjectPickerModal";
 import ShareModal from "./ShareModal";
 
@@ -55,6 +56,7 @@ export default function ArticleList({
   const [selected, setSelected] = useState(0);
   const [sharing, setSharing] = useState<Article | null>(null);
   const [pickingProject, setPickingProject] = useState<Article | null>(null);
+  const [dismissing, setDismissing] = useState<Article | null>(null);
 
   useEffect(() => {
     setSelected(0);
@@ -81,7 +83,7 @@ export default function ArticleList({
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (sharing || pickingProject) return;
+      if (sharing || pickingProject || dismissing) return;
       const target = e.target as HTMLElement;
       if (
         target instanceof HTMLInputElement ||
@@ -111,7 +113,7 @@ export default function ArticleList({
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [articles, selected, sharing, pickingProject, router, toggleSaved, toggleRead]);
+  }, [articles, selected, sharing, pickingProject, dismissing, router, toggleSaved, toggleRead]);
 
   useEffect(() => {
     document
@@ -175,6 +177,7 @@ export default function ArticleList({
                 onToggleSaved={toggleSaved}
                 onShare={setSharing}
                 onAddToProject={setPickingProject}
+                onNotInterested={setDismissing}
               />
             ))}
           </div>
@@ -188,6 +191,7 @@ export default function ArticleList({
               onToggleSaved={toggleSaved}
               onShare={setSharing}
               onAddToProject={setPickingProject}
+              onNotInterested={setDismissing}
             />
           ))
         )}
@@ -199,6 +203,9 @@ export default function ArticleList({
         </p>
       </div>
       {sharing && <ShareModal article={sharing} onClose={() => setSharing(null)} />}
+      {dismissing && (
+        <NotInterestedModal article={dismissing} onClose={() => setDismissing(null)} />
+      )}
       {pickingProject && (
         <ProjectPickerModal
           article={pickingProject}

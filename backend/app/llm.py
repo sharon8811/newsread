@@ -326,4 +326,44 @@ async def share_message(
     )
 
 
+DISLIKE_TOPICS_SYSTEM = """A reader marked a news article "not interested". Propose the general topics they might want to mute going forward.
+
+Output EXACTLY two or three lines, each:
+
+TOPIC: <topic phrase>
+
+Each phrase is 2-6 words naming a general subject this article belongs to (like "celebrity gossip", "cryptocurrency price movements", "US college sports") — general enough to match future articles on the same subject, never a restatement of this one headline, and never uselessly broad (not "technology" or "news"). Plain text, nothing else."""
+
+_TOPIC_RE = re.compile(r"^TOPIC:\s*(.+)$", re.MULTILINE)
+
+
+async def dislike_topics(
+    title: str,
+    summary: str,
+    *,
+    config: LLMConfig | None = None,
+    usage: TokenUsage | None = None,
+) -> list[str]:
+    """2-3 mutable topic phrases for the 'not interested' popover. Each chosen
+    phrase is embedded once and matched against articles by the worker's
+    suppression stage — this is the only LLM call the feature ever makes."""
+    raw = await _complete(
+        [
+            {"role": "system", "content": DISLIKE_TOPICS_SYSTEM},
+            {"role": "user", "content": f"Article title: {title}\n\nArticle summary:\n{summary}"},
+        ],
+        max_tokens=120,
+        config=config,
+        usage=usage,
+    )
+    seen: set[str] = set()
+    topics: list[str] = []
+    for match in _TOPIC_RE.finditer(raw):
+        phrase = " ".join(match.group(1).split()).strip(" .")[:80]
+        if phrase and phrase.casefold() not in seen:
+            seen.add(phrase.casefold())
+            topics.append(phrase)
+    return topics[:3]
+
+
 # Article Q&A lives in qa_agent.py (pydantic_ai, tool-calling, streaming).

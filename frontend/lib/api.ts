@@ -319,6 +319,45 @@ export type ArticleDetail = Omit<Article, "entities"> & {
   entities: EntityFull[];
 };
 
+export type DislikeRuleKind = "article" | "entity" | "topic" | "story";
+
+export type DislikeOptionEntity = {
+  entity_id: number;
+  kind: string;
+  key: string;
+  label: string;
+};
+
+export type DislikeOptions = {
+  entities: DislikeOptionEntity[];
+  topics: string[]; // [] when the LLM or embeddings are unavailable
+  story_available: boolean;
+};
+
+export type DislikeRule = {
+  id: number;
+  kind: DislikeRuleKind;
+  label: string;
+  phrase: string | null;
+  entity_id: number | null;
+  article_id: number | null;
+  expires_at: string | null;
+  hidden_count: number;
+  created_at: string;
+};
+
+export type DislikeRuleCreate = {
+  kind: DislikeRuleKind;
+  article_id?: number;
+  entity_id?: number;
+  phrase?: string;
+};
+
+export type DislikeRuleCreated = {
+  rule: DislikeRule; // rule.hidden_count doubles as the "also hid N recent" figure
+  preview: { id: number; title: string }[];
+};
+
 export type AiStatus = {
   configured: boolean;
   model: string | null;
@@ -384,13 +423,14 @@ export type AITestResult = {
   model: string | null;
 };
 
-export type UsageFeatureKey = "summary" | "qa" | "share" | "image";
+export type UsageFeatureKey = "summary" | "qa" | "share" | "image" | "topics";
 
 export const USAGE_FEATURE_LABELS: Record<UsageFeatureKey, string> = {
   summary: "Summaries",
   qa: "Q&A",
   share: "Share messages",
   image: "Images",
+  topics: "Topic suggestions",
 };
 
 export type UsageDay = { day: string; calls: number; tokens: number };

@@ -5,7 +5,7 @@ import * as icons from "@/components/icons";
 const ALL = [
   "InboxIcon", "BookmarkIcon", "ShareIcon", "UsersIcon", "ExternalIcon",
   "CommentIcon", "PlusIcon", "RefreshIcon", "CheckIcon", "CheckAllIcon",
-  "XIcon", "SearchIcon", "LogoutIcon", "RssIcon", "SparkleIcon", "ListIcon",
+  "XIcon", "EyeOffIcon", "SearchIcon", "LogoutIcon", "RssIcon", "SparkleIcon", "ListIcon",
   "StoriesIcon", "CardsIcon", "ChevronUpIcon", "TrashIcon", "MenuIcon",
 ] as const;
 

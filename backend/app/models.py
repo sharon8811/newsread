@@ -4,6 +4,7 @@ from sqlalchemy import (
     Boolean,
     Date,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -84,7 +85,7 @@ class LLMUsage(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
-    feature: Mapped[str] = mapped_column(String(16))  # 'summary' | 'qa' | 'share' | 'image'
+    feature: Mapped[str] = mapped_column(String(16))  # 'summary' | 'qa' | 'share' | 'image' | 'topics'
     provider: Mapped[str] = mapped_column(String(16))
     model: Mapped[str] = mapped_column(String(120))
     prompt_tokens: Mapped[int] = mapped_column(Integer, default=0)
@@ -339,6 +340,87 @@ class UserArticleState(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class UserDislikeRule(Base):
+    """One "not interested" reason a user gave. `kind` picks the matcher:
+    'article' hides just the source article, 'entity' exact-joins
+    article_entities, 'topic' and 'story' compare embeddings (vector lives in
+    DislikeRuleEmbedding) against a per-rule cosine-distance `threshold` —
+    per-rule because the useful cutoff differs between a phrase and a whole
+    article, and tuning becomes a data change. Story rules expire so muted
+    events quietly return once they've left the news cycle."""
+
+    __tablename__ = "user_dislike_rules"
+    # Duplicate-rule guard at the DB level: the router's pre-check can race
+    # (two clicks, or React StrictMode double-firing the create effect).
+    __table_args__ = (
+        Index(
+            "uq_dislike_user_kind_article", "user_id", "kind", "article_id",
+            unique=True, postgresql_where=text("article_id IS NOT NULL"),
+        ),
+        Index(
+            "uq_dislike_user_entity", "user_id", "entity_id",
+            unique=True, postgresql_where=text("entity_id IS NOT NULL"),
+        ),
+        Index(
+            "uq_dislike_user_phrase", "user_id", text("lower(phrase)"),
+            unique=True, postgresql_where=text("phrase IS NOT NULL"),
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String(16))  # 'article' | 'entity' | 'topic' | 'story'
+    # Provenance: the article the user dismissed ('article'/'story' target it too).
+    article_id: Mapped[int | None] = mapped_column(
+        ForeignKey("articles.id", ondelete="CASCADE"), index=True
+    )
+    entity_id: Mapped[int | None] = mapped_column(
+        ForeignKey("entities.id", ondelete="CASCADE"), index=True
+    )
+    phrase: Mapped[str | None] = mapped_column(Text)  # 'topic' only; source for re-embedding
+    label: Mapped[str] = mapped_column(String(512), default="")
+    threshold: Mapped[float | None] = mapped_column(Float)  # cosine DISTANCE upper bound
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class DislikeRuleEmbedding(Base):
+    """Vector leg of a topic/story rule, split from the rule row (mirroring
+    ArticleEmbedding) so user_dislike_rules still exists without pgvector.
+    Matching joins on `model` — a model switch silently un-matches old rules
+    (fail-open) until they are re-embedded from their stored phrase."""
+
+    __tablename__ = "dislike_rule_embeddings"
+
+    rule_id: Mapped[int] = mapped_column(
+        ForeignKey("user_dislike_rules.id", ondelete="CASCADE"), primary_key=True
+    )
+    model: Mapped[str] = mapped_column(String(120))
+    embedding: Mapped[list] = mapped_column(Vector())
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ArticleSuppression(Base):
+    """Materialized "this user must not see this article", written ahead of
+    time by the worker's suppression stage so future consumers (the article
+    list today, new-article push later) filter with a plain anti-join instead
+    of per-request vector math. Deleting a rule cascades its suppressions —
+    that cascade IS the undo story."""
+
+    __tablename__ = "article_suppressions"
+    __table_args__ = (UniqueConstraint("user_id", "article_id", "rule_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    article_id: Mapped[int] = mapped_column(
+        ForeignKey("articles.id", ondelete="CASCADE"), index=True
+    )
+    rule_id: Mapped[int] = mapped_column(
+        ForeignKey("user_dislike_rules.id", ondelete="CASCADE"), index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class ReadingActivity(Base):

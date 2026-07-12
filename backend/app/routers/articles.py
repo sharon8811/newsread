@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Literal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response
-from sqlalchemy import and_, func, literal_column, or_, select, update
+from sqlalchemy import and_, exists, func, literal_column, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,6 +16,7 @@ from ..models import (
     Article,
     ArticleEmbedding,
     ArticleEntity,
+    ArticleSuppression,
     Entity,
     EntitySnapshot,
     Feed,
@@ -207,6 +208,18 @@ async def user_can_access(session: AsyncSession, user_id: int, article: Article)
     return pinned is not None
 
 
+def not_suppressed(user_id: int):
+    """Listings hide articles matched by a dislike rule (soft-hide: the
+    detail view, shares and projects still work — that's the escape hatch).
+    Saved lists skip this predicate: an explicit save outranks a rule."""
+    return ~exists(
+        select(ArticleSuppression.id).where(
+            ArticleSuppression.user_id == user_id,
+            ArticleSuppression.article_id == Article.id,
+        )
+    )
+
+
 def _scoped_article_ids(user_id: int, feed_id: int | None, filter: str):
     """Article.id select with the same subscription/filter scope as the list."""
     stmt = (
@@ -235,6 +248,8 @@ def _scoped_article_ids(user_id: int, feed_id: int | None, filter: str):
         stmt = stmt.where(or_(UserArticleState.id.is_(None), UserArticleState.is_read.is_(False)))
     elif filter == "saved":
         stmt = stmt.where(UserArticleState.is_saved.is_(True))
+    if filter != "saved":
+        stmt = stmt.where(not_suppressed(user_id))
     return stmt
 
 
@@ -324,6 +339,8 @@ async def list_articles(
         )
     elif filter == "saved":
         stmt = stmt.where(UserArticleState.is_saved.is_(True))
+    if filter != "saved":
+        stmt = stmt.where(not_suppressed(user.id))
 
     ranked_ids = (
         await _hybrid_search_ids(session, user.id, feed_id, filter, q) if q else None
@@ -635,6 +652,8 @@ async def mark_all_read(
             ),
         )
         .where(or_(UserArticleState.id.is_(None), UserArticleState.is_read.is_(False)))
+        # Don't mark invisible (suppressed) articles read behind the user's back.
+        .where(not_suppressed(user.id))
     )
     if body.feed_id is not None:
         stmt = stmt.where(Article.feed_id == body.feed_id)

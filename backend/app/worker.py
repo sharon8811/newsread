@@ -10,10 +10,10 @@ from datetime import datetime, timedelta, timezone
 
 from arq import cron
 from arq.connections import RedisSettings
-from sqlalchemy import func, or_, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import selectinload
 
-from . import catalog_embeddings, embeddings, llm, push
+from . import catalog_embeddings, embeddings, llm, push, suppressions
 from .config import settings
 from .db import SessionLocal, init_db
 from .enrichers.pipeline import extract_entities, refresh_stale_entities
@@ -27,6 +27,7 @@ from .models import (
     ProjectArticle,
     ProjectArticleComment,
     Share,
+    UserDislikeRule,
 )
 from .summarizer import ThinContentError, generate_summaries
 
@@ -89,6 +90,9 @@ async def enrich_and_summarize(ctx: dict | None = None, feed_id: int | None = No
         logger.warning("Entity extraction stage failed: %s", exc)
 
     if not llm.is_configured():
+        # Entity rules must still materialize on LLM-less installs (the
+        # vector leg no-ops without embeddings).
+        await suppress_articles_batch(feed_id=feed_id)
         if enrich_ids or extracted:
             logger.info("Enriched %d articles, extracted entities for %d", len(enrich_ids), extracted)
         return
@@ -119,13 +123,15 @@ async def enrich_and_summarize(ctx: dict | None = None, feed_id: int | None = No
     await asyncio.gather(*(_summarize_one(aid, semaphore) for aid in summarize_ids))
 
     embedded = await embed_articles_batch(feed_id=feed_id)
+    suppressed = await suppress_articles_batch(feed_id=feed_id)
 
-    if enrich_ids or summarize_ids or embedded:
+    if enrich_ids or summarize_ids or embedded or suppressed:
         logger.info(
-            "Enriched %d articles, summarized up to %d, embedded %d",
+            "Enriched %d articles, summarized up to %d, embedded %d, suppressed %d",
             len(enrich_ids),
             len(summarize_ids),
             embedded,
+            suppressed,
         )
 
 
@@ -157,6 +163,30 @@ async def embed_articles_batch(feed_id: int | None = None) -> int:
             return await embeddings.embed_articles(session, list(articles))
         except Exception as exc:
             logger.warning("Embedding stage failed: %s", exc)
+            return 0
+
+
+async def suppress_articles_batch(feed_id: int | None = None) -> int:
+    """Materialize dislike rules over recently fetched articles (pure SQL, no
+    model calls — the reason suppression can run ahead of every consumer).
+    Failures are swallowed: a missed cycle self-heals inside SUPPRESS_WINDOW."""
+    async with SessionLocal() as session:
+        try:
+            # Expired story mutes delete themselves; the FK cascade frees
+            # their suppressions, so the muted articles quietly reappear.
+            await session.execute(
+                delete(UserDislikeRule).where(
+                    UserDislikeRule.expires_at.isnot(None),
+                    UserDislikeRule.expires_at <= func.now(),
+                )
+            )
+            cutoff = datetime.now(timezone.utc) - suppressions.SUPPRESS_WINDOW
+            count = await suppressions.apply_entity_rules(session, cutoff=cutoff, feed_id=feed_id)
+            count += await suppressions.apply_vector_rules(session, cutoff=cutoff, feed_id=feed_id)
+            await session.commit()
+            return count
+        except Exception as exc:
+            logger.warning("Suppression stage failed: %s", exc)
             return 0
 
 

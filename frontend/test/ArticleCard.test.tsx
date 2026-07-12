@@ -12,6 +12,7 @@ function renderCard(over: Parameters<typeof makeArticle>[0] = {}, props = {}) {
   const onToggleSaved = vi.fn();
   const onShare = vi.fn();
   const onAddToProject = vi.fn();
+  const onNotInterested = vi.fn();
   const utils = render(
     <ArticleCard
       article={article}
@@ -19,10 +20,11 @@ function renderCard(over: Parameters<typeof makeArticle>[0] = {}, props = {}) {
       onToggleSaved={onToggleSaved}
       onShare={onShare}
       onAddToProject={onAddToProject}
+      onNotInterested={onNotInterested}
       {...props}
     />,
   );
-  return { article, onToggleSaved, onShare, onAddToProject, ...utils };
+  return { article, onToggleSaved, onShare, onAddToProject, onNotInterested, ...utils };
 }
 
 describe("<ArticleCard>", () => {
@@ -101,6 +103,13 @@ describe("<ArticleCard>", () => {
     const { article, onAddToProject } = renderCard();
     await userEvent.click(screen.getByTitle("Add to project"));
     expect(onAddToProject).toHaveBeenCalledWith(article);
+    expect(pushMock).not.toHaveBeenCalled();
+  });
+
+  it("not-interested button fires without navigating", async () => {
+    const { article, onNotInterested } = renderCard();
+    await userEvent.click(screen.getByTitle("Not interested"));
+    expect(onNotInterested).toHaveBeenCalledWith(article);
     expect(pushMock).not.toHaveBeenCalled();
   });
 

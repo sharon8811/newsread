@@ -870,3 +870,69 @@ async def test_zero_budget_blocks_generation(client, users, data, session, monke
     resp = await client.get(f"/api/articles/{art.id}", headers=users.auth(user))
     assert resp.json()["image_pending"] is False
     assert calls == []
+
+
+# --- suppressions (not interested) ---
+
+async def _suppress(session, user, article):
+    from app.models import ArticleSuppression, UserDislikeRule
+
+    rule = UserDislikeRule(user_id=user.id, kind="article", article_id=article.id, label=article.title)
+    session.add(rule)
+    await session.commit()
+    session.add(ArticleSuppression(user_id=user.id, article_id=article.id, rule_id=rule.id))
+    await session.commit()
+    return rule
+
+
+async def test_suppressed_article_hidden_from_lists(client, users, data, session):
+    user = await users.create()
+    feed = await data.feed()
+    await data.subscribe(user, feed)
+    hidden = await data.article(feed, title="Hidden")
+    visible = await data.article(feed, title="Visible")
+    await _suppress(session, user, hidden)
+
+    for filter_ in ("all", "unread"):
+        resp = await client.get(f"/api/articles?filter={filter_}", headers=users.auth(user))
+        ids = [a["id"] for a in resp.json()]
+        assert hidden.id not in ids and visible.id in ids
+
+    # ILIKE search respects the suppression too.
+    resp = await client.get("/api/articles?q=Hidden", headers=users.auth(user))
+    assert resp.json() == []
+
+
+async def test_suppressed_article_still_in_saved_and_detail(client, users, data, session):
+    user = await users.create()
+    feed = await data.feed()
+    await data.subscribe(user, feed)
+    art = await data.article(feed, title="Kept")
+    await data.state(user, art, is_saved=True)
+    await _suppress(session, user, art)
+
+    resp = await client.get("/api/articles?filter=saved", headers=users.auth(user))
+    assert [a["id"] for a in resp.json()] == [art.id]
+    # Soft-hide: the detail view is the escape hatch.
+    detail = await client.get(f"/api/articles/{art.id}", headers=users.auth(user))
+    assert detail.status_code == 200
+
+
+async def test_mark_all_read_skips_suppressed(client, users, data, session):
+    from app.models import UserArticleState
+
+    user = await users.create()
+    feed = await data.feed()
+    await data.subscribe(user, feed)
+    hidden = await data.article(feed)
+    visible = await data.article(feed)
+    await _suppress(session, user, hidden)
+
+    resp = await client.post("/api/articles/mark-all-read", json={}, headers=users.auth(user))
+    assert resp.status_code == 204
+    read_ids = set(await session.scalars(
+        select(UserArticleState.article_id).where(
+            UserArticleState.user_id == user.id, UserArticleState.is_read.is_(True)
+        )
+    ))
+    assert read_ids == {visible.id}
