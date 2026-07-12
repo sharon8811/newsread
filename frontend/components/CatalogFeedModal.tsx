@@ -1,11 +1,46 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import useSWR from "swr";
-import { fetcher, type CatalogEntry, type CatalogPreview } from "@/lib/api";
+import { type CatalogEntry, type CatalogPreviewItem, type SubscribeOptions } from "@/lib/api";
+import { fetchPreview, type LoadedPreview } from "@/lib/feedPreview";
 import { formatFeedType, freshness, timeAgo } from "@/lib/format";
+import SubscribeQuickSettings, {
+  DEFAULT_SUBSCRIBE_SETTINGS,
+  toSubscribeOptions,
+} from "./SubscribeQuickSettings";
 import { CheckIcon, ExternalIcon, PlusIcon, XIcon } from "./icons";
+
+/** A preview story row; titles without a resolvable link render as plain text
+ * instead of dead anchors (some feeds publish guid-only items). */
+export function StoryRow({ item }: { item: CatalogPreviewItem }) {
+  const body = (
+    <>
+      <span className="flex items-baseline justify-between gap-3">
+        <span className={`text-[13.5px] font-medium leading-snug${item.url ? " group-hover:underline" : ""}`}>
+          {item.title}
+        </span>
+        {item.published_at && (
+          <span className="shrink-0 font-mono-nr text-[10.5px]" style={{ color: "var(--ink-faint)" }}>
+            {timeAgo(item.published_at)}
+          </span>
+        )}
+      </span>
+      {item.summary && (
+        <span className="mt-0.5 block line-clamp-2 text-[12px] leading-relaxed" style={{ color: "var(--ink-dim)" }}>
+          {item.summary}
+        </span>
+      )}
+    </>
+  );
+  if (!item.url) return <span className="block">{body}</span>;
+  return (
+    <a href={item.url} target="_blank" rel="noreferrer" className="group block">
+      {body}
+    </a>
+  );
+}
 
 export default function CatalogFeedModal({
   entry,
@@ -19,13 +54,17 @@ export default function CatalogFeedModal({
   busy: boolean;
   disabled: boolean;
   error: string | null;
-  onSubscribe: () => void;
+  onSubscribe: (options: SubscribeOptions) => void;
   onClose: () => void;
 }) {
-  const { data: preview, error: previewError, isLoading } = useSWR<CatalogPreview>(
-    `/catalog/${entry.id}/preview`,
-    fetcher,
+  // Fetched in the reader's browser when the publisher allows it; the key
+  // doubles as the server fallback path for feeds that block cross-origin reads.
+  const previewKey = `/catalog/${entry.id}/preview`;
+  const { data: preview, error: previewError, isLoading } = useSWR<LoadedPreview>(
+    previewKey,
+    () => fetchPreview(entry.url, previewKey),
   );
+  const [settings, setSettings] = useState(DEFAULT_SUBSCRIBE_SETTINGS);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -124,32 +163,13 @@ export default function CatalogFeedModal({
           )}
           {preview && preview.items.length > 0 && (
             <ul className="mt-1">
-              {preview.items.map((item) => (
+              {preview.items.map((item, index) => (
                 <li
-                  key={item.url}
+                  key={`${item.url ?? item.title}-${index}`}
                   className="border-b py-2.5 last:border-b-0"
                   style={{ borderColor: "var(--line-soft)" }}
                 >
-                  <a href={item.url} target="_blank" rel="noreferrer" className="group block">
-                    <span className="flex items-baseline justify-between gap-3">
-                      <span className="text-[13.5px] font-medium leading-snug group-hover:underline">
-                        {item.title}
-                      </span>
-                      {item.published_at && (
-                        <span className="shrink-0 font-mono-nr text-[10.5px]" style={{ color: "var(--ink-faint)" }}>
-                          {timeAgo(item.published_at)}
-                        </span>
-                      )}
-                    </span>
-                    {item.summary && (
-                      <span
-                        className="mt-0.5 block line-clamp-2 text-[12px] leading-relaxed"
-                        style={{ color: "var(--ink-dim)" }}
-                      >
-                        {item.summary}
-                      </span>
-                    )}
-                  </a>
+                  <StoryRow item={item} />
                 </li>
               ))}
             </ul>
@@ -160,9 +180,9 @@ export default function CatalogFeedModal({
                 Live preview is unavailable; showing a recent snapshot.
               </p>
               <ul className="mt-1">
-                {cachedStories.map((item) => (
+                {cachedStories.map((item, index) => (
                   <li
-                    key={`${item.url}-${item.title}`}
+                    key={`${item.url ?? item.title}-${index}`}
                     className="flex items-baseline justify-between gap-3 border-b py-2.5 last:border-b-0"
                     style={{ borderColor: "var(--line-soft)" }}
                   >
@@ -184,29 +204,37 @@ export default function CatalogFeedModal({
           )}
         </div>
 
-        <footer
-          className="flex items-center justify-between gap-3 border-t px-6 py-4"
-          style={{ borderColor: "var(--line-soft)" }}
-        >
-          <div className="min-w-0">
-            <p className="truncate font-mono-nr text-[10.5px]" style={{ color: "var(--ink-faint)" }}>
-              {entry.url}
-            </p>
-            {error && (
-              <p className="mt-1 text-[12px]" role="alert" style={{ color: "var(--danger)" }}>
-                {error}
+        <footer className="border-t px-6 py-4" style={{ borderColor: "var(--line-soft)" }}>
+          {!entry.subscribed && (
+            <div className="mb-3">
+              <SubscribeQuickSettings value={settings} onChange={setSettings} disabled={disabled} />
+            </div>
+          )}
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="truncate font-mono-nr text-[10.5px]" style={{ color: "var(--ink-faint)" }}>
+                {entry.url}
               </p>
+              {error && (
+                <p className="mt-1 text-[12px]" role="alert" style={{ color: "var(--danger)" }}>
+                  {error}
+                </p>
+              )}
+            </div>
+            {entry.subscribed ? (
+              <Link href={`/?feed=${entry.feed_id}`} className="btn shrink-0" style={{ color: "var(--accent)" }}>
+                <CheckIcon size={13} /> View feed
+              </Link>
+            ) : (
+              <button
+                className="btn btn-accent shrink-0"
+                disabled={disabled}
+                onClick={() => onSubscribe(toSubscribeOptions(settings))}
+              >
+                {busy ? "Subscribing…" : <><PlusIcon size={13} /> Subscribe</>}
+              </button>
             )}
           </div>
-          {entry.subscribed ? (
-            <Link href={`/?feed=${entry.feed_id}`} className="btn shrink-0" style={{ color: "var(--accent)" }}>
-              <CheckIcon size={13} /> View feed
-            </Link>
-          ) : (
-            <button className="btn btn-accent shrink-0" disabled={disabled} onClick={onSubscribe}>
-              {busy ? "Subscribing…" : <><PlusIcon size={13} /> Subscribe</>}
-            </button>
-          )}
         </footer>
       </div>
     </div>

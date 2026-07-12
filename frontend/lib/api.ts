@@ -213,7 +213,7 @@ export type CatalogCategory = {
 
 export type CatalogPreviewItem = {
   title: string;
-  url: string;
+  url: string | null; // feeds may publish guid-only items with no link
   author: string | null;
   published_at: string | null;
   summary: string | null;
@@ -226,6 +226,34 @@ export type CatalogPreview = {
   site_url: string | null;
   fetched_at: string;
   items: CatalogPreviewItem[];
+};
+
+// Optional quick settings sent with POST /feeds; include only values that
+// differ from the defaults (ai/image on, unmuted) so subscribing to a feed
+// someone else already tuned doesn't silently reset their global switches.
+export type SubscribeOptions = {
+  ai_enabled?: boolean;
+  image_gen_enabled?: boolean;
+  is_muted?: boolean;
+};
+
+// A topic-parameterized feed source (subscribe to any subreddit, news query…).
+export type SmartFeed = {
+  key: string;
+  name: string;
+  description: string;
+  site_url: string;
+  category: string;
+  topic_label: string;
+  topic_hint: string;
+  example_topics: string[];
+};
+
+export type SmartFeedResolve = {
+  key: string;
+  topic: string;
+  url: string;
+  title: string;
 };
 
 export type EntityBadge = {

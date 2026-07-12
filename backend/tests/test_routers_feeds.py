@@ -97,6 +97,45 @@ async def test_add_existing_feed_reuses_it(client, users, data, session):
     assert feeds_count == 1
 
 
+async def test_add_feed_applies_quick_settings(client, users, session):
+    user = await users.create()
+    resp = await client.post(
+        "/api/feeds",
+        json={
+            "url": "tuned.example/rss",
+            "ai_enabled": False,
+            "image_gen_enabled": False,
+            "is_muted": True,
+        },
+        headers=users.auth(user),
+    )
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["ai_enabled"] is False
+    assert body["image_gen_enabled"] is False
+    assert body["is_muted"] is True
+
+    feed = await session.scalar(select(Feed).where(Feed.id == body["id"]))
+    sub = await session.scalar(select(Subscription).where(Subscription.user_id == user.id))
+    assert feed.ai_enabled is False and feed.image_gen_enabled is False
+    assert sub.is_muted is True
+
+
+async def test_add_feed_omitted_settings_keep_existing_values(client, users, data):
+    """Subscribing without quick settings must not reset the global switches
+    another subscriber already tuned on this feed."""
+    user = await users.create()
+    await data.feed(url="https://tuned.example/rss", title="Tuned",
+                    ai_enabled=False, image_gen_enabled=False)
+    resp = await client.post("/api/feeds", json={"url": "https://tuned.example/rss"},
+                             headers=users.auth(user))
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["ai_enabled"] is False
+    assert body["image_gen_enabled"] is False
+    assert body["is_muted"] is False
+
+
 async def test_add_feed_already_subscribed(client, users, data):
     user = await users.create()
     feed = await data.feed(url="https://dup.example/rss")

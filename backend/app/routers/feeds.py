@@ -153,14 +153,25 @@ async def add_feed(
                     status_code=400, detail="This feed is empty or no longer available"
                 ) from exc
 
+    # Quick settings chosen at subscribe time. The global switches share PATCH
+    # /feeds/{id}/settings semantics (any subscriber may flip them); is_muted
+    # is scoped to this user's subscription.
+    if body.ai_enabled is not None:
+        feed.ai_enabled = body.ai_enabled
+    if body.image_gen_enabled is not None:
+        feed.image_gen_enabled = body.image_gen_enabled
+
     already = await session.scalar(
         select(Subscription).where(
             Subscription.user_id == user.id, Subscription.feed_id == feed.id
         )
     )
     if already is None:
-        session.add(Subscription(user_id=user.id, feed_id=feed.id))
-        await session.commit()
+        already = Subscription(user_id=user.id, feed_id=feed.id)
+        session.add(already)
+    if body.is_muted is not None:
+        already.is_muted = body.is_muted
+    await session.commit()
 
     # Background: fetch og:images + full text, then pre-generate summaries.
     await enqueue("enrich_feed", feed.id)

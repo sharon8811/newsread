@@ -11,6 +11,7 @@ import type {
   ProjectArticle,
   ProjectComment,
   Share,
+  SmartFeed,
   User,
   UserPublic,
 } from "@/lib/api";
@@ -90,6 +91,20 @@ export function makeCatalogPreview(over: Partial<CatalogPreview> = {}): CatalogP
         summary: null,
       },
     ],
+    ...over,
+  };
+}
+
+export function makeSmartFeed(over: Partial<SmartFeed> = {}): SmartFeed {
+  return {
+    key: "reddit",
+    name: "Reddit",
+    description: "Follow any subreddit as a feed of its newest posts.",
+    site_url: "https://www.reddit.com",
+    category: "Communities",
+    topic_label: "Subreddit",
+    topic_hint: "programming, or paste reddit.com/r/programming",
+    example_topics: ["programming", "science"],
     ...over,
   };
 }

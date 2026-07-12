@@ -348,6 +348,200 @@ async def test_preview_fetch_failure_is_502(client, users, catalog, monkeypatch)
     assert resp.json()["detail"] == "The feed could not be reached right now"
 
 
+async def test_preview_resolves_relative_and_missing_item_urls(
+    client, users, catalog, monkeypatch
+):
+    """Items may carry relative links (resolve against the feed URL) or none
+    at all (guid-only) — those must come back null, never an empty string."""
+    user = await users.create()
+    entry = await catalog(url="https://relative.example/rss")
+
+    async def fake_fetch(url):
+        return ParsedFeed(
+            title="Live",
+            final_url="https://relative.example/feeds/rss",
+            articles=[
+                ParsedArticle(guid="1", url="/posts/1", title="Relative link"),
+                ParsedArticle(guid="2", url="", title="No link at all"),
+                ParsedArticle(guid="3", url="https://elsewhere.example/3", title="Absolute"),
+            ],
+        )
+
+    monkeypatch.setattr(catalog_router, "fetch_feed_data", fake_fetch)
+    resp = await client.get(f"/api/catalog/{entry.id}/preview", headers=users.auth(user))
+    urls = [item["url"] for item in resp.json()["items"]]
+    assert urls == [
+        "https://relative.example/posts/1",
+        None,
+        "https://elsewhere.example/3",
+    ]
+
+
+# --- Smart feeds (topic-parameterized sources) ---
+
+
+async def test_smart_list_requires_auth(client):
+    resp = await client.get("/api/catalog/smart")
+    assert resp.status_code == 401
+
+
+async def test_smart_list_describes_providers(client, users):
+    user = await users.create()
+    resp = await client.get("/api/catalog/smart", headers=users.auth(user))
+    assert resp.status_code == 200
+    body = resp.json()
+    assert {p["key"] for p in body} == {
+        "reddit", "google-news", "hacker-news", "medium", "mastodon",
+    }
+    reddit = next(p for p in body if p["key"] == "reddit")
+    assert reddit["topic_label"] == "Subreddit"
+    assert reddit["example_topics"]
+    assert reddit["topic_hint"]
+    # Templates are a server-side concern; the client never sees them.
+    assert "url_template" not in reddit
+
+
+def test_resolve_smart_topic_slug_forms():
+    reddit = catalog_router.SMART_FEEDS["reddit"]
+    for raw in (
+        "programming",
+        "r/programming",
+        "R/programming",
+        " programming ",
+        "https://www.reddit.com/r/programming/",
+        "reddit.com/r/programming",
+        "www.reddit.com/r/programming/top",
+    ):
+        resolved = catalog_router.resolve_smart_topic(reddit, raw)
+        assert resolved.url == "https://www.reddit.com/r/programming/.rss", raw
+        assert resolved.topic == "programming"
+        assert resolved.title == "r/programming"
+
+    medium = catalog_router.SMART_FEEDS["medium"]
+    assert catalog_router.resolve_smart_topic(medium, "Machine Learning").url == (
+        "https://medium.com/feed/tag/machine-learning"
+    )
+    assert catalog_router.resolve_smart_topic(
+        medium, "https://medium.com/tag/ai"
+    ).topic == "ai"
+
+    mastodon = catalog_router.SMART_FEEDS["mastodon"]
+    resolved = catalog_router.resolve_smart_topic(mastodon, "#photography")
+    assert resolved.url == "https://mastodon.social/tags/photography.rss"
+    assert resolved.title == "#photography"
+    assert catalog_router.resolve_smart_topic(
+        mastodon, "https://mastodon.social/tags/opensource"
+    ).topic == "opensource"
+
+
+def test_resolve_smart_topic_query_forms():
+    google = catalog_router.SMART_FEEDS["google-news"]
+    resolved = catalog_router.resolve_smart_topic(google, "climate change")
+    assert resolved.url == (
+        "https://news.google.com/rss/search?q=climate+change&hl=en-US&gl=US&ceid=US:en"
+    )
+    assert resolved.title == "Google News · climate change"
+    # A pasted Google News search URL resolves to its query.
+    assert catalog_router.resolve_smart_topic(
+        google, "https://news.google.com/search?q=spacex"
+    ).topic == "spacex"
+
+    hn = catalog_router.SMART_FEEDS["hacker-news"]
+    assert catalog_router.resolve_smart_topic(hn, "c++").url == (
+        "https://hnrss.org/newest?q=c%2B%2B"
+    )
+
+
+def test_resolve_smart_topic_rejects_junk():
+    reddit = catalog_router.SMART_FEEDS["reddit"]
+    for raw in ("", "   ", "no spaces allowed", "a", "https://example.com/not-reddit"):
+        with pytest.raises(ValueError):
+            catalog_router.resolve_smart_topic(reddit, raw)
+    google = catalog_router.SMART_FEEDS["google-news"]
+    with pytest.raises(ValueError):
+        catalog_router.resolve_smart_topic(google, "x" * 121)
+
+
+async def test_smart_resolve_endpoint(client, users):
+    user = await users.create()
+    resp = await client.get(
+        "/api/catalog/smart/reddit/resolve", params={"topic": "r/rust"},
+        headers=users.auth(user),
+    )
+    assert resp.status_code == 200
+    assert resp.json() == {
+        "key": "reddit",
+        "topic": "rust",
+        "url": "https://www.reddit.com/r/rust/.rss",
+        "title": "r/rust",
+    }
+
+    resp = await client.get(
+        "/api/catalog/smart/nope/resolve", params={"topic": "x"}, headers=users.auth(user)
+    )
+    assert resp.status_code == 404
+
+    resp = await client.get(
+        "/api/catalog/smart/reddit/resolve", params={"topic": "not a subreddit"},
+        headers=users.auth(user),
+    )
+    assert resp.status_code == 422
+    assert "valid Reddit subreddit" in resp.json()["detail"]
+
+
+async def test_smart_preview_fetches_resolved_url(client, users, monkeypatch):
+    user = await users.create()
+
+    async def fake_fetch(url):
+        assert url == "https://www.reddit.com/r/rust/.rss"
+        return ParsedFeed(title="", articles=[
+            ParsedArticle(guid="1", url="https://reddit.example/1", title="A post"),
+        ])
+
+    monkeypatch.setattr(catalog_router, "fetch_feed_data", fake_fetch)
+    resp = await client.get(
+        "/api/catalog/smart/reddit/preview", params={"topic": "rust"},
+        headers=users.auth(user),
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    # An untitled parse falls back to the resolved smart-feed title.
+    assert body["title"] == "r/rust"
+    assert [item["title"] for item in body["items"]] == ["A post"]
+
+
+async def test_smart_preview_is_cached_by_url(client, users, monkeypatch):
+    user = await users.create()
+    calls = 0
+
+    async def counting_fetch(url):
+        nonlocal calls
+        calls += 1
+        return ParsedFeed(title="Live", articles=[])
+
+    monkeypatch.setattr(catalog_router, "fetch_feed_data", counting_fetch)
+    for _ in range(2):
+        resp = await client.get(
+            "/api/catalog/smart/reddit/preview", params={"topic": "rust"},
+            headers=users.auth(user),
+        )
+        assert resp.status_code == 200
+    assert calls == 1
+
+
+async def test_smart_preview_rejects_bad_input(client, users):
+    user = await users.create()
+    resp = await client.get(
+        "/api/catalog/smart/nope/preview", params={"topic": "x"}, headers=users.auth(user)
+    )
+    assert resp.status_code == 404
+    resp = await client.get(
+        "/api/catalog/smart/reddit/preview", params={"topic": "not a subreddit"},
+        headers=users.auth(user),
+    )
+    assert resp.status_code == 422
+
+
 @pytest.fixture
 def _mock_refresh(monkeypatch):
     async def fake_refresh(session, feed, *, require_articles=False):

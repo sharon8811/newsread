@@ -1,9 +1,11 @@
 import html
 import logging
+import re
 import time
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Literal
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, quote, quote_plus, urljoin, urlsplit
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import and_, case, func, literal_column, or_, select
@@ -29,6 +31,8 @@ from ..schemas import (
     CatalogPreviewOut,
     CatalogSubmissionIn,
     CatalogSubmissionOut,
+    SmartFeedOut,
+    SmartFeedResolveOut,
 )
 from ..security import get_current_user
 
@@ -40,8 +44,156 @@ PREVIEW_ITEM_LIMIT = 8
 PREVIEW_SUMMARY_CHARS = 240
 PREVIEW_TTL_SECONDS = 600
 # Repeated modal opens shouldn't re-hit publishers; the catalog is small
-# (hundreds of entries), so an unbounded per-process cache is fine.
-_preview_cache: dict[int, tuple[float, CatalogPreviewOut]] = {}
+# (hundreds of entries), so an unbounded per-process cache is fine. Keyed by
+# feed URL so catalog entries and smart-feed topics share one cache.
+_preview_cache: dict[str, tuple[float, CatalogPreviewOut]] = {}
+
+
+@dataclass(frozen=True)
+class SmartFeedProvider:
+    """A feed source parameterized by a user-supplied topic. `slug` providers
+    take an identifier (subreddit, tag) and also accept the topic's page URL
+    pasted verbatim; `query` providers accept free text."""
+
+    key: str
+    name: str
+    description: str
+    site_url: str
+    category: str
+    topic_label: str
+    topic_hint: str
+    url_template: str  # receives the url-encoded topic as {topic}
+    title_template: str  # receives the plain topic as {topic}
+    example_topics: tuple[str, ...] = ()
+    kind: Literal["slug", "query"] = "slug"
+    # slug providers: extract the topic from a pasted URL, strip UI prefixes
+    # ("r/", "#"), and validate the final slug.
+    url_topic_re: re.Pattern | None = None
+    strip_prefixes: tuple[str, ...] = ()
+    topic_re: re.Pattern = field(default=re.compile(r"^[A-Za-z0-9_]{1,80}$"))
+    lowercase: bool = False
+
+
+SMART_FEEDS: dict[str, SmartFeedProvider] = {
+    provider.key: provider
+    for provider in (
+        SmartFeedProvider(
+            key="reddit",
+            name="Reddit",
+            description="Follow any subreddit as a feed of its newest posts.",
+            site_url="https://www.reddit.com",
+            category="Communities",
+            topic_label="Subreddit",
+            topic_hint="programming, or paste reddit.com/r/programming",
+            url_template="https://www.reddit.com/r/{topic}/.rss",
+            title_template="r/{topic}",
+            example_topics=("programming", "science", "worldnews"),
+            url_topic_re=re.compile(r"reddit\.com/r/([A-Za-z0-9_]+)", re.IGNORECASE),
+            strip_prefixes=("r/",),
+            topic_re=re.compile(r"^[A-Za-z0-9_]{2,50}$"),
+        ),
+        SmartFeedProvider(
+            key="google-news",
+            name="Google News",
+            description="A news search on any topic, updated as stories break.",
+            site_url="https://news.google.com",
+            category="News",
+            topic_label="Topic",
+            topic_hint="climate change, Tel Aviv, SpaceX…",
+            url_template="https://news.google.com/rss/search?q={topic}&hl=en-US&gl=US&ceid=US:en",
+            title_template="Google News · {topic}",
+            example_topics=("artificial intelligence", "renewable energy"),
+            kind="query",
+        ),
+        SmartFeedProvider(
+            key="hacker-news",
+            name="Hacker News",
+            description="New Hacker News stories matching a search phrase.",
+            site_url="https://news.ycombinator.com",
+            category="Tech",
+            topic_label="Search phrase",
+            topic_hint="rust, self-hosting, databases…",
+            url_template="https://hnrss.org/newest?q={topic}",
+            title_template="Hacker News · {topic}",
+            example_topics=("rust", "postgres"),
+            kind="query",
+        ),
+        SmartFeedProvider(
+            key="medium",
+            name="Medium",
+            description="Stories published under any Medium tag.",
+            site_url="https://medium.com",
+            category="Writing",
+            topic_label="Tag",
+            topic_hint="machine-learning, or paste medium.com/tag/machine-learning",
+            url_template="https://medium.com/feed/tag/{topic}",
+            title_template="Medium · {topic}",
+            example_topics=("machine-learning", "startup"),
+            url_topic_re=re.compile(r"medium\.com/(?:feed/)?tag/([A-Za-z0-9-]+)", re.IGNORECASE),
+            topic_re=re.compile(r"^[a-z0-9][a-z0-9-]{0,79}$"),
+            lowercase=True,
+        ),
+        SmartFeedProvider(
+            key="mastodon",
+            name="Mastodon",
+            description="Public posts for any hashtag on mastodon.social.",
+            site_url="https://mastodon.social",
+            category="Communities",
+            topic_label="Hashtag",
+            topic_hint="photography, or paste mastodon.social/tags/photography",
+            url_template="https://mastodon.social/tags/{topic}.rss",
+            title_template="#{topic}",
+            example_topics=("photography", "opensource"),
+            url_topic_re=re.compile(r"/tags/([A-Za-z0-9_]+)", re.IGNORECASE),
+            strip_prefixes=("#",),
+            topic_re=re.compile(r"^[A-Za-z0-9_]{1,64}$"),
+        ),
+    )
+}
+
+
+def _looks_like_url(raw: str) -> bool:
+    return "://" in raw or raw.lower().startswith("www.") or "/" in raw and "." in raw.split("/", 1)[0]
+
+
+def resolve_smart_topic(provider: SmartFeedProvider, raw: str) -> SmartFeedResolveOut:
+    """Normalize a typed topic — or a pasted page URL — into a feed URL."""
+    topic = raw.strip()
+    if not topic:
+        raise ValueError(f"Enter a {provider.topic_label.lower()}")
+    if provider.kind == "query":
+        # A pasted Google-News-style search URL still resolves to its query.
+        if _looks_like_url(topic):
+            query = parse_qs(urlsplit(topic if "://" in topic else f"https://{topic}").query).get("q")
+            if query and query[0].strip():
+                topic = query[0].strip()
+        if len(topic) > 120:
+            raise ValueError(f"{provider.topic_label} is too long")
+        return SmartFeedResolveOut(
+            key=provider.key,
+            topic=topic,
+            url=provider.url_template.format(topic=quote_plus(topic)),
+            title=provider.title_template.format(topic=topic),
+        )
+    if _looks_like_url(topic):
+        match = provider.url_topic_re.search(topic) if provider.url_topic_re else None
+        if match is None:
+            raise ValueError(f"That link does not look like a {provider.name} {provider.topic_label.lower()} URL")
+        topic = match.group(1)
+    for prefix in provider.strip_prefixes:
+        if topic.lower().startswith(prefix.lower()):
+            topic = topic[len(prefix):]
+    topic = topic.strip().strip("/")
+    if provider.lowercase:
+        topic = re.sub(r"\s+", "-", topic.lower())
+    if not provider.topic_re.fullmatch(topic):
+        raise ValueError(f"That does not look like a valid {provider.name} {provider.topic_label.lower()}")
+    return SmartFeedResolveOut(
+        key=provider.key,
+        topic=topic,
+        url=provider.url_template.format(topic=quote(topic, safe="")),
+        title=provider.title_template.format(topic=topic),
+    )
 
 
 def _catalog_filter(category: str | None):
@@ -263,6 +415,99 @@ def _preview_summary(content_html: str) -> str | None:
     return f"{clipped}…"
 
 
+async def _cached_preview(
+    feed_url: str,
+    *,
+    fallback_title: str,
+    fallback_description: str | None = None,
+    fallback_site_url: str | None = None,
+) -> CatalogPreviewOut:
+    """Fetch a live snapshot of a feed, memoized by URL for PREVIEW_TTL_SECONDS."""
+    cached = _preview_cache.get(feed_url)
+    if cached and cached[0] > time.monotonic():
+        return cached[1]
+    try:
+        parsed = await fetch_feed_data(feed_url)
+    except (FeedParseError, ValueError, OSError) as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502, detail="The feed could not be reached right now"
+        ) from exc
+    # Item links may be relative (resolve against the feed URL) or missing
+    # entirely (guid-only items) — never emit an empty-string href.
+    base_url = parsed.final_url or feed_url
+    preview = CatalogPreviewOut(
+        title=parsed.title or fallback_title,
+        description=parsed.description or fallback_description,
+        site_url=parsed.site_url or fallback_site_url,
+        fetched_at=datetime.now(timezone.utc),
+        items=[
+            CatalogPreviewItemOut(
+                title=article.title,
+                url=urljoin(base_url, article.url) if article.url else None,
+                author=article.author,
+                published_at=article.published_at,
+                summary=_preview_summary(article.content_html),
+            )
+            for article in parsed.articles[:PREVIEW_ITEM_LIMIT]
+        ],
+    )
+    _preview_cache[feed_url] = (time.monotonic() + PREVIEW_TTL_SECONDS, preview)
+    return preview
+
+
+@router.get("/smart", response_model=list[SmartFeedOut])
+async def list_smart_feeds(user: User = Depends(get_current_user)):
+    return [
+        SmartFeedOut(
+            key=provider.key,
+            name=provider.name,
+            description=provider.description,
+            site_url=provider.site_url,
+            category=provider.category,
+            topic_label=provider.topic_label,
+            topic_hint=provider.topic_hint,
+            example_topics=list(provider.example_topics),
+        )
+        for provider in SMART_FEEDS.values()
+    ]
+
+
+def _smart_provider(key: str) -> SmartFeedProvider:
+    provider = SMART_FEEDS.get(key)
+    if provider is None:
+        raise HTTPException(status_code=404, detail="Unknown smart feed")
+    return provider
+
+
+@router.get("/smart/{key}/resolve", response_model=SmartFeedResolveOut)
+async def resolve_smart_feed(
+    key: str,
+    topic: str = Query(min_length=1, max_length=2048),
+    user: User = Depends(get_current_user),
+):
+    """Turn a topic (or a pasted topic-page URL) into a concrete feed URL."""
+    try:
+        return resolve_smart_topic(_smart_provider(key), topic)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get("/smart/{key}/preview", response_model=CatalogPreviewOut)
+async def preview_smart_feed(
+    key: str,
+    topic: str = Query(min_length=1, max_length=2048),
+    user: User = Depends(get_current_user),
+):
+    """Server-side preview fallback for browsers blocked by feed CORS policies."""
+    try:
+        resolved = resolve_smart_topic(_smart_provider(key), topic)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return await _cached_preview(resolved.url, fallback_title=resolved.title)
+
+
 @router.get("/{entry_id}/preview", response_model=CatalogPreviewOut)
 async def preview_entry(
     entry_id: int,
@@ -275,35 +520,12 @@ async def preview_entry(
     )
     if entry is None:
         raise HTTPException(status_code=404, detail="Catalog entry not found")
-    cached = _preview_cache.get(entry_id)
-    if cached and cached[0] > time.monotonic():
-        return cached[1]
-    try:
-        parsed = await fetch_feed_data(entry.url)
-    except (FeedParseError, ValueError, OSError) as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
-    except Exception as exc:
-        raise HTTPException(
-            status_code=502, detail="The feed could not be reached right now"
-        ) from exc
-    preview = CatalogPreviewOut(
-        title=parsed.title or entry.title,
-        description=parsed.description or entry.description,
-        site_url=parsed.site_url or entry.site_url,
-        fetched_at=datetime.now(timezone.utc),
-        items=[
-            CatalogPreviewItemOut(
-                title=article.title,
-                url=article.url,
-                author=article.author,
-                published_at=article.published_at,
-                summary=_preview_summary(article.content_html),
-            )
-            for article in parsed.articles[:PREVIEW_ITEM_LIMIT]
-        ],
+    return await _cached_preview(
+        entry.url,
+        fallback_title=entry.title,
+        fallback_description=entry.description,
+        fallback_site_url=entry.site_url,
     )
-    _preview_cache[entry_id] = (time.monotonic() + PREVIEW_TTL_SECONDS, preview)
-    return preview
 
 
 @router.post("/submissions", response_model=CatalogSubmissionOut, status_code=201)

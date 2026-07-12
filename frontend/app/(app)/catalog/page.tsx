@@ -9,10 +9,13 @@ import {
   type CatalogCategory,
   type CatalogEntry,
   type Feed,
+  type SmartFeed,
+  type SubscribeOptions,
 } from "@/lib/api";
 import { formatFeedType, freshness } from "@/lib/format";
 import CatalogFeedModal from "@/components/CatalogFeedModal";
-import { CheckIcon, PlusIcon, SearchIcon } from "@/components/icons";
+import SmartFeedModal from "@/components/SmartFeedModal";
+import { CheckIcon, PlusIcon, SearchIcon, SparkleIcon } from "@/components/icons";
 
 type CatalogSort = "name" | "popular" | "recommended";
 
@@ -36,6 +39,7 @@ export default function CatalogPage() {
   const [showSubmit, setShowSubmit] = useState(false);
   const [visibleCount, setVisibleCount] = useState(60);
   const [detailId, setDetailId] = useState<number | null>(null);
+  const [smartKey, setSmartKey] = useState<string | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -48,16 +52,18 @@ export default function CatalogPage() {
   const key = catalogKey(q, category, sort);
   const { data: entries, error: loadError, isLoading } = useSWR<CatalogEntry[]>(key, fetcher);
   const { data: categories } = useSWR<CatalogCategory[]>("/catalog/categories", fetcher);
+  const { data: smartFeeds } = useSWR<SmartFeed[]>("/catalog/smart", fetcher);
   const visibleCategories = showAllTopics ? categories : categories?.slice(0, 12);
   // Derived from the SWR cache so a subscribe flips the open modal in place.
   const detailEntry = entries?.find((entry) => entry.id === detailId) ?? null;
+  const smartFeed = smartFeeds?.find((provider) => provider.key === smartKey) ?? null;
 
-  async function subscribe(entry: CatalogEntry) {
+  async function subscribe(entry: CatalogEntry, options: SubscribeOptions = {}) {
     if (busyUrl) return;
     setBusyUrl(entry.url);
     setError(null);
     try {
-      const feed = await api<Feed>("/feeds", { method: "POST", body: { url: entry.url } });
+      const feed = await api<Feed>("/feeds", { method: "POST", body: { url: entry.url, ...options } });
       mutate(
         key,
         (current: CatalogEntry[] | undefined) => current?.map((item) =>
@@ -124,6 +130,31 @@ export default function CatalogPage() {
 
       <main className="px-4 py-4 sm:px-6">
         {showSubmit && <SubmissionForm categories={categories ?? []} onDone={() => setShowSubmit(false)} />}
+        {!q && (smartFeeds?.length ?? 0) > 0 && (
+          <section className="mb-5" aria-label="Smart feeds">
+            <p className="mono-label mb-2 flex items-center gap-1.5">
+              <SparkleIcon size={12} /> Smart feeds — follow any topic
+            </p>
+            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+              {smartFeeds?.map((provider) => (
+                <button
+                  key={provider.key}
+                  className="rounded-lg border p-3 text-left transition-colors hover:bg-[var(--bg-hover)]"
+                  style={{ borderColor: "var(--line-soft)", background: "var(--bg-inset)" }}
+                  onClick={() => setSmartKey(provider.key)}
+                >
+                  <span className="block text-[13px] font-semibold leading-snug">{provider.name}</span>
+                  <span className="mt-0.5 block text-[11.5px] leading-relaxed" style={{ color: "var(--ink-dim)" }}>
+                    {provider.description}
+                  </span>
+                  <span className="mt-1.5 inline-block font-mono-nr text-[10.5px]" style={{ color: "var(--accent)" }}>
+                    Any {provider.topic_label.toLowerCase()} →
+                  </span>
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <p className="mr-auto text-[12.5px]" style={{ color: "var(--ink-faint)" }}>
             {entries ? `${entries.length} feeds` : "Loading feeds"}{q ? ` matching “${q}”` : ""}
@@ -158,10 +189,11 @@ export default function CatalogPage() {
           busy={busyUrl === detailEntry.url}
           disabled={busyUrl !== null}
           error={error}
-          onSubscribe={() => subscribe(detailEntry)}
+          onSubscribe={(options) => subscribe(detailEntry, options)}
           onClose={() => setDetailId(null)}
         />
       )}
+      {smartFeed && <SmartFeedModal provider={smartFeed} onClose={() => setSmartKey(null)} />}
     </>
   );
 }
