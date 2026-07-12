@@ -7,7 +7,7 @@ import {
 
 describe("Hacker News discussions", () => {
   beforeEach(() => {
-    global.fetch = jest.fn();
+    globalThis.fetch = jest.fn();
   });
 
   it("matches structured and self-post HN item URLs", () => {
@@ -32,12 +32,12 @@ describe("Hacker News discussions", () => {
   });
 
   it("fetches story metadata directly from the device", async () => {
-    (global.fetch as jest.Mock).mockResolvedValue({
+    (globalThis.fetch as jest.Mock).mockResolvedValue({
       ok: true,
       json: async () => ({ id: 55, score: 8, descendants: 3 }),
     });
     await expect(fetchHNItem(55, { fresh: true })).resolves.toMatchObject({ score: 8 });
-    expect(global.fetch).toHaveBeenCalledWith(
+    expect(globalThis.fetch).toHaveBeenCalledWith(
       "https://hacker-news.firebaseio.com/v0/item/55.json",
       { cache: "no-store", signal: undefined },
     );
@@ -49,7 +49,7 @@ describe("Hacker News discussions", () => {
       3: { id: 3, deleted: true },
       4: { id: 4, by: "reply", text: "nested" },
     };
-    (global.fetch as jest.Mock).mockImplementation(async (input: string) => {
+    (globalThis.fetch as jest.Mock).mockImplementation(async (input: string) => {
       const id = Number(input.match(/(\d+)\.json$/)?.[1]);
       return { ok: true, json: async () => items[id] };
     });
@@ -64,7 +64,7 @@ describe("Hacker News discussions", () => {
   });
 
   it("skips one unavailable comment without losing the thread", async () => {
-    (global.fetch as jest.Mock).mockImplementation(async (input: string) => {
+    (globalThis.fetch as jest.Mock).mockImplementation(async (input: string) => {
       const id = Number(input.match(/(\d+)\.json$/)?.[1]);
       return {
         ok: true,
