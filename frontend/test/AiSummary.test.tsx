@@ -35,6 +35,38 @@ describe("<AiSummary>", () => {
     expect(screen.getByText("AI Summary")).toBeInTheDocument();
   });
 
+  it("renders markdown lists, converting legacy '•' bullets too", () => {
+    stubStatus(true);
+    vi.stubGlobal("fetch", okFetch());
+    render(
+      <AiSummary
+        article={makeArticleDetail({
+          summary: "Core takeaway.\n\n- **First** point\n• legacy point",
+        })}
+      />,
+    );
+    const items = screen.getAllByRole("listitem");
+    expect(items).toHaveLength(2);
+    expect(items[0]).toHaveTextContent("First point");
+    expect(items[1]).toHaveTextContent("legacy point");
+    expect(screen.getByText("First").tagName).toBe("STRONG");
+  });
+
+  it("renders markdown tables", () => {
+    stubStatus(true);
+    vi.stubGlobal("fetch", okFetch());
+    render(
+      <AiSummary
+        article={makeArticleDetail({
+          summary:
+            "Intro.\n\n| State | Definition |\n| --- | --- |\n| Virginia | monetary only |",
+        })}
+      />,
+    );
+    expect(screen.getByRole("table")).toBeInTheDocument();
+    expect(screen.getByText("Virginia")).toBeInTheDocument();
+  });
+
   it("auto-generates when there is no summary yet", async () => {
     stubStatus(true);
     const fetchMock = okFetch();

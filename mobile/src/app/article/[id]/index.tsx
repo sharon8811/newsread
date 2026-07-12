@@ -25,6 +25,25 @@ import type { AiStatus, ArticleDetail } from "@/lib/types";
 
 const openLink = (url: string) => WebBrowser.openBrowserAsync(url).catch(() => {});
 
+/** The API's full summary is GitHub-flavored markdown (bullets, bold, small
+ * tables); flatten it to plain lines until the app gets a markdown view. */
+function summaryLines(summary: string): string[] {
+  return summary
+    .split(/\n+/)
+    .filter((line) => !/^\s*\|[\s:|-]+\|\s*$/.test(line))
+    .map((line) =>
+      line
+        .replace(/^[ \t]*[-•]\s+/, "• ")
+        .replace(/\*\*(.+?)\*\*/g, "$1")
+        .replace(/^\s*\|(.+)\|\s*$/, (_, cells: string) =>
+          cells
+            .split("|")
+            .map((cell) => cell.trim())
+            .join("  ·  "),
+        ),
+    );
+}
+
 function htmlStyles(colors: Palette, isDark: boolean): Record<string, MixedStyleDeclaration> {
   return {
     a: { color: colors.tint },
@@ -157,7 +176,7 @@ export default function ArticleScreen() {
           {data.summary !== "" && (
             <View style={[styles.summary, { borderColor: colors.border }]}>
               <Text style={[styles.summaryLabel, { color: colors.muted }]}>AI summary</Text>
-              {data.summary.split(/\n+/).map((paragraph, index) => (
+              {summaryLines(data.summary).map((paragraph, index) => (
                 <Text key={index} style={[styles.summaryText, { color: colors.text }]}>
                   {paragraph}
                 </Text>

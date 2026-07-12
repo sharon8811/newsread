@@ -1,9 +1,17 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import useSWR, { mutate } from "swr";
 import { api, fetcher, type AiStatus, type ArticleDetail } from "@/lib/api";
 import { RefreshIcon, SparkleIcon } from "./icons";
+
+/** Summaries generated before the markdown prompt use "• " bullet lines —
+ * rewrite them into list items so they render the same as new ones. */
+function asMarkdown(summary: string): string {
+  return summary.replace(/^[ \t]*•\s*/gm, "- ");
+}
 
 export default function AiSummary({ article }: { article: ArticleDetail }) {
   const { data: status } = useSWR<AiStatus>("/ai/status", fetcher);
@@ -89,12 +97,11 @@ export default function AiSummary({ article }: { article: ArticleDetail }) {
           </button>
         </div>
       ) : article.summary ? (
-        <p
-          className="font-serif-nr mt-3 whitespace-pre-line text-[15.5px] leading-relaxed"
-          style={{ color: "var(--ink)" }}
-        >
-          {article.summary}
-        </p>
+        <div className="summary-md mt-3.5">
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+            {asMarkdown(article.summary)}
+          </ReactMarkdown>
+        </div>
       ) : null}
     </section>
   );
