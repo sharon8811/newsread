@@ -5,6 +5,7 @@ import { fetch as expoFetch } from "expo/fetch";
 
 import { ApiError, getApiConfig } from "./api";
 import { createSSEDecoder } from "./sse";
+import type { DiscussionSnapshot } from "./discussions";
 import type { ChatMessage } from "./types";
 
 export type QAStreamEvent =
@@ -20,15 +21,36 @@ export async function streamQA(
   content: string,
   onEvent: (event: QAStreamEvent) => void,
 ): Promise<void> {
+  return streamPath(`/api/articles/${articleId}/qa/stream`, { content }, onEvent);
+}
+
+export async function streamDiscussionQA(
+  articleId: number,
+  content: string,
+  snapshot: DiscussionSnapshot,
+  onEvent: (event: QAStreamEvent) => void,
+): Promise<void> {
+  return streamPath(
+    `/api/articles/${articleId}/discussion/qa/stream`,
+    { content, snapshot },
+    onEvent,
+  );
+}
+
+async function streamPath(
+  path: string,
+  body: Record<string, unknown>,
+  onEvent: (event: QAStreamEvent) => void,
+): Promise<void> {
   const { baseUrl, token } = getApiConfig();
   if (!baseUrl) throw new ApiError("No server configured", 0);
-  const res = await expoFetch(`${baseUrl}/api/articles/${articleId}/qa/stream`, {
+  const res = await expoFetch(`${baseUrl}${path}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
-    body: JSON.stringify({ content }),
+    body: JSON.stringify(body),
   });
   if (!res.ok || !res.body) {
     const data = await res.json().catch(() => null);

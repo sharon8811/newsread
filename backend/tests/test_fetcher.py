@@ -9,6 +9,8 @@ from app.fetcher import (
     FeedParseError,
     FeedRateLimited,
     ParsedArticle,
+    canonical_hn_comments_url,
+    detect_comments_url,
     derive_excerpt,
     fetch_feed_data,
     parse_json_feed,
@@ -68,6 +70,37 @@ def test_derive_excerpt_hn_points_no_comments():
     assert out == "5 points · via Hacker News"
 
 
+def test_canonical_hn_comments_url_is_strict():
+    assert canonical_hn_comments_url(
+        "http://news.ycombinator.com/item?foo=x&id=0042#reply"
+    ) == "https://news.ycombinator.com/item?id=42"
+    assert canonical_hn_comments_url("https://evil.example/item?id=42") is None
+    assert canonical_hn_comments_url("https://news.ycombinator.com/user?id=42") is None
+    assert canonical_hn_comments_url("https://news.ycombinator.com/item?id=nope") is None
+    assert canonical_hn_comments_url("https://news.ycombinator.com:444/item?id=42") is None
+
+
+def test_detect_comments_url_from_hnrss_content_only():
+    content = (
+        '<p>Points: 12 # Comments: 3 Comments URL: '
+        '<a href="https://news.ycombinator.com/item?id=123&amp;ref=x">thread</a></p>'
+    )
+    assert detect_comments_url(None, "https://example.com/story", content) == (
+        "https://news.ycombinator.com/item?id=123"
+    )
+    assert detect_comments_url(
+        None,
+        "https://example.com/story",
+        '<a href="https://news.ycombinator.com/item?id=123">unrelated link</a>',
+    ) is None
+
+
+def test_detect_comments_url_for_hn_self_post():
+    assert detect_comments_url(
+        None, "https://news.ycombinator.com/item?id=88", ""
+    ) == "https://news.ycombinator.com/item?id=88"
+
+
 # --- JSON Feed ---
 
 def test_parse_json_feed_basic():
@@ -109,6 +142,20 @@ def test_parse_json_feed_authors_list_and_external_url():
 def test_parse_json_feed_title_falls_back_to_content():
     feed = parse_json_feed({"items": [{"id": "1", "url": "u", "content_html": "<p>Hello world body</p>"}]})
     assert feed.articles[0].title == "Hello world body"
+
+
+def test_parse_json_feed_recovers_hn_thread_from_content():
+    feed = parse_json_feed({
+        "items": [{
+            "id": "1",
+            "url": "https://example.com/story",
+            "content_html": (
+                "<p>Points: 7 # Comments: 2 Comments URL: "
+                "https://news.ycombinator.com/item?id=91</p>"
+            ),
+        }],
+    })
+    assert feed.articles[0].comments_url == "https://news.ycombinator.com/item?id=91"
 
 
 def test_parse_json_feed_skips_item_without_guid():
@@ -297,6 +344,30 @@ async def test_refresh_feed_dedupes_existing(session):
     )
     count = await refresh_feed(session, feed)
     assert count == 0  # guid-1 already present
+
+
+@respx.mock
+async def test_refresh_feed_repairs_missing_comments_url(session):
+    feed = Feed(url="https://feed.example/rss", title="Existing")
+    session.add(feed)
+    await session.commit()
+    await session.refresh(feed)
+    article = Article(
+        feed_id=feed.id,
+        guid="guid-1",
+        url="https://site.example/1",
+        title="Old",
+        comments_url=None,
+    )
+    session.add(article)
+    await session.commit()
+
+    respx.get("https://feed.example/rss").mock(
+        return_value=httpx.Response(200, headers={"content-type": "application/xml"}, text=RSS)
+    )
+    assert await refresh_feed(session, feed) == 0
+    await session.refresh(article)
+    assert article.comments_url == "https://site.example/1/comments"
 
 
 @respx.mock

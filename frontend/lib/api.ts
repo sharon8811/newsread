@@ -82,6 +82,20 @@ export function streamQA(
   return streamSSE(`/articles/${articleId}/qa/stream`, content, onEvent);
 }
 
+export function streamDiscussionQA(
+  articleId: number,
+  content: string,
+  snapshot: import("./discussions").DiscussionSnapshot,
+  onEvent: (event: QAStreamEvent) => void,
+): Promise<void> {
+  return streamSSE(
+    `/articles/${articleId}/discussion/qa/stream`,
+    content,
+    onEvent,
+    { snapshot },
+  );
+}
+
 export function streamProjectQA(
   projectId: number,
   content: string,
@@ -94,6 +108,7 @@ async function streamSSE(
   path: string,
   content: string,
   onEvent: (event: QAStreamEvent) => void,
+  extra: Record<string, unknown> = {},
 ): Promise<void> {
   const token = getToken();
   const res = await fetch(`${API_URL}/api${path}`, {
@@ -102,7 +117,7 @@ async function streamSSE(
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
-    body: JSON.stringify({ content }),
+    body: JSON.stringify({ content, ...extra }),
   });
   if (!res.ok || !res.body) {
     const data = await res.json().catch(() => null);

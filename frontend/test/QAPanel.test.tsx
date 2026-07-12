@@ -99,6 +99,21 @@ describe("<QAPanel>", () => {
     expect(screen.getByText("· web-aware")).toBeInTheDocument();
   });
 
+  it("prefills an editable comment drafting request", () => {
+    stub();
+    const { rerender } = render(<QAPanel {...panelProps} />);
+    rerender(
+      <QAPanel
+        key="comment-44"
+        {...panelProps}
+        initialInput="Draft a reply to comment 44. My point is: "
+      />,
+    );
+    expect(screen.getByPlaceholderText(panelProps.placeholder)).toHaveValue(
+      "Draft a reply to comment 44. My point is: ",
+    );
+  });
+
   it("renders existing history with tool traces (all label + host branches)", () => {
     const messages: ChatMessage[] = [
       makeMsg({ id: 1, role: "user", content: "my question" }),

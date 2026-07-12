@@ -40,6 +40,20 @@ MIGRATIONS = [
     "ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS view_override VARCHAR(16)",
     "ALTER TABLE articles ADD COLUMN IF NOT EXISTS entities_extracted_at TIMESTAMPTZ",
     "ALTER TABLE messages ADD COLUMN IF NOT EXISTS tool_events JSONB",
+    # Article text and public-discussion chats have independent histories.
+    "ALTER TABLE conversations ADD COLUMN IF NOT EXISTS kind VARCHAR(16) NOT NULL DEFAULT 'article'",
+    "ALTER TABLE conversations DROP CONSTRAINT IF EXISTS conversations_article_id_user_id_key",
+    "CREATE UNIQUE INDEX IF NOT EXISTS uq_conversations_article_user_kind "
+    "ON conversations (article_id, user_id, kind) WHERE article_id IS NOT NULL",
+    # Recover HN thread references for rows ingested before content-based
+    # discussion detection. Strict host/path matching avoids generic HN links.
+    "UPDATE articles SET comments_url = 'https://news.ycombinator.com/item?id=' || "
+    "substring(url from 'news\\.ycombinator\\.com/item\\?id=([0-9]+)') "
+    "WHERE comments_url IS NULL AND url ~* '^https?://news\\.ycombinator\\.com/item\\?id=[0-9]+'",
+    "UPDATE articles SET comments_url = 'https://news.ycombinator.com/item?id=' || "
+    "substring(content_html from 'news\\.ycombinator\\.com/item\\?id=([0-9]+)') "
+    "WHERE comments_url IS NULL AND content_html ~* 'Comments URL:' "
+    "AND content_html ~* 'news\\.ycombinator\\.com/item\\?id=[0-9]+'",
     # Per-subscription feed settings + the global per-feed AI switch.
     "ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS title_override VARCHAR(512)",
     "ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS sort_order VARCHAR(16)",

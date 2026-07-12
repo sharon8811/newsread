@@ -12,6 +12,7 @@ from .. import crypto, llm, qa_agent
 from ..db import get_session
 from ..enrichers import badge_for
 from ..extractor import clip_for_llm, ensure_full_text, is_thin
+from ..fetcher import canonical_hn_comments_url
 from ..models import (
     Article,
     ArticleEntity,
@@ -27,6 +28,7 @@ from ..models import (
 from ..schemas import (
     AiStatusOut,
     AskIn,
+    DiscussionAskIn,
     MessageOut,
     ShareMessageIn,
     ShareMessageOut,
@@ -195,17 +197,23 @@ async def share_message(
 
 
 async def _get_or_create_conversation(
-    session: AsyncSession, user_id: int, article_id: int
+    session: AsyncSession, user_id: int, article_id: int, kind: str = "article"
 ) -> Conversation:
     conversation = await session.scalar(
         select(Conversation)
-        .where(Conversation.user_id == user_id, Conversation.article_id == article_id)
+        .where(
+            Conversation.user_id == user_id,
+            Conversation.article_id == article_id,
+            Conversation.kind == kind,
+        )
         .options(selectinload(Conversation.messages))
     )
     if conversation is None:
         # messages is set while the object is transient — an assignment after
         # flush would trigger a sync lazy-load, which async sessions forbid.
-        conversation = Conversation(user_id=user_id, article_id=article_id, messages=[])
+        conversation = Conversation(
+            user_id=user_id, article_id=article_id, kind=kind, messages=[]
+        )
         session.add(conversation)
         await session.flush()
     return conversation
@@ -220,7 +228,11 @@ async def get_conversation(
     await _accessible_article(session, user, article_id)
     conversation = await session.scalar(
         select(Conversation)
-        .where(Conversation.user_id == user.id, Conversation.article_id == article_id)
+        .where(
+            Conversation.user_id == user.id,
+            Conversation.article_id == article_id,
+            Conversation.kind == "article",
+        )
         .options(selectinload(Conversation.messages))
     )
     if conversation is None:
@@ -336,6 +348,137 @@ async def ask_article_stream(
         session.add(
             Message(conversation_id=conversation.id, role="user", content=question)
         )
+        assistant = Message(
+            conversation_id=conversation.id,
+            role="assistant",
+            content=result["content"],
+            tool_events=result["tool_events"] or None,
+        )
+        session.add(assistant)
+        await session.commit()
+        await session.refresh(assistant)
+        message = MessageOut.model_validate(assistant).model_dump(mode="json")
+        yield _sse({"type": "done", "message": message})
+
+    return StreamingResponse(
+        event_source(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+def _article_hn_id(article: Article) -> str | None:
+    canonical = canonical_hn_comments_url(article.comments_url)
+    if canonical is None:
+        canonical = canonical_hn_comments_url(article.url)
+    return canonical.rsplit("=", 1)[-1] if canonical else None
+
+
+@router.get("/articles/{article_id}/discussion/qa", response_model=list[MessageOut])
+async def get_discussion_conversation(
+    article_id: int,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    article = await _accessible_article(session, user, article_id)
+    if _article_hn_id(article) is None:
+        raise HTTPException(status_code=404, detail="Discussion not found")
+    conversation = await session.scalar(
+        select(Conversation)
+        .where(
+            Conversation.user_id == user.id,
+            Conversation.article_id == article_id,
+            Conversation.kind == "discussion",
+        )
+        .options(selectinload(Conversation.messages))
+    )
+    if conversation is None:
+        return []
+    return [MessageOut.model_validate(message) for message in conversation.messages]
+
+
+@router.post("/articles/{article_id}/discussion/qa/stream")
+async def ask_discussion_stream(
+    article_id: int,
+    body: DiscussionAskIn,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Analyze a client-fetched HN snapshot without fetching HN server-side."""
+    article = await _accessible_article(session, user, article_id)
+    expected_id = _article_hn_id(article)
+    if expected_id is None:
+        raise HTTPException(status_code=404, detail="Discussion not found")
+    if body.snapshot.discussion_id != expected_id:
+        raise HTTPException(status_code=422, detail="Discussion does not match article")
+    config = await _resolve_llm(session, user)
+    text = clip_for_llm(await ensure_full_text(session, article))
+    conversation = await _get_or_create_conversation(
+        session, user.id, article.id, kind="discussion"
+    )
+    history = [(message.role, message.content) for message in conversation.messages]
+    question = body.content.strip()
+    snapshot = body.snapshot.model_dump(mode="json")
+    user_id = user.id
+
+    async def event_source():
+        result: dict | None = None
+        usage = llm.TokenUsage()
+        started = time.monotonic()
+        try:
+            async for event in qa_agent.stream_discussion_answer(
+                title=article.title,
+                url=article.url,
+                article_text=text,
+                snapshot=snapshot,
+                history=history,
+                question=question,
+                config=config,
+            ):
+                if event["type"] == "result":
+                    result = event
+                else:
+                    yield _sse(event)
+        except Exception as exc:
+            logger.warning("Discussion Q&A failed for article %s: %s", article.id, exc)
+            await session.rollback()
+            await llm.record_usage(
+                session,
+                user_id=user_id,
+                feature="qa",
+                config=config,
+                duration_ms=_ms_since(started),
+                status="error",
+                error=str(exc),
+            )
+            yield _sse({"type": "error", "detail": "The LLM request failed"})
+            return
+        if result is not None:
+            run_usage = result.get("usage") or {}
+            usage.add(run_usage.get("prompt_tokens"), run_usage.get("completion_tokens"))
+        if result is None or not result["content"]:
+            await session.rollback()
+            await llm.record_usage(
+                session,
+                user_id=user_id,
+                feature="qa",
+                config=config,
+                usage=usage,
+                duration_ms=_ms_since(started),
+                status="error",
+                error="The LLM returned an empty answer",
+            )
+            yield _sse({"type": "error", "detail": "The LLM returned an empty answer"})
+            return
+        await llm.record_usage(
+            session,
+            user_id=user_id,
+            feature="qa",
+            config=config,
+            usage=usage,
+            duration_ms=_ms_since(started),
+        )
+        session.add(Message(conversation_id=conversation.id, role="user", content=question))
         assistant = Message(
             conversation_id=conversation.id,
             role="assistant",
