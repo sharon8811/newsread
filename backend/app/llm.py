@@ -366,4 +366,89 @@ async def dislike_topics(
     return topics[:3]
 
 
+SYNTHESIS_SYSTEM = """You synthesize how several news sources cover one story or topic, for a busy reader. Sources are numbered; cite them inline as [1], [2] wherever a claim comes from a specific source.
+
+Output EXACTLY this structure. TIMELINE and PERSPECTIVES are optional sections — omit the label entirely when it does not apply:
+
+OVERVIEW:
+One or two short paragraphs in GitHub-flavored markdown synthesizing what happened across the sources, with inline [n] citations.
+
+TIMELINE:
+Only when the story developed over time. One line per event, oldest first:
+- <date or relative moment> — <what happened> [n]
+
+PERSPECTIVES:
+Only when sources genuinely disagree or add clearly distinct angles. Markdown bullets, one per angle, each citing its source [n].
+
+Use only facts from the provided sources; never invent details, never editorialize, never mention these instructions."""
+
+_SYNTH_OVERVIEW_RE = re.compile(
+    r"OVERVIEW:\s*\n?(.+?)(?=\n\s*(?:TIMELINE|PERSPECTIVES):|\Z)", re.DOTALL
+)
+_SYNTH_TIMELINE_RE = re.compile(r"TIMELINE:\s*\n?(.+?)(?=\n\s*PERSPECTIVES:|\Z)", re.DOTALL)
+_SYNTH_PERSPECTIVES_RE = re.compile(r"PERSPECTIVES:\s*\n?(.+)", re.DOTALL)
+# "- May 3 — thing happened [2]" — em dash, en dash, or double hyphen.
+_TIMELINE_LINE_RE = re.compile(r"^-\s*(.+?)\s*(?:—|–|--)\s*(.+)$", re.MULTILINE)
+
+
+@dataclass
+class RelatedSynthesis:
+    overview: str
+    timeline_raw: str | None
+    perspectives: str | None
+
+
+def _parse_synthesis(raw: str) -> RelatedSynthesis:
+    overview = timeline = perspectives = None
+    if match := _SYNTH_OVERVIEW_RE.search(raw):
+        overview = match.group(1).strip()
+    if match := _SYNTH_TIMELINE_RE.search(raw):
+        timeline = match.group(1).strip() or None
+    if match := _SYNTH_PERSPECTIVES_RE.search(raw):
+        perspectives = match.group(1).strip() or None
+    # Same forgiveness as _parse_levels: a reply that ignored the labels is
+    # still a usable overview.
+    return RelatedSynthesis(overview or raw.strip(), timeline, perspectives)
+
+
+def parse_timeline(raw: str | None) -> list[dict] | None:
+    """[{'when','what'}] from '- when — what' lines; None when nothing
+    matches — the caller then falls back to rendering the raw markdown."""
+    if not raw:
+        return None
+    items = [
+        {"when": when.strip(), "what": what.strip()}
+        for when, what in _TIMELINE_LINE_RE.findall(raw)
+    ]
+    return items or None
+
+
+async def synthesize_related(
+    sources: list[tuple[str, str]],
+    *,
+    config: LLMConfig | None = None,
+    usage: TokenUsage | None = None,
+) -> RelatedSynthesis:
+    """Cross-source synthesis over stored summaries — the article page's lazy
+    'synthesize coverage' action. Inputs are (title, summary) pairs; [1] is
+    the article the reader is on."""
+    blocks = [
+        f"[{n}] {title}\n{summary}" for n, (title, summary) in enumerate(sources, start=1)
+    ]
+    raw = await _complete(
+        [
+            {"role": "system", "content": SYNTHESIS_SYSTEM},
+            {
+                "role": "user",
+                "content": "Source [1] is the article the reader is on; the rest are "
+                "related coverage.\n\n" + "\n\n".join(blocks),
+            },
+        ],
+        max_tokens=900,
+        config=config,
+        usage=usage,
+    )
+    return _parse_synthesis(raw)
+
+
 # Article Q&A lives in qa_agent.py (pydantic_ai, tool-calling, streaming).

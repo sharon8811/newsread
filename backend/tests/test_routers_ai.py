@@ -849,3 +849,119 @@ async def test_share_message_empty_on_user_key_logs_error(client, users, data, s
     row = (await session.scalars(select(LLMUsage))).one()
     assert row.status == "error"
     assert "empty" in row.error
+
+
+# --- POST /articles/{id}/related-synthesis ---
+
+async def _with_related(users, data, session):
+    """Article + one related article, linked via a shared entity so the
+    related query's entity-overlap leg finds it without embeddings."""
+    from app.models import ArticleEntity, Entity
+
+    user, feed, art = await _setup(users, data)
+    other = await data.article(feed, title="Other Coverage", summary_medium="other summary")
+    entity = Entity(kind="github", canonical_key="acme/synth", url="https://gh/acme/synth")
+    session.add(entity)
+    await session.commit()
+    for a in (art, other):
+        session.add(ArticleEntity(article_id=a.id, entity_id=entity.id, source="primary"))
+    await session.commit()
+    return user, art, other
+
+
+async def test_synthesis_article_not_accessible(client, users, data):
+    user = await users.create()
+    feed = await data.feed()
+    art = await data.article(feed)  # not subscribed
+    resp = await client.post(f"/api/articles/{art.id}/related-synthesis", headers=users.auth(user))
+    assert resp.status_code == 404
+
+
+async def test_synthesis_422_without_related(client, users, data, monkeypatch):
+    monkeypatch.setattr(llm, "is_configured", lambda: True)
+    user, feed, art = await _setup(users, data)
+    resp = await client.post(f"/api/articles/{art.id}/related-synthesis", headers=users.auth(user))
+    assert resp.status_code == 422
+
+
+async def test_synthesis_503_without_llm(client, users, data, session):
+    user, art, _ = await _with_related(users, data, session)
+    resp = await client.post(f"/api/articles/{art.id}/related-synthesis", headers=users.auth(user))
+    assert resp.status_code == 503
+
+
+async def test_synthesis_happy_path_structured_timeline(client, users, data, session, monkeypatch):
+    monkeypatch.setattr(llm, "is_configured", lambda: True)
+    user, art, other = await _with_related(users, data, session)
+    art.summary_medium = "main summary"
+    await session.commit()
+
+    captured = {}
+
+    async def fake_synthesize(sources, *, config=None, usage=None):
+        captured["sources"] = sources
+        return llm.RelatedSynthesis(
+            overview="Overall picture [2].",
+            timeline_raw="- May 1 — a thing happened [2]\n- May 2 — more [1]",
+            perspectives="- [2] adds an angle",
+        )
+
+    monkeypatch.setattr(ai_router.llm, "synthesize_related", fake_synthesize)
+    resp = await client.post(f"/api/articles/{art.id}/related-synthesis", headers=users.auth(user))
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["overview"] == "Overall picture [2]."
+    assert body["timeline"] == [
+        {"when": "May 1", "what": "a thing happened [2]"},
+        {"when": "May 2", "what": "more [1]"},
+    ]
+    assert body["timeline_raw"] is None  # structured parse succeeded
+    assert body["perspectives"] == "- [2] adds an angle"
+    assert body["sources"][0] == {"n": 1, "id": art.id, "title": art.title}
+    assert body["sources"][1] == {"n": 2, "id": other.id, "title": "Other Coverage"}
+    # The LLM read stored summaries, not fetched pages.
+    assert captured["sources"][0] == (art.title, "main summary")
+    assert captured["sources"][1] == ("Other Coverage", "other summary")
+
+
+async def test_synthesis_unparseable_timeline_echoes_raw(client, users, data, session, monkeypatch):
+    monkeypatch.setattr(llm, "is_configured", lambda: True)
+    user, art, _ = await _with_related(users, data, session)
+
+    async def fake_synthesize(sources, *, config=None, usage=None):
+        return llm.RelatedSynthesis(
+            overview="o", timeline_raw="events unfolded gradually", perspectives=None
+        )
+
+    monkeypatch.setattr(ai_router.llm, "synthesize_related", fake_synthesize)
+    body = (await client.post(
+        f"/api/articles/{art.id}/related-synthesis", headers=users.auth(user)
+    )).json()
+    assert body["timeline"] is None
+    assert body["timeline_raw"] == "events unfolded gradually"
+
+
+async def test_synthesis_llm_failure_logs_usage(client, users, data, session, monkeypatch):
+    user, art, _ = await _with_related(users, data, session)
+    await _own_key(session, user)
+
+    async def boom(sources, *, config=None, usage=None):
+        raise RuntimeError("llm down")
+
+    monkeypatch.setattr(ai_router.llm, "synthesize_related", boom)
+    resp = await client.post(f"/api/articles/{art.id}/related-synthesis", headers=users.auth(user))
+    assert resp.status_code == 502
+    row = await session.scalar(select(LLMUsage).where(LLMUsage.feature == "synthesis"))
+    assert row is not None and row.status == "error"
+
+
+async def test_synthesis_empty_overview_is_502(client, users, data, session, monkeypatch):
+    monkeypatch.setattr(llm, "is_configured", lambda: True)
+    user, art, _ = await _with_related(users, data, session)
+
+    async def fake_synthesize(sources, *, config=None, usage=None):
+        return llm.RelatedSynthesis(overview="", timeline_raw=None, perspectives=None)
+
+    monkeypatch.setattr(ai_router.llm, "synthesize_related", fake_synthesize)
+    resp = await client.post(f"/api/articles/{art.id}/related-synthesis", headers=users.auth(user))
+    assert resp.status_code == 502

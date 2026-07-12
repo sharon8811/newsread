@@ -4,6 +4,7 @@ import type {
   ArticleProjectStatus,
   CatalogEntry,
   CatalogPreview,
+  CoverageSynthesis,
   DislikeOptions,
   DislikeRule,
   EntityBadge,
@@ -12,6 +13,7 @@ import type {
   Project,
   ProjectArticle,
   ProjectComment,
+  RelatedArticle,
   Share,
   SmartFeed,
   User,
@@ -288,6 +290,35 @@ export function makeDislikeOptions(over: Partial<DislikeOptions> = {}): DislikeO
     entities: [{ entity_id: 5, kind: "github", key: "acme/widget", label: "acme/widget" }],
     topics: ["crypto prices", "celebrity gossip"],
     story_available: true,
+    ...over,
+  };
+}
+
+export function makeRelatedArticle(over: Partial<RelatedArticle> = {}): RelatedArticle {
+  return {
+    id: 7,
+    title: "Related headline",
+    feed_title: "Other Feed",
+    published_at: "2024-01-02T00:00:00Z",
+    is_read: false,
+    tier: "related",
+    ...over,
+  };
+}
+
+export function makeSynthesis(over: Partial<CoverageSynthesis> = {}): CoverageSynthesis {
+  return {
+    overview: "The overall picture [1][2].",
+    timeline: [
+      { when: "May 1", what: "it started [1]" },
+      { when: "May 3", what: "it escalated [2]" },
+    ],
+    timeline_raw: null,
+    perspectives: "- [2] frames it differently",
+    sources: [
+      { n: 1, id: 1, title: "A Great Article" },
+      { n: 2, id: 7, title: "Related headline" },
+    ],
     ...over,
   };
 }

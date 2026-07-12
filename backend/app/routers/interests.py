@@ -35,7 +35,7 @@ from ..schemas import (
     DislikeRulePreviewItem,
 )
 from ..security import get_current_user
-from .articles import user_can_access
+from .articles import current_embedding, user_can_access
 
 logger = logging.getLogger(__name__)
 
@@ -57,17 +57,6 @@ async def _accessible_article(session: AsyncSession, user: User, article_id: int
     if article is None or not await user_can_access(session, user.id, article):
         raise HTTPException(status_code=404, detail="Article not found")
     return article
-
-
-async def _current_embedding(session: AsyncSession, article_id: int) -> ArticleEmbedding | None:
-    if not embeddings.is_configured():
-        return None
-    return await session.scalar(
-        select(ArticleEmbedding).where(
-            ArticleEmbedding.article_id == article_id,
-            ArticleEmbedding.model == settings.openai_embedding_model,
-        )
-    )
 
 
 @router.get("/dislike-options/{article_id}", response_model=DislikeOptionsOut)
@@ -97,7 +86,7 @@ async def dislike_options(
         for _, entity in rows
     ]
 
-    story_available = await _current_embedding(session, article.id) is not None
+    story_available = await current_embedding(session, article.id) is not None
 
     topics: list[str] = []
     if embeddings.is_configured():  # a phrase rule is useless without a vector
@@ -211,7 +200,7 @@ async def create_dislike(
             rule.article_id = article.id
             rule.label = article.title[:512]
             if body.kind == "story":
-                source = await _current_embedding(session, article.id)
+                source = await current_embedding(session, article.id)
                 if source is None:
                     raise HTTPException(
                         status_code=422,

@@ -93,6 +93,25 @@ export type AiStatus = {
   search_provider: "searxng" | "tavily" | null;
 };
 
+export type RelatedArticle = {
+  id: number;
+  title: string;
+  feed_title: string;
+  published_at: string | null;
+  is_read: boolean;
+  tier: "same_story" | "related"; // same_story = near-duplicate coverage
+};
+
+export type SynthesisTimelineItem = { when: string; what: string };
+
+export type CoverageSynthesis = {
+  overview: string; // GFM with inline [n] citations
+  timeline: SynthesisTimelineItem[] | null;
+  timeline_raw: string | null; // only when the timeline lines didn't parse
+  perspectives: string | null; // GFM bullets
+  sources: { n: number; id: number; title: string }[]; // [1] is the current article
+};
+
 export type ToolEvent = {
   name: string;
   args: Record<string, unknown>;

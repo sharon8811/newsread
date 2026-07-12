@@ -4,22 +4,26 @@ import userEvent from "@testing-library/user-event";
 import ArticlePage from "@/app/(app)/article/[id]/page";
 import { makeArticleDetail } from "./fixtures";
 
-const { swrMock, mutateMock, routerMock, mutateListsMock } = vi.hoisted(() => ({
+const { swrMock, mutateMock, routerMock, mutateListsMock, paramsState } = vi.hoisted(() => ({
   swrMock: vi.fn(),
   mutateMock: vi.fn(),
   routerMock: { push: vi.fn(), back: vi.fn() },
   mutateListsMock: vi.fn(),
+  paramsState: { id: "1" },
 }));
 
 vi.mock("swr", () => ({ default: swrMock, mutate: mutateMock }));
 vi.mock("next/navigation", () => ({
-  useParams: () => ({ id: "1" }),
+  useParams: () => ({ id: paramsState.id }),
   useRouter: () => routerMock,
 }));
 vi.mock("@/components/ArticleList", () => ({ mutateArticleLists: mutateListsMock }));
 vi.mock("@/components/AiSummary", () => ({ default: () => <div data-testid="ai-summary" /> }));
 vi.mock("@/components/EntityCard", () => ({ default: () => <div data-testid="entity-card" /> }));
 vi.mock("@/components/QAPanel", () => ({ default: () => <div data-testid="qa-panel" /> }));
+vi.mock("@/components/RelatedArticles", () => ({
+  default: () => <div data-testid="related-articles" />,
+}));
 vi.mock("@/components/ShareModal", () => ({
   default: ({ onClose }: { onClose: () => void }) => (
     <div data-testid="share-modal">
@@ -46,6 +50,7 @@ describe("ArticlePage", () => {
     routerMock.push.mockClear();
     routerMock.back.mockClear();
     mutateListsMock.mockClear();
+    paramsState.id = "1";
     vi.stubGlobal("fetch", okFetch());
   });
 
@@ -73,6 +78,41 @@ describe("ArticlePage", () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     expect(fetchMock.mock.calls[0][0]).toContain("/articles/1/state");
     await waitFor(() => expect(mutateListsMock).toHaveBeenCalled());
+  });
+
+  it("renders the related-articles section stub", () => {
+    swrMock.mockReturnValue({ data: makeArticleDetail({ is_read: true }), error: undefined });
+    render(<ArticlePage />);
+    expect(screen.getByTestId("related-articles")).toBeInTheDocument();
+  });
+
+  it("re-marks read after navigating to another article in place", async () => {
+    // Related links change the id WITHOUT remounting the page — the
+    // mark-read once-guard must re-arm (regression for the ref-reset effect).
+    const fetchMock = okFetch();
+    vi.stubGlobal("fetch", fetchMock);
+    swrMock.mockImplementation((key: unknown) =>
+      key === `/articles/${paramsState.id}`
+        ? {
+            data: makeArticleDetail({
+              id: Number(paramsState.id),
+              is_read: false,
+              title: `Article ${paramsState.id}`,
+            }),
+            error: undefined,
+          }
+        : { data: undefined, error: undefined },
+    );
+    const { rerender } = render(<ArticlePage />);
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some(([u]) => String(u).includes("/articles/1/state"))).toBe(true),
+    );
+
+    paramsState.id = "2";
+    rerender(<ArticlePage />);
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some(([u]) => String(u).includes("/articles/2/state"))).toBe(true),
+    );
   });
 
   it("does not re-mark an already-read article", async () => {

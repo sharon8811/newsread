@@ -1,5 +1,6 @@
 import base64
 import logging
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Literal
 
@@ -37,6 +38,7 @@ from ..schemas import (
     EntityFull,
     EntitySnapshotOut,
     MarkAllReadIn,
+    RelatedArticleItem,
 )
 from ..security import get_current_user
 from .feeds import retention_visible
@@ -53,6 +55,17 @@ SNAPSHOT_CAP = 30
 # reciprocal-rank-fusion constant.
 SEARCH_POOL = 60
 RRF_K = 60
+
+# Related-articles KNN. The distance cutoffs share the calibration documented
+# on interests.STORY_THRESHOLD / TOPIC_THRESHOLD (same-story pairs land well
+# under 0.35, same-topic under ~0.6, unrelated above 0.85). They live here,
+# not there, because interests.py imports from this module.
+RELATED_SAME_STORY = 0.35
+RELATED_MAX_DISTANCE = 0.70
+RELATED_LIMIT = 5
+# News-recency window: an old article at a close distance is rarely what
+# "related coverage" means; it also bounds the entity-overlap leg.
+RELATED_WINDOW = timedelta(days=90)
 
 
 def to_list_item(
@@ -218,6 +231,104 @@ def not_suppressed(user_id: int):
             ArticleSuppression.article_id == Article.id,
         )
     )
+
+
+async def current_embedding(session: AsyncSession, article_id: int) -> ArticleEmbedding | None:
+    """The article's vector under the currently configured model, or None."""
+    if not embeddings.is_configured():
+        return None
+    return await session.scalar(
+        select(ArticleEmbedding).where(
+            ArticleEmbedding.article_id == article_id,
+            ArticleEmbedding.model == settings.openai_embedding_model,
+        )
+    )
+
+
+@dataclass
+class RelatedRow:
+    article: Article
+    feed_title: str
+    state: UserArticleState | None
+    tier: str  # 'same_story' | 'related'
+
+
+def _related_scope(user_id: int, exclude_id: int):
+    """Base select with the inbox scope: subscribed, unmuted, retention-
+    visible, not suppressed, not the article itself. retention_visible()
+    references Subscription and UserArticleState, so both joins are load-
+    bearing even where the caller doesn't read them."""
+    return (
+        select(Article, Feed.title, Feed.url, UserArticleState)
+        .join(Feed, Article.feed_id == Feed.id)
+        .join(
+            Subscription,
+            and_(Subscription.feed_id == Article.feed_id, Subscription.user_id == user_id),
+        )
+        .outerjoin(
+            UserArticleState,
+            and_(
+                UserArticleState.article_id == Article.id,
+                UserArticleState.user_id == user_id,
+            ),
+        )
+        .where(
+            Article.id != exclude_id,
+            Subscription.is_muted.is_(False),
+            retention_visible(),
+            not_suppressed(user_id),
+        )
+    )
+
+
+async def related_articles(session: AsyncSession, user_id: int, article: Article) -> list[RelatedRow]:
+    """Nearest recent articles by embedding distance; falls back to entity
+    overlap when the article has no current-model vector, so the section
+    still works on embedding-less installs. One query either way."""
+    cutoff = datetime.now(timezone.utc) - RELATED_WINDOW
+    source = await current_embedding(session, article.id)
+    if source is not None:
+        distance = ArticleEmbedding.embedding.cosine_distance(source.embedding)
+        stmt = (
+            _related_scope(user_id, article.id)
+            .add_columns(distance.label("distance"))
+            .join(ArticleEmbedding, ArticleEmbedding.article_id == Article.id)
+            .where(
+                ArticleEmbedding.model == settings.openai_embedding_model,
+                Article.fetched_at >= cutoff,
+                distance < RELATED_MAX_DISTANCE,
+            )
+            .order_by(distance)
+            .limit(RELATED_LIMIT)
+        )
+        rows = (await session.execute(stmt)).all()
+        return [
+            RelatedRow(
+                candidate,
+                title or url,
+                state,
+                "same_story" if dist < RELATED_SAME_STORY else "related",
+            )
+            for candidate, title, url, state, dist in rows
+        ]
+    # EXISTS instead of a join: two articles sharing several entities must
+    # still produce one row.
+    overlapping = exists(
+        select(ArticleEntity.id).where(
+            ArticleEntity.article_id == Article.id,
+            ArticleEntity.entity_id.in_(
+                select(ArticleEntity.entity_id).where(ArticleEntity.article_id == article.id)
+            ),
+        )
+    )
+    stmt = (
+        _related_scope(user_id, article.id)
+        .where(overlapping, Article.fetched_at >= cutoff)
+        .order_by(Article.published_at.desc().nulls_last(), Article.id.desc())
+        .limit(RELATED_LIMIT)
+    )
+    rows = (await session.execute(stmt)).all()
+    return [RelatedRow(candidate, title or url, state, "related") for candidate, title, url, state in rows]
 
 
 def _scoped_article_ids(user_id: int, feed_id: int | None, filter: str):
@@ -521,6 +632,28 @@ async def _generate_listed_images(
             image_gen.generate_for_article, article.id, user.id, config, prompt
         )
     return {article.id for article, _ in claimed}
+
+
+@router.get("/{article_id}/related", response_model=list[RelatedArticleItem])
+async def get_related(
+    article_id: int,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    article = await session.get(Article, article_id)
+    if article is None or not await user_can_access(session, user.id, article):
+        raise HTTPException(status_code=404, detail="Article not found")
+    return [
+        RelatedArticleItem(
+            id=row.article.id,
+            title=row.article.title,
+            feed_title=row.feed_title,
+            published_at=row.article.published_at,
+            is_read=bool(row.state and row.state.is_read),
+            tier=row.tier,
+        )
+        for row in await related_articles(session, user.id, article)
+    ]
 
 
 @router.get("/{article_id}", response_model=ArticleDetail)

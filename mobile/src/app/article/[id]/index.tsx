@@ -18,6 +18,7 @@ import RenderHTML, { type MixedStyleDeclaration } from "react-native-render-html
 import useSWR from "swr";
 
 import GeneratingImage from "@/components/GeneratingImage";
+import RelatedCoverage from "@/components/RelatedCoverage";
 import { api, imageSrc } from "@/lib/api";
 import { discussionRefFor, fetchHNItem } from "@/lib/discussions";
 import { timeAgo } from "@/lib/format";
@@ -94,9 +95,12 @@ export default function ArticleScreen() {
   });
   const { data: ai } = useSWR<AiStatus>("/ai/status");
   const discussionRef = data ? discussionRefFor(data) : null;
+  // The fetcher reads the item id from the SWR key args rather than the
+  // render closure, so it can never deref a discussionRef the key no longer
+  // matches.
   const { data: hnStory } = useSWR(
     discussionRef ? ["hackernews-story", discussionRef.id] : null,
-    () => fetchHNItem(discussionRef!.id, { fresh: true }),
+    ([, itemId]: [string, number]) => fetchHNItem(itemId, { fresh: true }),
   );
   const markedRead = useRef(false);
 
@@ -240,6 +244,8 @@ export default function ArticleScreen() {
               </Pressable>
             )}
           </View>
+
+          <RelatedCoverage articleId={data.id} />
         </ScrollView>
       )}
     </View>
