@@ -12,6 +12,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from pgvector.sqlalchemy import Vector
 from sqlalchemy.dialects.postgresql import JSONB
@@ -380,12 +381,21 @@ class Share(Base):
 
 
 class Conversation(Base):
-    """One Q&A thread per (article, user) — or per (project, user) when the
+    """One Q&A thread per (article, user, kind) — or per project and user when the
     chat spans a project's collection (then article_id is NULL). The
     (project_id, user_id) uniqueness lives in a partial index (db.MIGRATIONS)."""
 
     __tablename__ = "conversations"
-    __table_args__ = (UniqueConstraint("article_id", "user_id"),)
+    __table_args__ = (
+        Index(
+            "uq_conversations_article_user_kind",
+            "article_id",
+            "user_id",
+            "kind",
+            unique=True,
+            postgresql_where=text("article_id IS NOT NULL"),
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     article_id: Mapped[int | None] = mapped_column(
@@ -395,6 +405,7 @@ class Conversation(Base):
         ForeignKey("projects.id", ondelete="CASCADE"), index=True, nullable=True
     )
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String(16), default="article", server_default="article")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     messages: Mapped[list["Message"]] = relationship(

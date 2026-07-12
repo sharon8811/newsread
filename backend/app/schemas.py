@@ -2,7 +2,7 @@ import json
 from datetime import date, datetime
 from typing import Literal
 
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
 ViewMode = Literal["cards", "list", "stories"]
 SortOrder = Literal["newest", "oldest"]
@@ -636,6 +636,42 @@ class SummaryOut(BaseModel):
 
 class AskIn(BaseModel):
     content: str = Field(min_length=1, max_length=4000)
+
+
+class DiscussionCommentIn(BaseModel):
+    id: int = Field(gt=0)
+    parent_id: int | None = Field(default=None, gt=0)
+    author: str | None = Field(default=None, max_length=255)
+    text: str = Field(default="", max_length=8000)
+    created_at: datetime | None = None
+    depth: int = Field(default=0, ge=0, le=64)
+    position: int = Field(default=0, ge=0)
+    deleted: bool = False
+    dead: bool = False
+
+
+class DiscussionSnapshotIn(BaseModel):
+    provider: Literal["hackernews"]
+    discussion_id: str = Field(pattern=r"^[1-9][0-9]{0,19}$")
+    fetched_at: datetime
+    reported_total: int = Field(ge=0)
+    included_total: int = Field(ge=0, le=300)
+    comments: list[DiscussionCommentIn] = Field(max_length=300)
+
+    @model_validator(mode="after")
+    def validate_snapshot(self):
+        if self.included_total != len(self.comments):
+            raise ValueError("included_total must equal the number of comments")
+        if len({comment.id for comment in self.comments}) != len(self.comments):
+            raise ValueError("comment ids must be unique")
+        if sum(len(comment.text) for comment in self.comments) > 120_000:
+            raise ValueError("discussion text is too large")
+        return self
+
+
+class DiscussionAskIn(BaseModel):
+    content: str = Field(min_length=1, max_length=4000)
+    snapshot: DiscussionSnapshotIn
 
 
 class MessageOut(BaseModel):

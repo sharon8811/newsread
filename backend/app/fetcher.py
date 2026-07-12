@@ -2,11 +2,12 @@
 
 import logging
 import ipaddress
+import html
 import re
 import socket
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
-from urllib.parse import urljoin, urlsplit
+from urllib.parse import parse_qs, urljoin, urlsplit
 import asyncio
 
 import feedparser
@@ -15,6 +16,7 @@ import nh3
 from dateutil import parser as dateparser
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import load_only
 
 from .config import settings
 from .models import Article, Feed
@@ -26,6 +28,10 @@ USER_AGENT = "NewsRead/0.1 (+https://github.com/newsread)"
 # hnrss-style boilerplate, e.g. "Points: 186" / "# Comments: 124"
 _HN_POINTS_RE = re.compile(r"Points:\s*(\d+)")
 _HN_COMMENTS_RE = re.compile(r"#\s*Comments:\s*(\d+)")
+_HN_ITEM_URL_RE = re.compile(
+    r"https?://news\.ycombinator\.com/item\?[^\s\"'<>]+", re.IGNORECASE
+)
+_HN_COMMENTS_URL_LABEL_RE = re.compile(r"comments\s+url\s*:", re.IGNORECASE)
 
 
 @dataclass
@@ -89,6 +95,65 @@ def strip_html(html: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
+def canonical_hn_comments_url(value: str | None) -> str | None:
+    """Return a canonical HN item URL when *value* is exactly an HN thread.
+
+    Matching the structured thread URL, rather than a feed title or hostname,
+    lets filtered and transformed hnrss feeds retain HN-specific features.
+    """
+    if not value:
+        return None
+    try:
+        parsed = urlsplit(html.unescape(value.strip()))
+        port = parsed.port
+    except ValueError:
+        return None
+    if (
+        parsed.scheme not in {"http", "https"}
+        or (parsed.hostname or "").rstrip(".").lower() != "news.ycombinator.com"
+        or port is not None
+        or parsed.path.rstrip("/") != "/item"
+    ):
+        return None
+    item_ids = parse_qs(parsed.query).get("id") or []
+    if not item_ids or not item_ids[0].isdigit() or int(item_ids[0]) <= 0:
+        return None
+    return f"https://news.ycombinator.com/item?id={int(item_ids[0])}"
+
+
+def detect_comments_url(
+    structured_url: str | None,
+    article_url: str,
+    content_html: str,
+) -> str | None:
+    """Keep generic comment links and recover HN threads from known formats."""
+    if structured_url:
+        return canonical_hn_comments_url(structured_url) or structured_url
+
+    # Ask HN, Show HN and other self-posts use the discussion as the article.
+    self_thread = canonical_hn_comments_url(article_url)
+    if self_thread:
+        return self_thread
+
+    # Do not classify arbitrary HN links in normal article content. Only scan
+    # content carrying hnrss's explicit discussion boilerplate.
+    text = html.unescape(content_html or "")
+    plain = strip_html(text)
+    if "comments url:" not in plain.lower() and not (
+        _HN_POINTS_RE.search(plain) and _HN_COMMENTS_RE.search(plain)
+    ):
+        return None
+    # Self-posts may link other HN threads in their body; only the link
+    # following the boilerplate label is the article's own discussion.
+    label = _HN_COMMENTS_URL_LABEL_RE.search(text)
+    scan = text[label.end():] if label else text
+    for match in _HN_ITEM_URL_RE.finditer(scan):
+        canonical = canonical_hn_comments_url(match.group(0))
+        if canonical:
+            return canonical
+    return None
+
+
 def derive_excerpt(content_html: str, max_len: int = 320) -> str:
     text = strip_html(content_html)
     points = _HN_POINTS_RE.search(text)
@@ -128,8 +193,13 @@ def parse_json_feed(data: dict) -> ParsedFeed:
                 author=author,
                 published_at=_parse_date(item.get("date_published") or item.get("date_modified")),
                 image_url=item.get("image") or item.get("banner_image"),
-                # hnrss puts the article in `url` and the HN thread in `external_url`
-                comments_url=external if external and external != url else None,
+                # hnrss puts the article in `url` and the HN thread in
+                # `external_url`; transformed feeds may leave it in content.
+                comments_url=detect_comments_url(
+                    external if external and external != url else None,
+                    url,
+                    content,
+                ),
             )
         )
     return ParsedFeed(
@@ -177,7 +247,7 @@ def parse_xml_feed(text: str) -> ParsedFeed:
                 author=entry.get("author"),
                 published_at=published,
                 image_url=image_url,
-                comments_url=entry.get("comments"),
+                comments_url=detect_comments_url(entry.get("comments"), url, content),
             )
         )
     feed_info = parsed.feed
@@ -276,20 +346,30 @@ async def refresh_feed(
         feed.description = parsed.description
 
     guids = [a.guid for a in parsed.articles]
-    existing = set()
+    existing: dict[str, Article] = {}
     if guids:
-        rows = await session.execute(
-            select(Article.guid).where(Article.feed_id == feed.id, Article.guid.in_(guids))
+        # load_only keeps the dedupe pass from dragging every existing
+        # article's content and summaries out of the DB on each refresh.
+        rows = await session.scalars(
+            select(Article)
+            .where(Article.feed_id == feed.id, Article.guid.in_(guids))
+            .options(load_only(Article.guid, Article.comments_url))
         )
-        existing = {row[0] for row in rows}
+        existing = {article.guid: article for article in rows}
 
     new_count = 0
     seen: set[str] = set()
     now = datetime.now(timezone.utc)
     for position, item in enumerate(parsed.articles):
-        if item.guid in existing or item.guid in seen:
+        if item.guid in seen:
             continue
         seen.add(item.guid)
+        if stored := existing.get(item.guid):
+            # Metadata-only repair: parser improvements should benefit rows
+            # that already exist without rewriting their article content.
+            if not stored.comments_url and item.comments_url:
+                stored.comments_url = item.comments_url[:2048]
+            continue
         clean = sanitize_html(item.content_html)
         # Undated entries get a fetch-time fallback (offset by feed position so
         # feed order survives the sort) instead of NULL, which would pin them

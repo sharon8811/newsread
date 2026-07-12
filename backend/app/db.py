@@ -40,6 +40,11 @@ MIGRATIONS = [
     "ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS view_override VARCHAR(16)",
     "ALTER TABLE articles ADD COLUMN IF NOT EXISTS entities_extracted_at TIMESTAMPTZ",
     "ALTER TABLE messages ADD COLUMN IF NOT EXISTS tool_events JSONB",
+    # Article text and public-discussion chats have independent histories.
+    "ALTER TABLE conversations ADD COLUMN IF NOT EXISTS kind VARCHAR(16) NOT NULL DEFAULT 'article'",
+    "ALTER TABLE conversations DROP CONSTRAINT IF EXISTS conversations_article_id_user_id_key",
+    "CREATE UNIQUE INDEX IF NOT EXISTS uq_conversations_article_user_kind "
+    "ON conversations (article_id, user_id, kind) WHERE article_id IS NOT NULL",
     # Per-subscription feed settings + the global per-feed AI switch.
     "ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS title_override VARCHAR(512)",
     "ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS sort_order VARCHAR(16)",
@@ -111,6 +116,26 @@ MIGRATIONS = [
     "ALTER TABLE user_ai_settings ADD COLUMN IF NOT EXISTS image_extra_params TEXT",
 ]
 
+# Data repairs that scan whole tables. Unlike MIGRATIONS (cheap, re-run every
+# boot), each named group runs exactly once per database, tracked in
+# one_shot_migrations.
+ONE_SHOT_MIGRATIONS: dict[str, list[str]] = {
+    # Recover HN thread references for rows ingested before content-based
+    # discussion detection. Strict host/path matching avoids generic HN links;
+    # anchoring on the hnrss 'Comments URL:' label skips other HN threads a
+    # self-post's body may link before it.
+    "backfill_hn_comments_url": [
+        "UPDATE articles SET comments_url = 'https://news.ycombinator.com/item?id=' || "
+        "substring(url from 'news\\.ycombinator\\.com/item\\?id=([0-9]+)') "
+        "WHERE comments_url IS NULL AND url ~* '^https?://news\\.ycombinator\\.com/item\\?id=[0-9]+'",
+        "UPDATE articles SET comments_url = 'https://news.ycombinator.com/item?id=' || "
+        "substring(substring(content_html from '(?i)Comments URL:.*') "
+        "from 'news\\.ycombinator\\.com/item\\?id=([0-9]+)') "
+        "WHERE comments_url IS NULL "
+        "AND content_html ~* 'Comments URL:.*news\\.ycombinator\\.com/item\\?id=[0-9]+'",
+    ],
+}
+
 
 async def init_db(max_attempts: int = 30) -> None:
     """Create tables, waiting for the database to accept connections."""
@@ -148,4 +173,21 @@ async def init_db(max_attempts: int = 30) -> None:
         await conn.run_sync(lambda sync: Base.metadata.create_all(sync, tables=tables))
         for statement in MIGRATIONS:
             await conn.execute(text(statement))
+        await conn.execute(
+            text(
+                "CREATE TABLE IF NOT EXISTS one_shot_migrations "
+                "(name TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())"
+            )
+        )
+        for name, statements in ONE_SHOT_MIGRATIONS.items():
+            claimed = await conn.execute(
+                text(
+                    "INSERT INTO one_shot_migrations (name) VALUES (:name) "
+                    "ON CONFLICT (name) DO NOTHING"
+                ),
+                {"name": name},
+            )
+            if claimed.rowcount:
+                for statement in statements:
+                    await conn.execute(text(statement))
         await seed_catalog(conn)

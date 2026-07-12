@@ -307,6 +307,107 @@ async def test_ask_stream_article_not_found(client, users, data, monkeypatch):
     assert resp.status_code == 404
 
 
+# --- Hacker News discussion Q&A ---
+
+def _discussion_snapshot(discussion_id: str):
+    return {
+        "provider": "hackernews",
+        "discussion_id": discussion_id,
+        "fetched_at": "2026-07-12T12:00:00Z",
+        "reported_total": 4,
+        "included_total": 1,
+        "comments": [{
+            "id": 101,
+            "parent_id": int(discussion_id),
+            "author": "reader",
+            "text": "A useful correction",
+            "created_at": "2026-07-12T11:00:00Z",
+            "depth": 0,
+            "position": 0,
+            "deleted": False,
+            "dead": False,
+        }],
+    }
+
+
+async def test_discussion_conversation_is_separate(client, users, data, session):
+    user, feed, art = await _setup(users, data)
+    art.comments_url = "https://news.ycombinator.com/item?id=99"
+    article_conv = Conversation(
+        user_id=user.id, article_id=art.id, kind="article", messages=[]
+    )
+    discussion_conv = Conversation(
+        user_id=user.id, article_id=art.id, kind="discussion", messages=[]
+    )
+    session.add_all([article_conv, discussion_conv])
+    await session.flush()
+    session.add(Message(conversation_id=discussion_conv.id, role="user", content="discussion"))
+    await session.commit()
+
+    article_resp = await client.get(f"/api/articles/{art.id}/qa", headers=users.auth(user))
+    discussion_resp = await client.get(
+        f"/api/articles/{art.id}/discussion/qa", headers=users.auth(user)
+    )
+    assert article_resp.json() == []
+    assert discussion_resp.json()[0]["content"] == "discussion"
+
+
+async def test_discussion_stream_uses_client_snapshot(
+    client, users, data, session, monkeypatch
+):
+    user, feed, art = await _setup(users, data)
+    art.comments_url = "https://news.ycombinator.com/item?id=99"
+    await session.commit()
+    monkeypatch.setattr(llm, "is_configured", lambda: True)
+
+    async def fake_ensure(session_, article):
+        return "article text " * 50
+
+    monkeypatch.setattr(ai_router, "ensure_full_text", fake_ensure)
+    captured = {}
+
+    async def fake_stream(**kwargs):
+        captured["snapshot"] = kwargs["snapshot"]
+        yield {"type": "delta", "text": "Community"}
+        yield {"type": "result", "content": "Community summary", "tool_events": []}
+
+    monkeypatch.setattr(qa_agent, "stream_discussion_answer", fake_stream)
+    resp = await client.post(
+        f"/api/articles/{art.id}/discussion/qa/stream",
+        json={"content": "Summarize", "snapshot": _discussion_snapshot("99")},
+        headers=users.auth(user),
+    )
+    assert resp.status_code == 200
+    assert any(event["type"] == "done" for event in _parse_sse(resp.text))
+    assert captured["snapshot"]["comments"][0]["text"] == "A useful correction"
+
+
+async def test_discussion_stream_rejects_mismatched_story(client, users, data, session):
+    user, feed, art = await _setup(users, data)
+    art.comments_url = "https://news.ycombinator.com/item?id=99"
+    await session.commit()
+    resp = await client.post(
+        f"/api/articles/{art.id}/discussion/qa/stream",
+        json={"content": "Summarize", "snapshot": _discussion_snapshot("98")},
+        headers=users.auth(user),
+    )
+    assert resp.status_code == 422
+
+
+async def test_discussion_snapshot_size_and_count_are_validated(client, users, data, session):
+    user, feed, art = await _setup(users, data)
+    art.comments_url = "https://news.ycombinator.com/item?id=99"
+    await session.commit()
+    snapshot = _discussion_snapshot("99")
+    snapshot["included_total"] = 2
+    resp = await client.post(
+        f"/api/articles/{art.id}/discussion/qa/stream",
+        json={"content": "Summarize", "snapshot": snapshot},
+        headers=users.auth(user),
+    )
+    assert resp.status_code == 422
+
+
 # --- project Q&A ---
 
 async def _project_with_pins(users, data, session, *, comment=None, with_summary=True):

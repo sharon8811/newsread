@@ -7,6 +7,9 @@ import AiSummary from "@/components/AiSummary";
 import { mutateArticleLists } from "@/components/ArticleList";
 import EntityCard from "@/components/EntityCard";
 import GeneratingIndicator from "@/components/GeneratingIndicator";
+import HackerNewsDiscussion, {
+  HackerNewsDiscussionLink,
+} from "@/components/HackerNewsDiscussion";
 import ProjectPickerModal from "@/components/ProjectPickerModal";
 import QAPanel from "@/components/QAPanel";
 import ShareModal from "@/components/ShareModal";
@@ -19,6 +22,7 @@ import {
 } from "@/components/icons";
 import { api, fetcher, imageSrc, streamQA, type ArticleDetail } from "@/lib/api";
 import { domainOf, timeAgo } from "@/lib/format";
+import { discussionRefFor } from "@/lib/discussions";
 import { useReadingTimer } from "@/lib/useReadingTimer";
 
 export default function ArticlePage() {
@@ -153,7 +157,8 @@ export default function ArticlePage() {
           <ExternalIcon size={14} />
           Read original
         </a>
-        {article.comments_url && (
+        <HackerNewsDiscussionLink article={article} />
+        {article.comments_url && !discussionRefFor(article) && (
           <a className="btn" href={article.comments_url} target="_blank" rel="noreferrer">
             <CommentIcon size={14} />
             Discussion
@@ -201,6 +206,8 @@ export default function ArticlePage() {
           This feed only provides a headline — use “Read original” above.
         </p>
       )}
+
+      <HackerNewsDiscussion article={article} />
 
       <QAPanel
         qaKey={`/articles/${article.id}/qa`}

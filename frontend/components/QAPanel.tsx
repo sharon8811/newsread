@@ -95,12 +95,14 @@ export default function QAPanel({
   heading,
   placeholder,
   suggestions,
+  initialInput = "",
 }: {
   qaKey: string;
   stream: (content: string, onEvent: (event: QAStreamEvent) => void) => Promise<void>;
   heading: string;
   placeholder: string;
   suggestions: string[];
+  initialInput?: string;
 }) {
   const { data: status } = useSWR<AiStatus>("/ai/status", fetcher);
   const key = qaKey;
@@ -108,7 +110,7 @@ export default function QAPanel({
     status?.configured ? key : null,
     fetcher,
   );
-  const [input, setInput] = useState("");
+  const [input, setInput] = useState(initialInput);
   const [pending, setPending] = useState<string | null>(null);
   const [toolCalls, setToolCalls] = useState<LiveToolCall[]>([]);
   const [liveText, setLiveText] = useState("");

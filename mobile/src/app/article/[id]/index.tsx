@@ -19,6 +19,7 @@ import useSWR from "swr";
 
 import GeneratingImage from "@/components/GeneratingImage";
 import { api, imageSrc } from "@/lib/api";
+import { discussionRefFor, fetchHNItem } from "@/lib/discussions";
 import { timeAgo } from "@/lib/format";
 import { useReadingTimer } from "@/lib/useReadingTimer";
 import { usePalette, type Palette } from "@/lib/theme";
@@ -92,6 +93,11 @@ export default function ArticleScreen() {
     refreshInterval: (latest) => (latest?.image_pending && !latest.image_url ? 3000 : 0),
   });
   const { data: ai } = useSWR<AiStatus>("/ai/status");
+  const discussionRef = data ? discussionRefFor(data) : null;
+  const { data: hnStory } = useSWR(
+    discussionRef ? ["hackernews-story", discussionRef.id] : null,
+    () => fetchHNItem(discussionRef!.id, { fresh: true }),
+  );
   const markedRead = useRef(false);
 
   useReadingTimer(data?.id);
@@ -213,7 +219,21 @@ export default function ArticleScreen() {
               <Ionicons name="open-outline" size={18} color={colors.tint} />
               <Text style={[styles.linkText, { color: colors.tint }]}>Open original</Text>
             </Pressable>
-            {data.comments_url && (
+            {discussionRef && (
+              <Pressable
+                style={styles.linkRow}
+                onPress={() => router.push(`/article/${data.id}/discussion`)}
+              >
+                <Ionicons name="chatbox-outline" size={18} color={colors.tint} />
+                <Text style={[styles.linkText, { color: colors.tint }]}>Hacker News discussion</Text>
+                {hnStory && (
+                  <Text style={[styles.linkMeta, { color: colors.muted }]}>
+                    {hnStory.score ?? 0} points, {hnStory.descendants ?? 0} comments
+                  </Text>
+                )}
+              </Pressable>
+            )}
+            {data.comments_url && !discussionRef && (
               <Pressable style={styles.linkRow} onPress={() => openLink(data.comments_url!)}>
                 <Ionicons name="chatbox-outline" size={18} color={colors.tint} />
                 <Text style={[styles.linkText, { color: colors.tint }]}>Comments</Text>
@@ -251,4 +271,5 @@ const styles = StyleSheet.create({
   links: { marginTop: 24, paddingTop: 16, borderTopWidth: StyleSheet.hairlineWidth, gap: 14 },
   linkRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   linkText: { fontSize: 16, fontWeight: "600" },
+  linkMeta: { fontSize: 12, marginLeft: "auto" },
 });
