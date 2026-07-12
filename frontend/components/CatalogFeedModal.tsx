@@ -60,9 +60,12 @@ export default function CatalogFeedModal({
   // Fetched in the reader's browser when the publisher allows it; the key
   // doubles as the server fallback path for feeds that block cross-origin reads.
   const previewKey = `/catalog/${entry.id}/preview`;
+  // A preview is a one-shot snapshot: on failure show the error state instead
+  // of hammering the publisher (and our fallback endpoint) with retries.
   const { data: preview, error: previewError, isLoading } = useSWR<LoadedPreview>(
     previewKey,
     () => fetchPreview(entry.url, previewKey),
+    { shouldRetryOnError: false, revalidateOnFocus: false },
   );
   const [settings, setSettings] = useState(DEFAULT_SUBSCRIBE_SETTINGS);
 

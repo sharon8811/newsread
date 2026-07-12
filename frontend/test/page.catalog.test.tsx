@@ -229,7 +229,11 @@ describe("catalog detail modal", () => {
     render(<CatalogPage />);
     const dialog = await openModal();
 
-    expect(swrMock).toHaveBeenCalledWith("/catalog/1/preview", expect.anything());
+    expect(swrMock).toHaveBeenCalledWith(
+      "/catalog/1/preview",
+      expect.anything(),
+      expect.objectContaining({ shouldRetryOnError: false }),
+    );
     expect(within(dialog).getByText(/Tech · RSS/)).toBeInTheDocument();
     expect(within(dialog).getByText("A blog about examples")).toBeInTheDocument();
     expect(within(dialog).getByText("12 recent items")).toBeInTheDocument();
@@ -439,7 +443,11 @@ describe("smart feeds", () => {
 
     await userEvent.type(within(dialog).getByLabelText("Subreddit"), "rust");
     await waitFor(
-      () => expect(swrMock).toHaveBeenCalledWith("/catalog/smart/reddit/resolve?topic=rust", expect.anything()),
+      () => expect(swrMock).toHaveBeenCalledWith(
+        "/catalog/smart/reddit/resolve?topic=rust",
+        expect.anything(),
+        expect.objectContaining({ shouldRetryOnError: false }),
+      ),
       { timeout: 1000 },
     );
     expect(within(dialog).getByText(/Latest stories · r\/rust/)).toBeInTheDocument();
