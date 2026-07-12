@@ -49,9 +49,13 @@ export default function SmartFeedModal({
   }, [onClose]);
 
   const encoded = encodeURIComponent(debounced);
+  // Resolve/preview are one-shot lookups: on failure show the error state
+  // instead of hammering the publisher (and our fallback endpoint) with retries.
+  const once = { shouldRetryOnError: false, revalidateOnFocus: false };
   const { data: resolved, error: resolveError } = useSWR<SmartFeedResolve>(
     debounced ? `/catalog/smart/${provider.key}/resolve?topic=${encoded}` : null,
     fetcher,
+    once,
   );
   // Fetched in the browser when the publisher allows it; the key doubles as
   // the server fallback path (see fetchPreview).
@@ -59,6 +63,7 @@ export default function SmartFeedModal({
   const { data: preview, error: previewError, isLoading: previewLoading } = useSWR<LoadedPreview>(
     resolved ? previewKey : null,
     () => fetchPreview(resolved!.url, previewKey!),
+    once,
   );
 
   // A fresh topic means a different feed: success and error states only apply
