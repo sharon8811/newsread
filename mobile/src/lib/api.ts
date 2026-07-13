@@ -55,15 +55,44 @@ export async function api<T>(
   return (await res.json()) as T;
 }
 
-export type Page<T> = { items: T; nextCursor: string | null };
+export type Page<T> = {
+  items: T;
+  nextCursor: string | null;
+  prevCursor: string | null;
+  unreadCount: number | null;
+  newAboveCount: number | null;
+};
 
-/** Like api(), but surfaces the X-Next-Cursor pagination header. */
+/** Like api(), but surfaces the pagination/counter response headers. */
 export async function apiPage<T>(path: string): Promise<Page<T>> {
   const res = await request(path);
+  const count = (name: string) => {
+    const value = res.headers.get(name);
+    return value === null ? null : Number(value);
+  };
   return {
     items: (await res.json()) as T,
     nextCursor: res.headers.get("x-next-cursor"),
+    prevCursor: res.headers.get("x-prev-cursor"),
+    unreadCount: count("x-unread-count"),
+    newAboveCount: count("x-new-above-count"),
   };
+}
+
+export type ReadSource = "opened" | "scrolled" | "story" | "mark_all";
+
+export type ReadBatch = {
+  article_ids: number[];
+  is_read?: boolean;
+  read_source?: ReadSource;
+  // Deepest article scrolled past this session — the resume position.
+  frontier_article_id?: number;
+  frontier_feed_id?: number;
+};
+
+/** Bulk read marks from scroll auto-read / story advances. */
+export function sendReadBatch(batch: ReadBatch): Promise<void> {
+  return api("/articles/state/batch", { method: "POST", body: batch });
 }
 
 export const fetcher = <T,>(path: string) => api<T>(path);

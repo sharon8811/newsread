@@ -15,10 +15,11 @@ import {
 
 import GeneratingImage from "@/components/GeneratingImage";
 import StoriesView from "@/components/StoriesView";
-import { api, imageSrc } from "@/lib/api";
+import { api, imageSrc, sendReadBatch } from "@/lib/api";
 import { useArticles, type ArticleFilter } from "@/lib/articles";
 import { useAuth } from "@/lib/auth";
 import { timeAgo } from "@/lib/format";
+import { useReadingList } from "@/lib/readingList";
 import { usePalette, type Palette } from "@/lib/theme";
 import type { Article, ViewMode } from "@/lib/types";
 
@@ -141,8 +142,53 @@ export default function ArticleListScreen() {
   const [mode, setMode] = useState<ViewMode>("list");
   const modeBeforeStories = useRef<ViewMode>("list");
   const appliedDefault = useRef(false);
-  const { articles, error, isLoading, isValidating, hasMore, loadMore, refresh } =
-    useArticles(filter);
+  const [refreshing, setRefreshing] = useState(false);
+  const listRef = useRef<FlatList<Article>>(null);
+
+  // Reading filters (unread/all) get the scroll-auto-read window — resume
+  // anchor, viewability marks, unread pill. The saved shelf keeps the plain
+  // SWR list with no auto-read.
+  const readingMode = filter !== "saved";
+  const saved = useArticles(readingMode ? null : "saved");
+  const reading = useReadingList(filter === "all" ? "all" : "unread", readingMode);
+
+  const articles = readingMode ? (reading.articles ?? []) : saved.articles;
+  const error = readingMode ? reading.error : saved.error;
+  const isLoading = readingMode ? reading.isLoading && reading.articles === null : saved.isLoading;
+  const hasMore = readingMode ? reading.nextCursor !== null : saved.hasMore;
+  const loadMore = readingMode ? reading.loadMore : saved.loadMore;
+  const refresh = readingMode ? reading.refresh : saved.refresh;
+
+  // FlatList requires a stable viewability callback; route through a ref.
+  const markPassedUpToRef = useRef(reading.markPassedUpTo);
+  useEffect(() => {
+    markPassedUpToRef.current = reading.markPassedUpTo;
+  }, [reading.markPassedUpTo]);
+  const viewabilityConfigCallbackPairs = useRef([
+    {
+      viewabilityConfig: { itemVisiblePercentThreshold: 10 },
+      onViewableItemsChanged: ({
+        viewableItems,
+      }: {
+        viewableItems: { index: number | null }[];
+      }) => {
+        const indexes = viewableItems
+          .map((v) => v.index)
+          .filter((n): n is number => n !== null);
+        // Everything above the first visible row has been scrolled past.
+        if (indexes.length > 0) markPassedUpToRef.current(Math.min(...indexes));
+      },
+    },
+  ]);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await refresh();
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   // Start in the user's default view once the profile has loaded.
   useEffect(() => {
@@ -167,9 +213,13 @@ export default function ArticleListScreen() {
 
   const markRead = (article: Article) => {
     if (article.is_read) return;
-    api(`/articles/${article.id}/state`, { method: "POST", body: { is_read: true } }).catch(
-      () => {},
-    );
+    // Story advances move the reading frontier too, so the list resumes
+    // past the cards already flipped through.
+    sendReadBatch({
+      article_ids: [article.id],
+      read_source: "story",
+      frontier_article_id: article.id,
+    }).catch(() => {});
   };
 
   const confirmLogout = () => {
@@ -179,7 +229,24 @@ export default function ArticleListScreen() {
     ]);
   };
 
-  const openArticle = (article: Article) => router.push(`/article/${article.id}`);
+  const openArticle = (article: Article) => {
+    if (readingMode) reading.flush();
+    router.push(`/article/${article.id}`);
+  };
+
+  // The unread pill doubles as "jump to the next unread below".
+  const jumpToNextUnread = () => {
+    const index = articles.findIndex((a) => !a.is_read);
+    if (index >= 0) {
+      listRef.current?.scrollToIndex({ index, viewPosition: 0, animated: true });
+    } else if (reading.newAbove > 0) {
+      reading.resetToTop().then(() => listRef.current?.scrollToOffset({ offset: 0 }));
+    }
+  };
+
+  const jumpToNew = () => {
+    reading.resetToTop().then(() => listRef.current?.scrollToOffset({ offset: 0 }));
+  };
 
   if (mode === "stories" && !isLoading && !error) {
     return (
@@ -252,6 +319,7 @@ export default function ArticleListScreen() {
         </View>
       ) : (
         <FlatList
+          ref={listRef}
           data={articles}
           keyExtractor={(article) => String(article.id)}
           renderItem={({ item }) =>
@@ -261,10 +329,16 @@ export default function ArticleListScreen() {
               <CardRow article={item} colors={colors} onPress={() => openArticle(item)} />
             )
           }
+          viewabilityConfigCallbackPairs={
+            readingMode ? viewabilityConfigCallbackPairs.current : undefined
+          }
+          onScrollToIndexFailed={({ index, averageItemLength }) => {
+            listRef.current?.scrollToOffset({ offset: index * averageItemLength });
+          }}
           refreshControl={
             <RefreshControl
-              refreshing={isValidating && !hasMore}
-              onRefresh={() => refresh()}
+              refreshing={refreshing}
+              onRefresh={onRefresh}
               tintColor={colors.muted}
             />
           }
@@ -293,6 +367,38 @@ export default function ArticleListScreen() {
           }
           contentContainerStyle={articles.length === 0 ? styles.fill : undefined}
         />
+      )}
+
+      {readingMode && !isLoading && !error && reading.newAbove > 0 && (
+        <Pressable
+          style={[styles.pill, styles.pillTop, { backgroundColor: colors.tint }]}
+          onPress={jumpToNew}
+        >
+          <Text style={[styles.pillLabel, { color: colors.background }]}>
+            {reading.newAbove} new ↑
+          </Text>
+        </Pressable>
+      )}
+      {readingMode && !isLoading && !error && reading.unreadCount !== null && (
+        <Pressable
+          style={[
+            styles.pill,
+            styles.pillBottom,
+            { backgroundColor: colors.card, borderColor: colors.border },
+          ]}
+          onPress={jumpToNextUnread}
+        >
+          <Text
+            style={[
+              styles.pillLabel,
+              { color: reading.unreadCount > 0 ? colors.text : colors.muted },
+            ]}
+          >
+            {reading.unreadCount > 0
+              ? `${reading.unreadCount} unread ↓`
+              : "All caught up ✓"}
+          </Text>
+        </Pressable>
       )}
     </View>
   );
@@ -336,4 +442,20 @@ const styles = StyleSheet.create({
   fill: { flexGrow: 1 },
   footer: { paddingVertical: 20 },
   emptyText: { fontSize: 15, textAlign: "center", lineHeight: 21 },
+  pill: {
+    position: "absolute",
+    alignSelf: "center",
+    borderRadius: 18,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    shadowColor: "#000",
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
+  },
+  pillTop: { top: 60 },
+  pillBottom: { bottom: 24 },
+  pillLabel: { fontSize: 13, fontWeight: "700" },
 });
