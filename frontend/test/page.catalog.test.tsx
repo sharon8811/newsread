@@ -133,8 +133,12 @@ describe("CatalogPage", () => {
     render(<CatalogPage />);
     expect(screen.getAllByRole("article")).toHaveLength(60);
     await userEvent.click(screen.getByRole("button", { name: "Load more feeds" }));
-    // The larger batch can flush a beat after the click on slow CI runners.
-    await waitFor(() => expect(screen.getAllByRole("article")).toHaveLength(61));
+    expect(screen.getAllByRole("article")).toHaveLength(61);
+    // Regression: the search debounce used to fire on mount and reset
+    // visibleCount 450ms in, reverting an early "Load more" click (the
+    // intermittent 60-vs-61 failure on slow CI runners).
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    expect(screen.getAllByRole("article")).toHaveLength(61);
     await userEvent.click(screen.getByRole("button", { name: "More topics (2)" }));
     expect(screen.getByRole("button", { name: "Fewer topics" })).toBeInTheDocument();
   });

@@ -42,12 +42,17 @@ export default function CatalogPage() {
   const [smartKey, setSmartKey] = useState<string | null>(null);
 
   useEffect(() => {
+    // Only schedule when the debounced value would change: the mount run (and
+    // a search box reverted to its current value) must not queue a timer, or
+    // its visibleCount reset reverts a "Load more" clicked within 450ms.
+    const trimmed = search.trim();
+    if (trimmed === q) return;
     const t = setTimeout(() => {
-      setQ(search.trim());
+      setQ(trimmed);
       setVisibleCount(60);
     }, 450);
     return () => clearTimeout(t);
-  }, [search]);
+  }, [search, q]);
 
   const key = catalogKey(q, category, sort);
   const { data: entries, error: loadError, isLoading } = useSWR<CatalogEntry[]>(key, fetcher);
