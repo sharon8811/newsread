@@ -337,6 +337,31 @@ class UserArticleState(Base):
     article_id: Mapped[int] = mapped_column(ForeignKey("articles.id", ondelete="CASCADE"), index=True)
     is_read: Mapped[bool] = mapped_column(Boolean, default=False)
     is_saved: Mapped[bool] = mapped_column(Boolean, default=False)
+    # When and how the article got read: 'opened' | 'scrolled' | 'story' |
+    # 'mark_all'. Scrolled-past-without-opening is kept distinguishable as a
+    # weak negative signal for future ranking.
+    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    read_source: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class UserReadingPosition(Base):
+    """The reading frontier: the deepest article a user scrolled past in a
+    list (per feed, or the whole inbox). Resume lands at the first unread at
+    or after this position, so new arrivals above never teleport the user
+    back to the top. Snapshot columns instead of an article FK — the cursor
+    math must survive the article being retention-pruned."""
+
+    __tablename__ = "user_reading_positions"
+    __table_args__ = (UniqueConstraint("user_id", "scope"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    scope: Mapped[str] = mapped_column(String(32))  # 'inbox' | 'feed:<id>'
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    article_id: Mapped[int] = mapped_column(Integer)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )

@@ -114,6 +114,10 @@ MIGRATIONS = [
     "REFERENCES users(id) ON DELETE SET NULL",
     # Model-specific request parameters for the user's own image model.
     "ALTER TABLE user_ai_settings ADD COLUMN IF NOT EXISTS image_extra_params TEXT",
+    # Scroll auto-read: when and how an article was marked read ('opened',
+    # 'scrolled', 'story', 'mark_all').
+    "ALTER TABLE user_article_states ADD COLUMN IF NOT EXISTS read_at TIMESTAMPTZ",
+    "ALTER TABLE user_article_states ADD COLUMN IF NOT EXISTS read_source VARCHAR(16)",
 ]
 
 # Data repairs that scan whole tables. Unlike MIGRATIONS (cheap, re-run every

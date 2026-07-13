@@ -1074,3 +1074,346 @@ async def test_related_empty_without_embeddings_or_entities(client, users, data)
     resp = await client.get(f"/api/articles/{source.id}/related", headers=users.auth(user))
     assert resp.status_code == 200
     assert resp.json() == []
+
+
+# --- scroll auto-read: batch state, provenance, anchor + backward paging ---
+
+async def _dated_articles(data, feed, count):
+    """count articles titled A0..A(n-1), published a day apart (A0 oldest)."""
+    return [
+        await data.article(feed, title=f"A{i}",
+                           published_at=datetime(2024, 1, i + 1, tzinfo=timezone.utc))
+        for i in range(count)
+    ]
+
+
+async def _states(session, user):
+    rows = (await session.scalars(
+        select(UserArticleState).where(UserArticleState.user_id == user.id)
+    )).all()
+    return {s.article_id: s for s in rows}
+
+
+async def test_state_batch_marks_read_with_provenance(client, users, data, session):
+    user, feed = await _setup(users, data)
+    arts = await _dated_articles(data, feed, 3)
+    resp = await client.post("/api/articles/state/batch",
+                             json={"article_ids": [a.id for a in arts[:2]]},
+                             headers=users.auth(user))
+    assert resp.status_code == 204
+    states = await _states(session, user)
+    assert states[arts[0].id].is_read and states[arts[1].id].is_read
+    assert states[arts[0].id].read_source == "scrolled"
+    assert states[arts[0].id].read_at is not None
+    assert arts[2].id not in states
+
+
+async def test_state_batch_ignores_unsubscribed_articles(client, users, data, session):
+    user, feed = await _setup(users, data)
+    mine = await data.article(feed, title="Mine")
+    other_feed = await data.feed(title="NotSubscribed")
+    foreign = await data.article(other_feed, title="Foreign")
+    resp = await client.post("/api/articles/state/batch",
+                             json={"article_ids": [mine.id, foreign.id]},
+                             headers=users.auth(user))
+    assert resp.status_code == 204
+    states = await _states(session, user)
+    assert states[mine.id].is_read
+    assert foreign.id not in states
+
+
+async def test_state_batch_preserves_first_read_provenance(client, users, data, session):
+    """A scroll flush over an already-opened article must not downgrade it."""
+    user, feed = await _setup(users, data)
+    art = await data.article(feed)
+    opened = await client.post(f"/api/articles/{art.id}/state",
+                               json={"is_read": True}, headers=users.auth(user))
+    assert opened.status_code == 200
+    resp = await client.post("/api/articles/state/batch",
+                             json={"article_ids": [art.id]}, headers=users.auth(user))
+    assert resp.status_code == 204
+    states = await _states(session, user)
+    assert states[art.id].read_source == "opened"
+
+
+async def test_state_batch_unread_clears_provenance(client, users, data, session):
+    user, feed = await _setup(users, data)
+    art = await data.article(feed)
+    await client.post("/api/articles/state/batch",
+                      json={"article_ids": [art.id]}, headers=users.auth(user))
+    resp = await client.post("/api/articles/state/batch",
+                             json={"article_ids": [art.id], "is_read": False},
+                             headers=users.auth(user))
+    assert resp.status_code == 204
+    states = await _states(session, user)
+    assert states[art.id].is_read is False
+    assert states[art.id].read_at is None
+    assert states[art.id].read_source is None
+
+
+async def test_state_batch_keeps_saved_flag(client, users, data, session):
+    user, feed = await _setup(users, data)
+    art = await data.article(feed)
+    await data.state(user, art, is_saved=True)
+    await client.post("/api/articles/state/batch",
+                      json={"article_ids": [art.id]}, headers=users.auth(user))
+    states = await _states(session, user)
+    assert states[art.id].is_saved is True
+    assert states[art.id].is_read is True
+
+
+async def test_state_batch_empty_ids_rejected(client, users, data):
+    user, _ = await _setup(users, data)
+    resp = await client.post("/api/articles/state/batch",
+                             json={"article_ids": []}, headers=users.auth(user))
+    assert resp.status_code == 422
+
+
+async def test_set_state_records_opened_source(client, users, data, session):
+    user, feed = await _setup(users, data)
+    art = await data.article(feed)
+    await client.post(f"/api/articles/{art.id}/state",
+                      json={"is_read": True}, headers=users.auth(user))
+    states = await _states(session, user)
+    assert states[art.id].read_source == "opened"
+    assert states[art.id].read_at is not None
+
+
+async def test_set_state_explicit_source_story(client, users, data, session):
+    user, feed = await _setup(users, data)
+    art = await data.article(feed)
+    await client.post(f"/api/articles/{art.id}/state",
+                      json={"is_read": True, "read_source": "story"},
+                      headers=users.auth(user))
+    states = await _states(session, user)
+    assert states[art.id].read_source == "story"
+
+
+async def test_set_state_unread_clears_provenance(client, users, data, session):
+    user, feed = await _setup(users, data)
+    art = await data.article(feed)
+    await client.post(f"/api/articles/{art.id}/state",
+                      json={"is_read": True}, headers=users.auth(user))
+    await client.post(f"/api/articles/{art.id}/state",
+                      json={"is_read": False}, headers=users.auth(user))
+    states = await _states(session, user)
+    assert states[art.id].read_at is None
+    assert states[art.id].read_source is None
+
+
+async def test_mark_all_read_records_source(client, users, data, session):
+    user, feed = await _setup(users, data)
+    art = await data.article(feed)
+    resp = await client.post("/api/articles/mark-all-read", json={},
+                             headers=users.auth(user))
+    assert resp.status_code == 204
+    states = await _states(session, user)
+    assert states[art.id].read_source == "mark_all"
+
+
+async def test_anchor_starts_at_first_unread(client, users, data, session):
+    """Newest-first list A4..A0 with A4, A3 read: page starts at A2, prev
+    cursor points back at the read history, unread count reported."""
+    user, feed = await _setup(users, data)
+    arts = await _dated_articles(data, feed, 5)
+    await data.state(user, arts[4], is_read=True)
+    await data.state(user, arts[3], is_read=True)
+    resp = await client.get("/api/articles",
+                            params={"anchor": "resume", "limit": 2},
+                            headers=users.auth(user))
+    assert resp.status_code == 200
+    assert [a["title"] for a in resp.json()] == ["A2", "A1"]
+    assert resp.headers["x-unread-count"] == "3"
+    assert "x-prev-cursor" in resp.headers
+    assert "x-next-cursor" in resp.headers
+
+    # The prev cursor pages backward through the read history, in list order.
+    back = await client.get("/api/articles",
+                            params={"cursor": resp.headers["x-prev-cursor"],
+                                    "direction": "before", "limit": 5},
+                            headers=users.auth(user))
+    assert [a["title"] for a in back.json()] == ["A4", "A3"]
+    assert "x-prev-cursor" not in back.headers  # nothing earlier
+
+
+async def test_anchor_at_top_has_no_prev_cursor(client, users, data):
+    user, feed = await _setup(users, data)
+    await _dated_articles(data, feed, 2)
+    resp = await client.get("/api/articles", params={"anchor": "resume"},
+                            headers=users.auth(user))
+    assert [a["title"] for a in resp.json()] == ["A1", "A0"]
+    assert resp.headers["x-unread-count"] == "2"
+    assert "x-prev-cursor" not in resp.headers
+
+
+async def test_anchor_all_read_falls_back_to_top(client, users, data):
+    user, feed = await _setup(users, data)
+    arts = await _dated_articles(data, feed, 2)
+    for art in arts:
+        await data.state(user, art, is_read=True)
+    resp = await client.get("/api/articles", params={"anchor": "resume"},
+                            headers=users.auth(user))
+    assert [a["title"] for a in resp.json()] == ["A1", "A0"]
+    assert resp.headers["x-unread-count"] == "0"
+
+
+async def test_anchor_respects_oldest_sort(client, users, data, session):
+    from app.models import Subscription
+
+    user, feed = await _setup(users, data)
+    sub = await session.scalar(select(Subscription).where(Subscription.user_id == user.id))
+    sub.sort_order = "oldest"
+    await session.commit()
+    arts = await _dated_articles(data, feed, 3)
+    await data.state(user, arts[0], is_read=True)  # oldest read
+    resp = await client.get("/api/articles",
+                            params={"anchor": "resume", "feed_id": feed.id},
+                            headers=users.auth(user))
+    assert [a["title"] for a in resp.json()] == ["A1", "A2"]
+    assert "x-prev-cursor" in resp.headers
+
+
+async def test_anchor_rejected_with_cursor_or_q(client, users, data):
+    user, feed = await _setup(users, data)
+    for i in range(2):
+        await data.article(feed, title=f"A{i}",
+                           published_at=datetime(2024, 1, i + 1, tzinfo=timezone.utc))
+    first = await client.get("/api/articles", params={"limit": 1}, headers=users.auth(user))
+    cursor = first.headers["x-next-cursor"]
+    with_q = await client.get("/api/articles",
+                              params={"anchor": "resume", "q": "x"},
+                              headers=users.auth(user))
+    assert with_q.status_code == 422
+    with_cursor = await client.get("/api/articles",
+                                   params={"anchor": "resume", "cursor": cursor},
+                                   headers=users.auth(user))
+    assert with_cursor.status_code == 422
+
+
+async def test_direction_before_requires_cursor(client, users, data):
+    user, _ = await _setup(users, data)
+    resp = await client.get("/api/articles", params={"direction": "before"},
+                            headers=users.auth(user))
+    assert resp.status_code == 422
+
+
+async def test_direction_before_walks_history_in_pages(client, users, data):
+    """Backward pages return blocks in list order and chain via X-Prev-Cursor."""
+    user, feed = await _setup(users, data)
+    await _dated_articles(data, feed, 5)
+    # Cursor at A2, the last row of a 3-row first page (A4, A3, A2).
+    first = await client.get("/api/articles", params={"limit": 3},
+                             headers=users.auth(user))
+    cursor = first.headers["x-next-cursor"]
+
+    back1 = await client.get("/api/articles",
+                             params={"cursor": cursor, "direction": "before", "limit": 1},
+                             headers=users.auth(user))
+    assert [a["title"] for a in back1.json()] == ["A3"]  # row just above A2
+    back2 = await client.get("/api/articles",
+                             params={"cursor": back1.headers["x-prev-cursor"],
+                                     "direction": "before", "limit": 5},
+                             headers=users.auth(user))
+    assert [a["title"] for a in back2.json()] == ["A4"]
+    assert "x-prev-cursor" not in back2.headers
+
+
+async def test_direction_before_null_published_tail(client, users, data):
+    user, feed = await _setup(users, data)
+    await data.article(feed, title="Dated",
+                       published_at=datetime(2024, 1, 1, tzinfo=timezone.utc))
+    await data.article(feed, title="Undated1")
+    await data.article(feed, title="Undated2")
+    # Walk forward to the last row (Undated1), then read everything before it.
+    pages = await _walk_pages(client, users, user, limit=1)
+    assert pages == [["Dated"], ["Undated2"], ["Undated1"]]
+    second = await client.get("/api/articles", params={"limit": 2},
+                              headers=users.auth(user))
+    cursor = second.headers["x-next-cursor"]  # cursor at Undated2 (in the null tail)
+    back = await client.get("/api/articles",
+                            params={"cursor": cursor, "direction": "before", "limit": 5},
+                            headers=users.auth(user))
+    # Exclusive of the cursor row: only the dated head lies before the tail.
+    assert [a["title"] for a in back.json()] == ["Dated"]
+
+
+# --- reading frontier (resume position) ---
+
+async def test_batch_frontier_moves_resume_past_new_arrivals(client, users, data):
+    """The Telegram property: after scrolling past A2..A0 (frontier = A0),
+    newly arrived articles above must not teleport resume back to the top —
+    they're reported in X-New-Above-Count instead."""
+    user, feed = await _setup(users, data)
+    arts = await _dated_articles(data, feed, 3)  # list order A2, A1, A0
+    resp = await client.post(
+        "/api/articles/state/batch",
+        json={"article_ids": [arts[2].id, arts[1].id],
+              "frontier_article_id": arts[1].id},
+        headers=users.auth(user))
+    assert resp.status_code == 204
+
+    # Two new articles arrive above everything.
+    await data.article(feed, title="N0",
+                       published_at=datetime(2024, 2, 1, tzinfo=timezone.utc))
+    await data.article(feed, title="N1",
+                       published_at=datetime(2024, 2, 2, tzinfo=timezone.utc))
+
+    resp = await client.get("/api/articles", params={"anchor": "resume"},
+                            headers=users.auth(user))
+    # Resume = first unread at/after the frontier (A1) -> A0, not N1.
+    assert [a["title"] for a in resp.json()][0] == "A0"
+    assert resp.headers["x-unread-count"] == "3"  # A0 + the two new ones
+    assert resp.headers["x-new-above-count"] == "2"
+    assert "x-prev-cursor" in resp.headers
+
+
+async def test_resume_falls_back_to_first_unread_when_caught_up_below(client, users, data):
+    """Everything at/after the frontier read -> resume at the newest unread."""
+    user, feed = await _setup(users, data)
+    arts = await _dated_articles(data, feed, 2)
+    await client.post(
+        "/api/articles/state/batch",
+        json={"article_ids": [a.id for a in arts],
+              "frontier_article_id": arts[0].id},
+        headers=users.auth(user))
+    fresh = await data.article(feed, title="Fresh",
+                               published_at=datetime(2024, 3, 1, tzinfo=timezone.utc))
+    resp = await client.get("/api/articles", params={"anchor": "resume"},
+                            headers=users.auth(user))
+    assert [a["title"] for a in resp.json()][0] == "Fresh"
+    assert resp.headers["x-new-above-count"] == "0"
+
+
+async def test_batch_frontier_scoped_per_feed(client, users, data, session):
+    from app.models import UserReadingPosition
+
+    user, feed = await _setup(users, data)
+    art = await data.article(feed,
+                             published_at=datetime(2024, 1, 1, tzinfo=timezone.utc))
+    await client.post(
+        "/api/articles/state/batch",
+        json={"article_ids": [art.id], "frontier_article_id": art.id,
+              "frontier_feed_id": feed.id},
+        headers=users.auth(user))
+    positions = (await session.scalars(
+        select(UserReadingPosition).where(UserReadingPosition.user_id == user.id)
+    )).all()
+    assert [p.scope for p in positions] == [f"feed:{feed.id}"]
+    assert positions[0].article_id == art.id
+
+
+async def test_batch_frontier_ignored_when_unsubscribed(client, users, data, session):
+    from app.models import UserReadingPosition
+
+    user, feed = await _setup(users, data)
+    mine = await data.article(feed)
+    other_feed = await data.feed(title="NotMine")
+    foreign = await data.article(other_feed)
+    await client.post(
+        "/api/articles/state/batch",
+        json={"article_ids": [mine.id], "frontier_article_id": foreign.id},
+        headers=users.auth(user))
+    positions = (await session.scalars(
+        select(UserReadingPosition).where(UserReadingPosition.user_id == user.id)
+    )).all()
+    assert positions == []

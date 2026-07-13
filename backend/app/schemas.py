@@ -264,9 +264,23 @@ class ArticleDetail(ArticleListItem):
     entities: list[EntityFull] = []
 
 
+ReadSource = Literal["opened", "scrolled", "story", "mark_all"]
+
+
 class ArticleStateIn(BaseModel):
     is_read: bool | None = None
     is_saved: bool | None = None
+    read_source: ReadSource | None = None
+
+
+class ArticleStateBatchIn(BaseModel):
+    article_ids: list[int] = Field(min_length=1, max_length=500)
+    is_read: bool = True
+    read_source: ReadSource = "scrolled"
+    # Reading frontier: the deepest article scrolled past this flush. Scoped
+    # to a feed list when frontier_feed_id is set, the whole inbox otherwise.
+    frontier_article_id: int | None = None
+    frontier_feed_id: int | None = None
 
 
 class MarkAllReadIn(BaseModel):

@@ -118,9 +118,13 @@ describe("<StoriesView>", () => {
     expect(screen.getByText("One")).toBeInTheDocument();
     fireEvent.keyDown(window, { key: "ArrowRight" });
     expect(screen.getByText("Two")).toBeInTheDocument();
-    expect((globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][0]).toContain(
-      "/articles/1/state",
-    );
+    // Advancing marks read via the batch endpoint, carrying the frontier.
+    const [url, opts] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(String(url)).toContain("/articles/state/batch");
+    const body = JSON.parse(opts.body);
+    expect(body.article_ids).toEqual([1]);
+    expect(body.read_source).toBe("story");
+    expect(body.frontier_article_id).toBe(1);
   });
 
   it("advances with Space and reaches the done state at the end", () => {
@@ -295,7 +299,7 @@ describe("<StoriesView>", () => {
     );
     setData(many);
     renderStories();
-    expect(screen.getByText("1 / 32")).toBeInTheDocument();
+    expect(screen.getByText("1 / 32 · 31 left")).toBeInTheDocument();
   });
 
   it("revalidates article lists on unmount", () => {
