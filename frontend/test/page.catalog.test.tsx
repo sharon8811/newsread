@@ -133,7 +133,8 @@ describe("CatalogPage", () => {
     render(<CatalogPage />);
     expect(screen.getAllByRole("article")).toHaveLength(60);
     await userEvent.click(screen.getByRole("button", { name: "Load more feeds" }));
-    expect(screen.getAllByRole("article")).toHaveLength(61);
+    // The larger batch can flush a beat after the click on slow CI runners.
+    await waitFor(() => expect(screen.getAllByRole("article")).toHaveLength(61));
     await userEvent.click(screen.getByRole("button", { name: "More topics (2)" }));
     expect(screen.getByRole("button", { name: "Fewer topics" })).toBeInTheDocument();
   });
