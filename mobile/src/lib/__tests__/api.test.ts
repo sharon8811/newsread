@@ -1,4 +1,4 @@
-import { api, ApiError, apiPage, configureApi } from "../api";
+import { api, ApiError, apiPage, configureApi, sendReadBatch } from "../api";
 
 const realFetch = globalThis.fetch;
 
@@ -124,6 +124,9 @@ describe("apiPage", () => {
     await expect(apiPage("/articles")).resolves.toEqual({
       items: [{ id: 1 }],
       nextCursor: "abc123",
+      prevCursor: null,
+      unreadCount: null,
+      newAboveCount: null,
     });
   });
 
@@ -132,6 +135,62 @@ describe("apiPage", () => {
       mockResponse({ jsonBody: [] }),
     ) as unknown as typeof fetch;
     configureApi({ serverUrl: "https://s" });
-    await expect(apiPage("/articles")).resolves.toEqual({ items: [], nextCursor: null });
+    await expect(apiPage("/articles")).resolves.toEqual({
+      items: [],
+      nextCursor: null,
+      prevCursor: null,
+      unreadCount: null,
+      newAboveCount: null,
+    });
+  });
+});
+
+describe("apiPage reading headers", () => {
+  afterEach(() => {
+    globalThis.fetch = realFetch;
+    configureApi({ serverUrl: null, token: null });
+  });
+
+  it("surfaces prev cursor and unread counters", async () => {
+    globalThis.fetch = jest.fn(async () =>
+      mockResponse({
+        jsonBody: [{ id: 1 }],
+        headers: {
+          "X-Prev-Cursor": "p1",
+          "X-Unread-Count": "12",
+          "X-New-Above-Count": "3",
+        },
+      }),
+    ) as unknown as typeof fetch;
+    configureApi({ serverUrl: "https://s" });
+    const page = await apiPage("/articles?anchor=resume");
+    expect(page.prevCursor).toBe("p1");
+    expect(page.unreadCount).toBe(12);
+    expect(page.newAboveCount).toBe(3);
+  });
+});
+
+describe("sendReadBatch", () => {
+  afterEach(() => {
+    globalThis.fetch = realFetch;
+    configureApi({ serverUrl: null, token: null });
+  });
+
+  it("POSTs the batch to the state endpoint", async () => {
+    const fetchMock = jest.fn(async () => mockResponse({ status: 204 }));
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    configureApi({ serverUrl: "https://s", token: "t" });
+    await sendReadBatch({
+      article_ids: [1, 2],
+      read_source: "scrolled",
+      frontier_article_id: 2,
+    });
+    const [url, opts] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe("https://s/api/articles/state/batch");
+    expect(JSON.parse(String(opts.body))).toEqual({
+      article_ids: [1, 2],
+      read_source: "scrolled",
+      frontier_article_id: 2,
+    });
   });
 });

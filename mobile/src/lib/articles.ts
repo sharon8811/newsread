@@ -12,9 +12,11 @@ type ArticlePage = Page<Article[]>;
 
 /** Infinite article list over the API's keyset pagination: each page's
  * X-Next-Cursor feeds the next request, so the list stays stable while new
- * articles arrive (no duplicates or skips, unlike offsets). */
-export function useArticles(filter: ArticleFilter) {
+ * articles arrive (no duplicates or skips, unlike offsets). Pass null to
+ * disable (the reading filters use useReadingList instead). */
+export function useArticles(filter: ArticleFilter | null) {
   const getKey = (_index: number, previous: ArticlePage | null) => {
+    if (filter === null) return null;
     if (previous && !previous.nextCursor) return null; // reached the end
     const cursor = previous?.nextCursor
       ? `&cursor=${encodeURIComponent(previous.nextCursor)}`
@@ -39,7 +41,8 @@ export function useArticles(filter: ArticleFilter) {
   );
 
   const articles = data ? data.flatMap((page) => page.items) : [];
-  const hasMore = data ? data[data.length - 1].nextCursor !== null : false;
+  const hasMore =
+    data && data.length > 0 ? data[data.length - 1].nextCursor !== null : false;
   const loadMore = useCallback(() => {
     if (hasMore && !isValidating) setSize((current) => current + 1);
   }, [hasMore, isValidating, setSize]);

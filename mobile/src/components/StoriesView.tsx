@@ -73,7 +73,7 @@ export default function StoriesView({ articles, onOpen, onMarkRead, onExit }: Pr
             ))
           ) : (
             <Text style={styles.progressCounter}>
-              {index + 1} / {queue.length}
+              {index + 1} / {queue.length} · {queue.length - index - 1} left
             </Text>
           )}
         </View>
