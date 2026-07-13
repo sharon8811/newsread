@@ -213,3 +213,57 @@ describe("previewErrorMessage", () => {
     expect(previewErrorMessage(undefined, fallback)).toBe(fallback);
   });
 });
+
+describe("parseFeed edge branches", () => {
+  it("clips long summaries at a word boundary and trims trailing punctuation", () => {
+    const words = Array.from({ length: 60 }, (_, i) => `word${i},`).join(" ");
+    const xml = `<?xml version="1.0"?><rss><channel><title>T</title>
+      <item><title>Long</title><link>https://x/l</link><description>${words}</description></item>
+    </channel></rss>`;
+    const preview = parseFeed(xml, "application/rss+xml", "https://x/feed");
+    const summary = preview.items[0].summary!;
+    expect(summary.endsWith("…")).toBe(true);
+    expect(summary.length).toBeLessThanOrEqual(241);
+    expect(summary).not.toMatch(/[.,;:]+…$/);
+  });
+
+  it("drops invalid dates and unparsable link URLs", () => {
+    const xml = `<?xml version="1.0"?><rss><channel><title>T</title>
+      <item><title>Weird</title><link>ht!tp://[bad</link><pubDate>not a date</pubDate></item>
+    </channel></rss>`;
+    const preview = parseFeed(xml, "application/rss+xml", "https://x/feed");
+    expect(preview.items[0].published_at).toBeNull();
+  });
+
+  it("prefers the atom alternate link and falls back over rel-less links", () => {
+    const xml = `<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom">
+      <title>A</title>
+      <link rel="self" href="https://x/self"/>
+      <link href="https://x/site"/>
+      <entry><title>E</title><link href="https://x/e1"/><updated>2024-01-01T00:00:00Z</updated></entry>
+    </feed>`;
+    const preview = parseFeed(xml, "application/atom+xml", "https://x/feed");
+    expect(preview.site_url).toBe("https://x/site");
+    expect(preview.items[0].published_at).toBe("2024-01-01T00:00:00.000Z");
+  });
+
+  it("json feed: authors array fallback and content_text summaries", () => {
+    const body = JSON.stringify({
+      version: "https://jsonfeed.org/version/1.1",
+      title: "JF",
+      items: [
+        {
+          id: "1",
+          title: "JF Entry",
+          content_text: "plain text body",
+          authors: [{ name: "Ada" }],
+          date_modified: "2024-02-02T00:00:00Z",
+        },
+      ],
+    });
+    const preview = parseFeed(body, "application/feed+json", "https://x/feed.json");
+    expect(preview.items[0].author).toBe("Ada");
+    expect(preview.items[0].summary).toBe("plain text body");
+    expect(preview.items[0].published_at).toBe("2024-02-02T00:00:00.000Z");
+  });
+});

@@ -468,3 +468,302 @@ describe("<ArticleList> reading mode", () => {
     expect(screen.getByText("sub")).toBeInTheDocument();
   });
 });
+
+describe("<ArticleList> reading mode interactions", () => {
+  beforeEach(() => {
+    swrMock.mockReset();
+    mutateMock.mockClear();
+    pushMock.mockClear();
+    MockIntersectionObserver.instances = [];
+    vi.stubGlobal("IntersectionObserver", MockIntersectionObserver);
+    Element.prototype.scrollIntoView = vi.fn();
+    (Element.prototype as unknown as { scrollTo: unknown }).scrollTo = vi.fn();
+  });
+
+  function routedFetch(
+    routes: { match: (u: string) => boolean; articles: unknown[]; headers?: Record<string, string> }[],
+  ) {
+    const mock = vi.fn().mockImplementation((url: string) => {
+      if (String(url).includes("/state/batch") || String(url).includes("/state")) {
+        return Promise.resolve({ ok: true, status: 204, json: async () => ({}) });
+      }
+      const route = routes.find((r) => r.match(String(url)));
+      if (!route) return Promise.reject(new Error(`no route: ${url}`));
+      return Promise.resolve(pageResponse(route.articles, route.headers ?? {}));
+    });
+    vi.stubGlobal("fetch", mock);
+    return mock;
+  }
+
+  it("bottom sentinel loads the next page; end of list shows the keys hint", async () => {
+    const fetchMock = routedFetch([
+      {
+        match: (u) => u.includes("anchor=resume"),
+        articles: [makeArticle({ id: 1, title: "First" })],
+        headers: { "X-Unread-Count": "2", "X-Next-Cursor": "n1" },
+      },
+      {
+        match: (u) => u.includes("cursor=n1"),
+        articles: [makeArticle({ id: 2, title: "Second" })],
+      },
+    ]);
+    renderReading(<ArticleList filter="all" emptyTitle="Empty" />);
+    await screen.findByText("First");
+    expect(screen.getByText(/loading more/)).toBeInTheDocument();
+
+    const sentinel = screen.getByText(/loading more/).parentElement!;
+    const io = MockIntersectionObserver.instances.find((i) => i.observed.has(sentinel))!;
+    io.callback([{ isIntersecting: true, target: sentinel } as IntersectionObserverEntry]);
+
+    await screen.findByText("Second");
+    expect(fetchMock.mock.calls.some((c) => String(c[0]).includes("cursor=n1"))).toBe(true);
+    // Last page reached: the sentinel gives way to the keyboard hint.
+    expect(screen.queryByText(/loading more/)).not.toBeInTheDocument();
+    expect(screen.getByText(/j \/ k to navigate/)).toBeInTheDocument();
+  });
+
+  it("top sentinel pages read history in above", async () => {
+    const fetchMock = routedFetch([
+      {
+        match: (u) => u.includes("anchor=resume"),
+        articles: [makeArticle({ id: 5, title: "Anchor" })],
+        headers: { "X-Unread-Count": "1", "X-Prev-Cursor": "p1" },
+      },
+      {
+        match: (u) => u.includes("direction=before"),
+        articles: [makeArticle({ id: 4, title: "History", is_read: true })],
+      },
+    ]);
+    renderReading(<ArticleList filter="all" emptyTitle="Empty" />);
+    await screen.findByText("Anchor");
+    const sentinel = screen.getByText(/loading earlier/).parentElement!;
+    const io = MockIntersectionObserver.instances.find((i) => i.observed.has(sentinel))!;
+    io.callback([{ isIntersecting: true, target: sentinel } as IntersectionObserverEntry]);
+    await screen.findByText("History");
+    expect(
+      fetchMock.mock.calls.some((c) => String(c[0]).includes("direction=before")),
+    ).toBe(true);
+  });
+
+  it("unread pill jumps to the next unread below the viewport", async () => {
+    routedFetch([
+      {
+        match: (u) => u.includes("anchor=resume"),
+        articles: [
+          makeArticle({ id: 1, title: "Read One", is_read: true }),
+          makeArticle({ id: 2, title: "Unread Two" }),
+        ],
+        headers: { "X-Unread-Count": "1" },
+      },
+    ]);
+    const { container } = renderReading(<ArticleList filter="all" emptyTitle="Empty" />);
+    await screen.findByText("Unread Two");
+    const target = container.querySelector('[data-article-id="2"]') as HTMLElement;
+    target.getBoundingClientRect = () =>
+      ({ top: 500, bottom: 700, width: 100, height: 200 }) as DOMRect;
+    const scrollSpy = vi.fn();
+    target.scrollIntoView = scrollSpy;
+    fireEvent.click(screen.getByText("1 unread ↓"));
+    await waitFor(() => expect(scrollSpy).toHaveBeenCalled());
+  });
+
+  it("unread pill falls back to the top when only new-above items remain", async () => {
+    const fetchMock = routedFetch([
+      {
+        match: (u) => u.includes("anchor=resume"),
+        articles: [makeArticle({ id: 1, title: "Read One", is_read: true })],
+        headers: { "X-Unread-Count": "2", "X-New-Above-Count": "2" },
+      },
+      {
+        match: (u) => !u.includes("anchor"),
+        articles: [makeArticle({ id: 9, title: "Fresh Top" })],
+      },
+    ]);
+    renderReading(<ArticleList filter="all" emptyTitle="Empty" />);
+    await screen.findByText("Read One");
+    fireEvent.click(screen.getByText("2 unread ↓"));
+    await screen.findByText("Fresh Top");
+    expect(
+      fetchMock.mock.calls.some(
+        (c) => !String(c[0]).includes("anchor") && String(c[0]).includes("/articles?"),
+      ),
+    ).toBe(true);
+  });
+
+  it("new-above pill resets the window to the top of the list", async () => {
+    routedFetch([
+      {
+        match: (u) => u.includes("anchor=resume"),
+        articles: [makeArticle({ id: 5, title: "Mid Anchor" })],
+        headers: { "X-Unread-Count": "3", "X-New-Above-Count": "2" },
+      },
+      {
+        match: (u) => !u.includes("anchor"),
+        articles: [makeArticle({ id: 9, title: "Breaking Top" })],
+      },
+    ]);
+    renderReading(<ArticleList filter="all" emptyTitle="Empty" />);
+    await screen.findByText("Mid Anchor");
+    fireEvent.click(screen.getByText("2 new ↑"));
+    await screen.findByText("Breaking Top");
+    expect(screen.queryByText(/new ↑/)).not.toBeInTheDocument();
+  });
+
+  it("keyboard m toggles read through the window (no full refetch)", async () => {
+    const fetchMock = routedFetch([
+      {
+        match: (u) => u.includes("anchor=resume"),
+        articles: [makeArticle({ id: 3, title: "Toggle Me" })],
+        headers: { "X-Unread-Count": "1" },
+      },
+    ]);
+    renderReading(<ArticleList filter="unread" emptyTitle="Empty" />);
+    await screen.findByText("Toggle Me");
+    fireEvent.keyDown(window, { key: "m" });
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some((c) => String(c[0]).includes("/articles/3/state")),
+      ).toBe(true),
+    );
+    await screen.findByText("All caught up ✓");
+  });
+
+  it("keyboard Enter opens the selected article from the window", async () => {
+    routedFetch([
+      {
+        match: (u) => u.includes("anchor=resume"),
+        articles: [makeArticle({ id: 77, title: "Openable" })],
+        headers: { "X-Unread-Count": "1" },
+      },
+    ]);
+    renderReading(<ArticleList filter="all" emptyTitle="Empty" />);
+    await screen.findByText("Openable");
+    fireEvent.keyDown(window, { key: "Enter" });
+    expect(pushMock).toHaveBeenCalledWith("/article/77");
+  });
+});
+
+describe("<ArticleList> reading mode guards", () => {
+  beforeEach(() => {
+    swrMock.mockReset();
+    mutateMock.mockClear();
+    pushMock.mockClear();
+    MockIntersectionObserver.instances = [];
+    vi.stubGlobal("IntersectionObserver", MockIntersectionObserver);
+    Element.prototype.scrollIntoView = vi.fn();
+    (Element.prototype as unknown as { scrollTo: unknown }).scrollTo = vi.fn();
+  });
+
+  it("articlesKey carries the resume anchor when asked", () => {
+    expect(articlesKey({ filter: "unread", anchor: "resume" })).toBe(
+      "/articles?filter=unread&limit=100&anchor=resume",
+    );
+  });
+
+  it("ignores unmounting (zero-rect) and still-below observer entries", async () => {
+    vi.useFakeTimers();
+    try {
+      const fetchMock = readingFetch(
+        [makeArticle({ id: 31, title: "Guarded" })],
+        { "X-Unread-Count": "1" },
+      );
+      vi.stubGlobal("fetch", fetchMock);
+      const { container } = renderReading(
+        <ArticleList filter="all" emptyTitle="Empty" />,
+      );
+      await vi.waitFor(() =>
+        expect(container.querySelector('[data-article-id="31"]')).toBeTruthy(),
+      );
+      const target = container.querySelector('[data-article-id="31"]')!;
+      const io = MockIntersectionObserver.instances.find((i) => i.observed.has(target))!;
+      io.callback([
+        {
+          // unmount storm: zero rect must not mark
+          isIntersecting: false,
+          target,
+          boundingClientRect: { width: 0, height: 0, top: 0, bottom: 0 } as DOMRectReadOnly,
+          rootBounds: { top: 0 } as DOMRectReadOnly,
+        },
+        {
+          // exited through the BOTTOM edge (scrolled up) — must not mark
+          isIntersecting: false,
+          target,
+          boundingClientRect: { width: 100, height: 50, top: 900, bottom: 950 } as DOMRectReadOnly,
+          rootBounds: { top: 0 } as DOMRectReadOnly,
+        },
+        {
+          // missing rootBounds falls back to 0 and still guards correctly
+          isIntersecting: true,
+          target,
+          boundingClientRect: { width: 100, height: 50, top: 10, bottom: 60 } as DOMRectReadOnly,
+          rootBounds: null,
+        },
+      ] as IntersectionObserverEntry[]);
+      await vi.advanceTimersByTimeAsync(3000);
+      expect(
+        fetchMock.mock.calls.filter((c) => String(c[0]).includes("/state/batch")),
+      ).toHaveLength(0);
+      expect(screen.getByText("1 unread ↓")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("jump pill pulls the next page when the unread lives beyond the window", async () => {
+    const fetchMock = routedJumpFetch();
+    vi.stubGlobal("fetch", fetchMock);
+    const { container } = renderReading(<ArticleList filter="all" emptyTitle="Empty" />);
+    await screen.findByText("Read One");
+    fireEvent.click(screen.getByText("1 unread ↓"));
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some((c) => String(c[0]).includes("cursor=n1"))).toBe(true),
+    );
+    await screen.findByText("Deep Unread");
+    // After the retry the fetched unread below gets scrolled to.
+    const target = container.querySelector('[data-article-id="52"]') as HTMLElement;
+    expect(target).toBeTruthy();
+  });
+});
+
+function routedJumpFetch() {
+  return vi.fn().mockImplementation((url: string) => {
+    const u = String(url);
+    if (u.includes("/state")) {
+      return Promise.resolve({ ok: true, status: 204, json: async () => ({}) });
+    }
+    if (u.includes("anchor=resume")) {
+      return Promise.resolve(
+        pageResponse([makeArticle({ id: 51, title: "Read One", is_read: true })], {
+          "X-Unread-Count": "1",
+          "X-Next-Cursor": "n1",
+        }),
+      );
+    }
+    if (u.includes("cursor=n1")) {
+      return Promise.resolve(
+        pageResponse([makeArticle({ id: 52, title: "Deep Unread" })], {}),
+      );
+    }
+    return Promise.reject(new Error(`no route ${u}`));
+  });
+}
+
+describe("<ArticleList> reading mode with a feed scope", () => {
+  beforeEach(() => {
+    swrMock.mockReset();
+    MockIntersectionObserver.instances = [];
+    vi.stubGlobal("IntersectionObserver", MockIntersectionObserver);
+    Element.prototype.scrollIntoView = vi.fn();
+  });
+
+  it("scopes the window requests to the feed", async () => {
+    const fetchMock = readingFetch(
+      [makeArticle({ id: 1, title: "Feed Scoped" })],
+      { "X-Unread-Count": "1" },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    renderReading(<ArticleList filter="unread" feedId="7" emptyTitle="Empty" />);
+    await screen.findByText("Feed Scoped");
+    expect(String(fetchMock.mock.calls[0][0])).toContain("feed_id=7");
+  });
+});

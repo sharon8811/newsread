@@ -205,3 +205,103 @@ describe("imageSrc", () => {
     expect(imageSrc("")).toBeUndefined();
   });
 });
+
+describe("apiWithHeaders()", () => {
+  beforeEach(() => setToken(null));
+
+  it("returns data plus headers, sending the auth header when a token exists", async () => {
+    setToken("tok-1");
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => [{ id: 1 }],
+      headers: new Headers({ "X-Unread-Count": "4" }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { apiWithHeaders } = await import("@/lib/api");
+    const page = await apiWithHeaders("/articles?anchor=resume");
+    expect(page.data).toEqual([{ id: 1 }]);
+    expect(page.headers.get("X-Unread-Count")).toBe("4");
+    expect(fetchMock.mock.calls[0][1].headers.Authorization).toBe("Bearer tok-1");
+    setToken(null);
+  });
+
+  it("omits the auth header without a token", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => [],
+      headers: new Headers(),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { apiWithHeaders } = await import("@/lib/api");
+    await apiWithHeaders("/articles");
+    expect(fetchMock.mock.calls[0][1].headers.Authorization).toBeUndefined();
+  });
+
+  it("throws ApiError with the backend detail string", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 422,
+        statusText: "Unprocessable",
+        json: async () => ({ detail: "anchor cannot be combined with cursor or q" }),
+        headers: new Headers(),
+      }),
+    );
+    const { apiWithHeaders } = await import("@/lib/api");
+    await expect(apiWithHeaders("/articles")).rejects.toMatchObject({
+      status: 422,
+      message: "anchor cannot be combined with cursor or q",
+    });
+  });
+
+  it("falls back to statusText when the error body is not a detail string", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 500,
+        statusText: "Server Error",
+        json: async () => {
+          throw new Error("not json");
+        },
+        headers: new Headers(),
+      }),
+    );
+    const { apiWithHeaders } = await import("@/lib/api");
+    await expect(apiWithHeaders("/articles")).rejects.toMatchObject({
+      status: 500,
+      message: "Server Error",
+    });
+  });
+});
+
+describe("sendReadBatch()", () => {
+  beforeEach(() => setToken(null));
+
+  it("POSTs the batch without keepalive by default, with auth when present", async () => {
+    setToken("tok-2");
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 204 });
+    vi.stubGlobal("fetch", fetchMock);
+    const { sendReadBatch } = await import("@/lib/api");
+    await sendReadBatch({ article_ids: [1, 2], read_source: "scrolled" });
+    const [url, opts] = fetchMock.mock.calls[0];
+    expect(String(url)).toContain("/articles/state/batch");
+    expect(opts.keepalive).toBe(false);
+    expect(opts.headers.Authorization).toBe("Bearer tok-2");
+    expect(JSON.parse(opts.body)).toEqual({ article_ids: [1, 2], read_source: "scrolled" });
+    setToken(null);
+  });
+
+  it("sets keepalive for final flushes and works without a token", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 204 });
+    vi.stubGlobal("fetch", fetchMock);
+    const { sendReadBatch } = await import("@/lib/api");
+    await sendReadBatch({ article_ids: [3] }, { keepalive: true });
+    const [, opts] = fetchMock.mock.calls[0];
+    expect(opts.keepalive).toBe(true);
+    expect(opts.headers.Authorization).toBeUndefined();
+  });
+});
