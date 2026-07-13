@@ -29,10 +29,12 @@ from ..models import (
     Subscription,
     User,
     UserArticleState,
+    UserReadingPosition,
 )
 from ..schemas import (
     ArticleDetail,
     ArticleListItem,
+    ArticleStateBatchIn,
     ArticleStateIn,
     EntityBadge,
     EntityFull,
@@ -188,6 +190,42 @@ def _cursor_filter(published: datetime | None, article_id: int, *, oldest: bool)
         and_(Article.published_at == published, Article.id < article_id),
         Article.published_at.is_(None),
     )
+
+
+def _cursor_filter_before(published: datetime | None, article_id: int, *, oldest: bool):
+    """Mirror of _cursor_filter: rows strictly before the cursor in list
+    order, for paging backward through read history. From inside the
+    null-published tail everything non-null lies before the cursor; from a
+    non-null cursor nothing in the tail does."""
+    if oldest:
+        if published is None:
+            return or_(
+                Article.published_at.is_not(None),
+                and_(Article.published_at.is_(None), Article.id < article_id),
+            )
+        return or_(
+            Article.published_at < published,
+            and_(Article.published_at == published, Article.id < article_id),
+        )
+    if published is None:
+        return or_(
+            Article.published_at.is_not(None),
+            and_(Article.published_at.is_(None), Article.id > article_id),
+        )
+    return or_(
+        Article.published_at > published,
+        and_(Article.published_at == published, Article.id > article_id),
+    )
+
+
+def _cursor_filter_at_or_after(published: datetime | None, article_id: int, *, oldest: bool):
+    """Rows at or after the cursor in list order — anchors a page that starts
+    exactly at a known article (the resume point at the first unread)."""
+    at = and_(
+        Article.published_at.is_(None) if published is None else Article.published_at == published,
+        Article.id == article_id,
+    )
+    return or_(at, _cursor_filter(published, article_id, oldest=oldest))
 
 
 async def user_can_access(session: AsyncSession, user_id: int, article: Article) -> bool:
@@ -415,15 +453,31 @@ async def list_articles(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     cursor: str | None = Query(default=None, max_length=200),
+    anchor: Literal["resume"] | None = None,
+    direction: Literal["after", "before"] = "after",
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
     """Chronological listings support keyset pagination: pass the previous
     response's `X-Next-Cursor` header as `cursor` (which then overrides
     `offset`). Cursors stay stable while new articles arrive, unlike offsets.
-    Search results are ranked, not chronological, so `q` keeps using offsets."""
+    Search results are ranked, not chronological, so `q` keeps using offsets.
+
+    `anchor=resume` starts the page at the reading frontier: the first
+    unread at or after the stored reading position (so newer arrivals above
+    never teleport the resume point back to the top), falling back to the
+    first unread anywhere, then to the top of the list. It also reports the
+    scope's total unread in `X-Unread-Count` and how many unread sit above
+    the resume point in `X-New-Above-Count`. `direction=before` pages
+    backward from `cursor` through read history. Both hand back an
+    `X-Prev-Cursor` usable for the next backward page whenever earlier rows
+    exist."""
     if cursor is not None and q:
         raise HTTPException(status_code=422, detail="cursor cannot be combined with q")
+    if anchor is not None and (cursor is not None or q):
+        raise HTTPException(status_code=422, detail="anchor cannot be combined with cursor or q")
+    if direction == "before" and cursor is None:
+        raise HTTPException(status_code=422, detail="direction=before requires a cursor")
     stmt = (
         select(Article, Feed.title, Feed.image_gen_enabled, UserArticleState)
         .join(Feed, Article.feed_id == Feed.id)
@@ -479,22 +533,116 @@ async def list_articles(
             )
         oldest = sort_order == "oldest"
         if oldest:
-            stmt = stmt.order_by(Article.published_at.asc().nulls_last(), Article.id.asc())
+            list_order = (Article.published_at.asc().nulls_last(), Article.id.asc())
+            reverse_order = (Article.published_at.desc().nulls_first(), Article.id.desc())
         else:
-            stmt = stmt.order_by(Article.published_at.desc().nulls_last(), Article.id.desc())
-        if cursor is not None:
+            list_order = (Article.published_at.desc().nulls_last(), Article.id.desc())
+            reverse_order = (Article.published_at.asc().nulls_first(), Article.id.asc())
+        if direction == "before":
+            # Backward page: mirror the keyset, query in reverse order, then
+            # flip the block back to list order for the client to prepend.
             published, cursor_id = _decode_cursor(cursor)
-            stmt = stmt.where(_cursor_filter(published, cursor_id, oldest=oldest))
-        else:
-            stmt = stmt.offset(offset)
-        # One extra row tells us whether a next page exists.
-        stmt = stmt.limit(limit + 1)
-        rows = (await session.execute(stmt)).all()
-        if len(rows) > limit:
+            stmt = (
+                stmt.where(_cursor_filter_before(published, cursor_id, oldest=oldest))
+                .order_by(*reverse_order)
+                .limit(limit + 1)
+            )
+            rows = (await session.execute(stmt)).all()
+            has_earlier = len(rows) > limit
             rows = rows[:limit]
-            # Ranked/ILIKE search stays offset-based, so no cursor for q.
-            if not q:
-                response.headers["X-Next-Cursor"] = _encode_cursor(rows[-1][0])
+            rows.reverse()
+            if has_earlier and rows:
+                response.headers["X-Prev-Cursor"] = _encode_cursor(rows[0][0])
+        else:
+            scope_stmt = stmt  # pre-pagination scope, reused for anchor lookups
+            stmt = stmt.order_by(*list_order)
+            anchor_article: Article | None = None
+            if anchor is not None:
+                unread = or_(
+                    UserArticleState.id.is_(None), UserArticleState.is_read.is_(False)
+                )
+                scope = f"feed:{feed_id}" if feed_id is not None else "inbox"
+                position = await session.scalar(
+                    select(UserReadingPosition).where(
+                        UserReadingPosition.user_id == user.id,
+                        UserReadingPosition.scope == scope,
+                    )
+                )
+                if position is not None:
+                    anchor_row = (
+                        await session.execute(
+                            scope_stmt.where(
+                                unread,
+                                _cursor_filter_at_or_after(
+                                    position.published_at, position.article_id, oldest=oldest
+                                ),
+                            )
+                            .order_by(*list_order)
+                            .limit(1)
+                        )
+                    ).first()
+                    if anchor_row is not None:
+                        anchor_article = anchor_row[0]
+                if anchor_article is None:
+                    # No frontier yet, or everything at/after it is read:
+                    # resume at the first unread anywhere.
+                    anchor_row = (
+                        await session.execute(
+                            scope_stmt.where(unread).order_by(*list_order).limit(1)
+                        )
+                    ).first()
+                    if anchor_row is not None:
+                        anchor_article = anchor_row[0]
+                unread_total = await session.scalar(
+                    select(func.count()).select_from(scope_stmt.where(unread).subquery())
+                )
+                response.headers["X-Unread-Count"] = str(unread_total or 0)
+                new_above = 0
+                if anchor_article is not None:
+                    new_above = await session.scalar(
+                        select(func.count()).select_from(
+                            scope_stmt.where(
+                                unread,
+                                _cursor_filter_before(
+                                    anchor_article.published_at,
+                                    anchor_article.id,
+                                    oldest=oldest,
+                                ),
+                            ).subquery()
+                        )
+                    )
+                response.headers["X-New-Above-Count"] = str(new_above or 0)
+            if anchor_article is not None:
+                anchor_published = anchor_article.published_at
+                stmt = stmt.where(
+                    _cursor_filter_at_or_after(
+                        anchor_published, anchor_article.id, oldest=oldest
+                    )
+                )
+                earlier_row = (
+                    await session.execute(
+                        scope_stmt.where(
+                            _cursor_filter_before(
+                                anchor_published, anchor_article.id, oldest=oldest
+                            )
+                        ).limit(1)
+                    )
+                ).first()
+                if earlier_row is not None:
+                    response.headers["X-Prev-Cursor"] = _encode_cursor(anchor_article)
+            elif cursor is not None:
+                published, cursor_id = _decode_cursor(cursor)
+                stmt = stmt.where(_cursor_filter(published, cursor_id, oldest=oldest))
+            else:
+                stmt = stmt.offset(offset)
+            # One extra row tells us whether a next page exists.
+            stmt = stmt.limit(limit + 1)
+            rows = (await session.execute(stmt)).all()
+            if len(rows) > limit:
+                rows = rows[:limit]
+                # Ranked/ILIKE search stays offset-based, so no cursor for q.
+                if not q:
+                    response.headers["X-Next-Cursor"] = _encode_cursor(rows[-1][0])
     just_claimed = await _generate_listed_images(session, background, user, rows)
     entity_map = await _entities_for_articles(session, [a.id for a, _, _, _ in rows])
     return [
@@ -726,6 +874,88 @@ async def get_generated_image(
     )
 
 
+def _read_state_values(is_read: bool, source: str) -> dict:
+    """Column updates for a read-state flip; unreading clears provenance."""
+    if is_read:
+        return {"is_read": True, "read_at": func.now(), "read_source": source}
+    return {"is_read": False, "read_at": None, "read_source": None}
+
+
+@router.post("/state/batch", status_code=204)
+async def set_state_batch(
+    body: ArticleStateBatchIn,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Bulk read flips from scroll auto-read. Ids outside the user's
+    subscriptions are silently ignored, and rows already in the requested
+    state are left untouched — a re-mark never overwrites when/how an
+    article was first read, so duplicate flushes are harmless."""
+    accessible = (
+        await session.scalars(
+            select(Article.id)
+            .join(
+                Subscription,
+                and_(
+                    Subscription.feed_id == Article.feed_id,
+                    Subscription.user_id == user.id,
+                ),
+            )
+            .where(Article.id.in_(body.article_ids))
+        )
+    ).all()
+    if accessible:
+        values = _read_state_values(body.is_read, body.read_source)
+        stmt = (
+            pg_insert(UserArticleState)
+            .values(
+                [{"user_id": user.id, "article_id": aid, **values} for aid in accessible]
+            )
+            .on_conflict_do_update(
+                index_elements=["user_id", "article_id"],
+                set_=values,
+                where=UserArticleState.is_read.is_not(values["is_read"]),
+            )
+        )
+        await session.execute(stmt)
+    # The frontier may predate this flush (deepest article of the session),
+    # so check its access on its own rather than against this batch's ids.
+    frontier = None
+    if body.frontier_article_id is not None:
+        frontier = await session.scalar(
+            select(Article)
+            .join(
+                Subscription,
+                and_(
+                    Subscription.feed_id == Article.feed_id,
+                    Subscription.user_id == user.id,
+                ),
+            )
+            .where(Article.id == body.frontier_article_id)
+        )
+    if frontier is not None:
+        scope = (
+            f"feed:{body.frontier_feed_id}"
+            if body.frontier_feed_id is not None
+            else "inbox"
+        )
+        position = {
+            "user_id": user.id,
+            "scope": scope,
+            "published_at": frontier.published_at,
+            "article_id": frontier.id,
+        }
+        await session.execute(
+            pg_insert(UserReadingPosition)
+            .values(**position)
+            .on_conflict_do_update(
+                index_elements=["user_id", "scope"],
+                set_={"published_at": frontier.published_at, "article_id": frontier.id},
+            )
+        )
+    await session.commit()
+
+
 @router.post("/{article_id}/state", response_model=ArticleListItem)
 async def set_state(
     article_id: int,
@@ -739,7 +969,9 @@ async def set_state(
 
     values: dict = {}
     if body.is_read is not None:
-        values["is_read"] = body.is_read
+        # Unlike the batch route this overwrites provenance on purpose:
+        # actually opening an article upgrades a passive 'scrolled' mark.
+        values.update(_read_state_values(body.is_read, body.read_source or "opened"))
     if body.is_saved is not None:
         values["is_saved"] = body.is_saved
     if not values:
@@ -793,12 +1025,13 @@ async def mark_all_read(
 
     article_ids = (await session.scalars(stmt)).all()
     if article_ids:
+        values = _read_state_values(True, "mark_all")
         insert_stmt = (
             pg_insert(UserArticleState)
-            .values([{"user_id": user.id, "article_id": aid, "is_read": True} for aid in article_ids])
+            .values([{"user_id": user.id, "article_id": aid, **values} for aid in article_ids])
             .on_conflict_do_update(
                 index_elements=["user_id", "article_id"],
-                set_={"is_read": True},
+                set_=values,
             )
         )
         await session.execute(insert_stmt)

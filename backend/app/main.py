@@ -45,7 +45,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["X-Next-Cursor"],
+    expose_headers=["X-Next-Cursor", "X-Prev-Cursor", "X-Unread-Count", "X-New-Above-Count"],
 )
 
 app.include_router(auth.router, prefix="/api")

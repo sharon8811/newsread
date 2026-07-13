@@ -56,6 +56,49 @@ export async function api<T>(
 
 export const fetcher = <T,>(path: string) => api<T>(path);
 
+// Like api(), but hands back response headers too — article list pagination
+// travels in X-Next-Cursor / X-Prev-Cursor / X-Unread-Count / X-New-Above-Count.
+export async function apiWithHeaders<T>(
+  path: string,
+): Promise<{ data: T; headers: Headers }> {
+  const token = getToken();
+  const res = await fetch(`${API_URL}/api${path}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok) {
+    const detail = typeof data?.detail === "string" ? data.detail : res.statusText;
+    throw new ApiError(detail, res.status, data?.detail);
+  }
+  return { data: data as T, headers: res.headers };
+}
+
+export type ReadSource = "opened" | "scrolled" | "story" | "mark_all";
+
+export type ReadBatch = {
+  article_ids: number[];
+  is_read?: boolean;
+  read_source?: ReadSource;
+  // Deepest article scrolled past this session — the resume position.
+  frontier_article_id?: number;
+  frontier_feed_id?: number;
+};
+
+// keepalive lets the final flush survive navigation/tab close (sendBeacon
+// can't carry the Authorization header, fetch-with-keepalive can).
+export function sendReadBatch(batch: ReadBatch, opts: { keepalive?: boolean } = {}) {
+  const token = getToken();
+  return fetch(`${API_URL}/api/articles/state/batch`, {
+    method: "POST",
+    keepalive: opts.keepalive ?? false,
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(batch),
+  });
+}
+
 // Generated article images are stored as relative /api/... paths so they
 // survive any deployment host; scraped og:images stay absolute. Resolve the
 // relative ones against the API base this client already talks to.

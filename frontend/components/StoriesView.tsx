@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import useSWR from "swr";
-import { api, fetcher, imageSrc, type Article } from "@/lib/api";
+import { api, fetcher, imageSrc, sendReadBatch, type Article } from "@/lib/api";
 import { timeAgo } from "@/lib/format";
 import { articlesKey, mutateArticleLists } from "./ArticleList";
 import EntityBadges from "./EntityBadges";
@@ -24,7 +24,12 @@ export default function StoriesView({
   onExit: () => void;
 }) {
   const router = useRouter();
-  const key = articlesKey({ filter, feedId });
+  // The unread deck resumes at the reading frontier, like the list views.
+  const key = articlesKey({
+    filter,
+    feedId,
+    anchor: filter === "unread" ? "resume" : undefined,
+  });
   const { data, isLoading } = useSWR<Article[]>(key, fetcher);
 
   // Snapshot the queue: live SWR data reshuffles as items get marked read.
@@ -53,12 +58,16 @@ export default function StoriesView({
       setQueue((q) =>
         q ? q.map((x) => (x.id === a.id ? { ...x, is_read: true } : x)) : q,
       );
-      api(`/articles/${a.id}/state`, {
-        method: "POST",
-        body: { is_read: true },
+      // Advancing is the story-mode equivalent of scrolling past: it also
+      // moves the reading frontier so the list views resume past this card.
+      sendReadBatch({
+        article_ids: [a.id],
+        read_source: "story",
+        frontier_article_id: a.id,
+        ...(feedId ? { frontier_feed_id: Number(feedId) } : {}),
       }).catch(() => {});
     },
-    [markOnAdvance],
+    [markOnAdvance, feedId],
   );
 
   const advance = useCallback(() => {
@@ -219,7 +228,7 @@ export default function StoriesView({
               className="font-mono-nr pl-2 text-[10.5px]"
               style={{ color: "var(--ink-dim)" }}
             >
-              {index + 1} / {queue.length}
+              {index + 1} / {queue.length} · {queue.length - index - 1} left
             </span>
           </>
         ) : (
