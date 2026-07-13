@@ -936,3 +936,141 @@ async def test_mark_all_read_skips_suppressed(client, users, data, session):
         )
     ))
     assert read_ids == {visible.id}
+
+
+# --- GET /articles/{id}/related ---
+
+async def _related_embed(session, article, vector, *, model="test-model"):
+    session.add(ArticleEmbedding(article_id=article.id, model=model, embedding=vector))
+    await session.commit()
+
+
+def _configure_related(monkeypatch, *, model="test-model"):
+    monkeypatch.setattr(articles_router.embeddings, "is_configured", lambda: True)
+    monkeypatch.setattr(articles_router.settings, "openai_embedding_model", model)
+
+
+async def test_related_inaccessible_article(client, users, data):
+    user = await users.create()
+    feed = await data.feed()
+    art = await data.article(feed)  # not subscribed
+    resp = await client.get(f"/api/articles/{art.id}/related", headers=users.auth(user))
+    assert resp.status_code == 404
+
+
+async def test_related_vector_tiers_ordering_and_ceiling(client, users, data, session, monkeypatch):
+    user = await users.create()
+    feed = await data.feed()
+    await data.subscribe(user, feed)
+    source = await data.article(feed, title="Source")
+    dupe = await data.article(feed, title="Near duplicate")
+    topical = await data.article(feed, title="Same topic")
+    unrelated = await data.article(feed, title="Unrelated")
+    bare = await data.article(feed, title="No embedding")
+    await _related_embed(session, source, [1.0, 0.0, 0.0])
+    await _related_embed(session, dupe, [0.999, 0.04, 0.0])   # distance ~0.001
+    await _related_embed(session, topical, [0.5, 0.866, 0.0])  # distance ~0.5
+    await _related_embed(session, unrelated, [0.0, 1.0, 0.0]) # distance 1.0 > ceiling
+    _configure_related(monkeypatch)
+
+    resp = await client.get(f"/api/articles/{source.id}/related", headers=users.auth(user))
+    assert resp.status_code == 200
+    body = resp.json()
+    assert [item["id"] for item in body] == [dupe.id, topical.id]  # by distance, self excluded
+    assert [item["tier"] for item in body] == ["same_story", "related"]
+    assert body[0]["feed_title"] == "A Feed"
+    assert unrelated.id not in [item["id"] for item in body]
+    assert bare.id not in [item["id"] for item in body]
+
+
+async def test_related_scope_exclusions(client, users, data, session, monkeypatch):
+    user = await users.create()
+    feed = await data.feed()
+    await data.subscribe(user, feed)
+    muted_feed = await data.feed(title="Muted")
+    await data.subscribe(user, muted_feed, is_muted=True)
+    other_feed = await data.feed(title="Unsubscribed")
+
+    source = await data.article(feed, title="Source")
+    ok = await data.article(feed, title="Visible")
+    muted = await data.article(muted_feed, title="On muted feed")
+    foreign = await data.article(other_feed, title="Not subscribed")
+    old = await data.article(feed, title="Ancient")
+    suppressed = await data.article(feed, title="Suppressed")
+    stale_model = await data.article(feed, title="Stale model")
+
+    close = [0.99, 0.1, 0.0]
+    await _related_embed(session, source, [1.0, 0.0, 0.0])
+    for candidate in (ok, muted, foreign, old, suppressed):
+        await _related_embed(session, candidate, close)
+    await _related_embed(session, stale_model, close, model="legacy")
+
+    old.fetched_at = datetime.now(timezone.utc) - timedelta(days=120)
+    await session.commit()
+    await _suppress(session, user, suppressed)
+    _configure_related(monkeypatch)
+
+    resp = await client.get(f"/api/articles/{source.id}/related", headers=users.auth(user))
+    assert [item["id"] for item in resp.json()] == [ok.id]
+
+
+async def test_related_is_read_mapping_and_limit(client, users, data, session, monkeypatch):
+    user = await users.create()
+    feed = await data.feed()
+    await data.subscribe(user, feed)
+    source = await data.article(feed)
+    await _related_embed(session, source, [1.0, 0.0, 0.0])
+    candidates = []
+    for i in range(6):
+        art = await data.article(feed, title=f"Cand {i}")
+        await _related_embed(session, art, [1.0, 0.001 * (i + 1), 0.0])
+        candidates.append(art)
+    await data.state(user, candidates[0], is_read=True)
+    _configure_related(monkeypatch)
+
+    resp = await client.get(f"/api/articles/{source.id}/related", headers=users.auth(user))
+    body = resp.json()
+    assert len(body) == 5  # RELATED_LIMIT
+    assert body[0]["id"] == candidates[0].id and body[0]["is_read"] is True
+    assert body[1]["is_read"] is False
+
+
+async def test_related_entity_fallback(client, users, data, session, monkeypatch):
+    from app.models import ArticleEntity, Entity
+
+    user = await users.create()
+    feed = await data.feed()
+    await data.subscribe(user, feed)
+    source = await data.article(feed, title="Source")
+    linked_new = await data.article(feed, title="Linked newer")
+    linked_old = await data.article(feed, title="Linked older")
+    unlinked = await data.article(feed, title="Unlinked")
+    # Source has an embedding, but under a stale model -> vector leg skipped.
+    await _related_embed(session, source, [1.0, 0.0, 0.0], model="legacy")
+    _configure_related(monkeypatch)
+
+    entity = Entity(kind="github", canonical_key="acme/x", url="https://gh/acme/x")
+    session.add(entity)
+    await session.commit()
+    for art in (source, linked_new, linked_old):
+        session.add(ArticleEntity(article_id=art.id, entity_id=entity.id, source="primary"))
+    linked_new.published_at = datetime.now(timezone.utc)
+    linked_old.published_at = datetime.now(timezone.utc) - timedelta(days=3)
+    await session.commit()
+
+    resp = await client.get(f"/api/articles/{source.id}/related", headers=users.auth(user))
+    body = resp.json()
+    assert [item["id"] for item in body] == [linked_new.id, linked_old.id]  # newest first
+    assert all(item["tier"] == "related" for item in body)
+    assert unlinked.id not in [item["id"] for item in body]
+
+
+async def test_related_empty_without_embeddings_or_entities(client, users, data):
+    user = await users.create()
+    feed = await data.feed()
+    await data.subscribe(user, feed)
+    source = await data.article(feed)
+    await data.article(feed, title="Other")
+    resp = await client.get(f"/api/articles/{source.id}/related", headers=users.auth(user))
+    assert resp.status_code == 200
+    assert resp.json() == []

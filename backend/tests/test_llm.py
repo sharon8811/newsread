@@ -218,3 +218,61 @@ async def test_dislike_topics_caps_phrase_length(monkeypatch):
     monkeypatch.setattr(llm, "_complete", fake_complete)
     [topic] = await llm.dislike_topics("T", "s")
     assert len(topic) <= 80
+
+
+def test_parse_synthesis_full_structure():
+    raw = ("OVERVIEW:\nBig thing happened [1]. Sources broadly agree [2].\n\n"
+           "TIMELINE:\n- May 1 — it started [1]\n- May 3 — it escalated [2]\n\n"
+           "PERSPECTIVES:\n- [2] frames it as a fluke\n- [3] sees a trend")
+    parsed = llm._parse_synthesis(raw)
+    assert parsed.overview == "Big thing happened [1]. Sources broadly agree [2]."
+    assert "- May 1 — it started [1]" in parsed.timeline_raw
+    assert "PERSPECTIVES" not in parsed.timeline_raw
+    assert parsed.perspectives.startswith("- [2] frames")
+
+
+def test_parse_synthesis_overview_only():
+    parsed = llm._parse_synthesis("OVERVIEW:\nJust the gist [1].")
+    assert parsed.overview == "Just the gist [1]."
+    assert parsed.timeline_raw is None
+    assert parsed.perspectives is None
+
+
+def test_parse_synthesis_missing_labels_falls_back():
+    parsed = llm._parse_synthesis("The model ignored the format entirely.")
+    assert parsed.overview == "The model ignored the format entirely."
+    assert parsed.timeline_raw is None
+
+
+def test_parse_timeline_dash_variants_and_garbage():
+    raw = ("- May 1 — em dash [1]\n"
+           "- May 2 – en dash [2]\n"
+           "- May 3 -- double hyphen [3]\n"
+           "not a timeline line\n"
+           "- no separator here\n")
+    items = llm.parse_timeline(raw)
+    assert items == [
+        {"when": "May 1", "what": "em dash [1]"},
+        {"when": "May 2", "what": "en dash [2]"},
+        {"when": "May 3", "what": "double hyphen [3]"},
+    ]
+    assert llm.parse_timeline("free text only") is None
+    assert llm.parse_timeline(None) is None
+    assert llm.parse_timeline("") is None
+
+
+async def test_synthesize_related_numbers_sources(monkeypatch):
+    captured = {}
+
+    async def fake_complete(messages, max_tokens, **kwargs):
+        captured["messages"] = messages
+        return "OVERVIEW:\nAll good [2]."
+
+    monkeypatch.setattr(llm, "_complete", fake_complete)
+    result = await llm.synthesize_related([("Main", "sum A"), ("Other", "sum B")])
+    assert result.overview == "All good [2]."
+    user_msg = captured["messages"][1]["content"]
+    assert "[1] Main\nsum A" in user_msg
+    assert "[2] Other\nsum B" in user_msg
+    assert "Source [1] is the article the reader is on" in user_msg
+    assert "cite them inline" in captured["messages"][0]["content"]

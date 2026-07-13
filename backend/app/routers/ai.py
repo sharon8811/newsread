@@ -33,10 +33,13 @@ from ..schemas import (
     ShareMessageIn,
     ShareMessageOut,
     SummaryOut,
+    SynthesisOut,
+    SynthesisSourceOut,
+    SynthesisTimelineItem,
 )
 from ..security import get_current_user
 from ..summarizer import ThinContentError, generate_summaries
-from .articles import user_can_access
+from .articles import related_articles, user_can_access
 from .projects import _member_or_404, visible_pins
 
 logger = logging.getLogger(__name__)
@@ -194,6 +197,65 @@ async def share_message(
         duration_ms=_ms_since(started),
     )
     return ShareMessageOut(message=text)
+
+
+@router.post("/articles/{article_id}/related-synthesis", response_model=SynthesisOut)
+async def synthesize_related_coverage(
+    article_id: int,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Lazy 'synthesize coverage' for the related-articles section: one LLM
+    call over the stored summaries of the article and its related set —
+    nothing is fetched, and nothing runs unless the user clicked."""
+    article = await _accessible_article(session, user, article_id)
+    related = await related_articles(session, user.id, article)
+    if not related:
+        raise HTTPException(status_code=422, detail="No related coverage to synthesize yet")
+    config = await _resolve_llm(session, user)
+
+    # Capture ORM attrs before the LLM call — the error path rolls back and
+    # expired attributes must not be touched (same discipline as summarize).
+    sources = [(article.title, article.summary_medium or article.excerpt or "")] + [
+        (row.article.title, row.article.summary_medium or row.article.excerpt or "")
+        for row in related
+    ]
+    source_meta = [SynthesisSourceOut(n=1, id=article.id, title=article.title)] + [
+        SynthesisSourceOut(n=index, id=row.article.id, title=row.article.title)
+        for index, row in enumerate(related, start=2)
+    ]
+    user_id = user.id
+    usage = llm.TokenUsage()
+    started = time.monotonic()
+    try:
+        result = await llm.synthesize_related(sources, config=config, usage=usage)
+    except Exception as exc:
+        logger.warning("Coverage synthesis failed for article %s: %s", article_id, exc)
+        await session.rollback()
+        await llm.record_usage(
+            session, user_id=user_id, feature="synthesis", config=config, usage=usage,
+            duration_ms=_ms_since(started), status="error", error=str(exc),
+        )
+        raise HTTPException(status_code=502, detail="The LLM request failed")
+    if not result.overview:
+        await llm.record_usage(
+            session, user_id=user_id, feature="synthesis", config=config, usage=usage,
+            duration_ms=_ms_since(started), status="error",
+            error="The LLM returned an empty synthesis",
+        )
+        raise HTTPException(status_code=502, detail="The LLM returned an empty synthesis")
+    await llm.record_usage(
+        session, user_id=user_id, feature="synthesis", config=config, usage=usage,
+        duration_ms=_ms_since(started),
+    )
+    items = llm.parse_timeline(result.timeline_raw)
+    return SynthesisOut(
+        overview=result.overview,
+        timeline=[SynthesisTimelineItem(**item) for item in items] if items else None,
+        timeline_raw=result.timeline_raw if items is None else None,
+        perspectives=result.perspectives,
+        sources=source_meta,
+    )
 
 
 async def _get_or_create_conversation(

@@ -85,7 +85,7 @@ class LLMUsage(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
-    feature: Mapped[str] = mapped_column(String(16))  # 'summary' | 'qa' | 'share' | 'image' | 'topics'
+    feature: Mapped[str] = mapped_column(String(16))  # 'summary' | 'qa' | 'share' | 'image' | 'topics' | 'synthesis'
     provider: Mapped[str] = mapped_column(String(16))
     model: Mapped[str] = mapped_column(String(120))
     prompt_tokens: Mapped[int] = mapped_column(Integer, default=0)

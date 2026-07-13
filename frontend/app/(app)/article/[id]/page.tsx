@@ -12,6 +12,7 @@ import HackerNewsDiscussion, {
 } from "@/components/HackerNewsDiscussion";
 import ProjectPickerModal from "@/components/ProjectPickerModal";
 import QAPanel from "@/components/QAPanel";
+import RelatedArticles from "@/components/RelatedArticles";
 import ShareModal from "@/components/ShareModal";
 import {
   BookmarkIcon,
@@ -43,6 +44,14 @@ export default function ArticlePage() {
   const hadImageRef = useRef<boolean | null>(null);
 
   useReadingTimer(article?.id);
+
+  // Related-coverage links navigate article→article without remounting this
+  // page (useParams, no route key), so the per-article once-guards must
+  // re-arm on every id change — declared before the effects that read them.
+  useEffect(() => {
+    markedRef.current = false;
+    hadImageRef.current = null;
+  }, [id]);
 
   useEffect(() => {
     if (article && !article.is_read && !markedRef.current) {
@@ -194,7 +203,7 @@ export default function ArticlePage() {
 
       <EntityCard entities={article.entities} />
 
-      <AiSummary article={article} />
+      <AiSummary key={article.id} article={article} />
 
       {article.content_html ? (
         <div
@@ -207,9 +216,12 @@ export default function ArticlePage() {
         </p>
       )}
 
-      <HackerNewsDiscussion article={article} />
+      <RelatedArticles key={`related-${article.id}`} article={article} />
+
+      <HackerNewsDiscussion key={`hn-${article.id}`} article={article} />
 
       <QAPanel
+        key={`qa-${article.id}`}
         qaKey={`/articles/${article.id}/qa`}
         stream={(q, onEvent) => streamQA(article.id, q, onEvent)}
         heading="Ask the article"

@@ -319,6 +319,29 @@ export type ArticleDetail = Omit<Article, "entities"> & {
   entities: EntityFull[];
 };
 
+export type RelatedTier = "same_story" | "related";
+
+export type RelatedArticle = {
+  id: number;
+  title: string;
+  feed_title: string;
+  published_at: string | null;
+  is_read: boolean;
+  tier: RelatedTier; // same_story = near-duplicate coverage of this story
+};
+
+export type SynthesisTimelineItem = { when: string; what: string };
+
+export type SynthesisSource = { n: number; id: number; title: string };
+
+export type CoverageSynthesis = {
+  overview: string; // GFM with inline [n] citations
+  timeline: SynthesisTimelineItem[] | null;
+  timeline_raw: string | null; // only when the timeline lines didn't parse
+  perspectives: string | null; // GFM bullets
+  sources: SynthesisSource[]; // [1] is the current article
+};
+
 export type DislikeRuleKind = "article" | "entity" | "topic" | "story";
 
 export type DislikeOptionEntity = {
@@ -423,7 +446,7 @@ export type AITestResult = {
   model: string | null;
 };
 
-export type UsageFeatureKey = "summary" | "qa" | "share" | "image" | "topics";
+export type UsageFeatureKey = "summary" | "qa" | "share" | "image" | "topics" | "synthesis";
 
 export const USAGE_FEATURE_LABELS: Record<UsageFeatureKey, string> = {
   summary: "Summaries",
@@ -431,6 +454,7 @@ export const USAGE_FEATURE_LABELS: Record<UsageFeatureKey, string> = {
   share: "Share messages",
   image: "Images",
   topics: "Topic suggestions",
+  synthesis: "Coverage synthesis",
 };
 
 export type UsageDay = { day: string; calls: number; tokens: number };

@@ -273,6 +273,15 @@ class MarkAllReadIn(BaseModel):
     feed_id: int | None = None
 
 
+class RelatedArticleItem(BaseModel):
+    id: int
+    title: str
+    feed_title: str
+    published_at: datetime | None
+    is_read: bool
+    tier: Literal["same_story", "related"]  # same_story = near-duplicate coverage
+
+
 # --- Shares ---
 
 class ShareCreateIn(BaseModel):
@@ -632,6 +641,25 @@ class SummaryOut(BaseModel):
     summary_medium: str = ""
     model: str | None
     generated_at: datetime | None
+
+
+class SynthesisTimelineItem(BaseModel):
+    when: str
+    what: str
+
+
+class SynthesisSourceOut(BaseModel):
+    n: int  # the [n] cited in the synthesis text; [1] is the current article
+    id: int
+    title: str
+
+
+class SynthesisOut(BaseModel):
+    overview: str  # GFM with inline [n] citations
+    timeline: list[SynthesisTimelineItem] | None = None
+    timeline_raw: str | None = None  # only when the timeline lines didn't parse
+    perspectives: str | None = None  # GFM bullets
+    sources: list[SynthesisSourceOut]
 
 
 class AskIn(BaseModel):
