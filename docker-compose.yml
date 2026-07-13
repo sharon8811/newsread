@@ -88,7 +88,10 @@ services:
     build:
       context: ./frontend
       args:
-        NEXT_PUBLIC_API_URL: http://localhost:8000
+        # Baked into the browser bundle at build time. Override in .env when
+        # serving behind a public domain (e.g. https://newsread.sharon8811.com,
+        # whose nginx proxies /api to this backend on :8000).
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
     ports:
       - "3000:3000"
     depends_on:
