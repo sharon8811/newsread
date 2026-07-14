@@ -81,7 +81,7 @@ async def dislike_options(
             entity_id=entity.id,
             kind=entity.kind,
             key=entity.canonical_key,
-            label=str(badge_for(entity.kind, entity.data or {}).get("label") or entity.canonical_key),
+            label=str(badge_for(entity.kind, entity.data or {}).get("label") or (entity.data or {}).get("name") or entity.canonical_key),
         )
         for _, entity in rows
     ]
@@ -230,7 +230,7 @@ async def create_dislike(
             if entity is None:
                 raise HTTPException(status_code=404, detail="Entity not found")
             rule.entity_id = entity.id
-            rule.label = str(badge_for(entity.kind, entity.data or {}).get("label") or entity.canonical_key)[:512]
+            rule.label = str(badge_for(entity.kind, entity.data or {}).get("label") or (entity.data or {}).get("name") or entity.canonical_key)[:512]
             session.add(rule)
             await session.flush()
             await suppressions.apply_entity_rules(session, cutoff=cutoff, rule_id=rule.id)

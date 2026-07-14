@@ -241,6 +241,9 @@ class Article(Base):
     summary_model: Mapped[str | None] = mapped_column(String(120))
     summary_generated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     entities_extracted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # LLM named-entity tagging (see ner.py); separate stamp because it runs
+    # on a different trigger (needs summary/full text) than the link scan.
+    ner_extracted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Claim marker for lazy image generation (set once, attempt-once policy);
     # doubles as the "in flight" signal while image_url is still NULL.
     image_gen_attempted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -287,6 +290,11 @@ class ArticleEmbedding(Base):
     embedded_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+    # md5 of the exact text_for() input this vector was embedded from. The
+    # worker re-embeds when the article's current text hashes differently
+    # (summary landed after embedding, repair rewrote the excerpt). NULL marks
+    # pre-hash rows, which are always considered stale.
+    input_hash: Mapped[str | None] = mapped_column(String(32))
 
 
 class Entity(Base):

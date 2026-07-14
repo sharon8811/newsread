@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { type EntityFull } from "@/lib/api";
 import { humanCount, timeAgo } from "@/lib/format";
 import { ExternalIcon } from "./icons";
@@ -12,7 +13,14 @@ const KIND_LABELS: Record<string, string> = {
   pypi: "PyPI",
   npm: "npm",
   youtube: "YouTube",
+  person: "Person",
+  org: "Org",
+  product: "Product",
 };
+
+// LLM name entities: no external resource behind them, so they render as
+// chips linking to their in-app coverage page, never as the resource card.
+const NER_KINDS = new Set(["person", "org", "product"]);
 
 const SPARK_METRIC: Record<string, string> = {
   github: "stargazers_count",
@@ -151,28 +159,66 @@ function description(entity: EntityFull): string | null {
   return str(entity.data.description) ?? str(entity.data.summary) ?? str(entity.data.abstract);
 }
 
-function Chip({ entity }: { entity: EntityFull }) {
+const chipClass =
+  "font-mono-nr inline-flex max-w-full items-center gap-2 rounded-md border px-2.5 py-1 text-[11px] transition-colors";
+const chipStyle = {
+  borderColor: "var(--line)",
+  color: "var(--ink-dim)",
+  background: "var(--bg-inset)",
+} as const;
+
+function ChipBody({ entity }: { entity: EntityFull }) {
   const stats = statLine(entity);
+  return (
+    <>
+      <span style={{ color: "var(--accent)" }}>{KIND_LABELS[entity.kind] ?? entity.kind}</span>
+      <span className="truncate">{title(entity)}</span>
+      {stats[0] && <span className="shrink-0" style={{ color: "var(--ink-faint)" }}>{stats[0]}</span>}
+    </>
+  );
+}
+
+function Chip({ entity }: { entity: EntityFull }) {
+  if (NER_KINDS.has(entity.kind)) {
+    return (
+      <Link href={`/entity/${entity.id}`} className={chipClass} style={chipStyle} title={title(entity)}>
+        <ChipBody entity={entity} />
+      </Link>
+    );
+  }
   return (
     <a
       href={entity.url}
       target="_blank"
       rel="noreferrer"
-      className="font-mono-nr inline-flex max-w-full items-center gap-2 rounded-md border px-2.5 py-1 text-[11px] transition-colors"
-      style={{ borderColor: "var(--line)", color: "var(--ink-dim)", background: "var(--bg-inset)" }}
+      className={chipClass}
+      style={chipStyle}
       title={title(entity)}
     >
-      <span style={{ color: "var(--accent)" }}>{KIND_LABELS[entity.kind] ?? entity.kind}</span>
-      <span className="truncate">{title(entity)}</span>
-      {stats[0] && <span className="shrink-0" style={{ color: "var(--ink-faint)" }}>{stats[0]}</span>}
+      <ChipBody entity={entity} />
     </a>
   );
 }
 
 export default function EntityCard({ entities }: { entities: EntityFull[] }) {
-  const withData = entities.filter((e) => Object.keys(e.data).length > 0);
-  if (withData.length === 0) return null;
-  const [primary, ...rest] = withData;
+  // Only enricher entities (with fetched data) qualify for the resource
+  // card; name entities are always chips.
+  const cardCandidates = entities.filter(
+    (e) => !NER_KINDS.has(e.kind) && Object.keys(e.data).length > 0,
+  );
+  const nameChips = entities.filter((e) => NER_KINDS.has(e.kind));
+  if (cardCandidates.length === 0 && nameChips.length === 0) return null;
+  const [primary, ...enricherRest] = cardCandidates;
+  const rest = [...enricherRest, ...nameChips];
+  if (!primary) {
+    return (
+      <div className="mt-6 flex flex-wrap gap-2">
+        {rest.map((entity) => (
+          <Chip key={entity.id} entity={entity} />
+        ))}
+      </div>
+    );
+  }
   const stats = statLine(primary);
   const footer = footerLine(primary);
   const desc = description(primary);

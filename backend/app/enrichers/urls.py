@@ -50,6 +50,27 @@ class _AnchorParser(HTMLParser):
                 break
 
 
+_TEXT_URL_RE = re.compile(r"https?://[^\s<>\"')\]}]+")
+
+
+def extract_text_links(text: str) -> list[str]:
+    """Ordered, de-duplicated URLs found in plain text. The fetched full text
+    is extracted prose with no anchor markup, so bare URLs are all we can
+    recover; trailing punctuation that prose attaches to a URL is stripped."""
+    if not text:
+        return []
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for match in _TEXT_URL_RE.finditer(text):
+        url = match.group(0).rstrip(".,;:!?")
+        if url and url not in seen:
+            seen.add(url)
+            ordered.append(url)
+            if len(ordered) >= MAX_ANCHORS:
+                break
+    return ordered
+
+
 def extract_links(content_html: str) -> list[str]:
     """Ordered, de-duplicated hrefs from sanitized article HTML."""
     if not content_html:

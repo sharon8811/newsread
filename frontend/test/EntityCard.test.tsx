@@ -417,3 +417,50 @@ describe("<EntityCard>", () => {
     expect(screen.getByText(/updated/)).toBeInTheDocument();
   });
 });
+
+describe("<EntityCard> name entities", () => {
+  it("renders name entities as internal chips, never as the resource card", () => {
+    render(
+      <EntityCard
+        entities={[
+          ent({
+            id: 7,
+            kind: "person",
+            key: "peter thiel",
+            url: "",
+            data: { name: "Peter Thiel" },
+          }),
+          ent({
+            id: 3,
+            kind: "github",
+            key: "a/b",
+            url: "https://github.com/a/b",
+            data: { full_name: "a/b" },
+          }),
+        ]}
+      />,
+    );
+    // The repo takes the card; the person is a chip linking in-app.
+    expect(screen.getByText("GitHub")).toBeInTheDocument();
+    const chip = screen.getByText("Peter Thiel").closest("a");
+    expect(chip).toHaveAttribute("href", "/entity/7");
+    expect(chip).not.toHaveAttribute("target");
+  });
+
+  it("renders chips only when there is no enricher entity", () => {
+    render(
+      <EntityCard
+        entities={[
+          ent({ id: 8, kind: "org", key: "palantir", url: "", data: { name: "Palantir" } }),
+          ent({ id: 9, kind: "product", key: "claude code", url: "", data: { name: "Claude Code" } }),
+        ]}
+      />,
+    );
+    expect(screen.getByText("Palantir").closest("a")).toHaveAttribute("href", "/entity/8");
+    expect(screen.getByText("Claude Code").closest("a")).toHaveAttribute("href", "/entity/9");
+    expect(screen.getByText("Org")).toBeInTheDocument();
+    expect(screen.getByText("Product")).toBeInTheDocument();
+    // No external-link resource card rendered.
+    expect(document.querySelector('a[target="_blank"]')).toBeNull();
+  });
+});

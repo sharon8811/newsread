@@ -1035,9 +1035,19 @@ async def test_related_is_read_mapping_and_limit(client, users, data, session, m
     assert body[1]["is_read"] is False
 
 
-async def test_related_entity_fallback(client, users, data, session, monkeypatch):
-    from app.models import ArticleEntity, Entity
+async def _related_entity(session, key="acme/x"):
+    entity = Entity(kind="github", canonical_key=key, url=f"https://gh/{key}")
+    session.add(entity)
+    await session.commit()
+    return entity
 
+
+async def _link_entity(session, article, entity, source="primary"):
+    session.add(ArticleEntity(article_id=article.id, entity_id=entity.id, source=source))
+    await session.commit()
+
+
+async def test_related_entity_leg_without_vector(client, users, data, session, monkeypatch):
     user = await users.create()
     feed = await data.feed()
     await data.subscribe(user, feed)
@@ -1049,11 +1059,9 @@ async def test_related_entity_fallback(client, users, data, session, monkeypatch
     await _related_embed(session, source, [1.0, 0.0, 0.0], model="legacy")
     _configure_related(monkeypatch)
 
-    entity = Entity(kind="github", canonical_key="acme/x", url="https://gh/acme/x")
-    session.add(entity)
-    await session.commit()
+    entity = await _related_entity(session)
     for art in (source, linked_new, linked_old):
-        session.add(ArticleEntity(article_id=art.id, entity_id=entity.id, source="primary"))
+        await _link_entity(session, art, entity)
     linked_new.published_at = datetime.now(timezone.utc)
     linked_old.published_at = datetime.now(timezone.utc) - timedelta(days=3)
     await session.commit()
@@ -1061,8 +1069,151 @@ async def test_related_entity_fallback(client, users, data, session, monkeypatch
     resp = await client.get(f"/api/articles/{source.id}/related", headers=users.auth(user))
     body = resp.json()
     assert [item["id"] for item in body] == [linked_new.id, linked_old.id]  # newest first
-    assert all(item["tier"] == "related" for item in body)
+    # Sharing a canonical external resource is same-story evidence.
+    assert all(item["tier"] == "same_story" for item in body)
     assert unlinked.id not in [item["id"] for item in body]
+
+
+async def test_related_hybrid_entity_leads_vector_fills(client, users, data, session, monkeypatch):
+    user = await users.create()
+    feed = await data.feed()
+    await data.subscribe(user, feed)
+    source = await data.article(feed, title="Source")
+    # Entity-linked but vector-far: must still lead the list.
+    linked_far = await data.article(feed, title="Linked, far vector")
+    # Both entity-linked and vector-close: appears once, on the entity leg.
+    linked_close = await data.article(feed, title="Linked and close")
+    topical = await data.article(feed, title="Vector only")
+    await _related_embed(session, source, [1.0, 0.0, 0.0])
+    await _related_embed(session, linked_far, [0.0, 1.0, 0.0])   # distance 1.0
+    await _related_embed(session, linked_close, [0.999, 0.04, 0.0])
+    await _related_embed(session, topical, [0.5, 0.866, 0.0])    # distance ~0.5
+    _configure_related(monkeypatch)
+
+    entity = await _related_entity(session)
+    for art in (source, linked_far, linked_close):
+        await _link_entity(session, art, entity)
+    linked_close.published_at = datetime.now(timezone.utc)
+    linked_far.published_at = datetime.now(timezone.utc) - timedelta(days=1)
+    await session.commit()
+
+    resp = await client.get(f"/api/articles/{source.id}/related", headers=users.auth(user))
+    body = resp.json()
+    assert [item["id"] for item in body] == [linked_close.id, linked_far.id, topical.id]
+    assert [item["tier"] for item in body] == ["same_story", "same_story", "related"]
+
+
+async def test_related_entity_leg_ignores_ner_kinds(client, users, data, session, monkeypatch):
+    """Two articles both about one company are not the same story: LLM name
+    entities must never feed the same_story leg."""
+    user = await users.create()
+    feed = await data.feed()
+    await data.subscribe(user, feed)
+    source = await data.article(feed, title="Source")
+    mentions_same_org = await data.article(feed, title="Also mentions the org")
+    _configure_related(monkeypatch)
+
+    org = Entity(kind="org", canonical_key="openai", url="", data={"name": "OpenAI"})
+    session.add(org)
+    await session.commit()
+    for art in (source, mentions_same_org):
+        await _link_entity(session, art, org, source="ner")
+
+    resp = await client.get(f"/api/articles/{source.id}/related", headers=users.auth(user))
+    assert resp.json() == []
+
+
+async def test_related_ner_boost_reorders_but_never_admits(client, users, data, session, monkeypatch):
+    """A candidate sharing a name entity outranks a slightly-closer generic
+    neighbor, but no shared-name count can pull a candidate past the
+    distance ceiling."""
+    user = await users.create()
+    feed = await data.feed()
+    await data.subscribe(user, feed)
+    source = await data.article(feed, title="Source")
+    generic = await data.article(feed, title="Generic topical")
+    shares_org = await data.article(feed, title="Shares the org")
+    far = await data.article(feed, title="Far but shares names")
+    await _related_embed(session, source, [1.0, 0.0, 0.0])
+    await _related_embed(session, generic, [0.5, 0.866, 0.0])       # distance 0.50
+    await _related_embed(session, shares_org, [0.45, 0.893, 0.0])   # distance 0.55
+    await _related_embed(session, far, [0.25, 0.968, 0.0])          # distance 0.75 > ceiling
+    _configure_related(monkeypatch)
+
+    org = Entity(kind="org", canonical_key="anthropic", url="", data={"name": "Anthropic"})
+    person = Entity(kind="person", canonical_key="sam altman", url="", data={"name": "Sam Altman"})
+    session.add_all([org, person])
+    await session.commit()
+    for art in (source, shares_org, far):
+        await _link_entity(session, art, org, source="ner")
+    for art in (source, far):
+        await _link_entity(session, art, person, source="ner")
+
+    resp = await client.get(f"/api/articles/{source.id}/related", headers=users.auth(user))
+    body = resp.json()
+    # 0.55 - 0.08 = 0.47 beats 0.50; the 0.75 candidate stays out even with 2 shared names.
+    assert [item["id"] for item in body] == [shares_org.id, generic.id]
+    assert [item["tier"] for item in body] == ["related", "related"]
+
+
+async def test_related_drops_weak_tail_instead_of_padding(client, users, data, session, monkeypatch):
+    """The list is at most five, not always five: a generic neighbor past the
+    0.60 display bar is dropped, while a name-sharer at the same distance
+    stays (its boosted score clears the bar)."""
+    user = await users.create()
+    feed = await data.feed()
+    await data.subscribe(user, feed)
+    source = await data.article(feed, title="Source")
+    close = await data.article(feed, title="Close topical")
+    weak_generic = await data.article(feed, title="Weak generic")
+    weak_named = await data.article(feed, title="Weak but shares a name")
+    await _related_embed(session, source, [1.0, 0.0, 0.0])
+    await _related_embed(session, close, [0.5, 0.866, 0.0])          # distance 0.50
+    await _related_embed(session, weak_generic, [0.35, 0.9367, 0.0])  # distance 0.65
+    await _related_embed(session, weak_named, [0.35, -0.9367, 0.0])   # distance 0.65
+    _configure_related(monkeypatch)
+
+    org = Entity(kind="org", canonical_key="anthropic", url="", data={"name": "Anthropic"})
+    session.add(org)
+    await session.commit()
+    for art in (source, weak_named):
+        await _link_entity(session, art, org, source="ner")
+
+    resp = await client.get(f"/api/articles/{source.id}/related", headers=users.auth(user))
+    body = resp.json()
+    # 0.65 - 0.08 = 0.57 < 0.60 keeps the name-sharer; the generic 0.65 is out.
+    assert [item["id"] for item in body] == [close.id, weak_named.id]
+
+
+async def test_related_entity_leg_ranking(client, users, data, session, monkeypatch):
+    user = await users.create()
+    feed = await data.feed()
+    await data.subscribe(user, feed)
+    source = await data.article(feed, title="Source")
+    shares_two = await data.article(feed, title="Shares two entities")
+    primary_link = await data.article(feed, title="Primary link")
+    inline_link = await data.article(feed, title="Inline mention")
+    _configure_related(monkeypatch)
+
+    repo = await _related_entity(session, "acme/x")
+    paper = await _related_entity(session, "acme/y")
+    await _link_entity(session, source, repo)
+    await _link_entity(session, source, paper)
+    await _link_entity(session, shares_two, repo)
+    await _link_entity(session, shares_two, paper)
+    await _link_entity(session, primary_link, repo)
+    await _link_entity(session, inline_link, repo, source="inline")
+    # Recency would rank the inline mention first; shared count and
+    # primary-over-inline must win instead.
+    now = datetime.now(timezone.utc)
+    shares_two.published_at = now - timedelta(days=2)
+    primary_link.published_at = now - timedelta(days=1)
+    inline_link.published_at = now
+    await session.commit()
+
+    resp = await client.get(f"/api/articles/{source.id}/related", headers=users.auth(user))
+    body = resp.json()
+    assert [item["id"] for item in body] == [shares_two.id, primary_link.id, inline_link.id]
 
 
 async def test_related_empty_without_embeddings_or_entities(client, users, data):

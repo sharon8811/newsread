@@ -366,6 +366,61 @@ async def dislike_topics(
     return topics[:3]
 
 
+NAMED_ENTITIES_SYSTEM = """You tag news articles with the named entities they are about, for cross-article linking.
+
+Output one entity per line, nothing else:
+PERSON: <full name>
+ORG: <company or organization>
+PRODUCT: <named product, model, or project>
+
+Rules:
+- Only entities the article is actually about (its subject or main actors) — never ones mentioned in passing.
+- At most 3 per category; skip a category entirely when the article has none.
+- Canonical short names: "OpenAI", not "OpenAI, Inc."; people as "First Last".
+- PRODUCT must be a proper name ("Claude Code", "Kubernetes", "GPT-5") — never a generic technology ("AI", "databases", "open source").
+- If the article is about no nameable entity, output exactly: NONE"""
+
+_ENTITY_LINE_RE = re.compile(r"^\s*(PERSON|ORG|PRODUCT):\s*(.+)$", re.MULTILINE)
+
+
+async def named_entities(
+    title: str,
+    text: str,
+    *,
+    config: LLMConfig | None = None,
+    usage: TokenUsage | None = None,
+) -> list[tuple[str, str]]:
+    """(kind, name) pairs the article is about; kind is 'person' | 'org' |
+    'product'. Line-marker output for the same reason as dislike_topics:
+    small local models hold this format far more reliably than JSON."""
+    raw = await _complete(
+        [
+            {"role": "system", "content": NAMED_ENTITIES_SYSTEM},
+            {"role": "user", "content": f"Article title: {title}\n\nArticle text:\n{text}"},
+        ],
+        max_tokens=200,
+        config=config,
+        usage=usage,
+    )
+    seen: set[tuple[str, str]] = set()
+    pairs: list[tuple[str, str]] = []
+    for match in _ENTITY_LINE_RE.finditer(raw):
+        kind = match.group(1).lower()
+        name = " ".join(match.group(2).split()).strip(" .\"'*`")[:120]
+        # Models sometimes echo the marker twice ("PERSON: Peter Thiel:
+        # Peter Thiel"); collapse the self-colon duplication.
+        head, _, tail = name.partition(":")
+        if tail and head.strip().casefold() == tail.strip().casefold():
+            name = head.strip()
+        key = (kind, name.casefold())
+        # Models sometimes echo the no-entities sentinel per category
+        # ("PERSON: NONE") instead of bare NONE.
+        if name and name.casefold() not in ("none", "n/a") and key not in seen:
+            seen.add(key)
+            pairs.append((kind, name))
+    return pairs
+
+
 SYNTHESIS_SYSTEM = """You synthesize how several news sources cover one story or topic, for a busy reader. Sources are numbered; cite them inline as [1], [2] wherever a claim comes from a specific source.
 
 Output EXACTLY this structure. TIMELINE and PERSPECTIVES are optional sections — omit the label entirely when it does not apply:

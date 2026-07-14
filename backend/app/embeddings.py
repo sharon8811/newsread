@@ -3,11 +3,13 @@ endpoint as summarization (see llm.py). Requires the pgvector extension
 (db.vector_enabled) and OPENAI_EMBEDDING_MODEL; without either, article
 search silently stays keyword-only."""
 
+import hashlib
 import logging
+import re
 import time
 from collections import OrderedDict
 
-from sqlalchemy import func
+from sqlalchemy import case, func, or_
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,6 +21,13 @@ logger = logging.getLogger(__name__)
 
 # Keep inputs comfortably under typical 8k-token embedding model limits.
 MAX_CHARS = 6000
+# fetcher.derive_excerpt collapses hnrss items to this metadata line. It is
+# fine as a list-view excerpt but poison as embedding input: shared verbatim
+# across every HN article, it dominates a short title and turns the vector
+# into a universal "related coverage" hub. Kept dialect-portable (used both
+# as a Python fullmatch and a Postgres ARE in stale_input).
+_HN_META_EXCERPT = r"\d+ points( · \d+ comments)? · via Hacker News"
+_HN_META_EXCERPT_RE = re.compile(_HN_META_EXCERPT)
 QUERY_CACHE_TTL = 24 * 60 * 60
 QUERY_CACHE_SIZE = 256
 _query_cache: OrderedDict[str, tuple[float, list[float]]] = OrderedDict()
@@ -32,9 +41,41 @@ def is_configured() -> bool:
 
 def text_for(article: Article) -> str:
     """Summaries are ideal embedding input (dense, clean, capped); fall back
-    to the feed excerpt, then raw full text, for not-yet-summarized articles."""
-    body = article.summary_medium or article.excerpt or article.full_text[:4000]
+    to the feed excerpt, then raw full text, for not-yet-summarized articles.
+    stale_input() mirrors this construction in SQL — keep the two in sync
+    (test_stale_input_sql_matches_text_for pins the parity)."""
+    excerpt = article.excerpt or ""
+    if _HN_META_EXCERPT_RE.fullmatch(excerpt):
+        excerpt = ""
+    body = article.summary_medium or excerpt or article.full_text[:4000]
     return f"{article.title}\n\n{body}"[:MAX_CHARS]
+
+
+def input_hash_for(article: Article) -> str:
+    return hashlib.md5(text_for(article).encode("utf-8")).hexdigest()
+
+
+def stale_input():
+    """SQL predicate (Article joined to ArticleEmbedding): the stored vector
+    was embedded from different text than text_for(article) produces today —
+    a summary landed after embedding, or a repair rewrote the excerpt. Must
+    hash exactly what input_hash_for() stores; both md5 UTF-8 bytes, and
+    left()/coalesce(nullif()) reproduce Python slicing and `or` fallbacks
+    over these non-null text columns."""
+    excerpt = case(
+        (Article.excerpt.op("~")(f"^{_HN_META_EXCERPT}$"), ""),
+        else_=Article.excerpt,
+    )
+    body = func.coalesce(
+        func.nullif(Article.summary_medium, ""),
+        func.nullif(excerpt, ""),
+        func.left(Article.full_text, 4000),
+    )
+    text = func.left(Article.title + "\n\n" + body, MAX_CHARS)
+    return or_(
+        ArticleEmbedding.input_hash.is_(None),
+        ArticleEmbedding.input_hash != func.md5(text),
+    )
 
 
 async def embed_texts(texts: list[str]) -> list[list[float]]:
@@ -66,15 +107,17 @@ async def embed_articles(session: AsyncSession, articles: list[Article]) -> int:
     """Upsert embeddings for the given articles; returns how many were written."""
     if not articles:
         return 0
-    vectors = await embed_texts([text_for(article) for article in articles])
+    texts = [text_for(article) for article in articles]
+    vectors = await embed_texts(texts)
     stmt = pg_insert(ArticleEmbedding).values(
         [
             {
                 "article_id": article.id,
                 "model": settings.openai_embedding_model,
                 "embedding": vector,
+                "input_hash": hashlib.md5(text.encode("utf-8")).hexdigest(),
             }
-            for article, vector in zip(articles, vectors)
+            for article, text, vector in zip(articles, texts, vectors)
         ]
     )
     stmt = stmt.on_conflict_do_update(
@@ -82,6 +125,7 @@ async def embed_articles(session: AsyncSession, articles: list[Article]) -> int:
         set_={
             "embedding": stmt.excluded.embedding,
             "model": stmt.excluded.model,
+            "input_hash": stmt.excluded.input_hash,
             "embedded_at": func.now(),
         },
     )

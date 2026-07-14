@@ -300,6 +300,16 @@ class MockIntersectionObserver {
   }
 }
 
+/** The component observes its targets in an effect, which may not have
+ * flushed when the test reaches for the observer — retry until it has. */
+async function ioFor(el: Element): Promise<MockIntersectionObserver> {
+  return await vi.waitFor(() => {
+    const io = MockIntersectionObserver.instances.find((i) => i.observed.has(el));
+    expect(io).toBeTruthy();
+    return io!;
+  });
+}
+
 function pageResponse(
   articles: unknown[],
   headers: Record<string, string> = {},
@@ -400,9 +410,7 @@ describe("<ArticleList> reading mode", () => {
 
       // Simulate the item's box fully exiting through the scroller's top edge.
       const target = container.querySelector('[data-article-id="11"]')!;
-      const io = MockIntersectionObserver.instances.find((i) =>
-        i.observed.has(target),
-      )!;
+      const io = await ioFor(target);
       io.callback([
         {
           isIntersecting: false,
@@ -444,9 +452,7 @@ describe("<ArticleList> reading mode", () => {
         expect(container.querySelector('[data-article-id="21"]')).toBeTruthy(),
       );
       const target = container.querySelector('[data-article-id="21"]')!;
-      const io = MockIntersectionObserver.instances.find((i) =>
-        i.observed.has(target),
-      )!;
+      const io = await ioFor(target);
       io.callback([
         {
           isIntersecting: false,
@@ -520,7 +526,7 @@ describe("<ArticleList> reading mode interactions", () => {
     expect(screen.getByText(/loading more/)).toBeInTheDocument();
 
     const sentinel = screen.getByText(/loading more/).parentElement!;
-    const io = MockIntersectionObserver.instances.find((i) => i.observed.has(sentinel))!;
+    const io = await ioFor(sentinel);
     io.callback([{ isIntersecting: true, target: sentinel } as IntersectionObserverEntry]);
 
     await screen.findByText("Second");
@@ -545,7 +551,7 @@ describe("<ArticleList> reading mode interactions", () => {
     renderReading(<ArticleList filter="all" emptyTitle="Empty" />);
     await screen.findByText("Anchor");
     const sentinel = screen.getByText(/loading earlier/).parentElement!;
-    const io = MockIntersectionObserver.instances.find((i) => i.observed.has(sentinel))!;
+    const io = await ioFor(sentinel);
     io.callback([{ isIntersecting: true, target: sentinel } as IntersectionObserverEntry]);
     await screen.findByText("History");
     expect(
@@ -564,15 +570,34 @@ describe("<ArticleList> reading mode interactions", () => {
         headers: { "X-Unread-Count": "1" },
       },
     ]);
-    const { container } = renderReading(<ArticleList filter="all" emptyTitle="Empty" />);
-    await screen.findByText("Unread Two");
-    const target = container.querySelector('[data-article-id="2"]') as HTMLElement;
-    target.getBoundingClientRect = () =>
-      ({ top: 500, bottom: 700, width: 100, height: 200 }) as DOMRect;
+    // Stub at the prototype, not on a queried instance: a re-render between
+    // the stub and the click can swap the row element, and the component
+    // reads rects/scrolls through its own ref to the CURRENT node.
+    const origRect = Element.prototype.getBoundingClientRect;
     const scrollSpy = vi.fn();
-    target.scrollIntoView = scrollSpy;
-    fireEvent.click(screen.getByText("1 unread ↓"));
-    await waitFor(() => expect(scrollSpy).toHaveBeenCalled());
+    Element.prototype.getBoundingClientRect = function () {
+      if ((this as Element).getAttribute?.("data-article-id") === "2") {
+        return { top: 500, bottom: 700, width: 100, height: 200 } as DOMRect;
+      }
+      return origRect.call(this);
+    };
+    const origScroll = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = scrollSpy;
+    try {
+      renderReading(<ArticleList filter="all" emptyTitle="Empty" />);
+      await screen.findByText("Unread Two");
+      // Re-click on retry: a click that lands before the component's live
+      // refs are wired is a silent no-op.
+      await waitFor(() => {
+        fireEvent.click(screen.getByText("1 unread ↓"));
+        expect(scrollSpy).toHaveBeenCalledWith(
+          expect.objectContaining({ block: "start" }),
+        );
+      });
+    } finally {
+      Element.prototype.getBoundingClientRect = origRect;
+      Element.prototype.scrollIntoView = origScroll;
+    }
   });
 
   it("unread pill falls back to the top when only new-above items remain", async () => {
@@ -720,7 +745,7 @@ describe("<ArticleList> reading mode guards", () => {
         expect(container.querySelector('[data-article-id="31"]')).toBeTruthy(),
       );
       const target = container.querySelector('[data-article-id="31"]')!;
-      const io = MockIntersectionObserver.instances.find((i) => i.observed.has(target))!;
+      const io = await ioFor(target);
       io.callback([
         {
           // unmount storm: zero rect must not mark
@@ -759,10 +784,12 @@ describe("<ArticleList> reading mode guards", () => {
     vi.stubGlobal("fetch", fetchMock);
     const { container } = renderReading(<ArticleList filter="all" emptyTitle="Empty" />);
     await screen.findByText("Read One");
-    fireEvent.click(screen.getByText("1 unread ↓"));
-    await waitFor(() =>
-      expect(fetchMock.mock.calls.some((c) => String(c[0]).includes("cursor=n1"))).toBe(true),
-    );
+    // Re-click on retry: the pill renders one commit before nextCursor state
+    // lands, so an early click is a silent no-op (no unread below, no cursor).
+    await waitFor(() => {
+      fireEvent.click(screen.getByText("1 unread ↓"));
+      expect(fetchMock.mock.calls.some((c) => String(c[0]).includes("cursor=n1"))).toBe(true);
+    });
     await screen.findByText("Deep Unread");
     // After the retry the fetched unread below gets scrolled to.
     const target = container.querySelector('[data-article-id="52"]') as HTMLElement;

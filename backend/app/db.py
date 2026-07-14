@@ -118,6 +118,12 @@ MIGRATIONS = [
     # 'scrolled', 'story', 'mark_all').
     "ALTER TABLE user_article_states ADD COLUMN IF NOT EXISTS read_at TIMESTAMPTZ",
     "ALTER TABLE user_article_states ADD COLUMN IF NOT EXISTS read_source VARCHAR(16)",
+    # Embedding staleness tracking (see embeddings.text_for / stale_input).
+    # Existing rows stay NULL, which the worker treats as stale, so every
+    # pre-hash vector is re-embedded from the article's current text.
+    "ALTER TABLE article_embeddings ADD COLUMN IF NOT EXISTS input_hash VARCHAR(32)",
+    # LLM named-entity tagging stamp (see ner.py / the worker's NER stage).
+    "ALTER TABLE articles ADD COLUMN IF NOT EXISTS ner_extracted_at TIMESTAMPTZ",
 ]
 
 # Data repairs that scan whole tables. Unlike MIGRATIONS (cheap, re-run every

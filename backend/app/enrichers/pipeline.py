@@ -11,14 +11,14 @@ from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 
 import httpx
-from sqlalchemy import exists, select
+from sqlalchemy import and_, exists, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db import SessionLocal
 from ..fetcher import USER_AGENT
 from ..models import Article, ArticleEntity, Entity, EntitySnapshot
-from . import BY_KIND, ENRICHERS, Enricher, EnrichError, extract_links, match_url
+from . import BY_KIND, ENRICHERS, Enricher, EnrichError, extract_links, extract_text_links, match_url
 
 logger = logging.getLogger(__name__)
 
@@ -98,6 +98,10 @@ async def link_article_entities(
     if article.comments_url:
         candidates.append((article.comments_url, "inline"))
     candidates += [(href, "inline") for href in extract_links(article.content_html)]
+    # The fetched body often carries links the feed stub lacks entirely (HN
+    # feeds ship no content); full_text is extracted prose, so bare URLs are
+    # all that survive of its anchors.
+    candidates += [(href, "inline") for href in extract_text_links(article.full_text)]
 
     linked: set[tuple[str, str]] = set()
     position = 0
@@ -145,11 +149,22 @@ async def _extract_one(
 
 
 async def extract_entities(feed_id: int | None = None) -> int:
-    """Extract + link entities for articles not yet scanned. Returns count."""
+    """Extract + link entities for articles not yet scanned — or scanned
+    before their full text arrived, whose body links were invisible then.
+    Rescans converge because the new stamp postdates full_text_fetched_at.
+    Returns count."""
     async with SessionLocal() as session:
         query = (
             select(Article.id)
-            .where(Article.entities_extracted_at.is_(None))
+            .where(
+                or_(
+                    Article.entities_extracted_at.is_(None),
+                    and_(
+                        Article.full_text_fetched_at.is_not(None),
+                        Article.entities_extracted_at < Article.full_text_fetched_at,
+                    ),
+                )
+            )
             .order_by(Article.id.desc())
             .limit(ENTITY_BATCH)
         )
