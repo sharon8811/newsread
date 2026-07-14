@@ -133,7 +133,10 @@ function useListKeyboard(opts: {
     openArticle,
   } = opts;
 
-  useEffect(() => {
+  // Install the handler before the painted rows become interactive. Reading
+  // mode receives articles asynchronously; a passive effect leaves a brief
+  // window where Enter still sees the previous empty list.
+  useLayoutEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (modalOpen) return;
       const target = e.target as HTMLElement;
