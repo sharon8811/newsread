@@ -319,54 +319,84 @@ def _related_scope(user_id: int, exclude_id: int):
     )
 
 
-async def related_articles(session: AsyncSession, user_id: int, article: Article) -> list[RelatedRow]:
-    """Nearest recent articles by embedding distance; falls back to entity
-    overlap when the article has no current-model vector, so the section
-    still works on embedding-less installs. One query either way."""
-    cutoff = datetime.now(timezone.utc) - RELATED_WINDOW
-    source = await current_embedding(session, article.id)
-    if source is not None:
-        distance = ArticleEmbedding.embedding.cosine_distance(source.embedding)
-        stmt = (
-            _related_scope(user_id, article.id)
-            .add_columns(distance.label("distance"))
-            .join(ArticleEmbedding, ArticleEmbedding.article_id == Article.id)
-            .where(
-                ArticleEmbedding.model == settings.openai_embedding_model,
-                Article.fetched_at >= cutoff,
-                distance < RELATED_MAX_DISTANCE,
-            )
-            .order_by(distance)
-            .limit(RELATED_LIMIT)
+async def _entity_related(
+    session: AsyncSession, user_id: int, article: Article, cutoff: datetime
+) -> list[RelatedRow]:
+    """Articles linking the same external resource (repo, paper, video…).
+    Sparse but exact: a shared canonical identifier is stronger same-story
+    evidence than any embedding distance, so these rank by how many
+    resources they share (primary links over inline mentions), not by
+    vector proximity."""
+    overlap = (
+        select(
+            ArticleEntity.article_id.label("article_id"),
+            func.count().label("shared"),
+            func.count().filter(ArticleEntity.source == "primary").label("shared_primary"),
         )
-        rows = (await session.execute(stmt)).all()
-        return [
-            RelatedRow(
-                candidate,
-                title or url,
-                state,
-                "same_story" if dist < RELATED_SAME_STORY else "related",
-            )
-            for candidate, title, url, state, dist in rows
-        ]
-    # EXISTS instead of a join: two articles sharing several entities must
-    # still produce one row.
-    overlapping = exists(
-        select(ArticleEntity.id).where(
-            ArticleEntity.article_id == Article.id,
+        .where(
             ArticleEntity.entity_id.in_(
                 select(ArticleEntity.entity_id).where(ArticleEntity.article_id == article.id)
-            ),
+            )
         )
+        .group_by(ArticleEntity.article_id)
+        .subquery()
     )
     stmt = (
         _related_scope(user_id, article.id)
-        .where(overlapping, Article.fetched_at >= cutoff)
-        .order_by(Article.published_at.desc().nulls_last(), Article.id.desc())
+        .join(overlap, overlap.c.article_id == Article.id)
+        .where(Article.fetched_at >= cutoff)
+        .order_by(
+            overlap.c.shared.desc(),
+            overlap.c.shared_primary.desc(),
+            Article.published_at.desc().nulls_last(),
+            Article.id.desc(),
+        )
         .limit(RELATED_LIMIT)
     )
     rows = (await session.execute(stmt)).all()
-    return [RelatedRow(candidate, title or url, state, "related") for candidate, title, url, state in rows]
+    return [
+        RelatedRow(candidate, title or url, state, "same_story")
+        for candidate, title, url, state in rows
+    ]
+
+
+async def related_articles(session: AsyncSession, user_id: int, article: Article) -> list[RelatedRow]:
+    """Entity-first hybrid: shared-resource matches lead the list, then
+    embedding KNN fills the remaining slots. The entity leg also carries
+    installs with no embeddings at all."""
+    cutoff = datetime.now(timezone.utc) - RELATED_WINDOW
+    rows = await _entity_related(session, user_id, article, cutoff)
+    remaining = RELATED_LIMIT - len(rows)
+    if remaining <= 0:
+        return rows
+    source = await current_embedding(session, article.id)
+    if source is None:
+        return rows
+    seen = [row.article.id for row in rows]
+    distance = ArticleEmbedding.embedding.cosine_distance(source.embedding)
+    stmt = (
+        _related_scope(user_id, article.id)
+        .add_columns(distance.label("distance"))
+        .join(ArticleEmbedding, ArticleEmbedding.article_id == Article.id)
+        .where(
+            ArticleEmbedding.model == settings.openai_embedding_model,
+            Article.fetched_at >= cutoff,
+            Article.id.notin_(seen),
+            distance < RELATED_MAX_DISTANCE,
+        )
+        .order_by(distance)
+        .limit(remaining)
+    )
+    vector_rows = (await session.execute(stmt)).all()
+    return rows + [
+        RelatedRow(
+            candidate,
+            title or url,
+            state,
+            "same_story" if dist < RELATED_SAME_STORY else "related",
+        )
+        for candidate, title, url, state, dist in vector_rows
+    ]
 
 
 def _scoped_article_ids(user_id: int, feed_id: int | None, filter: str):

@@ -1035,9 +1035,19 @@ async def test_related_is_read_mapping_and_limit(client, users, data, session, m
     assert body[1]["is_read"] is False
 
 
-async def test_related_entity_fallback(client, users, data, session, monkeypatch):
-    from app.models import ArticleEntity, Entity
+async def _related_entity(session, key="acme/x"):
+    entity = Entity(kind="github", canonical_key=key, url=f"https://gh/{key}")
+    session.add(entity)
+    await session.commit()
+    return entity
 
+
+async def _link_entity(session, article, entity, source="primary"):
+    session.add(ArticleEntity(article_id=article.id, entity_id=entity.id, source=source))
+    await session.commit()
+
+
+async def test_related_entity_leg_without_vector(client, users, data, session, monkeypatch):
     user = await users.create()
     feed = await data.feed()
     await data.subscribe(user, feed)
@@ -1049,11 +1059,9 @@ async def test_related_entity_fallback(client, users, data, session, monkeypatch
     await _related_embed(session, source, [1.0, 0.0, 0.0], model="legacy")
     _configure_related(monkeypatch)
 
-    entity = Entity(kind="github", canonical_key="acme/x", url="https://gh/acme/x")
-    session.add(entity)
-    await session.commit()
+    entity = await _related_entity(session)
     for art in (source, linked_new, linked_old):
-        session.add(ArticleEntity(article_id=art.id, entity_id=entity.id, source="primary"))
+        await _link_entity(session, art, entity)
     linked_new.published_at = datetime.now(timezone.utc)
     linked_old.published_at = datetime.now(timezone.utc) - timedelta(days=3)
     await session.commit()
@@ -1061,8 +1069,69 @@ async def test_related_entity_fallback(client, users, data, session, monkeypatch
     resp = await client.get(f"/api/articles/{source.id}/related", headers=users.auth(user))
     body = resp.json()
     assert [item["id"] for item in body] == [linked_new.id, linked_old.id]  # newest first
-    assert all(item["tier"] == "related" for item in body)
+    # Sharing a canonical external resource is same-story evidence.
+    assert all(item["tier"] == "same_story" for item in body)
     assert unlinked.id not in [item["id"] for item in body]
+
+
+async def test_related_hybrid_entity_leads_vector_fills(client, users, data, session, monkeypatch):
+    user = await users.create()
+    feed = await data.feed()
+    await data.subscribe(user, feed)
+    source = await data.article(feed, title="Source")
+    # Entity-linked but vector-far: must still lead the list.
+    linked_far = await data.article(feed, title="Linked, far vector")
+    # Both entity-linked and vector-close: appears once, on the entity leg.
+    linked_close = await data.article(feed, title="Linked and close")
+    topical = await data.article(feed, title="Vector only")
+    await _related_embed(session, source, [1.0, 0.0, 0.0])
+    await _related_embed(session, linked_far, [0.0, 1.0, 0.0])   # distance 1.0
+    await _related_embed(session, linked_close, [0.999, 0.04, 0.0])
+    await _related_embed(session, topical, [0.5, 0.866, 0.0])    # distance ~0.5
+    _configure_related(monkeypatch)
+
+    entity = await _related_entity(session)
+    for art in (source, linked_far, linked_close):
+        await _link_entity(session, art, entity)
+    linked_close.published_at = datetime.now(timezone.utc)
+    linked_far.published_at = datetime.now(timezone.utc) - timedelta(days=1)
+    await session.commit()
+
+    resp = await client.get(f"/api/articles/{source.id}/related", headers=users.auth(user))
+    body = resp.json()
+    assert [item["id"] for item in body] == [linked_close.id, linked_far.id, topical.id]
+    assert [item["tier"] for item in body] == ["same_story", "same_story", "related"]
+
+
+async def test_related_entity_leg_ranking(client, users, data, session, monkeypatch):
+    user = await users.create()
+    feed = await data.feed()
+    await data.subscribe(user, feed)
+    source = await data.article(feed, title="Source")
+    shares_two = await data.article(feed, title="Shares two entities")
+    primary_link = await data.article(feed, title="Primary link")
+    inline_link = await data.article(feed, title="Inline mention")
+    _configure_related(monkeypatch)
+
+    repo = await _related_entity(session, "acme/x")
+    paper = await _related_entity(session, "acme/y")
+    await _link_entity(session, source, repo)
+    await _link_entity(session, source, paper)
+    await _link_entity(session, shares_two, repo)
+    await _link_entity(session, shares_two, paper)
+    await _link_entity(session, primary_link, repo)
+    await _link_entity(session, inline_link, repo, source="inline")
+    # Recency would rank the inline mention first; shared count and
+    # primary-over-inline must win instead.
+    now = datetime.now(timezone.utc)
+    shares_two.published_at = now - timedelta(days=2)
+    primary_link.published_at = now - timedelta(days=1)
+    inline_link.published_at = now
+    await session.commit()
+
+    resp = await client.get(f"/api/articles/{source.id}/related", headers=users.auth(user))
+    body = resp.json()
+    assert [item["id"] for item in body] == [shares_two.id, primary_link.id, inline_link.id]
 
 
 async def test_related_empty_without_embeddings_or_entities(client, users, data):
