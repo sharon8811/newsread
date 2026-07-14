@@ -276,3 +276,33 @@ async def test_synthesize_related_numbers_sources(monkeypatch):
     assert "[2] Other\nsum B" in user_msg
     assert "Source [1] is the article the reader is on" in user_msg
     assert "cite them inline" in captured["messages"][0]["content"]
+
+
+# --- named_entities ---
+
+async def test_named_entities_parses_and_dedupes(monkeypatch):
+    captured = {}
+
+    async def fake_complete(messages, max_tokens, **kwargs):
+        captured["user"] = messages[1]["content"]
+        return (
+            "PERSON: Sam Altman\n"
+            "ORG: OpenAI\n"
+            "ORG:  OpenAI \n"          # dedup after normalization
+            "PRODUCT: **Codex**\n"     # markdown wrapping stripped
+            "person: sam altman\n"     # lowercase marker not matched
+            "NOISE: ignored\n"
+        )
+
+    monkeypatch.setattr(llm, "_complete", fake_complete)
+    out = await llm.named_entities("T", "body text")
+    assert out == [("person", "Sam Altman"), ("org", "OpenAI"), ("product", "Codex")]
+    assert "body text" in captured["user"]
+
+
+async def test_named_entities_none(monkeypatch):
+    async def fake_complete(messages, max_tokens, **kwargs):
+        return "NONE"
+
+    monkeypatch.setattr(llm, "_complete", fake_complete)
+    assert await llm.named_entities("T", "x") == []

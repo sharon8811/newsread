@@ -10,10 +10,10 @@ from datetime import datetime, timedelta, timezone
 
 from arq import cron
 from arq.connections import RedisSettings
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.orm import selectinload
 
-from . import catalog_embeddings, embeddings, llm, push, suppressions
+from . import catalog_embeddings, embeddings, llm, ner, push, suppressions
 from .config import settings
 from .db import SessionLocal, init_db
 from .enrichers.pipeline import extract_entities, refresh_stale_entities
@@ -36,8 +36,10 @@ logger = logging.getLogger(__name__)
 ENRICH_BATCH = 20
 SUMMARIZE_BATCH = 10
 EMBED_BATCH = 50
+NER_BATCH = 10
 ENRICH_CONCURRENCY = 4
 SUMMARIZE_CONCURRENCY = 2
+NER_CONCURRENCY = 2
 
 
 async def _enrich_one(article_id: int, semaphore: asyncio.Semaphore) -> None:
@@ -122,17 +124,76 @@ async def enrich_and_summarize(ctx: dict | None = None, feed_id: int | None = No
     semaphore = asyncio.Semaphore(SUMMARIZE_CONCURRENCY)
     await asyncio.gather(*(_summarize_one(aid, semaphore) for aid in summarize_ids))
 
+    tagged = await extract_named_entities_batch(feed_id=feed_id)
     embedded = await embed_articles_batch(feed_id=feed_id)
     suppressed = await suppress_articles_batch(feed_id=feed_id)
 
-    if enrich_ids or summarize_ids or embedded or suppressed:
+    if enrich_ids or summarize_ids or tagged or embedded or suppressed:
         logger.info(
-            "Enriched %d articles, summarized up to %d, embedded %d, suppressed %d",
+            "Enriched %d articles, summarized up to %d, tagged %d, embedded %d, suppressed %d",
             len(enrich_ids),
             len(summarize_ids),
+            tagged,
             embedded,
             suppressed,
         )
+
+
+async def _ner_one(article_id: int, semaphore: asyncio.Semaphore) -> None:
+    async with semaphore:
+        async with SessionLocal() as session:
+            article = await session.get(Article, article_id)
+            if article is None:
+                return
+            try:
+                await ner.extract_named(session, article)
+            except Exception as exc:
+                logger.warning("Entity tagging of article %s failed: %s", article_id, exc)
+                await session.rollback()
+            # Always stamp: never re-tag on failure, never block the cycle.
+            article.ner_extracted_at = datetime.now(timezone.utc)
+            await session.commit()
+
+
+async def extract_named_entities_batch(feed_id: int | None = None) -> int:
+    """LLM named-entity tagging for articles that have been enriched or
+    summarized (the extraction reads ner.body_for). Articles first tagged
+    from a title-only body are re-tagged when their summary lands later —
+    the stamp comparison converges the same way the entity link rescan
+    does. Returns how many were processed."""
+    if not llm.is_configured():
+        return 0
+    async with SessionLocal() as session:
+        query = (
+            select(Article.id)
+            .join(Feed, Feed.id == Article.feed_id)
+            .where(Feed.ai_enabled.is_(True))
+            .where(
+                or_(
+                    Article.ner_extracted_at.is_(None),
+                    and_(
+                        Article.summary_generated_at.is_not(None),
+                        Article.ner_extracted_at < Article.summary_generated_at,
+                    ),
+                )
+            )
+            .where(
+                or_(
+                    Article.full_text_fetched_at.is_not(None),
+                    Article.summary_medium != "",
+                )
+            )
+            .order_by(Article.id.desc())
+            .limit(NER_BATCH)
+        )
+        if feed_id is not None:
+            query = query.where(Article.feed_id == feed_id)
+        ids = list(await session.scalars(query))
+    if not ids:
+        return 0
+    semaphore = asyncio.Semaphore(NER_CONCURRENCY)
+    await asyncio.gather(*(_ner_one(aid, semaphore) for aid in ids))
+    return len(ids)
 
 
 async def embed_articles_batch(feed_id: int | None = None) -> int:

@@ -305,6 +305,55 @@ async def test_embed_articles_batch_scoped_and_skips_current_model(session, monk
     assert captured["n"] == 0
 
 
+async def test_ner_batch_not_configured(monkeypatch):
+    monkeypatch.setattr(worker.llm, "is_configured", lambda: False)
+    assert await worker.extract_named_entities_batch() == 0
+
+
+async def test_ner_batch_selects_stamps_and_retags(session, monkeypatch):
+    feed = await _feed(session)
+    now = datetime.now(timezone.utc)
+    ready = await _article(session, feed, guid="ready",
+                           full_text_fetched_at=now, full_text="body")
+    pending = await _article(session, feed, guid="pending")  # never enriched: wait
+    # Tagged before its summary existed -> re-tagged.
+    stale = await _article(session, feed, guid="stale", summary_medium="sum",
+                           summary_generated_at=now,
+                           ner_extracted_at=now - timedelta(hours=1))
+    done = await _article(session, feed, guid="done", summary_medium="sum",
+                          summary_generated_at=now - timedelta(hours=1),
+                          ner_extracted_at=now)
+    monkeypatch.setattr(worker.llm, "is_configured", lambda: True)
+
+    seen = []
+
+    async def fake_extract(s, article, **kwargs):
+        seen.append(article.id)
+        return 1
+
+    monkeypatch.setattr(worker.ner, "extract_named", fake_extract)
+    assert await worker.extract_named_entities_batch() == 2
+    assert set(seen) == {ready.id, stale.id}
+    await session.refresh(ready)
+    assert ready.ner_extracted_at is not None
+    # Second run: everything stamped and converged.
+    assert await worker.extract_named_entities_batch() == 0
+
+
+async def test_ner_batch_stamps_even_on_error(session, monkeypatch):
+    feed = await _feed(session)
+    art = await _article(session, feed, summary_medium="sum")
+    monkeypatch.setattr(worker.llm, "is_configured", lambda: True)
+
+    async def boom(s, article, **kwargs):
+        raise RuntimeError("llm down")
+
+    monkeypatch.setattr(worker.ner, "extract_named", boom)
+    assert await worker.extract_named_entities_batch() == 1
+    await session.refresh(art)
+    assert art.ner_extracted_at is not None
+
+
 async def test_embed_articles_batch_reembeds_stale_input(session, monkeypatch):
     """A current-model vector whose input text has since changed (summary
     arrived after embedding, or the hash predates tracking) is re-embedded."""

@@ -13,6 +13,7 @@ from .. import crypto, embeddings, image_gen
 from ..config import settings
 from ..db import get_session
 from ..enrichers import badge_for
+from ..ner import NER_KINDS
 from ..models import (
     Article,
     ArticleEmbedding,
@@ -326,18 +327,23 @@ async def _entity_related(
     Sparse but exact: a shared canonical identifier is stronger same-story
     evidence than any embedding distance, so these rank by how many
     resources they share (primary links over inline mentions), not by
-    vector proximity."""
+    vector proximity. LLM name entities are excluded — two articles both
+    mentioning one company are not the same story."""
+    link_entity_ids = (
+        select(ArticleEntity.entity_id)
+        .join(Entity, Entity.id == ArticleEntity.entity_id)
+        .where(
+            ArticleEntity.article_id == article.id,
+            Entity.kind.notin_(NER_KINDS),
+        )
+    )
     overlap = (
         select(
             ArticleEntity.article_id.label("article_id"),
             func.count().label("shared"),
             func.count().filter(ArticleEntity.source == "primary").label("shared_primary"),
         )
-        .where(
-            ArticleEntity.entity_id.in_(
-                select(ArticleEntity.entity_id).where(ArticleEntity.article_id == article.id)
-            )
-        )
+        .where(ArticleEntity.entity_id.in_(link_entity_ids))
         .group_by(ArticleEntity.article_id)
         .subquery()
     )

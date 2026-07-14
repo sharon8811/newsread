@@ -241,6 +241,9 @@ class Article(Base):
     summary_model: Mapped[str | None] = mapped_column(String(120))
     summary_generated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     entities_extracted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # LLM named-entity tagging (see ner.py); separate stamp because it runs
+    # on a different trigger (needs summary/full text) than the link scan.
+    ner_extracted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Claim marker for lazy image generation (set once, attempt-once policy);
     # doubles as the "in flight" signal while image_url is still NULL.
     image_gen_attempted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

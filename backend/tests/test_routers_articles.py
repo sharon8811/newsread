@@ -1103,6 +1103,26 @@ async def test_related_hybrid_entity_leads_vector_fills(client, users, data, ses
     assert [item["tier"] for item in body] == ["same_story", "same_story", "related"]
 
 
+async def test_related_entity_leg_ignores_ner_kinds(client, users, data, session, monkeypatch):
+    """Two articles both about one company are not the same story: LLM name
+    entities must never feed the same_story leg."""
+    user = await users.create()
+    feed = await data.feed()
+    await data.subscribe(user, feed)
+    source = await data.article(feed, title="Source")
+    mentions_same_org = await data.article(feed, title="Also mentions the org")
+    _configure_related(monkeypatch)
+
+    org = Entity(kind="org", canonical_key="openai", url="", data={"name": "OpenAI"})
+    session.add(org)
+    await session.commit()
+    for art in (source, mentions_same_org):
+        await _link_entity(session, art, org, source="ner")
+
+    resp = await client.get(f"/api/articles/{source.id}/related", headers=users.auth(user))
+    assert resp.json() == []
+
+
 async def test_related_entity_leg_ranking(client, users, data, session, monkeypatch):
     user = await users.create()
     feed = await data.feed()
