@@ -4,14 +4,19 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import useSWR, { mutate } from "swr";
 import AiSummary from "@/components/AiSummary";
+import ArticleAssistantDrawer, {
+  type AssistantScope,
+} from "@/components/ArticleAssistantDrawer";
 import { mutateArticleLists } from "@/components/ArticleList";
 import EntityCard from "@/components/EntityCard";
 import GeneratingIndicator from "@/components/GeneratingIndicator";
-import HackerNewsDiscussion, {
+import {
+  type DiscussionDraft,
+  HackerNewsDiscussionController,
+  HackerNewsDiscussionView,
   HackerNewsDiscussionLink,
 } from "@/components/HackerNewsDiscussion";
 import ProjectPickerModal from "@/components/ProjectPickerModal";
-import QAPanel from "@/components/QAPanel";
 import RelatedArticles from "@/components/RelatedArticles";
 import ShareModal from "@/components/ShareModal";
 import {
@@ -20,8 +25,9 @@ import {
   ExternalIcon,
   FolderIcon,
   ShareIcon,
+  SparkleIcon,
 } from "@/components/icons";
-import { api, fetcher, imageSrc, streamQA, type ArticleDetail } from "@/lib/api";
+import { api, fetcher, imageSrc, type ArticleDetail } from "@/lib/api";
 import { domainOf, timeAgo } from "@/lib/format";
 import { discussionRefFor } from "@/lib/discussions";
 import { markArticleReadInReadingSessions } from "@/lib/readingSession";
@@ -41,6 +47,16 @@ export default function ArticlePage() {
   });
   const [sharing, setSharing] = useState(false);
   const [pickingProject, setPickingProject] = useState(false);
+  const [assistantState, setAssistantState] = useState<{
+    articleId: string;
+    open: boolean;
+    scope: AssistantScope;
+    draft: DiscussionDraft | null;
+  }>({ articleId: id, open: false, scope: "article", draft: null });
+  const assistant =
+    assistantState.articleId === id
+      ? assistantState
+      : { articleId: id, open: false, scope: "article" as const, draft: null };
   const markedRef = useRef(false);
   const hadImageRef = useRef<boolean | null>(null);
 
@@ -120,7 +136,9 @@ export default function ArticlePage() {
   }
 
   return (
-    <article className="fade-up mx-auto max-w-[680px] px-5 pb-24 pt-6 sm:px-8 sm:pt-10">
+    <HackerNewsDiscussionController key={article.id} article={article}>
+      {(discussion) => (
+        <article className="fade-up mx-auto max-w-[680px] px-5 pb-24 pt-6 sm:px-8 sm:pt-10">
       <button
         className="font-mono-nr text-[11.5px] transition-colors"
         style={{ color: "var(--ink-faint)" }}
@@ -168,45 +186,58 @@ export default function ArticlePage() {
         </div>
       )}
 
-      <div
-        className="mt-7 flex flex-wrap items-center gap-2 border-y py-3.5"
-        style={{ borderColor: "var(--line-soft)" }}
-      >
-        <a className="btn btn-accent" href={article.url} target="_blank" rel="noreferrer">
-          <ExternalIcon size={14} />
-          Read original
-        </a>
-        <HackerNewsDiscussionLink article={article} />
-        {article.comments_url && !discussionRefFor(article) && (
-          <a className="btn" href={article.comments_url} target="_blank" rel="noreferrer">
-            <CommentIcon size={14} />
-            Discussion
+      <div className="mt-7 border-y py-3.5" style={{ borderColor: "var(--line-soft)" }}>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <a
+            className="btn btn-accent min-h-11 justify-center"
+            href={article.url}
+            target="_blank"
+            rel="noreferrer"
+          >
+            <ExternalIcon size={14} />
+            Read original
           </a>
-        )}
-        <div className="ml-auto flex items-center gap-1">
+          <HackerNewsDiscussionLink article={article} />
+          {article.comments_url && !discussionRefFor(article) && (
+            <a
+              className="btn min-h-11 justify-center"
+              href={article.comments_url}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <CommentIcon size={14} />
+              Open discussion
+            </a>
+          )}
+        </div>
+        <div
+          className="mt-3 grid grid-cols-2 gap-2 border-t pt-3 sm:grid-cols-4"
+          style={{ borderColor: "var(--line-soft)" }}
+        >
           <button
-            className={`icon-btn ${article.is_saved ? "active" : ""}`}
-            style={{ width: 34, height: 34 }}
+            className={`btn min-h-11 justify-center ${article.is_saved ? "active" : ""}`}
             title={article.is_saved ? "Unsave" : "Save for later"}
             onClick={toggleSaved}
           >
-            <BookmarkIcon size={16} filled={article.is_saved} />
+            <BookmarkIcon size={15} filled={article.is_saved} />
+            {article.is_saved ? "Saved" : "Save"}
           </button>
-          <button
-            className="btn"
-            title="Share with a note"
-            onClick={() => setSharing(true)}
-          >
+          <button className="btn min-h-11 justify-center" onClick={() => setSharing(true)}>
             <ShareIcon size={14} />
             Share
           </button>
-          <button
-            className="btn"
-            title="Add to project"
-            onClick={() => setPickingProject(true)}
-          >
+          <button className="btn min-h-11 justify-center" onClick={() => setPickingProject(true)}>
             <FolderIcon size={14} />
-            Project
+            Add to project
+          </button>
+          <button
+            className="btn min-h-11 justify-center"
+            onClick={() => {
+              setAssistantState({ articleId: id, open: true, scope: "article", draft: null });
+            }}
+          >
+            <SparkleIcon size={14} />
+            Ask
           </button>
         </div>
       </div>
@@ -222,31 +253,44 @@ export default function ArticlePage() {
         />
       ) : (
         <p className="reader mt-8 italic" style={{ color: "var(--ink-dim)" }}>
-          This feed only provides a headline — use “Read original” above.
+          This feed only provides a headline. Use “Read original” above.
         </p>
       )}
 
       <RelatedArticles key={`related-${article.id}`} article={article} />
 
-      <HackerNewsDiscussion key={`hn-${article.id}`} article={article} />
-
-      <QAPanel
-        key={`qa-${article.id}`}
-        qaKey={`/articles/${article.id}/qa`}
-        stream={(q, onEvent) => streamQA(article.id, q, onEvent)}
-        heading="Ask the article"
-        placeholder="Ask anything about this article…"
-        suggestions={[
-          "What are the key points?",
-          "Why does this matter?",
-          "What is the counterargument?",
-        ]}
+      <HackerNewsDiscussionView
+        discussion={discussion}
+        onDraft={(draft) => {
+          setAssistantState({ articleId: id, open: true, scope: "discussion", draft });
+        }}
       />
 
       {sharing && <ShareModal article={article} onClose={() => setSharing(false)} />}
       {pickingProject && (
         <ProjectPickerModal article={article} onClose={() => setPickingProject(false)} />
       )}
-    </article>
+      {assistant.open && (
+        <ArticleAssistantDrawer
+          article={article}
+          discussion={discussion}
+          scope={assistant.scope}
+          onScopeChange={(scope) =>
+            setAssistantState({
+              articleId: id,
+              open: true,
+              scope,
+              draft: assistant.draft,
+            })
+          }
+          draft={assistant.draft}
+          onClose={() =>
+            setAssistantState({ articleId: id, open: false, scope: "article", draft: null })
+          }
+        />
+      )}
+        </article>
+      )}
+    </HackerNewsDiscussionController>
   );
 }

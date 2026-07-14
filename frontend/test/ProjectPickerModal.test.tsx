@@ -44,6 +44,18 @@ describe("<ProjectPickerModal>", () => {
     expect(screen.getByText("1 member")).toBeInTheDocument();
   });
 
+  it("portals the picker outside a transformed article", () => {
+    setSwr([], []);
+    render(
+      <article data-testid="article" style={{ transform: "translateY(0)" }}>
+        <ProjectPickerModal article={makeArticle()} onClose={vi.fn()} />
+      </article>,
+    );
+    const dialog = screen.getByRole("dialog", { name: "A Great Article" });
+    expect(screen.getByTestId("article")).not.toContainElement(dialog);
+    expect(document.body).toContainElement(dialog);
+  });
+
   it("shows the empty state without projects", () => {
     setSwr([], []);
     render(<ProjectPickerModal article={makeArticle()} onClose={vi.fn()} />);
@@ -82,7 +94,7 @@ describe("<ProjectPickerModal>", () => {
     render(<ProjectPickerModal article={makeArticle({ id: 7 })} onClose={vi.fn()} />);
 
     await userEvent.click(screen.getByTitle(/Only you will see it/));
-    expect(screen.getByTitle(/visible to everyone in AI Research/)).toBeInTheDocument();
+    expect(screen.getByTitle(/visible to everyone in AI Research/i)).toBeInTheDocument();
     expect(JSON.parse(localStorage.getItem("newsread_project_vis")!)).toEqual({ "1": true });
 
     await userEvent.click(screen.getByRole("button", { name: "Add" }));
@@ -95,7 +107,7 @@ describe("<ProjectPickerModal>", () => {
     localStorage.setItem("newsread_project_vis", JSON.stringify({ "1": true }));
     setSwr([twoMembers], [makeProjectStatus()]);
     render(<ProjectPickerModal article={makeArticle()} onClose={vi.fn()} />);
-    expect(await screen.findByTitle(/visible to everyone/)).toBeInTheDocument();
+    expect(await screen.findByTitle(/visible to everyone/i)).toBeInTheDocument();
   });
 
   it("survives corrupt localStorage", async () => {
@@ -237,7 +249,7 @@ describe("<ProjectPickerModal>", () => {
   it("closes on Escape, backdrop and the X button, but not panel clicks", async () => {
     setSwr([], []);
     const onClose = vi.fn();
-    const { container } = render(
+    render(
       <ProjectPickerModal article={makeArticle({ title: "T" })} onClose={onClose} />,
     );
     await userEvent.click(screen.getByText("T"));
@@ -246,10 +258,9 @@ describe("<ProjectPickerModal>", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
     await userEvent.keyboard("a");
     expect(onClose).toHaveBeenCalledTimes(1);
-    await userEvent.click(container.firstChild as Element);
+    await userEvent.click(screen.getByTestId("modal-overlay"));
     expect(onClose).toHaveBeenCalledTimes(2);
-    const xBtn = container.querySelector("button.icon-btn")!;
-    await userEvent.click(xBtn);
+    await userEvent.click(screen.getByRole("button", { name: "Close project picker" }));
     expect(onClose).toHaveBeenCalledTimes(3);
   });
 });

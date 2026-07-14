@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import useSWR, { mutate } from "swr";
 import {
   api,
@@ -19,6 +19,7 @@ import {
   UsersIcon,
   XIcon,
 } from "./icons";
+import Modal, { ModalClose, ModalTitle } from "./Modal";
 
 const VIS_KEY = "newsread_project_vis";
 
@@ -43,23 +44,11 @@ export default function ProjectPickerModal({
 
   const [note, setNote] = useState("");
   // Last-used visibility per project; default is private ("only you").
-  const [visibility, setVisibility] = useState<Record<string, boolean>>({});
+  const [visibility, setVisibility] = useState<Record<string, boolean>>(loadVisibility);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    setVisibility(loadVisibility());
-  }, []);
-
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
 
   const statusFor = (projectId: number) =>
     statuses?.find((s) => s.project_id === projectId);
@@ -152,36 +141,30 @@ export default function ProjectPickerModal({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-6"
-      style={{ background: "var(--bg-scrim)", backdropFilter: "blur(4px)" }}
-      onClick={onClose}
-    >
-      <div
-        className="fade-up w-full max-w-[480px] rounded-lg border p-6"
-        style={{
-          background: "var(--bg-raised)",
-          borderColor: "var(--line)",
-          boxShadow: "var(--shadow-modal)",
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
+    <Modal onClose={onClose} contentClassName="max-h-[calc(100dvh-3rem)] overflow-y-auto p-6">
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="mono-label">Add to project</p>
-            <h2 className="font-serif-nr mt-1.5 text-[19px] leading-snug">
-              {article.title}
-            </h2>
+            <ModalTitle asChild>
+              <h2 className="font-serif-nr mt-1.5 text-[19px] leading-snug">
+                {article.title}
+              </h2>
+            </ModalTitle>
           </div>
-          <button className="icon-btn shrink-0" onClick={onClose}>
-            <XIcon size={16} />
-          </button>
+          <ModalClose asChild>
+            <button
+              className="icon-btn min-h-11 min-w-11 shrink-0"
+              aria-label="Close project picker"
+            >
+              <XIcon size={16} />
+            </button>
+          </ModalClose>
         </div>
 
         <div className="mt-5 flex max-h-[320px] flex-col gap-1 overflow-y-auto">
           {projects?.length === 0 && !creating && (
             <p className="py-4 text-center text-[13px]" style={{ color: "var(--ink-faint)" }}>
-              No projects yet — create your first below.
+              No projects yet. Create your first below.
             </p>
           )}
           {ordered.map((project) => {
@@ -246,8 +229,8 @@ export default function ProjectPickerModal({
                       className="icon-btn"
                       title={
                         shared
-                          ? `Will be visible to everyone in ${project.name} — click for only you`
-                          : "Only you will see it — click to share with members"
+                          ? `Visible to everyone in ${project.name}. Click for only you.`
+                          : "Only you will see it. Click to share with members."
                       }
                       onClick={() => setVis(project.id, !shared)}
                     >
@@ -298,7 +281,7 @@ export default function ProjectPickerModal({
         <textarea
           className="input mt-3 resize-none font-serif-nr italic"
           style={{ fontSize: 15, minHeight: 72 }}
-          placeholder="Optional note — why does this belong here?"
+          placeholder="Optional note: why does this belong here?"
           value={note}
           onChange={(e) => setNote(e.target.value)}
         />
@@ -308,7 +291,6 @@ export default function ProjectPickerModal({
             {error}
           </p>
         )}
-      </div>
-    </div>
+    </Modal>
   );
 }

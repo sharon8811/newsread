@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import ArticlePage from "@/app/(app)/article/[id]/page";
 import { makeArticleDetail } from "./fixtures";
@@ -21,6 +21,23 @@ vi.mock("@/components/ArticleList", () => ({ mutateArticleLists: mutateListsMock
 vi.mock("@/components/AiSummary", () => ({ default: () => <div data-testid="ai-summary" /> }));
 vi.mock("@/components/EntityCard", () => ({ default: () => <div data-testid="entity-card" /> }));
 vi.mock("@/components/QAPanel", () => ({ default: () => <div data-testid="qa-panel" /> }));
+vi.mock("@/components/ArticleAssistantDrawer", () => ({
+  default: ({
+    onClose,
+    onScopeChange,
+    scope,
+  }: {
+    onClose: () => void;
+    onScopeChange: (scope: "article" | "discussion") => void;
+    scope: string;
+  }) => (
+    <div data-testid="assistant-drawer">
+      <span>{scope}</span>
+      <button onClick={() => onScopeChange("discussion")}>switch-discussion</button>
+      <button onClick={onClose}>close-assistant</button>
+    </div>
+  ),
+}));
 vi.mock("@/components/RelatedArticles", () => ({
   default: () => <div data-testid="related-articles" />,
 }));
@@ -160,7 +177,7 @@ describe("ArticlePage", () => {
       error: undefined,
     });
     render(<ArticlePage />);
-    expect(screen.getByText("Discussion")).toBeInTheDocument();
+    expect(screen.getByText("Open discussion")).toBeInTheDocument();
   });
 
   it("opens and closes the share modal", async () => {
@@ -175,16 +192,32 @@ describe("ArticlePage", () => {
   it("opens and closes the project picker", async () => {
     swrMock.mockReturnValue({ data: makeArticleDetail({ is_read: true }), error: undefined });
     render(<ArticlePage />);
-    await userEvent.click(screen.getByText("Project"));
+    await userEvent.click(screen.getByText("Add to project"));
     expect(screen.getByTestId("project-picker")).toBeInTheDocument();
     await userEvent.click(screen.getByText("close-picker"));
     expect(screen.queryByTestId("project-picker")).not.toBeInTheDocument();
   });
 
+  it("opens and closes the single reading assistant", async () => {
+    swrMock.mockReturnValue({ data: makeArticleDetail({ is_read: true }), error: undefined });
+    render(<ArticlePage />);
+    await userEvent.click(screen.getByText("Ask"));
+    expect(screen.getByTestId("assistant-drawer")).toBeInTheDocument();
+    await userEvent.click(screen.getByText("switch-discussion"));
+    expect(screen.getByText("discussion")).toBeInTheDocument();
+    await userEvent.click(screen.getByText("close-assistant"));
+    expect(screen.queryByTestId("assistant-drawer")).not.toBeInTheDocument();
+  });
+
   it("navigates back", async () => {
     swrMock.mockReturnValue({ data: makeArticleDetail({ is_read: true }), error: undefined });
     render(<ArticlePage />);
-    await userEvent.click(screen.getByText("← back"));
+    const back = screen.getByText("← back");
+    fireEvent.mouseEnter(back);
+    expect(back).toHaveStyle({ color: "var(--ink)" });
+    fireEvent.mouseLeave(back);
+    expect(back).toHaveStyle({ color: "var(--ink-faint)" });
+    await userEvent.click(back);
     expect(routerMock.back).toHaveBeenCalled();
   });
 
@@ -233,7 +266,10 @@ describe("ArticlePage", () => {
       error: undefined,
     });
     const { container } = render(<ArticlePage />);
-    expect(container.querySelector("img")).toBeInTheDocument();
+    const image = container.querySelector("img")!;
+    expect(image).toBeInTheDocument();
+    fireEvent.error(image);
+    expect(image).toHaveStyle({ display: "none" });
     expect(screen.queryByText(/generating illustration/)).not.toBeInTheDocument();
     expect(container.querySelector(".shimmer")).toBeNull();
   });

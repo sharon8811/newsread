@@ -20,6 +20,7 @@ import {
   WhatsAppIcon,
   XIcon,
 } from "./icons";
+import Modal, { ModalClose, ModalTitle } from "./Modal";
 
 export default function ShareModal({
   article,
@@ -48,10 +49,7 @@ export default function ShareModal({
 
   useEffect(() => {
     const q = query.trim().replace(/^@/, "");
-    if (!q) {
-      setResults([]);
-      return;
-    }
+    if (!q) return;
     const t = setTimeout(() => {
       api<UserPublic[]>(`/users/search?q=${encodeURIComponent(q)}`)
         .then((users) =>
@@ -61,14 +59,6 @@ export default function ShareModal({
     }, 200);
     return () => clearTimeout(t);
   }, [query, recipients]);
-
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
 
   function addRecipient(user: UserPublic) {
     setRecipients((r) => [...r, user]);
@@ -169,22 +159,10 @@ export default function ShareModal({
   });
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-6"
-      style={{ background: "var(--bg-scrim)", backdropFilter: "blur(4px)" }}
-      onClick={onClose}
-    >
-      <div
-        className="fade-up w-full max-w-[480px] rounded-lg border p-6"
-        style={{
-          background: "var(--bg-raised)",
-          borderColor: "var(--line)",
-          boxShadow: "var(--shadow-modal)",
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
+    <Modal onClose={onClose} contentClassName="max-h-[calc(100dvh-3rem)] overflow-y-auto p-6">
         {sent ? (
           <div className="flex flex-col items-center gap-3 py-10">
+            <ModalTitle className="sr-only">Article shared</ModalTitle>
             <span
               className="flex h-12 w-12 items-center justify-center rounded-full"
               style={{ background: "var(--accent-soft)", color: "var(--accent)" }}
@@ -198,13 +176,20 @@ export default function ShareModal({
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="mono-label">Share with context</p>
-                <h2 className="font-serif-nr mt-1.5 text-[19px] leading-snug">
-                  {article.title}
-                </h2>
+                <ModalTitle asChild>
+                  <h2 className="font-serif-nr mt-1.5 text-[19px] leading-snug">
+                    {article.title}
+                  </h2>
+                </ModalTitle>
               </div>
-              <button className="icon-btn shrink-0" onClick={onClose}>
-                <XIcon size={16} />
-              </button>
+              <ModalClose asChild>
+                <button
+                  className="icon-btn min-h-11 min-w-11 shrink-0"
+                  aria-label="Close share dialog"
+                >
+                  <XIcon size={16} />
+                </button>
+              </ModalClose>
             </div>
 
             <div className="relative mt-5">
@@ -236,9 +221,12 @@ export default function ShareModal({
               <input
                 ref={searchRef}
                 className="input"
-                placeholder="@username — who should read this?"
+                placeholder="@username: who should read this?"
                 value={query}
-                onChange={(e) => setQuery(e.target.value)}
+                onChange={(e) => {
+                  setQuery(e.target.value);
+                  if (!e.target.value.trim().replace(/^@/, "")) setResults([]);
+                }}
                 autoFocus
               />
               {results.length > 0 && (
@@ -307,7 +295,7 @@ export default function ShareModal({
             <textarea
               className="input mt-3 resize-none font-serif-nr italic"
               style={{ fontSize: 15.5, minHeight: 96 }}
-              placeholder="Why are you sharing this? Sent as your note — and as the chat message."
+              placeholder="Why are you sharing this? Sent as your note and as the chat message."
               value={note}
               onChange={(e) => setNote(e.target.value)}
             />
@@ -360,7 +348,6 @@ export default function ShareModal({
             </div>
           </>
         )}
-      </div>
-    </div>
+    </Modal>
   );
 }

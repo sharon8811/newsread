@@ -40,6 +40,25 @@ async def test_init_db_happy_path():
     assert app_db.vector_enabled is True
 
 
+async def test_clean_hnrss_content_repairs_existing_rows(session, data):
+    feed = await data.feed()
+    article = await data.article(
+        feed,
+        comments_url="https://news.ycombinator.com/item?id=88",
+        content_html=(
+            "<p>Useful article text.</p>"
+            "<p>Comments URL: https://news.ycombinator.com/item?id=88</p>"
+            "<p>Points: 17</p><p># Comments: 3</p>"
+        ),
+        excerpt="17 points · 3 comments · via Hacker News",
+    )
+    await app_db._clean_hnrss_content(session)
+    await session.commit()
+    await session.refresh(article)
+    assert article.content_html == "<p>Useful article text.</p>"
+    assert article.excerpt == "Useful article text."
+
+
 async def test_init_db_retries_then_raises(monkeypatch):
     monkeypatch.setattr(app_db.asyncio, "sleep", _instant_sleep)
 

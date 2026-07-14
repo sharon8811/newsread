@@ -14,6 +14,8 @@ import feedparser
 import httpx
 import nh3
 from dateutil import parser as dateparser
+from lxml import etree
+from lxml import html as lxml_html
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import load_only
@@ -32,6 +34,9 @@ _HN_ITEM_URL_RE = re.compile(
     r"https?://news\.ycombinator\.com/item\?[^\s\"'<>]+", re.IGNORECASE
 )
 _HN_COMMENTS_URL_LABEL_RE = re.compile(r"comments\s+url\s*:", re.IGNORECASE)
+_HNRSS_META_START_RE = re.compile(
+    r"^\s*(?:Article URL|Comments URL|Points|#\s*Comments)\s*:", re.IGNORECASE
+)
 
 
 @dataclass
@@ -152,6 +157,36 @@ def detect_comments_url(
         if canonical:
             return canonical
     return None
+
+
+def strip_hnrss_boilerplate(content_html: str, comments_url: str | None) -> str:
+    """Remove hnrss transport metadata after its discussion URL is captured."""
+    if not content_html or not canonical_hn_comments_url(comments_url or ""):
+        return content_html
+    try:
+        root = lxml_html.fragment_fromstring(content_html, create_parent="div")
+    except (etree.ParserError, TypeError, ValueError):
+        return content_html
+
+    document_text = " ".join(root.itertext())
+    if "comments url:" not in document_text.lower():
+        return content_html
+
+    removed = False
+    for element in root.xpath(".//*[self::p or self::li or self::div]"):
+        # Remove the innermost metadata block, never a wrapper that may also
+        # contain real article prose.
+        if element.xpath("./p|./li|./div"):
+            continue
+        if _HNRSS_META_START_RE.match(" ".join(element.itertext())):
+            element.drop_tree()
+            removed = True
+
+    if not removed:
+        return content_html
+    return ((root.text or "") + "".join(
+        etree.tostring(child, encoding="unicode", method="html") for child in root
+    )).strip()
 
 
 def derive_excerpt(content_html: str, max_len: int = 320) -> str:
@@ -370,7 +405,10 @@ async def refresh_feed(
             if not stored.comments_url and item.comments_url:
                 stored.comments_url = item.comments_url[:2048]
             continue
-        clean = sanitize_html(item.content_html)
+        clean = strip_hnrss_boilerplate(
+            sanitize_html(item.content_html),
+            item.comments_url,
+        )
         # Undated entries get a fetch-time fallback (offset by feed position so
         # feed order survives the sort) instead of NULL, which would pin them
         # below every dated article and let them shift on later refreshes.

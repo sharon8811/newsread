@@ -141,6 +141,39 @@ ONE_SHOT_MIGRATIONS: dict[str, list[str]] = {
 }
 
 
+async def _clean_hnrss_content(conn) -> None:
+    """Use the ingestion cleaner to repair HNRSS rows already in the DB."""
+    from .fetcher import derive_excerpt, strip_hnrss_boilerplate
+
+    rows = (
+        await conn.execute(
+            text(
+                "SELECT id, content_html, comments_url FROM articles "
+                "WHERE comments_url ~* '^https?://news\\.ycombinator\\.com/item\\?id=[0-9]+' "
+                "AND content_html ILIKE '%Comments URL:%'"
+            )
+        )
+    ).mappings()
+    for row in rows:
+        cleaned = strip_hnrss_boilerplate(row["content_html"], row["comments_url"])
+        if cleaned == row["content_html"]:
+            continue
+        await conn.execute(
+            text(
+                "UPDATE articles SET content_html = :content_html, excerpt = :excerpt "
+                "WHERE id = :id"
+            ),
+            {
+                "id": row["id"],
+                "content_html": cleaned,
+                "excerpt": derive_excerpt(cleaned),
+            },
+        )
+
+
+ONE_SHOT_REPAIRS = {"clean_hnrss_boilerplate_lxml": _clean_hnrss_content}
+
+
 async def init_db(max_attempts: int = 30) -> None:
     """Create tables, waiting for the database to accept connections."""
     global vector_enabled
@@ -195,4 +228,14 @@ async def init_db(max_attempts: int = 30) -> None:
             if claimed.rowcount:
                 for statement in statements:
                     await conn.execute(text(statement))
+        for name, repair in ONE_SHOT_REPAIRS.items():
+            claimed = await conn.execute(
+                text(
+                    "INSERT INTO one_shot_migrations (name) VALUES (:name) "
+                    "ON CONFLICT (name) DO NOTHING"
+                ),
+                {"name": name},
+            )
+            if claimed.rowcount:
+                await repair(conn)
         await seed_catalog(conn)

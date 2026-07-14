@@ -17,6 +17,7 @@ from app.fetcher import (
     parse_xml_feed,
     refresh_feed,
     sanitize_html,
+    strip_hnrss_boilerplate,
     strip_html,
     _parse_date,
     _to_utc,
@@ -112,6 +113,36 @@ def test_detect_comments_url_for_hn_self_post():
     assert detect_comments_url(
         None, "https://news.ycombinator.com/item?id=88", ""
     ) == "https://news.ycombinator.com/item?id=88"
+
+
+def test_strip_hnrss_boilerplate_removes_metadata_and_preserves_article_content():
+    content = (
+        "<div><p>Useful article text.</p>"
+        '<p>Article URL: <a href="https://example.com/story">story</a></p>'
+        '<p>Comments URL: <a href="https://news.ycombinator.com/item?id=88">thread</a></p>'
+        "<p>Points: 17</p><p># Comments: 3</p></div>"
+    )
+    cleaned = strip_hnrss_boilerplate(
+        content, "https://news.ycombinator.com/item?id=88"
+    )
+    assert strip_html(cleaned) == "Useful article text."
+    assert "Comments URL" not in cleaned
+
+
+def test_strip_hnrss_boilerplate_handles_single_block_and_safe_fallbacks():
+    metadata = (
+        '<p>Article URL: <a href="https://example.com/story">story</a><br>'
+        'Comments URL: <a href="https://news.ycombinator.com/item?id=88">thread</a><br>'
+        "Points: 17<br># Comments: 3</p>"
+    )
+    assert strip_hnrss_boilerplate(
+        metadata, "https://news.ycombinator.com/item?id=88"
+    ) == ""
+    assert strip_hnrss_boilerplate(metadata, "https://example.com/comments") == metadata
+    assert strip_hnrss_boilerplate("<p>Points: 17</p>", None) == "<p>Points: 17</p>"
+    assert strip_hnrss_boilerplate(
+        "not < valid", "https://news.ycombinator.com/item?id=88"
+    ) == "not < valid"
 
 
 # --- JSON Feed ---

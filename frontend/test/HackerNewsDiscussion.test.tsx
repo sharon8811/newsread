@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import HackerNewsDiscussion, {
   HackerNewsDiscussionLink,
+  useHackerNewsDiscussion,
 } from "@/components/HackerNewsDiscussion";
 import { makeArticleDetail } from "./fixtures";
 import type { DiscussionComment, DiscussionSnapshot, HNItem } from "@/lib/discussions";
@@ -12,13 +13,11 @@ const {
   discussionRefForMock,
   fetchHNThreadMock,
   mutateMock,
-  streamDiscussionQAMock,
   swrMock,
 } = vi.hoisted(() => ({
   discussionRefForMock: vi.fn(),
   fetchHNThreadMock: vi.fn(),
   mutateMock: vi.fn(),
-  streamDiscussionQAMock: vi.fn(),
   swrMock: vi.fn(),
 }));
 
@@ -27,23 +26,6 @@ vi.mock("@/lib/discussions", async (original) => ({
   ...(await original<typeof import("@/lib/discussions")>()),
   discussionRefFor: discussionRefForMock,
   fetchHNThread: fetchHNThreadMock,
-}));
-vi.mock("@/lib/api", async (original) => ({
-  ...(await original<typeof import("@/lib/api")>()),
-  streamDiscussionQA: streamDiscussionQAMock,
-}));
-vi.mock("@/components/QAPanel", () => ({
-  default: (props: {
-    heading: string;
-    initialInput?: string;
-    stream: (question: string, onEvent: () => void) => Promise<void>;
-  }) => (
-    <div>
-      <span>{props.heading}</span>
-      <input aria-label="Discussion prompt" readOnly value={props.initialInput ?? ""} />
-      <button onClick={() => props.stream("question", () => {})}>Run discussion stream</button>
-    </div>
-  ),
 }));
 
 const article = makeArticleDetail({
@@ -116,8 +98,18 @@ beforeEach(() => {
   swrResult = { data: story, error: undefined, isLoading: false, mutate: mutateMock };
   swrMock.mockImplementation(() => swrResult);
   fetchHNThreadMock.mockResolvedValue(snapshot());
-  streamDiscussionQAMock.mockResolvedValue(undefined);
 });
+
+function HookHarness() {
+  const discussion = useHackerNewsDiscussion(article);
+  return (
+    <div>
+      <button onClick={() => discussion.loadThread(120).catch(() => {})}>Load 120</button>
+      <button onClick={() => discussion.loadThread(300).catch(() => {})}>Load 300</button>
+      <span>{discussion.snapshot?.included_total ?? "none"}</span>
+    </div>
+  );
+}
 
 describe("Hacker News discussion UI", () => {
   it("renders nothing when the article has no supported discussion", () => {
@@ -127,24 +119,20 @@ describe("Hacker News discussion UI", () => {
     expect(render(<HackerNewsDiscussion article={article} />).container.firstChild).toBeNull();
   });
 
-  it("shows fallback and live metadata in the compact discussion link", () => {
-    swrResult = { data: undefined, isLoading: true, mutate: mutateMock };
-    const { rerender } = render(<HackerNewsDiscussionLink article={article} />);
-    expect(screen.getByRole("link", { name: /Discussion/ })).toHaveAttribute(
+  it("uses a stable in-page link without duplicating live metadata", () => {
+    render(<HackerNewsDiscussionLink article={article} />);
+    expect(screen.getByRole("link", { name: "Jump to discussion" })).toHaveAttribute(
       "href",
-      ref.canonicalUrl,
+      "#hacker-news-discussion",
     );
-
-    swrResult = { data: { id: 42 }, isLoading: false, mutate: mutateMock };
-    rerender(<HackerNewsDiscussionLink article={article} />);
-    expect(screen.getByRole("link", { name: /0 points, 0 comments/ })).toBeInTheDocument();
+    expect(screen.queryByText(/points|comments/)).toBeNull();
   });
 
   it("shows loading and unavailable story states", () => {
     swrResult = { data: undefined, isLoading: true, mutate: mutateMock };
     const { rerender } = render(<HackerNewsDiscussion article={article} />);
     expect(screen.getByText("Refreshing points and comments")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Read comments" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Show comments" })).toBeDisabled();
 
     swrResult = { data: undefined, error: new Error("offline"), isLoading: false, mutate: mutateMock };
     rerender(<HackerNewsDiscussion article={article} />);
@@ -159,11 +147,12 @@ describe("Hacker News discussion UI", () => {
         resolveThread = resolve;
       }),
     );
-    render(<HackerNewsDiscussion article={article} />);
+    const onDraft = vi.fn();
+    render(<HackerNewsDiscussion article={article} onDraft={onDraft} />);
 
     await userEvent.click(screen.getByTitle("Refresh points and comment count"));
     expect(mutateMock).toHaveBeenCalledOnce();
-    await userEvent.click(screen.getByRole("button", { name: "Read comments" }));
+    await userEvent.click(screen.getByRole("button", { name: "Show comments" }));
     expect(screen.getByLabelText("Loading comments")).toBeInTheDocument();
 
     await act(async () => resolveThread(snapshot()));
@@ -178,8 +167,10 @@ describe("Hacker News discussion UI", () => {
     expect(screen.getByText("Loaded 3 of 3 comments")).toBeInTheDocument();
 
     await userEvent.click(screen.getAllByRole("button", { name: "Draft reply" })[1]);
-    expect(screen.getByLabelText("Discussion prompt")).toHaveValue(
-      "Draft a thoughtful reply to comment 101. My point is: ",
+    expect(onDraft).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: "Draft a thoughtful reply to comment 101. My point is: ",
+      }),
     );
     await userEvent.click(screen.getByRole("button", { name: "Hide comments" }));
     expect(screen.queryByText("Top-level point")).toBeNull();
@@ -190,7 +181,7 @@ describe("Hacker News discussion UI", () => {
       .mockResolvedValueOnce(snapshot({ comments: [], included_total: 0, reported_total: 5 }))
       .mockResolvedValueOnce(snapshot({ reported_total: 5 }));
     render(<HackerNewsDiscussion article={article} />);
-    await userEvent.click(screen.getByRole("button", { name: "Read comments" }));
+    await userEvent.click(screen.getByRole("button", { name: "Show comments" }));
     expect(await screen.findByText("No visible comments yet.")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Load more for analysis" }));
     await waitFor(() => expect(fetchHNThreadMock).toHaveBeenLastCalledWith(story, 300, expect.any(AbortSignal)));
@@ -200,29 +191,21 @@ describe("Hacker News discussion UI", () => {
   it("reports Error and non-Error thread failures", async () => {
     fetchHNThreadMock.mockRejectedValueOnce(new Error("HN timed out"));
     const { unmount } = render(<HackerNewsDiscussion article={article} />);
-    await userEvent.click(screen.getByRole("button", { name: "Read comments" }));
+    await userEvent.click(screen.getByRole("button", { name: "Show comments" }));
     expect(await screen.findByText("HN timed out")).toBeInTheDocument();
     unmount();
 
     fetchHNThreadMock.mockRejectedValueOnce("offline");
     render(<HackerNewsDiscussion article={article} />);
-    await userEvent.click(screen.getByRole("button", { name: "Read comments" }));
+    await userEvent.click(screen.getByRole("button", { name: "Show comments" }));
     expect(await screen.findByText("Could not load the discussion")).toBeInTheDocument();
   });
 
-  it("reuses a complete snapshot when asking the discussion", async () => {
-    render(<HackerNewsDiscussion article={article} />);
-    await userEvent.click(screen.getByRole("button", { name: "Read comments" }));
-    await screen.findByText("Top-level point");
-    await userEvent.click(screen.getByRole("button", { name: "Run discussion stream" }));
-    await waitFor(() =>
-      expect(streamDiscussionQAMock).toHaveBeenCalledWith(
-        9,
-        "question",
-        expect.objectContaining({ included_total: 3 }),
-        expect.any(Function),
-      ),
-    );
+  it("reuses a complete snapshot for a larger analysis request", async () => {
+    render(<HookHarness />);
+    await userEvent.click(screen.getByRole("button", { name: "Load 120" }));
+    await screen.findByText("3");
+    await userEvent.click(screen.getByRole("button", { name: "Load 300" }));
     expect(fetchHNThreadMock).toHaveBeenCalledOnce();
   });
 
@@ -236,20 +219,11 @@ describe("Hacker News discussion UI", () => {
         comments: [comment({}), comment({ id: 103, position: 1, text: "Second point" })],
       }),
     );
-    render(<HackerNewsDiscussion article={article} />);
-    await userEvent.click(screen.getByRole("button", { name: "Read comments" }));
-    await screen.findByText("Top-level point");
-    await userEvent.click(screen.getByRole("button", { name: "Run discussion stream" }));
-    await waitFor(() =>
-      expect(streamDiscussionQAMock).toHaveBeenCalledWith(
-        9,
-        "question",
-        expect.objectContaining({ included_total: 2 }),
-        expect.any(Function),
-      ),
-    );
+    render(<HookHarness />);
+    await userEvent.click(screen.getByRole("button", { name: "Load 120" }));
+    await screen.findByText("2");
+    await userEvent.click(screen.getByRole("button", { name: "Load 300" }));
     expect(fetchHNThreadMock).toHaveBeenCalledOnce();
-    expect(screen.getByRole("button", { name: "Load more for analysis" })).toBeInTheDocument();
   });
 
   it("lets a superseding load replace an aborted one without surfacing its error", async () => {
@@ -263,17 +237,17 @@ describe("Hacker News discussion UI", () => {
           }),
       )
       .mockResolvedValueOnce(snapshot());
-    render(<HackerNewsDiscussion article={article} />);
-    await userEvent.click(screen.getByRole("button", { name: "Read comments" }));
-    await userEvent.click(screen.getByRole("button", { name: "Run discussion stream" }));
-    expect(await screen.findByText("Top-level point")).toBeInTheDocument();
+    render(<HookHarness />);
+    await userEvent.click(screen.getByRole("button", { name: "Load 120" }));
+    await userEvent.click(screen.getByRole("button", { name: "Load 300" }));
+    expect(await screen.findByText("3")).toBeInTheDocument();
     expect(screen.queryByText(/aborted/i)).toBeNull();
   });
 
   it("aborts an in-flight thread request when unmounted", async () => {
     fetchHNThreadMock.mockReturnValueOnce(new Promise(() => {}));
     const { unmount } = render(<HackerNewsDiscussion article={article} />);
-    await userEvent.click(screen.getByRole("button", { name: "Read comments" }));
+    await userEvent.click(screen.getByRole("button", { name: "Show comments" }));
     const signal = fetchHNThreadMock.mock.calls[0][2] as AbortSignal;
     expect(signal.aborted).toBe(false);
     unmount();

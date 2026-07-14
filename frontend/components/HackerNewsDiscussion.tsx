@@ -1,11 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import useSWR from "swr";
 
-import QAPanel from "@/components/QAPanel";
 import { CommentIcon, ExternalIcon, RefreshIcon } from "@/components/icons";
-import { streamDiscussionQA, type ArticleDetail } from "@/lib/api";
+import type { ArticleDetail } from "@/lib/api";
 import {
   discussionRefFor,
   fetchHNItem,
@@ -25,17 +24,14 @@ function useStory(ref: DiscussionRef | null) {
   );
 }
 
+export type DiscussionDraft = { key: string; text: string };
+
 export function HackerNewsDiscussionLink({ article }: { article: ArticleDetail }) {
-  const ref = discussionRefFor(article);
-  const { data: story } = useStory(ref);
-  if (!ref) return null;
-  const details = story
-    ? `${story.score ?? 0} points, ${story.descendants ?? 0} comments`
-    : "Discussion";
+  if (!discussionRefFor(article)) return null;
   return (
-    <a className="btn" href={ref.canonicalUrl} target="_blank" rel="noreferrer">
+    <a className="btn min-h-11 justify-center" href="#hacker-news-discussion">
       <CommentIcon size={14} />
-      {details}
+      Jump to discussion
     </a>
   );
 }
@@ -97,7 +93,7 @@ function CommentBranch({
   );
 }
 
-export default function HackerNewsDiscussion({ article }: { article: ArticleDetail }) {
+export function useHackerNewsDiscussion(article: ArticleDetail) {
   const ref = discussionRefFor(article);
   const { data: story, error: storyError, isLoading: storyLoading, mutate } = useStory(ref);
   const [open, setOpen] = useState(false);
@@ -105,7 +101,6 @@ export default function HackerNewsDiscussion({ article }: { article: ArticleDeta
   const [fetchedLimit, setFetchedLimit] = useState(0);
   const [threadError, setThreadError] = useState<string | null>(null);
   const [threadLoading, setThreadLoading] = useState(false);
-  const [prefill, setPrefill] = useState<{ key: string; text: string } | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => () => abortRef.current?.abort(), []);
@@ -119,15 +114,9 @@ export default function HackerNewsDiscussion({ article }: { article: ArticleDeta
     return map;
   }, [snapshot]);
 
-  if (!ref) return null;
-
   async function loadThread(limit: number, force = false): Promise<DiscussionSnapshot> {
     if (!story) throw new Error("The Hacker News story is still loading");
     const target = Math.min(limit, 300);
-    // A snapshot smaller than what was asked for means the walk exhausted the
-    // thread (unfetchable items aside), so a larger limit cannot add comments.
-    // Q&A reuses such snapshots instead of re-walking the thread on every
-    // question; the explicit "Load more" button forces a retry past this.
     if (
       !force &&
       snapshot &&
@@ -148,7 +137,6 @@ export default function HackerNewsDiscussion({ article }: { article: ArticleDeta
       }
       return next;
     } catch (error) {
-      // A superseded load must not clobber its replacement's state.
       if (abortRef.current === controller && !controller.signal.aborted) {
         setThreadError(
           error instanceof Error ? error.message : "Could not load the discussion",
@@ -156,25 +144,76 @@ export default function HackerNewsDiscussion({ article }: { article: ArticleDeta
       }
       throw error;
     } finally {
-      if (abortRef.current === controller) {
-        setThreadLoading(false);
-      }
+      if (abortRef.current === controller) setThreadLoading(false);
     }
   }
 
   async function toggleThread() {
     const nextOpen = !open;
     setOpen(nextOpen);
-    if (nextOpen && !snapshot && story) {
-      await loadThread(120).catch(() => {});
-    }
+    if (nextOpen && !snapshot && story) await loadThread(120).catch(() => {});
   }
+
+  return {
+    ref,
+    story,
+    storyError,
+    storyLoading,
+    mutate,
+    open,
+    snapshot,
+    threadError,
+    threadLoading,
+    childrenByParent,
+    loadThread,
+    toggleThread,
+  };
+}
+
+export type HackerNewsDiscussionState = ReturnType<typeof useHackerNewsDiscussion>;
+
+export function HackerNewsDiscussionController({
+  article,
+  children,
+}: {
+  article: ArticleDetail;
+  children: (discussion: HackerNewsDiscussionState) => ReactNode;
+}) {
+  return children(useHackerNewsDiscussion(article));
+}
+
+export function HackerNewsDiscussionView({
+  discussion,
+  onDraft,
+}: {
+  discussion: HackerNewsDiscussionState;
+  onDraft: (draft: DiscussionDraft) => void;
+}) {
+  const {
+    ref,
+    story,
+    storyError,
+    storyLoading,
+    mutate,
+    open,
+    snapshot,
+    threadError,
+    threadLoading,
+    childrenByParent,
+    loadThread,
+    toggleThread,
+  } = discussion;
+  if (!ref) return null;
 
   const topLevel = story ? childrenByParent.get(story.id) ?? [] : [];
   const count = story?.descendants ?? 0;
 
   return (
-    <section className="mt-10 border-t pt-7" style={{ borderColor: "var(--line-soft)" }}>
+    <section
+      id="hacker-news-discussion"
+      className="mt-10 scroll-mt-6 border-t pt-7"
+      style={{ borderColor: "var(--line-soft)" }}
+    >
       <div className="flex flex-wrap items-center gap-3">
         <div>
           <h2 className="font-serif-nr text-[22px] font-medium">Hacker News discussion</h2>
@@ -186,21 +225,20 @@ export default function HackerNewsDiscussion({ article }: { article: ArticleDeta
                 : "Live discussion unavailable"}
           </p>
         </div>
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex flex-wrap items-center gap-2">
           <button
-            className="icon-btn"
-            style={{ width: 34, height: 34 }}
+            className="icon-btn min-h-11 min-w-11"
             title="Refresh points and comment count"
             onClick={() => mutate()}
           >
             <RefreshIcon size={14} />
           </button>
-          <a className="btn" href={ref.canonicalUrl} target="_blank" rel="noreferrer">
+          <a className="btn min-h-11" href={ref.canonicalUrl} target="_blank" rel="noreferrer">
             <ExternalIcon size={13} />
             Open on HN
           </a>
-          <button className="btn btn-accent" onClick={toggleThread} disabled={!story}>
-            {open ? "Hide comments" : "Read comments"}
+          <button className="btn btn-accent min-h-11" onClick={toggleThread} disabled={!story}>
+            {open ? "Hide comments" : "Show comments"}
           </button>
         </div>
       </div>
@@ -239,7 +277,7 @@ export default function HackerNewsDiscussion({ article }: { article: ArticleDeta
                     childrenByParent={childrenByParent}
                     depth={0}
                     onDraft={(target) =>
-                      setPrefill({
+                      onDraft({
                         key: `${target.id}-${Date.now()}`,
                         text: `Draft a thoughtful reply to comment ${target.id}. My point is: `,
                       })
@@ -265,28 +303,17 @@ export default function HackerNewsDiscussion({ article }: { article: ArticleDeta
           )}
         </div>
       )}
-
-      {story && (
-        <QAPanel
-          key={prefill?.key ?? "discussion-qa"}
-          qaKey={`/articles/${article.id}/discussion/qa`}
-          stream={async (question, onEvent) => {
-            const completeSnapshot = await loadThread(300);
-            return streamDiscussionQA(article.id, question, completeSnapshot, onEvent);
-          }}
-          heading="Ask the discussion"
-          placeholder="Ask what commenters think, or describe the comment you want to draft"
-          suggestions={[
-            "Summarize the discussion",
-            "Where do commenters disagree?",
-            "What did commenters add beyond the article?",
-            "Trace how the conversation evolved",
-            "Find corrections and unresolved questions",
-            "Draft a concise HN comment",
-          ]}
-          initialInput={prefill?.text ?? ""}
-        />
-      )}
     </section>
   );
+}
+
+export default function HackerNewsDiscussion({
+  article,
+  onDraft = () => {},
+}: {
+  article: ArticleDetail;
+  onDraft?: (draft: DiscussionDraft) => void;
+}) {
+  const discussion = useHackerNewsDiscussion(article);
+  return <HackerNewsDiscussionView discussion={discussion} onDraft={onDraft} />;
 }
