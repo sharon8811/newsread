@@ -44,9 +44,7 @@ def _require_crypto() -> None:
         )
 
 
-def _out(
-    row: UserAISettings | None, user: User, generations_this_month: int = 0
-) -> AISettingsOut:
+def _out(row: UserAISettings | None, user: User, generations_this_month: int = 0) -> AISettingsOut:
     has_image_block = row is not None and bool(row.image_provider and row.image_model)
     prompt_fields = dict(
         image_generation_available=has_image_block or image_gen.is_configured(),
@@ -123,9 +121,7 @@ async def put_ai_settings(
     image_api_key_enc = image_key_hint = image_extra_params = None
     if body.image is not None:
         image_extra_params = body.image.extra_params or None
-        same_stored_image_provider = (
-            row is not None and row.image_provider == body.image.provider
-        )
+        same_stored_image_provider = row is not None and row.image_provider == body.image.provider
         image_base_url = body.image.base_url or (
             row.image_base_url if same_stored_image_provider else None
         )
@@ -225,7 +221,7 @@ async def test_ai_settings(
             raise HTTPException(
                 status_code=503,
                 detail="Your stored API key can't be decrypted — re-enter it.",
-            )
+            ) from None
 
     client = AsyncOpenAI(
         api_key=api_key,

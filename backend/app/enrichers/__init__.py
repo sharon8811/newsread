@@ -1,7 +1,7 @@
 """Registry of per-site link enrichers. Adding a site = one module + one entry."""
 
 from .arxiv import ArxivEnricher
-from .base import EnrichError, Enricher
+from .base import Enricher, EnrichError
 from .github import GitHubEnricher
 from .huggingface import HFDatasetEnricher, HFModelEnricher
 from .npm import NpmEnricher

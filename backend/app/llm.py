@@ -487,9 +487,7 @@ async def synthesize_related(
     """Cross-source synthesis over stored summaries — the article page's lazy
     'synthesize coverage' action. Inputs are (title, summary) pairs; [1] is
     the article the reader is on."""
-    blocks = [
-        f"[{n}] {title}\n{summary}" for n, (title, summary) in enumerate(sources, start=1)
-    ]
+    blocks = [f"[{n}] {title}\n{summary}" for n, (title, summary) in enumerate(sources, start=1)]
     raw = await _complete(
         [
             {"role": "system", "content": SYNTHESIS_SYSTEM},

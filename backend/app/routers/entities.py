@@ -29,8 +29,7 @@ async def get_entity(
         _related_scope(user.id)
         .join(
             ArticleEntity,
-            (ArticleEntity.article_id == Article.id)
-            & (ArticleEntity.entity_id == entity_id),
+            (ArticleEntity.article_id == Article.id) & (ArticleEntity.entity_id == entity_id),
         )
         .order_by(Article.published_at.desc().nulls_last(), Article.id.desc())
         .limit(ENTITY_PAGE_LIMIT)
@@ -46,7 +45,6 @@ async def get_entity(
         name=str(badge.get("label") or data.get("name") or entity.canonical_key),
         badge=badge,
         articles=[
-            to_list_item(article, title or url, state)
-            for article, title, url, state in rows
+            to_list_item(article, title or url, state) for article, title, url, state in rows
         ],
     )

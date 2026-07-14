@@ -21,7 +21,13 @@ USER_SCOPES = "chat:write,channels:read,groups:read,im:read,mpim:read,users:read
 
 # Slack error codes that mean the stored token is dead and only reconnecting
 # from settings can fix it.
-_RECONNECT_ERRORS = {"invalid_auth", "token_revoked", "token_expired", "account_inactive", "not_authed"}
+_RECONNECT_ERRORS = {
+    "invalid_auth",
+    "token_revoked",
+    "token_expired",
+    "account_inactive",
+    "not_authed",
+}
 
 _SEND_ERRORS = {
     "not_in_channel": "You're not a member of that channel on Slack",
@@ -53,9 +59,7 @@ def authorize_url(state: str) -> str:
     return f"{AUTHORIZE_ENDPOINT}?{query}"
 
 
-async def _api(
-    client: httpx.AsyncClient, method: str, token: str | None = None, **params
-) -> dict:
+async def _api(client: httpx.AsyncClient, method: str, token: str | None = None, **params) -> dict:
     """Call a Slack Web API method; raises MessagingError on ok=false."""
     headers = {"Authorization": f"Bearer {token}"} if token else {}
     response = await client.post(f"{API_BASE}/{method}", data=params, headers=headers)
@@ -155,9 +159,7 @@ async def list_targets(token: str, account_id: str, query: str = "") -> list[Tar
             # A user token can only post where the user is a member.
             if not conv.get("is_member"):
                 continue
-            targets.append(
-                Target(conv["id"], f"#{conv.get('name', conv['id'])}", "channel")
-            )
+            targets.append(Target(conv["id"], f"#{conv.get('name', conv['id'])}", "channel"))
 
     if query:
         needle = query.lower()

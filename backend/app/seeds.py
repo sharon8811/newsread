@@ -31,9 +31,7 @@ async def seed_catalog(conn: AsyncConnection) -> None:
             "source": "awesome-rss-feeds",
             "is_active": entry.get("is_active", True),
         }
-        for field in (
-            "checked_at", "item_count", "latest_item_at", "final_url", "content_type"
-        ):
+        for field in ("checked_at", "item_count", "latest_item_at", "final_url", "content_type"):
             value.setdefault(field, None)
         value.setdefault("health_status", "unchecked")
         value.setdefault("preview_items", [])

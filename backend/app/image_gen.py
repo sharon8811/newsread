@@ -18,7 +18,7 @@ import base64
 import json
 import logging
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import httpx
 from openai import AsyncOpenAI
@@ -103,9 +103,7 @@ async def generations_this_month(session, user_id: int) -> int:
     claims rather than stored images: failed attempts spend money too, and the
     claim is written synchronously so the budget can't be raced past by
     generations that haven't finished yet."""
-    month_start = datetime.now(timezone.utc).replace(
-        day=1, hour=0, minute=0, second=0, microsecond=0
-    )
+    month_start = datetime.now(UTC).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     count = await session.scalar(
         select(func.count())
         .select_from(Article)
@@ -142,7 +140,7 @@ async def _fetch_image(url: str) -> tuple[bytes, str]:
     """Bytes + content type from a data: URL or a hosted image URL."""
     if url.startswith("data:"):
         header, _, b64 = url.partition(",")
-        content_type = header[len("data:"):].split(";")[0] or "image/png"
+        content_type = header[len("data:") :].split(";")[0] or "image/png"
         return base64.b64decode(b64), content_type
     async with httpx.AsyncClient(timeout=60) as client:
         response = await client.get(url)
@@ -188,7 +186,9 @@ async def generate(config: llm.LLMConfig, prompt: str) -> tuple[bytes, str, llm.
         api_key=config.api_key, base_url=config.base_url, timeout=_GENERATION_TIMEOUT
     ) as client:
         response = await client.images.generate(
-            model=config.model, prompt=prompt, n=1,
+            model=config.model,
+            prompt=prompt,
+            n=1,
             extra_body=config.extra_params or None,
         )
         datum = response.data[0]
@@ -214,21 +214,30 @@ async def generate_for_article(
         except Exception as exc:
             logger.warning("Image generation failed for article %s: %s", article_id, exc)
             await llm.record_usage(
-                session, user_id=user_id, feature="image", config=config,
+                session,
+                user_id=user_id,
+                feature="image",
+                config=config,
                 duration_ms=int((time.monotonic() - started) * 1000),
-                status="error", error=str(exc),
+                status="error",
+                error=str(exc),
             )
             return
         session.add(
-            GeneratedImage(article_id=article_id, content_type=content_type,
-                           data=data, model=config.model)
+            GeneratedImage(
+                article_id=article_id, content_type=content_type, data=data, model=config.model
+            )
         )
         article = await session.get(Article, article_id)
         if article is not None and article.image_url is None:
             article.image_url = public_image_url(article_id)
         await session.commit()
         await llm.record_usage(
-            session, user_id=user_id, feature="image", config=config, usage=usage,
+            session,
+            user_id=user_id,
+            feature="image",
+            config=config,
+            usage=usage,
             duration_ms=int((time.monotonic() - started) * 1000),
         )
         logger.info("Generated image for article %s via %s", article_id, config.model)

@@ -1,6 +1,5 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
-import pytest
 from sqlalchemy import select
 
 from app import embeddings
@@ -15,14 +14,26 @@ from app.models import (
 from app.routers import articles as articles_router
 from app.routers.articles import _compute_deltas, to_list_item
 
-
 # --- to_list_item helper ---
 
+
 def test_to_list_item_enriching_flag():
-    art = Article(id=1, feed_id=1, title="T", url="u", comments_url=None, author=None,
-                  published_at=None, excerpt="e", image_url=None,
-                  full_text_fetched_at=None, full_text="", summary="", summary_short="",
-                  summary_medium="")
+    art = Article(
+        id=1,
+        feed_id=1,
+        title="T",
+        url="u",
+        comments_url=None,
+        author=None,
+        published_at=None,
+        excerpt="e",
+        image_url=None,
+        full_text_fetched_at=None,
+        full_text="",
+        summary="",
+        summary_short="",
+        summary_medium="",
+    )
     item = to_list_item(art, "Feed", None)
     assert item.enriching is True
     assert item.is_read is False
@@ -30,10 +41,22 @@ def test_to_list_item_enriching_flag():
 
 
 def test_to_list_item_not_enriching_with_image():
-    art = Article(id=1, feed_id=1, title="T", url="u", comments_url=None, author=None,
-                  published_at=None, excerpt="e", image_url="https://x/i.png",
-                  full_text_fetched_at=datetime.now(timezone.utc), full_text="body",
-                  summary="", summary_short="", summary_medium="")
+    art = Article(
+        id=1,
+        feed_id=1,
+        title="T",
+        url="u",
+        comments_url=None,
+        author=None,
+        published_at=None,
+        excerpt="e",
+        image_url="https://x/i.png",
+        full_text_fetched_at=datetime.now(UTC),
+        full_text="body",
+        summary="",
+        summary_short="",
+        summary_medium="",
+    )
     state = UserArticleState(is_read=True, is_saved=True)
     item = to_list_item(art, "Feed", state)
     assert item.enriching is False
@@ -42,17 +65,23 @@ def test_to_list_item_not_enriching_with_image():
 
 # --- _compute_deltas ---
 
+
 def _entity(kind="github", data=None, created_days_ago=30):
     return Entity(
-        id=1, kind=kind, canonical_key="a/b", url="u", data=data or {},
-        created_at=datetime.now(timezone.utc) - timedelta(days=created_days_ago),
+        id=1,
+        kind=kind,
+        canonical_key="a/b",
+        url="u",
+        data=data or {},
+        created_at=datetime.now(UTC) - timedelta(days=created_days_ago),
     )
 
 
 def _snapshot(value, days_ago, metric="stargazers_count"):
     return EntitySnapshot(
-        entity_id=1, data={metric: value},
-        captured_at=datetime.now(timezone.utc) - timedelta(days=days_ago),
+        entity_id=1,
+        data={metric: value},
+        captured_at=datetime.now(UTC) - timedelta(days=days_ago),
     )
 
 
@@ -94,6 +123,7 @@ def test_compute_deltas_recent_entity_no_baseline():
 
 # --- list / get / state routes ---
 
+
 async def _setup(users, data, *, subscribe=True):
     user = await users.create()
     feed = await data.feed(title="Tech")
@@ -111,10 +141,8 @@ async def test_list_articles_empty(client, users, data):
 
 async def test_list_articles_orders_newest_first(client, users, data):
     user, feed = await _setup(users, data)
-    old = await data.article(feed, title="Old",
-                             published_at=datetime(2020, 1, 1, tzinfo=timezone.utc))
-    new = await data.article(feed, title="New",
-                             published_at=datetime(2024, 1, 1, tzinfo=timezone.utc))
+    await data.article(feed, title="Old", published_at=datetime(2020, 1, 1, tzinfo=UTC))
+    await data.article(feed, title="New", published_at=datetime(2024, 1, 1, tzinfo=UTC))
     resp = await client.get("/api/articles", headers=users.auth(user))
     titles = [a["title"] for a in resp.json()]
     assert titles == ["New", "Old"]
@@ -123,10 +151,9 @@ async def test_list_articles_orders_newest_first(client, users, data):
 async def test_list_articles_filter_unread(client, users, data):
     user, feed = await _setup(users, data)
     a1 = await data.article(feed, title="Read")
-    a2 = await data.article(feed, title="Unread")
+    await data.article(feed, title="Unread")
     await data.state(user, a1, is_read=True)
-    resp = await client.get("/api/articles", params={"filter": "unread"},
-                            headers=users.auth(user))
+    resp = await client.get("/api/articles", params={"filter": "unread"}, headers=users.auth(user))
     assert [a["title"] for a in resp.json()] == ["Unread"]
 
 
@@ -135,8 +162,7 @@ async def test_list_articles_filter_saved(client, users, data):
     a1 = await data.article(feed, title="Saved")
     await data.article(feed, title="Plain")
     await data.state(user, a1, is_saved=True)
-    resp = await client.get("/api/articles", params={"filter": "saved"},
-                            headers=users.auth(user))
+    resp = await client.get("/api/articles", params={"filter": "saved"}, headers=users.auth(user))
     assert [a["title"] for a in resp.json()] == ["Saved"]
 
 
@@ -146,23 +172,20 @@ async def test_list_articles_by_feed(client, users, data):
     await data.subscribe(user, other)
     await data.article(feed, title="InFeed")
     await data.article(other, title="InOther")
-    resp = await client.get("/api/articles", params={"feed_id": feed.id},
-                            headers=users.auth(user))
+    resp = await client.get("/api/articles", params={"feed_id": feed.id}, headers=users.auth(user))
     assert [a["title"] for a in resp.json()] == ["InFeed"]
 
 
 async def test_list_articles_sort_oldest_override(client, users, data, session):
     user, feed = await _setup(users, data)
-    sub = await session.scalar(select(articles_router.Subscription).where(
-        articles_router.Subscription.user_id == user.id))
+    sub = await session.scalar(
+        select(articles_router.Subscription).where(articles_router.Subscription.user_id == user.id)
+    )
     sub.sort_order = "oldest"
     await session.commit()
-    await data.article(feed, title="Old",
-                       published_at=datetime(2020, 1, 1, tzinfo=timezone.utc))
-    await data.article(feed, title="New",
-                       published_at=datetime(2024, 1, 1, tzinfo=timezone.utc))
-    resp = await client.get("/api/articles", params={"feed_id": feed.id},
-                            headers=users.auth(user))
+    await data.article(feed, title="Old", published_at=datetime(2020, 1, 1, tzinfo=UTC))
+    await data.article(feed, title="New", published_at=datetime(2024, 1, 1, tzinfo=UTC))
+    resp = await client.get("/api/articles", params={"feed_id": feed.id}, headers=users.auth(user))
     assert [a["title"] for a in resp.json()] == ["Old", "New"]
     # The aggregate inbox ignores per-feed sort and stays newest-first.
     resp = await client.get("/api/articles", headers=users.auth(user))
@@ -171,11 +194,12 @@ async def test_list_articles_sort_oldest_override(client, users, data, session):
 
 async def test_list_articles_retention_hides_expired(client, users, data, session):
     user, feed = await _setup(users, data)
-    sub = await session.scalar(select(articles_router.Subscription).where(
-        articles_router.Subscription.user_id == user.id))
+    sub = await session.scalar(
+        select(articles_router.Subscription).where(articles_router.Subscription.user_id == user.id)
+    )
     sub.retention_days = 7
     await session.commit()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     await data.article(feed, title="Expired", published_at=now - timedelta(days=30))
     await data.article(feed, title="Fresh", published_at=now - timedelta(days=1))
     saved = await data.article(feed, title="SavedOld", published_at=now - timedelta(days=30))
@@ -190,8 +214,9 @@ async def test_list_articles_retention_uses_fetched_at_when_unpublished(
     client, users, data, session
 ):
     user, feed = await _setup(users, data)
-    sub = await session.scalar(select(articles_router.Subscription).where(
-        articles_router.Subscription.user_id == user.id))
+    sub = await session.scalar(
+        select(articles_router.Subscription).where(articles_router.Subscription.user_id == user.id)
+    )
     sub.retention_days = 7
     await session.commit()
     # No published_at: falls back to fetched_at (just inserted → visible).
@@ -212,12 +237,10 @@ async def test_list_articles_muted_feed_excluded_from_inbox(client, users, data)
     resp = await client.get("/api/articles", headers=users.auth(user))
     assert [a["title"] for a in resp.json()] == ["Loud"]
     # The muted feed's own page still shows them.
-    resp = await client.get("/api/articles", params={"feed_id": muted.id},
-                            headers=users.auth(user))
+    resp = await client.get("/api/articles", params={"feed_id": muted.id}, headers=users.auth(user))
     assert [a["title"] for a in resp.json()] == ["Quiet"]
     # Saved list still includes saved articles from muted feeds.
-    resp = await client.get("/api/articles", params={"filter": "saved"},
-                            headers=users.auth(user))
+    resp = await client.get("/api/articles", params={"filter": "saved"}, headers=users.auth(user))
     assert [a["title"] for a in resp.json()] == ["Quiet"]
 
 
@@ -226,26 +249,29 @@ async def test_list_articles_keyword_fallback(client, users, data, monkeypatch):
     user, feed = await _setup(users, data)
     await data.article(feed, title="Python release", excerpt="news")
     await data.article(feed, title="Rust update", excerpt="news")
-    resp = await client.get("/api/articles", params={"q": "python"},
-                            headers=users.auth(user))
+    resp = await client.get("/api/articles", params={"q": "python"}, headers=users.auth(user))
     assert [a["title"] for a in resp.json()] == ["Python release"]
 
 
 async def test_list_articles_pagination(client, users, data):
     user, feed = await _setup(users, data)
     for i in range(5):
-        await data.article(feed, title=f"A{i}",
-                           published_at=datetime(2024, 1, i + 1, tzinfo=timezone.utc))
-    resp = await client.get("/api/articles", params={"limit": 2, "offset": 0},
-                            headers=users.auth(user))
+        await data.article(feed, title=f"A{i}", published_at=datetime(2024, 1, i + 1, tzinfo=UTC))
+    resp = await client.get(
+        "/api/articles", params={"limit": 2, "offset": 0}, headers=users.auth(user)
+    )
     assert len(resp.json()) == 2
 
 
 async def test_list_articles_includes_entities(client, users, data, session):
     user, feed = await _setup(users, data)
     art = await data.article(feed)
-    entity = Entity(kind="github", canonical_key="a/b", url="https://github.com/a/b",
-                    data={"full_name": "a/b", "stargazers_count": 10})
+    entity = Entity(
+        kind="github",
+        canonical_key="a/b",
+        url="https://github.com/a/b",
+        data={"full_name": "a/b", "stargazers_count": 10},
+    )
     session.add(entity)
     await session.flush()
     session.add(ArticleEntity(article_id=art.id, entity_id=entity.id, source="primary", position=0))
@@ -258,10 +284,12 @@ async def test_list_articles_includes_entities(client, users, data, session):
 
 # --- hybrid search (embeddings configured) ---
 
+
 async def test_list_articles_hybrid_search(client, users, data, session, monkeypatch):
     user, feed = await _setup(users, data)
-    a1 = await data.article(feed, title="Neural nets", excerpt="deep learning",
-                            summary_medium="about neural networks")
+    a1 = await data.article(
+        feed, title="Neural nets", excerpt="deep learning", summary_medium="about neural networks"
+    )
     a2 = await data.article(feed, title="Cooking", excerpt="recipes")
 
     monkeypatch.setattr(embeddings, "is_configured", lambda: True)
@@ -276,8 +304,7 @@ async def test_list_articles_hybrid_search(client, users, data, session, monkeyp
     session.add(ArticleEmbedding(article_id=a2.id, model="emb", embedding=[0.0, 1.0, 0.0]))
     await session.commit()
 
-    resp = await client.get("/api/articles", params={"q": "neural"},
-                            headers=users.auth(user))
+    resp = await client.get("/api/articles", params={"q": "neural"}, headers=users.auth(user))
     titles = [a["title"] for a in resp.json()]
     assert titles[0] == "Neural nets"
 
@@ -310,9 +337,7 @@ async def test_list_articles_hybrid_search_scoped_by_feed_and_filter(
     assert titles == ["Neural nets unread"]
 
 
-async def test_list_articles_hybrid_search_saved_filter(
-    client, users, data, session, monkeypatch
-):
+async def test_list_articles_hybrid_search_saved_filter(client, users, data, session, monkeypatch):
     user, feed = await _setup(users, data)
     a1 = await data.article(feed, title="Saved neural")
     await data.article(feed, title="Unsaved neural")
@@ -328,8 +353,9 @@ async def test_list_articles_hybrid_search_saved_filter(
     session.add(ArticleEmbedding(article_id=a1.id, model="emb", embedding=[1.0, 0.0]))
     await session.commit()
 
-    resp = await client.get("/api/articles", params={"q": "neural", "filter": "saved"},
-                            headers=users.auth(user))
+    resp = await client.get(
+        "/api/articles", params={"q": "neural", "filter": "saved"}, headers=users.auth(user)
+    )
     assert [a["title"] for a in resp.json()] == ["Saved neural"]
 
 
@@ -345,8 +371,7 @@ async def test_list_articles_hybrid_search_embed_failure_falls_back(
         raise RuntimeError("embed down")
 
     monkeypatch.setattr(embeddings, "embed_texts", boom)
-    resp = await client.get("/api/articles", params={"q": "python"},
-                            headers=users.auth(user))
+    resp = await client.get("/api/articles", params={"q": "python"}, headers=users.auth(user))
     assert resp.status_code == 200
     assert [a["title"] for a in resp.json()] == ["Python news"]
 
@@ -362,12 +387,14 @@ async def test_list_articles_hybrid_search_empty_page(client, users, data, monke
 
     monkeypatch.setattr(embeddings, "embed_texts", fake_embed)
     # No embeddings rows + a query term absent from tsv -> empty ranked set
-    resp = await client.get("/api/articles", params={"q": "zzznomatch", "offset": 100},
-                            headers=users.auth(user))
+    resp = await client.get(
+        "/api/articles", params={"q": "zzznomatch", "offset": 100}, headers=users.auth(user)
+    )
     assert resp.json() == []
 
 
 # --- get single article ---
+
 
 async def test_get_article(client, users, data):
     user, feed = await _setup(users, data)
@@ -380,15 +407,24 @@ async def test_get_article(client, users, data):
 async def test_get_article_with_entity_snapshots(client, users, data, session):
     user, feed = await _setup(users, data)
     art = await data.article(feed)
-    entity = Entity(kind="github", canonical_key="a/b", url="https://github.com/a/b",
-                    data={"full_name": "a/b", "stargazers_count": 200},
-                    fetched_at=datetime.now(timezone.utc),
-                    created_at=datetime.now(timezone.utc) - timedelta(days=30))
+    entity = Entity(
+        kind="github",
+        canonical_key="a/b",
+        url="https://github.com/a/b",
+        data={"full_name": "a/b", "stargazers_count": 200},
+        fetched_at=datetime.now(UTC),
+        created_at=datetime.now(UTC) - timedelta(days=30),
+    )
     session.add(entity)
     await session.flush()
     session.add(ArticleEntity(article_id=art.id, entity_id=entity.id, source="primary", position=0))
-    session.add(EntitySnapshot(entity_id=entity.id, data={"stargazers_count": 100},
-                               captured_at=datetime.now(timezone.utc) - timedelta(days=10)))
+    session.add(
+        EntitySnapshot(
+            entity_id=entity.id,
+            data={"stargazers_count": 100},
+            captured_at=datetime.now(UTC) - timedelta(days=10),
+        )
+    )
     await session.commit()
     resp = await client.get(f"/api/articles/{art.id}", headers=users.auth(user))
     ent = resp.json()["entities"][0]
@@ -425,11 +461,13 @@ async def test_get_article_access_via_share(client, users, data, session):
 
 # --- set state ---
 
+
 async def test_set_state_mark_read(client, users, data, session):
     user, feed = await _setup(users, data)
     art = await data.article(feed)
-    resp = await client.post(f"/api/articles/{art.id}/state", json={"is_read": True},
-                             headers=users.auth(user))
+    resp = await client.post(
+        f"/api/articles/{art.id}/state", json={"is_read": True}, headers=users.auth(user)
+    )
     assert resp.status_code == 200
     assert resp.json()["is_read"] is True
 
@@ -438,8 +476,9 @@ async def test_set_state_upsert_existing(client, users, data):
     user, feed = await _setup(users, data)
     art = await data.article(feed)
     await data.state(user, art, is_read=True)
-    resp = await client.post(f"/api/articles/{art.id}/state", json={"is_saved": True},
-                             headers=users.auth(user))
+    resp = await client.post(
+        f"/api/articles/{art.id}/state", json={"is_saved": True}, headers=users.auth(user)
+    )
     assert resp.json()["is_saved"] is True
     assert resp.json()["is_read"] is True  # preserved
 
@@ -447,29 +486,30 @@ async def test_set_state_upsert_existing(client, users, data):
 async def test_set_state_nothing_to_update(client, users, data):
     user, feed = await _setup(users, data)
     art = await data.article(feed)
-    resp = await client.post(f"/api/articles/{art.id}/state", json={},
-                             headers=users.auth(user))
+    resp = await client.post(f"/api/articles/{art.id}/state", json={}, headers=users.auth(user))
     assert resp.status_code == 422
 
 
 async def test_set_state_not_found(client, users, data):
     user, feed = await _setup(users, data)
-    resp = await client.post("/api/articles/99999/state", json={"is_read": True},
-                             headers=users.auth(user))
+    resp = await client.post(
+        "/api/articles/99999/state", json={"is_read": True}, headers=users.auth(user)
+    )
     assert resp.status_code == 404
 
 
 # --- mark all read ---
 
+
 async def test_mark_all_read(client, users, data, session):
     user, feed = await _setup(users, data)
-    a1 = await data.article(feed)
-    a2 = await data.article(feed)
-    resp = await client.post("/api/articles/mark-all-read", json={},
-                             headers=users.auth(user))
+    await data.article(feed)
+    await data.article(feed)
+    resp = await client.post("/api/articles/mark-all-read", json={}, headers=users.auth(user))
     assert resp.status_code == 204
-    states = (await session.scalars(
-        select(UserArticleState).where(UserArticleState.user_id == user.id))).all()
+    states = (
+        await session.scalars(select(UserArticleState).where(UserArticleState.user_id == user.id))
+    ).all()
     assert all(s.is_read for s in states)
     assert len(states) == 2
 
@@ -479,23 +519,25 @@ async def test_mark_all_read_by_feed(client, users, data, session):
     other = await data.feed(title="Other")
     await data.subscribe(user, other)
     a1 = await data.article(feed)
-    a2 = await data.article(other)
-    await client.post("/api/articles/mark-all-read", json={"feed_id": feed.id},
-                      headers=users.auth(user))
-    states = (await session.scalars(
-        select(UserArticleState).where(UserArticleState.user_id == user.id))).all()
+    await data.article(other)
+    await client.post(
+        "/api/articles/mark-all-read", json={"feed_id": feed.id}, headers=users.auth(user)
+    )
+    states = (
+        await session.scalars(select(UserArticleState).where(UserArticleState.user_id == user.id))
+    ).all()
     assert len(states) == 1
     assert states[0].article_id == a1.id
 
 
 async def test_mark_all_read_nothing(client, users, data):
     user, feed = await _setup(users, data)
-    resp = await client.post("/api/articles/mark-all-read", json={},
-                             headers=users.auth(user))
+    resp = await client.post("/api/articles/mark-all-read", json={}, headers=users.auth(user))
     assert resp.status_code == 204
 
 
 # --- cursor (keyset) pagination ---
+
 
 async def _walk_pages(client, users, user, limit, extra_params=None):
     """Follow X-Next-Cursor until it disappears; returns titles per page."""
@@ -517,8 +559,7 @@ async def _walk_pages(client, users, user, limit, extra_params=None):
 async def test_cursor_pagination_walks_all_pages(client, users, data):
     user, feed = await _setup(users, data)
     for i in range(5):
-        await data.article(feed, title=f"A{i}",
-                           published_at=datetime(2024, 1, i + 1, tzinfo=timezone.utc))
+        await data.article(feed, title=f"A{i}", published_at=datetime(2024, 1, i + 1, tzinfo=UTC))
     pages = await _walk_pages(client, users, user, limit=2)
     assert pages == [["A4", "A3"], ["A2", "A1"], ["A0"]]
 
@@ -526,8 +567,7 @@ async def test_cursor_pagination_walks_all_pages(client, users, data):
 async def test_cursor_header_absent_when_page_exactly_fits(client, users, data):
     user, feed = await _setup(users, data)
     for i in range(2):
-        await data.article(feed, title=f"A{i}",
-                           published_at=datetime(2024, 1, i + 1, tzinfo=timezone.utc))
+        await data.article(feed, title=f"A{i}", published_at=datetime(2024, 1, i + 1, tzinfo=UTC))
     resp = await client.get("/api/articles", params={"limit": 2}, headers=users.auth(user))
     assert len(resp.json()) == 2
     assert "x-next-cursor" not in resp.headers
@@ -537,24 +577,22 @@ async def test_cursor_stable_when_new_articles_arrive(client, users, data):
     """The property offsets lack: a prepended article must not shift the page."""
     user, feed = await _setup(users, data)
     for i in range(4):
-        await data.article(feed, title=f"A{i}",
-                           published_at=datetime(2024, 1, i + 1, tzinfo=timezone.utc))
+        await data.article(feed, title=f"A{i}", published_at=datetime(2024, 1, i + 1, tzinfo=UTC))
     first = await client.get("/api/articles", params={"limit": 2}, headers=users.auth(user))
     assert [a["title"] for a in first.json()] == ["A3", "A2"]
     cursor = first.headers["x-next-cursor"]
 
-    await data.article(feed, title="Breaking",
-                       published_at=datetime(2024, 6, 1, tzinfo=timezone.utc))
+    await data.article(feed, title="Breaking", published_at=datetime(2024, 6, 1, tzinfo=UTC))
 
-    second = await client.get("/api/articles", params={"limit": 2, "cursor": cursor},
-                              headers=users.auth(user))
+    second = await client.get(
+        "/api/articles", params={"limit": 2, "cursor": cursor}, headers=users.auth(user)
+    )
     assert [a["title"] for a in second.json()] == ["A1", "A0"]
 
 
 async def test_cursor_pagination_null_published_at_tail(client, users, data):
     user, feed = await _setup(users, data)
-    await data.article(feed, title="Dated",
-                       published_at=datetime(2024, 1, 1, tzinfo=timezone.utc))
+    await data.article(feed, title="Dated", published_at=datetime(2024, 1, 1, tzinfo=UTC))
     await data.article(feed, title="Undated1")  # published_at=None
     await data.article(feed, title="Undated2")
     pages = await _walk_pages(client, users, user, limit=1)
@@ -570,36 +608,36 @@ async def test_cursor_pagination_oldest_sort(client, users, data, session):
     sub.sort_order = "oldest"
     await session.commit()
     for i in range(3):
-        await data.article(feed, title=f"A{i}",
-                           published_at=datetime(2024, 1, i + 1, tzinfo=timezone.utc))
+        await data.article(feed, title=f"A{i}", published_at=datetime(2024, 1, i + 1, tzinfo=UTC))
     await data.article(feed, title="Undated")
-    pages = await _walk_pages(client, users, user, limit=2,
-                              extra_params={"feed_id": feed.id})
+    pages = await _walk_pages(client, users, user, limit=2, extra_params={"feed_id": feed.id})
     assert pages == [["A0", "A1"], ["A2", "Undated"]]
 
 
 async def test_cursor_rejected_with_search(client, users, data):
     user, feed = await _setup(users, data)
-    resp = await client.get("/api/articles", params={"q": "x", "cursor": "abc"},
-                            headers=users.auth(user))
+    resp = await client.get(
+        "/api/articles", params={"q": "x", "cursor": "abc"}, headers=users.auth(user)
+    )
     assert resp.status_code == 422
 
 
 async def test_cursor_invalid_garbage(client, users, data):
     user, feed = await _setup(users, data)
     for bad in ("not-base64!!!", "bm9zZXBhcmF0b3I=", "fA=="):  # garbage, no |, empty id
-        resp = await client.get("/api/articles", params={"cursor": bad},
-                                headers=users.auth(user))
+        resp = await client.get("/api/articles", params={"cursor": bad}, headers=users.auth(user))
         assert resp.status_code == 422, bad
 
 
 async def test_search_pages_have_no_cursor_header(client, users, data):
     user, feed = await _setup(users, data)
     for i in range(3):
-        await data.article(feed, title=f"apple {i}",
-                           published_at=datetime(2024, 1, i + 1, tzinfo=timezone.utc))
-    resp = await client.get("/api/articles", params={"q": "apple", "limit": 2},
-                            headers=users.auth(user))
+        await data.article(
+            feed, title=f"apple {i}", published_at=datetime(2024, 1, i + 1, tzinfo=UTC)
+        )
+    resp = await client.get(
+        "/api/articles", params={"q": "apple", "limit": 2}, headers=users.auth(user)
+    )
     assert resp.status_code == 200
     assert len(resp.json()) == 2
     assert "x-next-cursor" not in resp.headers
@@ -612,12 +650,10 @@ async def test_cursor_pagination_oldest_sort_null_tail(client, users, data, sess
     sub = await session.scalar(select(Subscription).where(Subscription.user_id == user.id))
     sub.sort_order = "oldest"
     await session.commit()
-    await data.article(feed, title="Dated",
-                       published_at=datetime(2024, 1, 1, tzinfo=timezone.utc))
+    await data.article(feed, title="Dated", published_at=datetime(2024, 1, 1, tzinfo=UTC))
     await data.article(feed, title="Undated1")
     await data.article(feed, title="Undated2")
-    pages = await _walk_pages(client, users, user, limit=1,
-                              extra_params={"feed_id": feed.id})
+    pages = await _walk_pages(client, users, user, limit=1, extra_params={"feed_id": feed.id})
     assert pages == [["Dated"], ["Undated1"], ["Undated2"]]
 
 
@@ -628,8 +664,9 @@ from app.models import GeneratedImage
 
 
 def _image_config(user_owned=False):
-    return llm.LLMConfig(provider="system", api_key="sk-img", model="img-model",
-                         base_url=None, user_owned=user_owned)
+    return llm.LLMConfig(
+        provider="system", api_key="sk-img", model="img-model", base_url=None, user_owned=user_owned
+    )
 
 
 def _capture_generation(monkeypatch, config=None):
@@ -682,7 +719,9 @@ async def test_get_article_uses_custom_prompt(client, users, data, session, monk
     assert calls[0]["prompt"] == f"Draw {art.title}, please"
 
 
-async def test_get_article_no_trigger_with_existing_image(client, users, data, session, monkeypatch):
+async def test_get_article_no_trigger_with_existing_image(
+    client, users, data, session, monkeypatch
+):
     user, feed = await _setup(users, data)
     art = await data.article(feed)
     art.image_url = "https://site/og.png"
@@ -712,7 +751,7 @@ async def test_get_article_stale_attempt_not_pending(client, users, data, sessio
     user, feed = await _setup(users, data)
     art = await data.article(feed)
     art.image_url = None
-    art.image_gen_attempted_at = datetime.now(timezone.utc) - timedelta(minutes=30)
+    art.image_gen_attempted_at = datetime.now(UTC) - timedelta(minutes=30)
     await session.commit()
     calls = _capture_generation(monkeypatch, _image_config())
 
@@ -721,7 +760,9 @@ async def test_get_article_stale_attempt_not_pending(client, users, data, sessio
     assert calls == []  # attempt-once policy: no retry
 
 
-async def test_get_article_broken_key_does_not_block_reading(client, users, data, session, monkeypatch):
+async def test_get_article_broken_key_does_not_block_reading(
+    client, users, data, session, monkeypatch
+):
     from app import crypto
 
     user, feed = await _setup(users, data)
@@ -741,8 +782,11 @@ async def test_get_article_broken_key_does_not_block_reading(client, users, data
 async def test_generated_image_served_unauthenticated(client, users, data, session):
     user, feed = await _setup(users, data)
     art = await data.article(feed)
-    session.add(GeneratedImage(article_id=art.id, content_type="image/png",
-                               data=b"\x89PNG bytes", model="img-model"))
+    session.add(
+        GeneratedImage(
+            article_id=art.id, content_type="image/png", data=b"\x89PNG bytes", model="img-model"
+        )
+    )
     await session.commit()
 
     resp = await client.get(f"/api/articles/{art.id}/generated-image")  # no auth header
@@ -761,6 +805,7 @@ async def test_generated_image_404_when_missing(client, users, data):
 
 # --- list-triggered generation, per-feed switch, monthly budget ---
 
+
 async def test_list_triggers_generation_batch(client, users, data, session, monkeypatch):
     user, feed = await _setup(users, data)
     for _ in range(6):
@@ -777,9 +822,9 @@ async def test_list_triggers_generation_batch(client, users, data, session, monk
     assert pending_ids == {c["article_id"] for c in calls}
     assert len(body) == 6
     # Claims are attributed to the requesting user for the monthly budget.
-    attributed = (await session.scalars(
-        select(Article).where(Article.image_gen_user_id == user.id)
-    )).all()
+    attributed = (
+        await session.scalars(select(Article).where(Article.image_gen_user_id == user.id))
+    ).all()
     assert {a.id for a in attributed} == pending_ids
 
     # While the batch is in flight, another poll starts nothing new.
@@ -848,7 +893,7 @@ async def test_monthly_budget_counts_current_month_only(client, users, data, ses
     user, feed = await _setup(users, data)
     # A claim from a previous month must not count against this month.
     old = await data.article(feed, image_url="https://x/old.png")
-    old.image_gen_attempted_at = datetime.now(timezone.utc) - timedelta(days=40)
+    old.image_gen_attempted_at = datetime.now(UTC) - timedelta(days=40)
     old.image_gen_user_id = user.id
     fresh = await data.article(feed)
     user.image_gen_monthly_limit = 1
@@ -874,10 +919,13 @@ async def test_zero_budget_blocks_generation(client, users, data, session, monke
 
 # --- suppressions (not interested) ---
 
+
 async def _suppress(session, user, article):
     from app.models import ArticleSuppression, UserDislikeRule
 
-    rule = UserDislikeRule(user_id=user.id, kind="article", article_id=article.id, label=article.title)
+    rule = UserDislikeRule(
+        user_id=user.id, kind="article", article_id=article.id, label=article.title
+    )
     session.add(rule)
     await session.commit()
     session.add(ArticleSuppression(user_id=user.id, article_id=article.id, rule_id=rule.id))
@@ -930,15 +978,18 @@ async def test_mark_all_read_skips_suppressed(client, users, data, session):
 
     resp = await client.post("/api/articles/mark-all-read", json={}, headers=users.auth(user))
     assert resp.status_code == 204
-    read_ids = set(await session.scalars(
-        select(UserArticleState.article_id).where(
-            UserArticleState.user_id == user.id, UserArticleState.is_read.is_(True)
+    read_ids = set(
+        await session.scalars(
+            select(UserArticleState.article_id).where(
+                UserArticleState.user_id == user.id, UserArticleState.is_read.is_(True)
+            )
         )
-    ))
+    )
     assert read_ids == {visible.id}
 
 
 # --- GET /articles/{id}/related ---
+
 
 async def _related_embed(session, article, vector, *, model="test-model"):
     session.add(ArticleEmbedding(article_id=article.id, model=model, embedding=vector))
@@ -968,9 +1019,9 @@ async def test_related_vector_tiers_ordering_and_ceiling(client, users, data, se
     unrelated = await data.article(feed, title="Unrelated")
     bare = await data.article(feed, title="No embedding")
     await _related_embed(session, source, [1.0, 0.0, 0.0])
-    await _related_embed(session, dupe, [0.999, 0.04, 0.0])   # distance ~0.001
+    await _related_embed(session, dupe, [0.999, 0.04, 0.0])  # distance ~0.001
     await _related_embed(session, topical, [0.5, 0.866, 0.0])  # distance ~0.5
-    await _related_embed(session, unrelated, [0.0, 1.0, 0.0]) # distance 1.0 > ceiling
+    await _related_embed(session, unrelated, [0.0, 1.0, 0.0])  # distance 1.0 > ceiling
     _configure_related(monkeypatch)
 
     resp = await client.get(f"/api/articles/{source.id}/related", headers=users.auth(user))
@@ -1005,7 +1056,7 @@ async def test_related_scope_exclusions(client, users, data, session, monkeypatc
         await _related_embed(session, candidate, close)
     await _related_embed(session, stale_model, close, model="legacy")
 
-    old.fetched_at = datetime.now(timezone.utc) - timedelta(days=120)
+    old.fetched_at = datetime.now(UTC) - timedelta(days=120)
     await session.commit()
     await _suppress(session, user, suppressed)
     _configure_related(monkeypatch)
@@ -1062,8 +1113,8 @@ async def test_related_entity_leg_without_vector(client, users, data, session, m
     entity = await _related_entity(session)
     for art in (source, linked_new, linked_old):
         await _link_entity(session, art, entity)
-    linked_new.published_at = datetime.now(timezone.utc)
-    linked_old.published_at = datetime.now(timezone.utc) - timedelta(days=3)
+    linked_new.published_at = datetime.now(UTC)
+    linked_old.published_at = datetime.now(UTC) - timedelta(days=3)
     await session.commit()
 
     resp = await client.get(f"/api/articles/{source.id}/related", headers=users.auth(user))
@@ -1085,16 +1136,16 @@ async def test_related_hybrid_entity_leads_vector_fills(client, users, data, ses
     linked_close = await data.article(feed, title="Linked and close")
     topical = await data.article(feed, title="Vector only")
     await _related_embed(session, source, [1.0, 0.0, 0.0])
-    await _related_embed(session, linked_far, [0.0, 1.0, 0.0])   # distance 1.0
+    await _related_embed(session, linked_far, [0.0, 1.0, 0.0])  # distance 1.0
     await _related_embed(session, linked_close, [0.999, 0.04, 0.0])
-    await _related_embed(session, topical, [0.5, 0.866, 0.0])    # distance ~0.5
+    await _related_embed(session, topical, [0.5, 0.866, 0.0])  # distance ~0.5
     _configure_related(monkeypatch)
 
     entity = await _related_entity(session)
     for art in (source, linked_far, linked_close):
         await _link_entity(session, art, entity)
-    linked_close.published_at = datetime.now(timezone.utc)
-    linked_far.published_at = datetime.now(timezone.utc) - timedelta(days=1)
+    linked_close.published_at = datetime.now(UTC)
+    linked_far.published_at = datetime.now(UTC) - timedelta(days=1)
     await session.commit()
 
     resp = await client.get(f"/api/articles/{source.id}/related", headers=users.auth(user))
@@ -1123,7 +1174,9 @@ async def test_related_entity_leg_ignores_ner_kinds(client, users, data, session
     assert resp.json() == []
 
 
-async def test_related_ner_boost_reorders_but_never_admits(client, users, data, session, monkeypatch):
+async def test_related_ner_boost_reorders_but_never_admits(
+    client, users, data, session, monkeypatch
+):
     """A candidate sharing a name entity outranks a slightly-closer generic
     neighbor, but no shared-name count can pull a candidate past the
     distance ceiling."""
@@ -1135,9 +1188,9 @@ async def test_related_ner_boost_reorders_but_never_admits(client, users, data, 
     shares_org = await data.article(feed, title="Shares the org")
     far = await data.article(feed, title="Far but shares names")
     await _related_embed(session, source, [1.0, 0.0, 0.0])
-    await _related_embed(session, generic, [0.5, 0.866, 0.0])       # distance 0.50
-    await _related_embed(session, shares_org, [0.45, 0.893, 0.0])   # distance 0.55
-    await _related_embed(session, far, [0.25, 0.968, 0.0])          # distance 0.75 > ceiling
+    await _related_embed(session, generic, [0.5, 0.866, 0.0])  # distance 0.50
+    await _related_embed(session, shares_org, [0.45, 0.893, 0.0])  # distance 0.55
+    await _related_embed(session, far, [0.25, 0.968, 0.0])  # distance 0.75 > ceiling
     _configure_related(monkeypatch)
 
     org = Entity(kind="org", canonical_key="anthropic", url="", data={"name": "Anthropic"})
@@ -1156,7 +1209,9 @@ async def test_related_ner_boost_reorders_but_never_admits(client, users, data, 
     assert [item["tier"] for item in body] == ["related", "related"]
 
 
-async def test_related_drops_weak_tail_instead_of_padding(client, users, data, session, monkeypatch):
+async def test_related_drops_weak_tail_instead_of_padding(
+    client, users, data, session, monkeypatch
+):
     """The list is at most five, not always five: a generic neighbor past the
     0.60 display bar is dropped, while a name-sharer at the same distance
     stays (its boosted score clears the bar)."""
@@ -1168,9 +1223,9 @@ async def test_related_drops_weak_tail_instead_of_padding(client, users, data, s
     weak_generic = await data.article(feed, title="Weak generic")
     weak_named = await data.article(feed, title="Weak but shares a name")
     await _related_embed(session, source, [1.0, 0.0, 0.0])
-    await _related_embed(session, close, [0.5, 0.866, 0.0])          # distance 0.50
+    await _related_embed(session, close, [0.5, 0.866, 0.0])  # distance 0.50
     await _related_embed(session, weak_generic, [0.35, 0.9367, 0.0])  # distance 0.65
-    await _related_embed(session, weak_named, [0.35, -0.9367, 0.0])   # distance 0.65
+    await _related_embed(session, weak_named, [0.35, -0.9367, 0.0])  # distance 0.65
     _configure_related(monkeypatch)
 
     org = Entity(kind="org", canonical_key="anthropic", url="", data={"name": "Anthropic"})
@@ -1205,7 +1260,7 @@ async def test_related_entity_leg_ranking(client, users, data, session, monkeypa
     await _link_entity(session, inline_link, repo, source="inline")
     # Recency would rank the inline mention first; shared count and
     # primary-over-inline must win instead.
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     shares_two.published_at = now - timedelta(days=2)
     primary_link.published_at = now - timedelta(days=1)
     inline_link.published_at = now
@@ -1229,28 +1284,30 @@ async def test_related_empty_without_embeddings_or_entities(client, users, data)
 
 # --- scroll auto-read: batch state, provenance, anchor + backward paging ---
 
+
 async def _dated_articles(data, feed, count):
     """count articles titled A0..A(n-1), published a day apart (A0 oldest)."""
     return [
-        await data.article(feed, title=f"A{i}",
-                           published_at=datetime(2024, 1, i + 1, tzinfo=timezone.utc))
+        await data.article(feed, title=f"A{i}", published_at=datetime(2024, 1, i + 1, tzinfo=UTC))
         for i in range(count)
     ]
 
 
 async def _states(session, user):
-    rows = (await session.scalars(
-        select(UserArticleState).where(UserArticleState.user_id == user.id)
-    )).all()
+    rows = (
+        await session.scalars(select(UserArticleState).where(UserArticleState.user_id == user.id))
+    ).all()
     return {s.article_id: s for s in rows}
 
 
 async def test_state_batch_marks_read_with_provenance(client, users, data, session):
     user, feed = await _setup(users, data)
     arts = await _dated_articles(data, feed, 3)
-    resp = await client.post("/api/articles/state/batch",
-                             json={"article_ids": [a.id for a in arts[:2]]},
-                             headers=users.auth(user))
+    resp = await client.post(
+        "/api/articles/state/batch",
+        json={"article_ids": [a.id for a in arts[:2]]},
+        headers=users.auth(user),
+    )
     assert resp.status_code == 204
     states = await _states(session, user)
     assert states[arts[0].id].is_read and states[arts[1].id].is_read
@@ -1264,9 +1321,11 @@ async def test_state_batch_ignores_unsubscribed_articles(client, users, data, se
     mine = await data.article(feed, title="Mine")
     other_feed = await data.feed(title="NotSubscribed")
     foreign = await data.article(other_feed, title="Foreign")
-    resp = await client.post("/api/articles/state/batch",
-                             json={"article_ids": [mine.id, foreign.id]},
-                             headers=users.auth(user))
+    resp = await client.post(
+        "/api/articles/state/batch",
+        json={"article_ids": [mine.id, foreign.id]},
+        headers=users.auth(user),
+    )
     assert resp.status_code == 204
     states = await _states(session, user)
     assert states[mine.id].is_read
@@ -1277,11 +1336,13 @@ async def test_state_batch_preserves_first_read_provenance(client, users, data, 
     """A scroll flush over an already-opened article must not downgrade it."""
     user, feed = await _setup(users, data)
     art = await data.article(feed)
-    opened = await client.post(f"/api/articles/{art.id}/state",
-                               json={"is_read": True}, headers=users.auth(user))
+    opened = await client.post(
+        f"/api/articles/{art.id}/state", json={"is_read": True}, headers=users.auth(user)
+    )
     assert opened.status_code == 200
-    resp = await client.post("/api/articles/state/batch",
-                             json={"article_ids": [art.id]}, headers=users.auth(user))
+    resp = await client.post(
+        "/api/articles/state/batch", json={"article_ids": [art.id]}, headers=users.auth(user)
+    )
     assert resp.status_code == 204
     states = await _states(session, user)
     assert states[art.id].read_source == "opened"
@@ -1290,11 +1351,14 @@ async def test_state_batch_preserves_first_read_provenance(client, users, data, 
 async def test_state_batch_unread_clears_provenance(client, users, data, session):
     user, feed = await _setup(users, data)
     art = await data.article(feed)
-    await client.post("/api/articles/state/batch",
-                      json={"article_ids": [art.id]}, headers=users.auth(user))
-    resp = await client.post("/api/articles/state/batch",
-                             json={"article_ids": [art.id], "is_read": False},
-                             headers=users.auth(user))
+    await client.post(
+        "/api/articles/state/batch", json={"article_ids": [art.id]}, headers=users.auth(user)
+    )
+    resp = await client.post(
+        "/api/articles/state/batch",
+        json={"article_ids": [art.id], "is_read": False},
+        headers=users.auth(user),
+    )
     assert resp.status_code == 204
     states = await _states(session, user)
     assert states[art.id].is_read is False
@@ -1306,8 +1370,9 @@ async def test_state_batch_keeps_saved_flag(client, users, data, session):
     user, feed = await _setup(users, data)
     art = await data.article(feed)
     await data.state(user, art, is_saved=True)
-    await client.post("/api/articles/state/batch",
-                      json={"article_ids": [art.id]}, headers=users.auth(user))
+    await client.post(
+        "/api/articles/state/batch", json={"article_ids": [art.id]}, headers=users.auth(user)
+    )
     states = await _states(session, user)
     assert states[art.id].is_saved is True
     assert states[art.id].is_read is True
@@ -1315,16 +1380,18 @@ async def test_state_batch_keeps_saved_flag(client, users, data, session):
 
 async def test_state_batch_empty_ids_rejected(client, users, data):
     user, _ = await _setup(users, data)
-    resp = await client.post("/api/articles/state/batch",
-                             json={"article_ids": []}, headers=users.auth(user))
+    resp = await client.post(
+        "/api/articles/state/batch", json={"article_ids": []}, headers=users.auth(user)
+    )
     assert resp.status_code == 422
 
 
 async def test_set_state_records_opened_source(client, users, data, session):
     user, feed = await _setup(users, data)
     art = await data.article(feed)
-    await client.post(f"/api/articles/{art.id}/state",
-                      json={"is_read": True}, headers=users.auth(user))
+    await client.post(
+        f"/api/articles/{art.id}/state", json={"is_read": True}, headers=users.auth(user)
+    )
     states = await _states(session, user)
     assert states[art.id].read_source == "opened"
     assert states[art.id].read_at is not None
@@ -1333,9 +1400,11 @@ async def test_set_state_records_opened_source(client, users, data, session):
 async def test_set_state_explicit_source_story(client, users, data, session):
     user, feed = await _setup(users, data)
     art = await data.article(feed)
-    await client.post(f"/api/articles/{art.id}/state",
-                      json={"is_read": True, "read_source": "story"},
-                      headers=users.auth(user))
+    await client.post(
+        f"/api/articles/{art.id}/state",
+        json={"is_read": True, "read_source": "story"},
+        headers=users.auth(user),
+    )
     states = await _states(session, user)
     assert states[art.id].read_source == "story"
 
@@ -1343,10 +1412,12 @@ async def test_set_state_explicit_source_story(client, users, data, session):
 async def test_set_state_unread_clears_provenance(client, users, data, session):
     user, feed = await _setup(users, data)
     art = await data.article(feed)
-    await client.post(f"/api/articles/{art.id}/state",
-                      json={"is_read": True}, headers=users.auth(user))
-    await client.post(f"/api/articles/{art.id}/state",
-                      json={"is_read": False}, headers=users.auth(user))
+    await client.post(
+        f"/api/articles/{art.id}/state", json={"is_read": True}, headers=users.auth(user)
+    )
+    await client.post(
+        f"/api/articles/{art.id}/state", json={"is_read": False}, headers=users.auth(user)
+    )
     states = await _states(session, user)
     assert states[art.id].read_at is None
     assert states[art.id].read_source is None
@@ -1355,8 +1426,7 @@ async def test_set_state_unread_clears_provenance(client, users, data, session):
 async def test_mark_all_read_records_source(client, users, data, session):
     user, feed = await _setup(users, data)
     art = await data.article(feed)
-    resp = await client.post("/api/articles/mark-all-read", json={},
-                             headers=users.auth(user))
+    resp = await client.post("/api/articles/mark-all-read", json={}, headers=users.auth(user))
     assert resp.status_code == 204
     states = await _states(session, user)
     assert states[art.id].read_source == "mark_all"
@@ -1369,9 +1439,9 @@ async def test_anchor_starts_at_first_unread(client, users, data, session):
     arts = await _dated_articles(data, feed, 5)
     await data.state(user, arts[4], is_read=True)
     await data.state(user, arts[3], is_read=True)
-    resp = await client.get("/api/articles",
-                            params={"anchor": "resume", "limit": 2},
-                            headers=users.auth(user))
+    resp = await client.get(
+        "/api/articles", params={"anchor": "resume", "limit": 2}, headers=users.auth(user)
+    )
     assert resp.status_code == 200
     assert [a["title"] for a in resp.json()] == ["A2", "A1"]
     assert resp.headers["x-unread-count"] == "3"
@@ -1379,10 +1449,11 @@ async def test_anchor_starts_at_first_unread(client, users, data, session):
     assert "x-next-cursor" in resp.headers
 
     # The prev cursor pages backward through the read history, in list order.
-    back = await client.get("/api/articles",
-                            params={"cursor": resp.headers["x-prev-cursor"],
-                                    "direction": "before", "limit": 5},
-                            headers=users.auth(user))
+    back = await client.get(
+        "/api/articles",
+        params={"cursor": resp.headers["x-prev-cursor"], "direction": "before", "limit": 5},
+        headers=users.auth(user),
+    )
     assert [a["title"] for a in back.json()] == ["A4", "A3"]
     assert "x-prev-cursor" not in back.headers  # nothing earlier
 
@@ -1390,8 +1461,7 @@ async def test_anchor_starts_at_first_unread(client, users, data, session):
 async def test_anchor_at_top_has_no_prev_cursor(client, users, data):
     user, feed = await _setup(users, data)
     await _dated_articles(data, feed, 2)
-    resp = await client.get("/api/articles", params={"anchor": "resume"},
-                            headers=users.auth(user))
+    resp = await client.get("/api/articles", params={"anchor": "resume"}, headers=users.auth(user))
     assert [a["title"] for a in resp.json()] == ["A1", "A0"]
     assert resp.headers["x-unread-count"] == "2"
     assert "x-prev-cursor" not in resp.headers
@@ -1402,8 +1472,7 @@ async def test_anchor_all_read_falls_back_to_top(client, users, data):
     arts = await _dated_articles(data, feed, 2)
     for art in arts:
         await data.state(user, art, is_read=True)
-    resp = await client.get("/api/articles", params={"anchor": "resume"},
-                            headers=users.auth(user))
+    resp = await client.get("/api/articles", params={"anchor": "resume"}, headers=users.auth(user))
     assert [a["title"] for a in resp.json()] == ["A1", "A0"]
     assert resp.headers["x-unread-count"] == "0"
 
@@ -1417,9 +1486,9 @@ async def test_anchor_respects_oldest_sort(client, users, data, session):
     await session.commit()
     arts = await _dated_articles(data, feed, 3)
     await data.state(user, arts[0], is_read=True)  # oldest read
-    resp = await client.get("/api/articles",
-                            params={"anchor": "resume", "feed_id": feed.id},
-                            headers=users.auth(user))
+    resp = await client.get(
+        "/api/articles", params={"anchor": "resume", "feed_id": feed.id}, headers=users.auth(user)
+    )
     assert [a["title"] for a in resp.json()] == ["A1", "A2"]
     assert "x-prev-cursor" in resp.headers
 
@@ -1427,24 +1496,24 @@ async def test_anchor_respects_oldest_sort(client, users, data, session):
 async def test_anchor_rejected_with_cursor_or_q(client, users, data):
     user, feed = await _setup(users, data)
     for i in range(2):
-        await data.article(feed, title=f"A{i}",
-                           published_at=datetime(2024, 1, i + 1, tzinfo=timezone.utc))
+        await data.article(feed, title=f"A{i}", published_at=datetime(2024, 1, i + 1, tzinfo=UTC))
     first = await client.get("/api/articles", params={"limit": 1}, headers=users.auth(user))
     cursor = first.headers["x-next-cursor"]
-    with_q = await client.get("/api/articles",
-                              params={"anchor": "resume", "q": "x"},
-                              headers=users.auth(user))
+    with_q = await client.get(
+        "/api/articles", params={"anchor": "resume", "q": "x"}, headers=users.auth(user)
+    )
     assert with_q.status_code == 422
-    with_cursor = await client.get("/api/articles",
-                                   params={"anchor": "resume", "cursor": cursor},
-                                   headers=users.auth(user))
+    with_cursor = await client.get(
+        "/api/articles", params={"anchor": "resume", "cursor": cursor}, headers=users.auth(user)
+    )
     assert with_cursor.status_code == 422
 
 
 async def test_direction_before_requires_cursor(client, users, data):
     user, _ = await _setup(users, data)
-    resp = await client.get("/api/articles", params={"direction": "before"},
-                            headers=users.auth(user))
+    resp = await client.get(
+        "/api/articles", params={"direction": "before"}, headers=users.auth(user)
+    )
     assert resp.status_code == 422
 
 
@@ -1453,25 +1522,25 @@ async def test_direction_before_walks_history_in_pages(client, users, data):
     user, feed = await _setup(users, data)
     await _dated_articles(data, feed, 5)
     # Cursor at A2, the last row of a 3-row first page (A4, A3, A2).
-    first = await client.get("/api/articles", params={"limit": 3},
-                             headers=users.auth(user))
+    first = await client.get("/api/articles", params={"limit": 3}, headers=users.auth(user))
     cursor = first.headers["x-next-cursor"]
 
-    back1 = await client.get("/api/articles",
-                             params={"cursor": cursor, "direction": "before", "limit": 1},
-                             headers=users.auth(user))
+    back1 = await client.get(
+        "/api/articles",
+        params={"cursor": cursor, "direction": "before", "limit": 1},
+        headers=users.auth(user),
+    )
     assert [a["title"] for a in back1.json()] == ["A3"]  # row just above A2
-    back2 = await client.get("/api/articles",
-                             params={"cursor": back1.headers["x-prev-cursor"],
-                                     "direction": "before", "limit": 5},
-                             headers=users.auth(user))
+    back2 = await client.get(
+        "/api/articles",
+        params={"cursor": back1.headers["x-prev-cursor"], "direction": "before", "limit": 5},
+        headers=users.auth(user),
+    )
     assert [a["title"] for a in back2.json()] == ["A4"]
     assert "x-prev-cursor" not in back2.headers
 
 
-async def test_unread_reading_window_keeps_read_history_for_back_paging(
-    client, users, data
-):
+async def test_unread_reading_window_keeps_read_history_for_back_paging(client, users, data):
     """An unread list can prepend rows read earlier in the same session."""
     user, feed = await _setup(users, data)
     arts = await _dated_articles(data, feed, 5)
@@ -1503,24 +1572,25 @@ async def test_unread_reading_window_keeps_read_history_for_back_paging(
 
 async def test_direction_before_null_published_tail(client, users, data):
     user, feed = await _setup(users, data)
-    await data.article(feed, title="Dated",
-                       published_at=datetime(2024, 1, 1, tzinfo=timezone.utc))
+    await data.article(feed, title="Dated", published_at=datetime(2024, 1, 1, tzinfo=UTC))
     await data.article(feed, title="Undated1")
     await data.article(feed, title="Undated2")
     # Walk forward to the last row (Undated1), then read everything before it.
     pages = await _walk_pages(client, users, user, limit=1)
     assert pages == [["Dated"], ["Undated2"], ["Undated1"]]
-    second = await client.get("/api/articles", params={"limit": 2},
-                              headers=users.auth(user))
+    second = await client.get("/api/articles", params={"limit": 2}, headers=users.auth(user))
     cursor = second.headers["x-next-cursor"]  # cursor at Undated2 (in the null tail)
-    back = await client.get("/api/articles",
-                            params={"cursor": cursor, "direction": "before", "limit": 5},
-                            headers=users.auth(user))
+    back = await client.get(
+        "/api/articles",
+        params={"cursor": cursor, "direction": "before", "limit": 5},
+        headers=users.auth(user),
+    )
     # Exclusive of the cursor row: only the dated head lies before the tail.
     assert [a["title"] for a in back.json()] == ["Dated"]
 
 
 # --- reading frontier (resume position) ---
+
 
 async def test_batch_frontier_moves_resume_past_new_arrivals(client, users, data):
     """The Telegram property: after scrolling past A2..A0 (frontier = A0),
@@ -1530,19 +1600,16 @@ async def test_batch_frontier_moves_resume_past_new_arrivals(client, users, data
     arts = await _dated_articles(data, feed, 3)  # list order A2, A1, A0
     resp = await client.post(
         "/api/articles/state/batch",
-        json={"article_ids": [arts[2].id, arts[1].id],
-              "frontier_article_id": arts[1].id},
-        headers=users.auth(user))
+        json={"article_ids": [arts[2].id, arts[1].id], "frontier_article_id": arts[1].id},
+        headers=users.auth(user),
+    )
     assert resp.status_code == 204
 
     # Two new articles arrive above everything.
-    await data.article(feed, title="N0",
-                       published_at=datetime(2024, 2, 1, tzinfo=timezone.utc))
-    await data.article(feed, title="N1",
-                       published_at=datetime(2024, 2, 2, tzinfo=timezone.utc))
+    await data.article(feed, title="N0", published_at=datetime(2024, 2, 1, tzinfo=UTC))
+    await data.article(feed, title="N1", published_at=datetime(2024, 2, 2, tzinfo=UTC))
 
-    resp = await client.get("/api/articles", params={"anchor": "resume"},
-                            headers=users.auth(user))
+    resp = await client.get("/api/articles", params={"anchor": "resume"}, headers=users.auth(user))
     # Resume = first unread at/after the frontier (A1) -> A0, not N1.
     assert [a["title"] for a in resp.json()][0] == "A0"
     assert resp.headers["x-unread-count"] == "3"  # A0 + the two new ones
@@ -1556,13 +1623,11 @@ async def test_resume_falls_back_to_first_unread_when_caught_up_below(client, us
     arts = await _dated_articles(data, feed, 2)
     await client.post(
         "/api/articles/state/batch",
-        json={"article_ids": [a.id for a in arts],
-              "frontier_article_id": arts[0].id},
-        headers=users.auth(user))
-    fresh = await data.article(feed, title="Fresh",
-                               published_at=datetime(2024, 3, 1, tzinfo=timezone.utc))
-    resp = await client.get("/api/articles", params={"anchor": "resume"},
-                            headers=users.auth(user))
+        json={"article_ids": [a.id for a in arts], "frontier_article_id": arts[0].id},
+        headers=users.auth(user),
+    )
+    await data.article(feed, title="Fresh", published_at=datetime(2024, 3, 1, tzinfo=UTC))
+    resp = await client.get("/api/articles", params={"anchor": "resume"}, headers=users.auth(user))
     assert [a["title"] for a in resp.json()][0] == "Fresh"
     assert resp.headers["x-new-above-count"] == "0"
 
@@ -1571,16 +1636,17 @@ async def test_batch_frontier_scoped_per_feed(client, users, data, session):
     from app.models import UserReadingPosition
 
     user, feed = await _setup(users, data)
-    art = await data.article(feed,
-                             published_at=datetime(2024, 1, 1, tzinfo=timezone.utc))
+    art = await data.article(feed, published_at=datetime(2024, 1, 1, tzinfo=UTC))
     await client.post(
         "/api/articles/state/batch",
-        json={"article_ids": [art.id], "frontier_article_id": art.id,
-              "frontier_feed_id": feed.id},
-        headers=users.auth(user))
-    positions = (await session.scalars(
-        select(UserReadingPosition).where(UserReadingPosition.user_id == user.id)
-    )).all()
+        json={"article_ids": [art.id], "frontier_article_id": art.id, "frontier_feed_id": feed.id},
+        headers=users.auth(user),
+    )
+    positions = (
+        await session.scalars(
+            select(UserReadingPosition).where(UserReadingPosition.user_id == user.id)
+        )
+    ).all()
     assert [p.scope for p in positions] == [f"feed:{feed.id}"]
     assert positions[0].article_id == art.id
 
@@ -1595,8 +1661,11 @@ async def test_batch_frontier_ignored_when_unsubscribed(client, users, data, ses
     await client.post(
         "/api/articles/state/batch",
         json={"article_ids": [mine.id], "frontier_article_id": foreign.id},
-        headers=users.auth(user))
-    positions = (await session.scalars(
-        select(UserReadingPosition).where(UserReadingPosition.user_id == user.id)
-    )).all()
+        headers=users.auth(user),
+    )
+    positions = (
+        await session.scalars(
+            select(UserReadingPosition).where(UserReadingPosition.user_id == user.id)
+        )
+    ).all()
     assert positions == []

@@ -1,16 +1,14 @@
 import types
-from datetime import datetime, timedelta, timezone
-
-import pytest
+from datetime import UTC, datetime, timedelta
 
 from app import extractor
 from app.extractor import (
+    _recently_attempted,
     clip_for_llm,
     enrich_article,
     ensure_full_text,
     fetch_page,
     is_thin,
-    _recently_attempted,
 )
 from app.models import Article, Feed
 
@@ -44,7 +42,8 @@ async def test_fetch_page_success(monkeypatch):
     monkeypatch.setattr(extractor.AsyncFetcher, "get", staticmethod(fake_get))
     monkeypatch.setattr(extractor.trafilatura, "extract", lambda html, **k: "extracted prose")
     monkeypatch.setattr(
-        extractor.trafilatura, "extract_metadata",
+        extractor.trafilatura,
+        "extract_metadata",
         lambda html: types.SimpleNamespace(image="https://x/og.png"),
     )
     text, image = await fetch_page("https://x/a")
@@ -112,7 +111,7 @@ async def test_fetch_page_metadata_raises_but_survives(monkeypatch):
 
 
 def _recent(seconds):
-    return datetime.now(timezone.utc) - timedelta(seconds=seconds)
+    return datetime.now(UTC) - timedelta(seconds=seconds)
 
 
 def test_recently_attempted():
@@ -128,10 +127,15 @@ async def _make_article(session, **kwargs):
     feed = Feed(url=f"https://feed/{kwargs.get('guid', 'x')}")
     session.add(feed)
     await session.flush()
-    art = Article(feed_id=feed.id, guid=kwargs.get("guid", "g"), url="https://x/a",
-                  title="T", content_html=kwargs.get("content_html", ""),
-                  full_text=kwargs.get("full_text", ""),
-                  image_url=kwargs.get("image_url"))
+    art = Article(
+        feed_id=feed.id,
+        guid=kwargs.get("guid", "g"),
+        url="https://x/a",
+        title="T",
+        content_html=kwargs.get("content_html", ""),
+        full_text=kwargs.get("full_text", ""),
+        image_url=kwargs.get("image_url"),
+    )
     session.add(art)
     await session.commit()
     await session.refresh(art)
@@ -224,7 +228,7 @@ async def test_ensure_full_text_fetches_when_thin(session, monkeypatch):
 
 async def test_ensure_full_text_no_refetch_when_recent(session, monkeypatch):
     art = await _make_article(session, content_html="<p>thin</p>")
-    art.full_text_fetched_at = datetime.now(timezone.utc)
+    art.full_text_fetched_at = datetime.now(UTC)
     await session.commit()
 
     async def fake_fetch_page(url):

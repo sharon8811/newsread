@@ -1,22 +1,39 @@
 """LLM usage endpoints: window aggregation, breakdowns, and the event log."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from app import crypto
 from app.models import LLMUsage, UserAISettings
 
 
 def _utc_now():
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
-async def _row(session, user, *, days_ago=0, feature="qa", provider="openai",
-               model="gpt-5", prompt=100, completion=20, status="ok", error=None,
-               duration_ms=500):
+async def _row(
+    session,
+    user,
+    *,
+    days_ago=0,
+    feature="qa",
+    provider="openai",
+    model="gpt-5",
+    prompt=100,
+    completion=20,
+    status="ok",
+    error=None,
+    duration_ms=500,
+):
     row = LLMUsage(
-        user_id=user.id, feature=feature, provider=provider, model=model,
-        prompt_tokens=prompt, completion_tokens=completion,
-        duration_ms=duration_ms, status=status, error=error,
+        user_id=user.id,
+        feature=feature,
+        provider=provider,
+        model=model,
+        prompt_tokens=prompt,
+        completion_tokens=completion,
+        duration_ms=duration_ms,
+        status=status,
+        error=error,
         created_at=_utc_now() - timedelta(days=days_ago),
     )
     session.add(row)
@@ -26,6 +43,7 @@ async def _row(session, user, *, days_ago=0, feature="qa", provider="openai",
 
 
 # --- summary ---
+
 
 async def test_summary_empty(client, users):
     user = await users.create()
@@ -47,8 +65,17 @@ async def test_summary_aggregates_window(client, users, session):
     user = await users.create()
     await _row(session, user, feature="qa", prompt=100, completion=20)
     await _row(session, user, feature="qa", days_ago=1, prompt=50, completion=10)
-    await _row(session, user, feature="summary", days_ago=2, model="gpt-6",
-               prompt=30, completion=5, status="error", error="boom")
+    await _row(
+        session,
+        user,
+        feature="summary",
+        days_ago=2,
+        model="gpt-6",
+        prompt=30,
+        completion=5,
+        status="error",
+        error="boom",
+    )
     # Outside the week window — lands in the previous one instead.
     await _row(session, user, days_ago=10, prompt=1000, completion=0)
 
@@ -83,10 +110,15 @@ async def test_summary_scoped_to_user(client, users, session):
 
 async def test_summary_reports_configured_key(client, users, session):
     user = await users.create()
-    session.add(UserAISettings(
-        user_id=user.id, provider="openai", model="gpt-5",
-        api_key_enc=crypto.encrypt_token("sk-own-12345678"), key_hint="5678",
-    ))
+    session.add(
+        UserAISettings(
+            user_id=user.id,
+            provider="openai",
+            model="gpt-5",
+            api_key_enc=crypto.encrypt_token("sk-own-12345678"),
+            key_hint="5678",
+        )
+    )
     await session.commit()
     resp = await client.get("/api/usage/summary", headers=users.auth(user))
     assert resp.json()["configured"] is True
@@ -108,6 +140,7 @@ async def test_summary_rejects_bad_range(client, users):
 
 
 # --- events ---
+
 
 async def test_events_newest_first_and_paginated(client, users, session):
     user = await users.create()

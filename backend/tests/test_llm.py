@@ -1,7 +1,5 @@
 import types
 
-import pytest
-
 from app import llm
 
 
@@ -116,9 +114,13 @@ async def test_complete_user_config_uses_scoped_client(monkeypatch):
             return False
 
     monkeypatch.setattr(llm, "AsyncOpenAI", FakeAsyncOpenAI)
-    config = llm.LLMConfig(provider="custom", api_key="sk-own-12345678",
-                           base_url="http://ollama.local/v1", model="llama",
-                           user_owned=True)
+    config = llm.LLMConfig(
+        provider="custom",
+        api_key="sk-own-12345678",
+        base_url="http://ollama.local/v1",
+        model="llama",
+        user_owned=True,
+    )
     out = await llm._complete([{"role": "user", "content": "x"}], max_tokens=10, config=config)
     assert out == "scoped"
     assert captured["api_key"] == "sk-own-12345678"
@@ -166,9 +168,7 @@ async def test_summarize_screenshot_sends_data_url(monkeypatch):
         msg = types.SimpleNamespace(
             content="ONELINER: gist\nPARAGRAPH: para.\nFULL:\nfrom the image"
         )
-        return types.SimpleNamespace(
-            choices=[types.SimpleNamespace(message=msg)], usage=None
-        )
+        return types.SimpleNamespace(choices=[types.SimpleNamespace(message=msg)], usage=None)
 
     client = types.SimpleNamespace(
         chat=types.SimpleNamespace(completions=types.SimpleNamespace(create=create))
@@ -185,12 +185,14 @@ async def test_summarize_screenshot_sends_data_url(monkeypatch):
 
 
 async def test_dislike_topics_parses_and_dedupes(monkeypatch):
-    raw = ("Sure, here are topics:\n"
-           "TOPIC: cryptocurrency price movements.\n"
-           "TOPIC:   Cryptocurrency  Price Movements\n"
-           "TOPIC: celebrity gossip\n"
-           "TOPIC: US college sports\n"
-           "not a topic line\n")
+    raw = (
+        "Sure, here are topics:\n"
+        "TOPIC: cryptocurrency price movements.\n"
+        "TOPIC:   Cryptocurrency  Price Movements\n"
+        "TOPIC: celebrity gossip\n"
+        "TOPIC: US college sports\n"
+        "not a topic line\n"
+    )
 
     async def fake_complete(messages, max_tokens, **kwargs):
         assert "not interested" in messages[0]["content"]
@@ -221,9 +223,11 @@ async def test_dislike_topics_caps_phrase_length(monkeypatch):
 
 
 def test_parse_synthesis_full_structure():
-    raw = ("OVERVIEW:\nBig thing happened [1]. Sources broadly agree [2].\n\n"
-           "TIMELINE:\n- May 1 — it started [1]\n- May 3 — it escalated [2]\n\n"
-           "PERSPECTIVES:\n- [2] frames it as a fluke\n- [3] sees a trend")
+    raw = (
+        "OVERVIEW:\nBig thing happened [1]. Sources broadly agree [2].\n\n"
+        "TIMELINE:\n- May 1 — it started [1]\n- May 3 — it escalated [2]\n\n"
+        "PERSPECTIVES:\n- [2] frames it as a fluke\n- [3] sees a trend"
+    )
     parsed = llm._parse_synthesis(raw)
     assert parsed.overview == "Big thing happened [1]. Sources broadly agree [2]."
     assert "- May 1 — it started [1]" in parsed.timeline_raw
@@ -245,11 +249,13 @@ def test_parse_synthesis_missing_labels_falls_back():
 
 
 def test_parse_timeline_dash_variants_and_garbage():
-    raw = ("- May 1 — em dash [1]\n"
-           "- May 2 – en dash [2]\n"
-           "- May 3 -- double hyphen [3]\n"
-           "not a timeline line\n"
-           "- no separator here\n")
+    raw = (
+        "- May 1 — em dash [1]\n"
+        "- May 2 – en dash [2]\n"
+        "- May 3 -- double hyphen [3]\n"
+        "not a timeline line\n"
+        "- no separator here\n"
+    )
     items = llm.parse_timeline(raw)
     assert items == [
         {"when": "May 1", "what": "em dash [1]"},
@@ -280,6 +286,7 @@ async def test_synthesize_related_numbers_sources(monkeypatch):
 
 # --- named_entities ---
 
+
 async def test_named_entities_parses_and_dedupes(monkeypatch):
     captured = {}
 
@@ -288,9 +295,9 @@ async def test_named_entities_parses_and_dedupes(monkeypatch):
         return (
             "PERSON: Sam Altman\n"
             "ORG: OpenAI\n"
-            "ORG:  OpenAI \n"          # dedup after normalization
-            "PRODUCT: **Codex**\n"     # markdown wrapping stripped
-            "person: sam altman\n"     # lowercase marker not matched
+            "ORG:  OpenAI \n"  # dedup after normalization
+            "PRODUCT: **Codex**\n"  # markdown wrapping stripped
+            "person: sam altman\n"  # lowercase marker not matched
             "NOISE: ignored\n"
         )
 

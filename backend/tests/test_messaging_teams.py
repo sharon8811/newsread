@@ -17,9 +17,7 @@ def _credentials(monkeypatch):
 
 def test_authorize_url():
     url = teams.authorize_url("st8")
-    assert url.startswith(
-        "https://login.microsoftonline.com/organizations/oauth2/v2.0/authorize?"
-    )
+    assert url.startswith("https://login.microsoftonline.com/organizations/oauth2/v2.0/authorize?")
     assert "client_id=teams-cid" in url
     assert "ChannelMessage.Send" in url and "offline_access" in url
     assert "state=st8" in url
@@ -28,12 +26,15 @@ def test_authorize_url():
 @respx.mock
 async def test_exchange_code():
     respx.post(TOKEN_URL).mock(
-        return_value=Response(200, json={
-            "access_token": "at-1",
-            "refresh_token": "rt-1",
-            "expires_in": 3600,
-            "scope": "ChatMessage.Send",
-        })
+        return_value=Response(
+            200,
+            json={
+                "access_token": "at-1",
+                "refresh_token": "rt-1",
+                "expires_in": 3600,
+                "scope": "ChatMessage.Send",
+            },
+        )
     )
     respx.get("https://graph.microsoft.com/v1.0/me").mock(
         return_value=Response(200, json={"id": "aad-1", "displayName": "Sharon T"})
@@ -78,9 +79,14 @@ async def test_exchange_code_failure():
 @respx.mock
 async def test_refresh_tokens_rotates():
     respx.post(TOKEN_URL).mock(
-        return_value=Response(200, json={
-            "access_token": "at-2", "refresh_token": "rt-2", "expires_in": 3600,
-        })
+        return_value=Response(
+            200,
+            json={
+                "access_token": "at-2",
+                "refresh_token": "rt-2",
+                "expires_in": 3600,
+            },
+        )
     )
     access, refresh, expires_at = await teams.refresh_tokens("rt-1")
     assert (access, refresh) == ("at-2", "rt-2")
@@ -89,9 +95,7 @@ async def test_refresh_tokens_rotates():
 
 @respx.mock
 async def test_refresh_failure_means_reconnect():
-    respx.post(TOKEN_URL).mock(
-        return_value=Response(400, json={"error": "invalid_grant"})
-    )
+    respx.post(TOKEN_URL).mock(return_value=Response(400, json={"error": "invalid_grant"}))
     with pytest.raises(MessagingError) as exc:
         await teams.refresh_tokens("dead")
     assert exc.value.reconnect is True
@@ -103,14 +107,24 @@ async def test_list_targets():
         "https://graph.microsoft.com/v1.0/me/chats"
         "?$top=50&$expand=members($select=displayName,userId)"
     ).mock(
-        return_value=Response(200, json={"value": [
-            {"id": "chat1", "chatType": "oneOnOne", "topic": None, "members": [
-                {"displayName": "Me", "userId": "ME"},
-                {"displayName": "Dana", "userId": "U2"},
-            ]},
-            {"id": "chat2", "chatType": "group", "topic": "Launch crew", "members": []},
-            {"id": "chat3", "chatType": "meeting", "topic": "Standup", "members": []},
-        ]})
+        return_value=Response(
+            200,
+            json={
+                "value": [
+                    {
+                        "id": "chat1",
+                        "chatType": "oneOnOne",
+                        "topic": None,
+                        "members": [
+                            {"displayName": "Me", "userId": "ME"},
+                            {"displayName": "Dana", "userId": "U2"},
+                        ],
+                    },
+                    {"id": "chat2", "chatType": "group", "topic": "Launch crew", "members": []},
+                    {"id": "chat3", "chatType": "meeting", "topic": "Standup", "members": []},
+                ]
+            },
+        )
     )
     respx.get("https://graph.microsoft.com/v1.0/me/joinedTeams").mock(
         return_value=Response(200, json={"value": [{"id": "team1", "displayName": "Eng"}]})
@@ -134,10 +148,15 @@ async def test_list_targets_skips_unreadable_team():
         "?$top=50&$expand=members($select=displayName,userId)"
     ).mock(return_value=Response(200, json={"value": []}))
     respx.get("https://graph.microsoft.com/v1.0/me/joinedTeams").mock(
-        return_value=Response(200, json={"value": [
-            {"id": "team1", "displayName": "Locked"},
-            {"id": "team2", "displayName": "Open"},
-        ]})
+        return_value=Response(
+            200,
+            json={
+                "value": [
+                    {"id": "team1", "displayName": "Locked"},
+                    {"id": "team2", "displayName": "Open"},
+                ]
+            },
+        )
     )
     respx.get("https://graph.microsoft.com/v1.0/teams/team1/channels").mock(
         return_value=Response(403, json={"error": {"message": "denied"}})
@@ -151,12 +170,17 @@ async def test_list_targets_skips_unreadable_team():
 
 @respx.mock
 async def test_send_to_channel_builds_html():
-    route = respx.post(
-        "https://graph.microsoft.com/v1.0/teams/team1/channels/ch1/messages"
-    ).mock(return_value=Response(201, json={"id": "1"}))
+    route = respx.post("https://graph.microsoft.com/v1.0/teams/team1/channels/ch1/messages").mock(
+        return_value=Response(201, json={"id": "1"})
+    )
     await teams.send_message(
-        "at", "channel", "ch1", {"team_id": "team1"},
-        "must <read>", "https://a.example/x?a=1&b=2", "Big News",
+        "at",
+        "channel",
+        "ch1",
+        {"team_id": "team1"},
+        "must <read>",
+        "https://a.example/x?a=1&b=2",
+        "Big News",
     )
     body = route.calls.last.request.content.decode()
     assert "must &lt;read&gt;" in body

@@ -24,15 +24,17 @@ async def embed_catalog_entries(session: AsyncSession, entries: list[CatalogEntr
     if not entries:
         return 0
     vectors = await embeddings.embed_texts([text_for(entry) for entry in entries])
-    stmt = pg_insert(CatalogEntryEmbedding).values([
-        {
-            "catalog_entry_id": entry.id,
-            "model": settings.openai_embedding_model,
-            "content_hash": content_hash(entry),
-            "embedding": vector,
-        }
-        for entry, vector in zip(entries, vectors)
-    ])
+    stmt = pg_insert(CatalogEntryEmbedding).values(
+        [
+            {
+                "catalog_entry_id": entry.id,
+                "model": settings.openai_embedding_model,
+                "content_hash": content_hash(entry),
+                "embedding": vector,
+            }
+            for entry, vector in zip(entries, vectors, strict=False)
+        ]
+    )
     stmt = stmt.on_conflict_do_update(
         index_elements=["catalog_entry_id"],
         set_={
@@ -51,20 +53,26 @@ async def embed_catalog_batch(session: AsyncSession, limit: int = 100) -> int:
     """Embed active entries whose metadata or configured model changed."""
     if not embeddings.is_configured():
         return 0
-    entries = list((await session.scalars(
-        select(CatalogEntry)
-        .outerjoin(
-            CatalogEntryEmbedding,
-            CatalogEntryEmbedding.catalog_entry_id == CatalogEntry.id,
-        )
-        .where(CatalogEntry.is_active.is_(True))
-        .where(or_(
-            CatalogEntryEmbedding.catalog_entry_id.is_(None),
-            CatalogEntryEmbedding.model != settings.openai_embedding_model,
-        ))
-        .order_by(CatalogEntry.id)
-        .limit(limit)
-    )).all())
+    entries = list(
+        (
+            await session.scalars(
+                select(CatalogEntry)
+                .outerjoin(
+                    CatalogEntryEmbedding,
+                    CatalogEntryEmbedding.catalog_entry_id == CatalogEntry.id,
+                )
+                .where(CatalogEntry.is_active.is_(True))
+                .where(
+                    or_(
+                        CatalogEntryEmbedding.catalog_entry_id.is_(None),
+                        CatalogEntryEmbedding.model != settings.openai_embedding_model,
+                    )
+                )
+                .order_by(CatalogEntry.id)
+                .limit(limit)
+            )
+        ).all()
+    )
     # Model matches can still have stale content. Check them separately without
     # forcing SQL to reproduce the application-side normalized text hash.
     if len(entries) < limit:

@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import httpx
 import pytest
@@ -8,10 +8,12 @@ from sqlalchemy import select, text
 from app.fetcher import (
     FeedParseError,
     FeedRateLimited,
-    ParsedArticle,
+    _parse_date,
+    _to_utc,
+    _validate_public_url,
     canonical_hn_comments_url,
-    detect_comments_url,
     derive_excerpt,
+    detect_comments_url,
     fetch_feed_data,
     parse_json_feed,
     parse_xml_feed,
@@ -19,18 +21,15 @@ from app.fetcher import (
     sanitize_html,
     strip_hnrss_boilerplate,
     strip_html,
-    _parse_date,
-    _to_utc,
-    _validate_public_url,
 )
 from app.models import Article, Feed
 
-
 # --- small helpers ---
+
 
 def test_to_utc_naive_and_aware():
     naive = datetime(2024, 1, 1, 12, 0, 0)
-    assert _to_utc(naive).tzinfo == timezone.utc
+    assert _to_utc(naive).tzinfo == UTC
     assert _to_utc(None) is None
 
 
@@ -72,9 +71,10 @@ def test_derive_excerpt_hn_points_no_comments():
 
 
 def test_canonical_hn_comments_url_is_strict():
-    assert canonical_hn_comments_url(
-        "http://news.ycombinator.com/item?foo=x&id=0042#reply"
-    ) == "https://news.ycombinator.com/item?id=42"
+    assert (
+        canonical_hn_comments_url("http://news.ycombinator.com/item?foo=x&id=0042#reply")
+        == "https://news.ycombinator.com/item?id=42"
+    )
     assert canonical_hn_comments_url("https://evil.example/item?id=42") is None
     assert canonical_hn_comments_url("https://news.ycombinator.com/user?id=42") is None
     assert canonical_hn_comments_url("https://news.ycombinator.com/item?id=nope") is None
@@ -83,17 +83,20 @@ def test_canonical_hn_comments_url_is_strict():
 
 def test_detect_comments_url_from_hnrss_content_only():
     content = (
-        '<p>Points: 12 # Comments: 3 Comments URL: '
+        "<p>Points: 12 # Comments: 3 Comments URL: "
         '<a href="https://news.ycombinator.com/item?id=123&amp;ref=x">thread</a></p>'
     )
     assert detect_comments_url(None, "https://example.com/story", content) == (
         "https://news.ycombinator.com/item?id=123"
     )
-    assert detect_comments_url(
-        None,
-        "https://example.com/story",
-        '<a href="https://news.ycombinator.com/item?id=123">unrelated link</a>',
-    ) is None
+    assert (
+        detect_comments_url(
+            None,
+            "https://example.com/story",
+            '<a href="https://news.ycombinator.com/item?id=123">unrelated link</a>',
+        )
+        is None
+    )
 
 
 def test_detect_comments_url_prefers_link_after_label():
@@ -110,9 +113,10 @@ def test_detect_comments_url_prefers_link_after_label():
 
 
 def test_detect_comments_url_for_hn_self_post():
-    assert detect_comments_url(
-        None, "https://news.ycombinator.com/item?id=88", ""
-    ) == "https://news.ycombinator.com/item?id=88"
+    assert (
+        detect_comments_url(None, "https://news.ycombinator.com/item?id=88", "")
+        == "https://news.ycombinator.com/item?id=88"
+    )
 
 
 def test_strip_hnrss_boilerplate_removes_metadata_and_preserves_article_content():
@@ -122,9 +126,7 @@ def test_strip_hnrss_boilerplate_removes_metadata_and_preserves_article_content(
         '<p>Comments URL: <a href="https://news.ycombinator.com/item?id=88">thread</a></p>'
         "<p>Points: 17</p><p># Comments: 3</p></div>"
     )
-    cleaned = strip_hnrss_boilerplate(
-        content, "https://news.ycombinator.com/item?id=88"
-    )
+    cleaned = strip_hnrss_boilerplate(content, "https://news.ycombinator.com/item?id=88")
     assert strip_html(cleaned) == "Useful article text."
     assert "Comments URL" not in cleaned
 
@@ -135,31 +137,37 @@ def test_strip_hnrss_boilerplate_handles_single_block_and_safe_fallbacks():
         'Comments URL: <a href="https://news.ycombinator.com/item?id=88">thread</a><br>'
         "Points: 17<br># Comments: 3</p>"
     )
-    assert strip_hnrss_boilerplate(
-        metadata, "https://news.ycombinator.com/item?id=88"
-    ) == ""
+    assert strip_hnrss_boilerplate(metadata, "https://news.ycombinator.com/item?id=88") == ""
     assert strip_hnrss_boilerplate(metadata, "https://example.com/comments") == metadata
     assert strip_hnrss_boilerplate("<p>Points: 17</p>", None) == "<p>Points: 17</p>"
-    assert strip_hnrss_boilerplate(
-        "not < valid", "https://news.ycombinator.com/item?id=88"
-    ) == "not < valid"
+    assert (
+        strip_hnrss_boilerplate("not < valid", "https://news.ycombinator.com/item?id=88")
+        == "not < valid"
+    )
 
 
 # --- JSON Feed ---
 
+
 def test_parse_json_feed_basic():
-    feed = parse_json_feed({
-        "title": "My Feed",
-        "home_page_url": "https://example.com",
-        "description": "desc",
-        "items": [
-            {
-                "id": "1", "url": "https://example.com/a", "title": "A",
-                "content_html": "<p>body</p>", "author": {"name": "Jo"},
-                "date_published": "2024-01-01T00:00:00Z", "image": "https://x/i.png",
-            },
-        ],
-    })
+    feed = parse_json_feed(
+        {
+            "title": "My Feed",
+            "home_page_url": "https://example.com",
+            "description": "desc",
+            "items": [
+                {
+                    "id": "1",
+                    "url": "https://example.com/a",
+                    "title": "A",
+                    "content_html": "<p>body</p>",
+                    "author": {"name": "Jo"},
+                    "date_published": "2024-01-01T00:00:00Z",
+                    "image": "https://x/i.png",
+                },
+            ],
+        }
+    )
     assert feed.title == "My Feed"
     assert feed.site_url == "https://example.com"
     assert len(feed.articles) == 1
@@ -169,14 +177,21 @@ def test_parse_json_feed_basic():
 
 
 def test_parse_json_feed_authors_list_and_external_url():
-    feed = parse_json_feed({
-        "items": [{
-            "id": "x", "url": "https://example.com/story",
-            "external_url": "https://news.ycombinator.com/item?id=1",
-            "content_text": "just text", "authors": [{"name": "Al"}],
-            "date_modified": "2024-02-02T00:00:00Z", "banner_image": "https://b/i.png",
-        }],
-    })
+    feed = parse_json_feed(
+        {
+            "items": [
+                {
+                    "id": "x",
+                    "url": "https://example.com/story",
+                    "external_url": "https://news.ycombinator.com/item?id=1",
+                    "content_text": "just text",
+                    "authors": [{"name": "Al"}],
+                    "date_modified": "2024-02-02T00:00:00Z",
+                    "banner_image": "https://b/i.png",
+                }
+            ],
+        }
+    )
     art = feed.articles[0]
     assert art.author == "Al"
     assert art.comments_url == "https://news.ycombinator.com/item?id=1"
@@ -184,21 +199,27 @@ def test_parse_json_feed_authors_list_and_external_url():
 
 
 def test_parse_json_feed_title_falls_back_to_content():
-    feed = parse_json_feed({"items": [{"id": "1", "url": "u", "content_html": "<p>Hello world body</p>"}]})
+    feed = parse_json_feed(
+        {"items": [{"id": "1", "url": "u", "content_html": "<p>Hello world body</p>"}]}
+    )
     assert feed.articles[0].title == "Hello world body"
 
 
 def test_parse_json_feed_recovers_hn_thread_from_content():
-    feed = parse_json_feed({
-        "items": [{
-            "id": "1",
-            "url": "https://example.com/story",
-            "content_html": (
-                "<p>Points: 7 # Comments: 2 Comments URL: "
-                "https://news.ycombinator.com/item?id=91</p>"
-            ),
-        }],
-    })
+    feed = parse_json_feed(
+        {
+            "items": [
+                {
+                    "id": "1",
+                    "url": "https://example.com/story",
+                    "content_html": (
+                        "<p>Points: 7 # Comments: 2 Comments URL: "
+                        "https://news.ycombinator.com/item?id=91</p>"
+                    ),
+                }
+            ],
+        }
+    )
     assert feed.articles[0].comments_url == "https://news.ycombinator.com/item?id=91"
 
 
@@ -271,6 +292,7 @@ def test_parse_xml_feed_content_over_summary():
 
 # --- fetch_feed_data ---
 
+
 @respx.mock
 async def test_fetch_feed_data_json():
     respx.get("https://feed.example/json").mock(
@@ -287,8 +309,9 @@ async def test_fetch_feed_data_json():
 @respx.mock
 async def test_fetch_feed_data_json_by_body_sniff():
     respx.get("https://feed.example/x").mock(
-        return_value=httpx.Response(200, headers={"content-type": "text/plain"},
-                                    text='{"title": "Sniffed", "items": []}')
+        return_value=httpx.Response(
+            200, headers={"content-type": "text/plain"}, text='{"title": "Sniffed", "items": []}'
+        )
     )
     feed = await fetch_feed_data("https://feed.example/x")
     assert feed.title == "Sniffed"
@@ -337,6 +360,7 @@ async def test_private_feed_guard_can_be_disabled(monkeypatch):
 
 
 # --- refresh_feed (DB) ---
+
 
 @respx.mock
 async def test_refresh_feed_tolerates_empty_feed(session):

@@ -1,15 +1,14 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 
-from app import embeddings, llm
+from app import llm
 from app.models import (
     ArticleEmbedding,
     ArticleEntity,
     ArticleSuppression,
     DislikeRuleEmbedding,
     Entity,
-    UserDislikeRule,
 )
 from app.routers import interests
 
@@ -38,6 +37,7 @@ def _configure_embeddings(monkeypatch, *, model="test-model"):
 
 
 # --- GET /interests/dislike-options/{id} ---
+
 
 async def test_options_article_not_accessible(client, users, data):
     user = await users.create()
@@ -71,8 +71,11 @@ async def test_options_with_topics_and_story(client, users, data, session, monke
     art = await data.article(feed, summary_medium="a summary")
     await _embed(session, art, [1.0, 0.0, 0.0])
     _configure_embeddings(monkeypatch)
-    monkeypatch.setattr(interests.llm, "system_config", lambda: llm.LLMConfig(
-        provider="system", api_key="k", base_url=None, model="m"))
+    monkeypatch.setattr(
+        interests.llm,
+        "system_config",
+        lambda: llm.LLMConfig(provider="system", api_key="k", base_url=None, model="m"),
+    )
 
     async def fake_resolve(session_, user_id):
         return llm.system_config()
@@ -116,6 +119,7 @@ async def test_options_llm_failure_still_200(client, users, data, session, monke
 
 
 # --- POST /interests/dislikes ---
+
 
 async def test_create_article_rule_hides_article(client, users, data, session):
     user = await users.create()
@@ -173,7 +177,7 @@ async def test_create_entity_rule_backfills_recent_only(client, users, data, ses
     old = await data.article(feed, title="Old")
     await _link(session, linked, entity)
     await _link(session, old, entity)
-    old.fetched_at = datetime.now(timezone.utc) - timedelta(days=40)
+    old.fetched_at = datetime.now(UTC) - timedelta(days=40)
     await session.commit()
 
     resp = await client.post(
@@ -318,6 +322,7 @@ async def test_create_validation_mismatches(client, users):
 
 # --- GET /interests/dislikes + /{id}/articles, DELETE ---
 
+
 async def test_list_rules_scoped_with_counts(client, users, data, session):
     user = await users.create()
     other = await users.create()
@@ -352,7 +357,9 @@ async def test_rule_articles_and_ownership(client, users, data):
 
     resp = await client.get(f"/api/interests/dislikes/{rule_id}/articles", headers=users.auth(user))
     assert resp.json() == [{"id": art.id, "title": "Hidden one"}]
-    denied = await client.get(f"/api/interests/dislikes/{rule_id}/articles", headers=users.auth(other))
+    denied = await client.get(
+        f"/api/interests/dislikes/{rule_id}/articles", headers=users.auth(other)
+    )
     assert denied.status_code == 404
 
 

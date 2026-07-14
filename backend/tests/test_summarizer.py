@@ -9,8 +9,13 @@ async def _make_article(session, **kwargs):
     feed = Feed(url="https://feed/x")
     session.add(feed)
     await session.flush()
-    art = Article(feed_id=feed.id, guid="g", url="https://x/a", title="Title",
-                  content_html=kwargs.get("content_html", ""))
+    art = Article(
+        feed_id=feed.id,
+        guid="g",
+        url="https://x/a",
+        title="Title",
+        content_html=kwargs.get("content_html", ""),
+    )
     session.add(art)
     await session.commit()
     await session.refresh(art)
@@ -67,8 +72,14 @@ async def test_generate_summaries_empty_summary_raises(session, monkeypatch):
 def _vision_config(supports_vision=True):
     from app import llm
 
-    return llm.LLMConfig(provider="openai", api_key="sk-x", base_url=None,
-                         model="gpt-5", user_owned=True, supports_vision=supports_vision)
+    return llm.LLMConfig(
+        provider="openai",
+        api_key="sk-x",
+        base_url=None,
+        model="gpt-5",
+        user_owned=True,
+        supports_vision=supports_vision,
+    )
 
 
 async def test_thin_with_vision_summarizes_from_screenshot(session, monkeypatch):

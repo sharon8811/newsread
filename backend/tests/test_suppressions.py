@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 
@@ -16,7 +16,7 @@ from app.models import (
     UserDislikeRule,
 )
 
-NOW = datetime.now(timezone.utc)
+NOW = datetime.now(UTC)
 
 
 async def _feed(session, url="sup"):
@@ -44,17 +44,21 @@ async def _subscribe(session, user, feed):
 
 
 async def _entity_rule(session, user, entity):
-    rule = UserDislikeRule(user_id=user.id, kind="entity", entity_id=entity.id, label=entity.canonical_key)
+    rule = UserDislikeRule(
+        user_id=user.id, kind="entity", entity_id=entity.id, label=entity.canonical_key
+    )
     session.add(rule)
     await session.commit()
     await session.refresh(rule)
     return rule
 
 
-async def _vector_rule(session, user, vector, *, kind="topic", threshold=0.5,
-                       expires_at=None, model="test-model"):
-    rule = UserDislikeRule(user_id=user.id, kind=kind, threshold=threshold,
-                           expires_at=expires_at, label="rule")
+async def _vector_rule(
+    session, user, vector, *, kind="topic", threshold=0.5, expires_at=None, model="test-model"
+):
+    rule = UserDislikeRule(
+        user_id=user.id, kind=kind, threshold=threshold, expires_at=expires_at, label="rule"
+    )
     session.add(rule)
     await session.commit()
     await session.refresh(rule)
@@ -72,6 +76,7 @@ async def _suppressed_ids(session, user):
 
 
 # --- entity leg ---
+
 
 async def test_entity_rule_suppresses_for_subscriber_only(session, users):
     subscriber = await users.create(username="sub")
@@ -118,6 +123,7 @@ async def test_entity_rule_idempotent_and_window_scoped(session, users):
 
 # --- vector leg ---
 
+
 async def test_vector_rule_threshold_and_model_match(session, users):
     user = await users.create(username="v")
     feed = await _feed(session)
@@ -128,7 +134,9 @@ async def test_vector_rule_threshold_and_model_match(session, users):
     unembedded = await _article(session, feed, guid="bare")
     session.add(ArticleEmbedding(article_id=near.id, model="test-model", embedding=[1.0, 0.0, 0.0]))
     session.add(ArticleEmbedding(article_id=far.id, model="test-model", embedding=[0.0, 1.0, 0.0]))
-    session.add(ArticleEmbedding(article_id=other_model.id, model="legacy", embedding=[1.0, 0.0, 0.0]))
+    session.add(
+        ArticleEmbedding(article_id=other_model.id, model="legacy", embedding=[1.0, 0.0, 0.0])
+    )
     await session.commit()
     await _vector_rule(session, user, [1.0, 0.0, 0.0], threshold=0.5)
 
@@ -147,8 +155,9 @@ async def test_vector_rule_expired_not_applied(session, users):
     art = await _article(session, feed, guid="a")
     session.add(ArticleEmbedding(article_id=art.id, model="test-model", embedding=[1.0, 0.0, 0.0]))
     await session.commit()
-    await _vector_rule(session, user, [1.0, 0.0, 0.0], kind="story",
-                       expires_at=NOW - timedelta(days=1))
+    await _vector_rule(
+        session, user, [1.0, 0.0, 0.0], kind="story", expires_at=NOW - timedelta(days=1)
+    )
 
     cutoff = NOW - suppressions.SUPPRESS_WINDOW
     assert await suppressions.apply_vector_rules(session, cutoff=cutoff) == 0
@@ -161,6 +170,7 @@ async def test_vector_rules_noop_without_pgvector(session, monkeypatch):
 
 # --- worker stage ---
 
+
 async def test_suppress_articles_batch_deletes_expired_rules(session, users):
     user = await users.create(username="wk")
     feed = await _feed(session)
@@ -168,11 +178,13 @@ async def test_suppress_articles_batch_deletes_expired_rules(session, users):
     art = await _article(session, feed, guid="a")
     session.add(ArticleEmbedding(article_id=art.id, model="test-model", embedding=[1.0, 0.0, 0.0]))
     await session.commit()
-    expired = await _vector_rule(session, user, [1.0, 0.0, 0.0], kind="story",
-                                 expires_at=NOW - timedelta(days=1))
+    expired = await _vector_rule(
+        session, user, [1.0, 0.0, 0.0], kind="story", expires_at=NOW - timedelta(days=1)
+    )
     session.add(ArticleSuppression(user_id=user.id, article_id=art.id, rule_id=expired.id))
-    live = await _vector_rule(session, user, [1.0, 0.0, 0.0], kind="story",
-                              expires_at=NOW + timedelta(days=13))
+    live = await _vector_rule(
+        session, user, [1.0, 0.0, 0.0], kind="story", expires_at=NOW + timedelta(days=13)
+    )
     await session.commit()
 
     assert await worker.suppress_articles_batch(feed_id=feed.id) == 1

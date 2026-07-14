@@ -1,7 +1,7 @@
 import base64
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Literal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response
@@ -13,7 +13,6 @@ from .. import crypto, embeddings, image_gen
 from ..config import settings
 from ..db import get_session
 from ..enrichers import badge_for
-from ..ner import NER_KINDS
 from ..models import (
     Article,
     ArticleEmbedding,
@@ -32,6 +31,7 @@ from ..models import (
     UserArticleState,
     UserReadingPosition,
 )
+from ..ner import NER_KINDS
 from ..schemas import (
     ArticleDetail,
     ArticleListItem,
@@ -153,7 +153,7 @@ def _compute_deltas(entity: Entity, snapshots: list[EntitySnapshot]) -> dict:
     current = (entity.data or {}).get(metric)
     if not isinstance(current, (int, float)):
         return {}
-    cutoff = datetime.now(timezone.utc) - timedelta(days=7)
+    cutoff = datetime.now(UTC) - timedelta(days=7)
     baseline = None
     for snapshot in snapshots:  # newest-first
         if snapshot.captured_at <= cutoff:
@@ -181,7 +181,7 @@ def _decode_cursor(cursor: str) -> tuple[datetime | None, int]:
         published = datetime.fromisoformat(published_raw) if published_raw else None
         return published, int(id_raw)
     except (ValueError, UnicodeDecodeError):
-        raise HTTPException(status_code=422, detail="Invalid cursor")
+        raise HTTPException(status_code=422, detail="Invalid cursor") from None
 
 
 def _cursor_filter(published: datetime | None, article_id: int, *, oldest: bool):
@@ -381,12 +381,14 @@ async def _entity_related(
     ]
 
 
-async def related_articles(session: AsyncSession, user_id: int, article: Article) -> list[RelatedRow]:
+async def related_articles(
+    session: AsyncSession, user_id: int, article: Article
+) -> list[RelatedRow]:
     """Entity-first hybrid: shared-resource matches lead the list, then
     embedding KNN fills the remaining slots, with candidates sharing LLM
     name entities (person/org/product) boosted within the distance pool.
     The entity leg also carries installs with no embeddings at all."""
-    cutoff = datetime.now(timezone.utc) - RELATED_WINDOW
+    cutoff = datetime.now(UTC) - RELATED_WINDOW
     rows = await _entity_related(session, user_id, article, cutoff)
     remaining = RELATED_LIMIT - len(rows)
     if remaining <= 0:
@@ -576,15 +578,11 @@ async def list_articles(
 
     stmt = base_stmt
     if filter == "unread":
-        stmt = stmt.where(
-            or_(UserArticleState.id.is_(None), UserArticleState.is_read.is_(False))
-        )
+        stmt = stmt.where(or_(UserArticleState.id.is_(None), UserArticleState.is_read.is_(False)))
     elif filter == "saved":
         stmt = stmt.where(UserArticleState.is_saved.is_(True))
 
-    ranked_ids = (
-        await _hybrid_search_ids(session, user.id, feed_id, filter, q) if q else None
-    )
+    ranked_ids = await _hybrid_search_ids(session, user.id, feed_id, filter, q) if q else None
     if ranked_ids is not None:
         page_ids = ranked_ids[offset : offset + limit]
         if not page_ids:
@@ -596,9 +594,7 @@ async def list_articles(
     else:
         if q:
             pattern = f"%{q}%"
-            stmt = stmt.where(
-                or_(Article.title.ilike(pattern), Article.excerpt.ilike(pattern))
-            )
+            stmt = stmt.where(or_(Article.title.ilike(pattern), Article.excerpt.ilike(pattern)))
         sort_order = None
         if feed_id is not None:
             sort_order = await session.scalar(
@@ -619,9 +615,7 @@ async def list_articles(
             # reading window requests all prior rows as stable context even
             # when its forward-facing filter is unread-only.
             published, cursor_id = _decode_cursor(cursor)
-            history_stmt = (
-                base_stmt if reading_window and filter == "unread" else stmt
-            )
+            history_stmt = base_stmt if reading_window and filter == "unread" else stmt
             stmt = (
                 history_stmt.where(_cursor_filter_before(published, cursor_id, oldest=oldest))
                 .order_by(*reverse_order)
@@ -638,9 +632,7 @@ async def list_articles(
             stmt = stmt.order_by(*list_order)
             anchor_article: Article | None = None
             if anchor is not None:
-                unread = or_(
-                    UserArticleState.id.is_(None), UserArticleState.is_read.is_(False)
-                )
+                unread = or_(UserArticleState.id.is_(None), UserArticleState.is_read.is_(False))
                 scope = f"feed:{feed_id}" if feed_id is not None else "inbox"
                 position = await session.scalar(
                     select(UserReadingPosition).where(
@@ -695,9 +687,7 @@ async def list_articles(
             if anchor_article is not None:
                 anchor_published = anchor_article.published_at
                 stmt = stmt.where(
-                    _cursor_filter_at_or_after(
-                        anchor_published, anchor_article.id, oldest=oldest
-                    )
+                    _cursor_filter_at_or_after(anchor_published, anchor_article.id, oldest=oldest)
                 )
                 history_scope_stmt = (
                     base_stmt if reading_window and filter == "unread" else scope_stmt
@@ -755,8 +745,7 @@ def _image_pending(article: Article) -> bool:
     return (
         article.image_url is None
         and article.image_gen_attempted_at is not None
-        and datetime.now(timezone.utc) - article.image_gen_attempted_at
-        < IMAGE_PENDING_WINDOW
+        and datetime.now(UTC) - article.image_gen_attempted_at < IMAGE_PENDING_WINDOW
     )
 
 
@@ -767,9 +756,7 @@ async def _resolve_image_config(session: AsyncSession, user: User):
         return None  # broken stored key must not break reading
 
 
-async def _claim_image_generation(
-    session: AsyncSession, user: User, article: Article
-) -> bool:
+async def _claim_image_generation(session: AsyncSession, user: User, article: Article) -> bool:
     """Atomically claim the once-ever generation attempt for an article,
     charging it to the user's monthly budget. False = someone else owns it."""
     claimed = await session.execute(
@@ -819,9 +806,7 @@ async def _maybe_generate_image(
     await session.commit()
     if not owned:
         return True  # a concurrent view just claimed it
-    background.add_task(
-        image_gen.generate_for_article, article.id, user.id, config, prompt
-    )
+    background.add_task(image_gen.generate_for_article, article.id, user.id, config, prompt)
     return True
 
 
@@ -840,9 +825,7 @@ async def _generate_listed_images(
     candidates = [
         article
         for article, _, gen_enabled, _ in rows
-        if gen_enabled
-        and article.image_url is None
-        and article.image_gen_attempted_at is None
+        if gen_enabled and article.image_url is None and article.image_gen_attempted_at is None
     ]
     if slots <= 0 or not candidates:
         return set()
@@ -859,9 +842,7 @@ async def _generate_listed_images(
     # Commit before scheduling: a task must never run for an unclaimed article.
     await session.commit()
     for article, prompt in claimed:
-        background.add_task(
-            image_gen.generate_for_article, article.id, user.id, config, prompt
-        )
+        background.add_task(image_gen.generate_for_article, article.id, user.id, config, prompt)
     return {article.id for article, _ in claimed}
 
 
@@ -991,9 +972,7 @@ async def set_state_batch(
         values = _read_state_values(body.is_read, body.read_source)
         stmt = (
             pg_insert(UserArticleState)
-            .values(
-                [{"user_id": user.id, "article_id": aid, **values} for aid in accessible]
-            )
+            .values([{"user_id": user.id, "article_id": aid, **values} for aid in accessible])
             .on_conflict_do_update(
                 index_elements=["user_id", "article_id"],
                 set_=values,
@@ -1017,11 +996,7 @@ async def set_state_batch(
             .where(Article.id == body.frontier_article_id)
         )
     if frontier is not None:
-        scope = (
-            f"feed:{body.frontier_feed_id}"
-            if body.frontier_feed_id is not None
-            else "inbox"
-        )
+        scope = f"feed:{body.frontier_feed_id}" if body.frontier_feed_id is not None else "inbox"
         position = {
             "user_id": user.id,
             "scope": scope,

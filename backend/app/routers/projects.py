@@ -1,30 +1,28 @@
 import logging
 import math
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-from typing import Literal
 
 from .. import db
 from ..config import settings
 from ..db import get_session
-from ..queue import enqueue
 from ..models import (
     Article,
     ArticleEmbedding,
-    Feed,
     Project,
     ProjectArticle,
     ProjectArticleComment,
     ProjectArticleState,
     ProjectMember,
     User,
-    UserArticleState,
 )
+from ..queue import enqueue
 from ..schemas import (
     ArticleProjectStatus,
     ProjectArticleAddIn,
@@ -80,7 +78,9 @@ async def _member_or_404(session: AsyncSession, project_id: int, user_id: int) -
     return membership
 
 
-async def _visible_counts(session: AsyncSession, project_ids: list[int], user_id: int) -> dict[int, int]:
+async def _visible_counts(
+    session: AsyncSession, project_ids: list[int], user_id: int
+) -> dict[int, int]:
     if not project_ids:
         return {}
     rows = await session.execute(
@@ -276,15 +276,13 @@ SUGGEST_PINS_PER_PROJECT = 50
 
 
 def _cosine(a: list[float], b: list[float]) -> float:
-    dot = sum(x * y for x, y in zip(a, b))
+    dot = sum(x * y for x, y in zip(a, b, strict=False))
     norm_a = math.sqrt(sum(x * x for x in a))
     norm_b = math.sqrt(sum(x * x for x in b))
     return dot / (norm_a * norm_b) if norm_a and norm_b else 0.0
 
 
-async def _suggested_project_id(
-    session: AsyncSession, article_id: int, user_id: int
-) -> int | None:
+async def _suggested_project_id(session: AsyncSession, article_id: int, user_id: int) -> int | None:
     """The single project whose recent pins are most similar to this article,
     if any clears the threshold. Purely reads stored vectors — no LLM calls."""
     if not db.vector_enabled:
@@ -315,9 +313,7 @@ async def _suggested_project_id(
                 ),
             )
             .where(visible_pins(user_id), ProjectArticle.article_id != article_id)
-            .order_by(
-                func.coalesce(ProjectArticle.shared_at, ProjectArticle.created_at).desc()
-            )
+            .order_by(func.coalesce(ProjectArticle.shared_at, ProjectArticle.created_at).desc())
         )
     ).all()
     vectors_by_project: dict[int, list[list[float]]] = {}
@@ -328,7 +324,7 @@ async def _suggested_project_id(
     target = [float(x) for x in article_vector]
     best_id, best_similarity = None, SUGGEST_MIN_SIMILARITY
     for project_id, vectors in vectors_by_project.items():
-        centroid = [sum(dim) / len(vectors) for dim in zip(*vectors)]
+        centroid = [sum(dim) / len(vectors) for dim in zip(*vectors, strict=False)]
         similarity = _cosine(target, centroid)
         if similarity >= best_similarity:
             best_id, best_similarity = project_id, similarity
@@ -490,7 +486,7 @@ async def visit_project(
 ):
     """The project page reports each open; unseen counts measure against it."""
     membership = await _member_or_404(session, project_id, user.id)
-    membership.last_visited_at = datetime.now(timezone.utc)
+    membership.last_visited_at = datetime.now(UTC)
     await session.commit()
 
 
@@ -574,7 +570,7 @@ async def add_project_article(
             article_id=article.id,
             added_by_user_id=user.id,
             is_shared=body.is_shared,
-            shared_at=datetime.now(timezone.utc) if body.is_shared else None,
+            shared_at=datetime.now(UTC) if body.is_shared else None,
         )
         .on_conflict_do_nothing(index_elements=["project_id", "article_id", "added_by_user_id"])
         .returning(ProjectArticle.id)
@@ -637,7 +633,7 @@ async def update_project_article(
     published = False
     if "is_shared" in updates and updates["is_shared"] is not None:
         if updates["is_shared"] and not pin.is_shared:
-            pin.shared_at = datetime.now(timezone.utc)
+            pin.shared_at = datetime.now(UTC)
             published = True
         elif not updates["is_shared"]:
             pin.shared_at = None
@@ -721,7 +717,7 @@ async def set_article_status(
     resolution note, possibly with a link) posts atomically with the move."""
     await _member_or_404(session, project_id, user.id)
     await _thread_or_404(session, project_id, article_id, user.id)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     await session.execute(
         pg_insert(ProjectArticleState)
         .values(

@@ -88,8 +88,8 @@ SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
 app_db.engine = engine
 app_db.SessionLocal = SessionLocal
 
-import app.worker as _worker  # noqa: E402
 import app.enrichers.pipeline as _pipeline  # noqa: E402
+import app.worker as _worker  # noqa: E402
 
 _worker.SessionLocal = SessionLocal
 _pipeline.SessionLocal = SessionLocal
@@ -141,6 +141,7 @@ async def _clean():
         tables = ", ".join(t.name for t in reversed(Base.metadata.sorted_tables))
         await conn.execute(text(f"TRUNCATE {tables} RESTART IDENTITY CASCADE"))
     from app import embeddings
+
     embeddings._query_cache.clear()
     yield
 
@@ -150,6 +151,7 @@ def _skip_feed_url_validation(monkeypatch):
     """Feed fetches use respx-mocked hosts that must never hit real DNS.
     Tests exercising the guard call the imported _validate_public_url directly,
     which keeps its original binding."""
+
     async def allow(url: str) -> None:
         return None
 
@@ -176,8 +178,15 @@ class UserFactory:
         self.session = session
         self._n = 0
 
-    async def create(self, *, username=None, email=None, name="Test User",
-                     password="password123", default_view="list") -> User:
+    async def create(
+        self,
+        *,
+        username=None,
+        email=None,
+        name="Test User",
+        password="password123",
+        default_view="list",
+    ) -> User:
         self._n += 1
         username = username or f"user{self._n}"
         email = email or f"{username}@example.com"
@@ -265,6 +274,7 @@ async def data(session):
 @pytest_asyncio.fixture(autouse=True)
 def _no_enqueue(monkeypatch):
     """Feed/share routes enqueue background jobs; keep tests off Redis."""
+
     async def _noop(*args, **kwargs):
         return None
 

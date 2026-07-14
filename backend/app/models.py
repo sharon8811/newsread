@@ -1,5 +1,6 @@
 from datetime import date, datetime
 
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     Boolean,
     Date,
@@ -15,7 +16,6 @@ from sqlalchemy import (
     func,
     text,
 )
-from pgvector.sqlalchemy import Vector
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -85,7 +85,9 @@ class LLMUsage(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
-    feature: Mapped[str] = mapped_column(String(16))  # 'summary' | 'qa' | 'share' | 'image' | 'topics' | 'synthesis'
+    feature: Mapped[str] = mapped_column(
+        String(16)
+    )  # 'summary' | 'qa' | 'share' | 'image' | 'topics' | 'synthesis'
     provider: Mapped[str] = mapped_column(String(16))
     model: Mapped[str] = mapped_column(String(120))
     prompt_tokens: Mapped[int] = mapped_column(Integer, default=0)
@@ -133,7 +135,9 @@ class Feed(Base):
     image_gen_enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    articles: Mapped[list["Article"]] = relationship(back_populates="feed", cascade="all, delete-orphan")
+    articles: Mapped[list["Article"]] = relationship(
+        back_populates="feed", cascade="all, delete-orphan"
+    )
 
 
 class Subscription(Base):
@@ -168,9 +172,15 @@ class CatalogEntry(Base):
     description: Mapped[str | None] = mapped_column(Text)
     site_url: Mapped[str | None] = mapped_column(String(2048))
     category: Mapped[str] = mapped_column(String(64), index=True)
-    source: Mapped[str] = mapped_column(String(64), default="awesome-rss-feeds", server_default="awesome-rss-feeds")
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true", index=True)
-    health_status: Mapped[str] = mapped_column(String(24), default="unchecked", server_default="unchecked", index=True)
+    source: Mapped[str] = mapped_column(
+        String(64), default="awesome-rss-feeds", server_default="awesome-rss-feeds"
+    )
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default="true", index=True
+    )
+    health_status: Mapped[str] = mapped_column(
+        String(24), default="unchecked", server_default="unchecked", index=True
+    )
     checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     item_count: Mapped[int | None] = mapped_column(Integer)
     latest_item_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -320,9 +330,13 @@ class EntitySnapshot(Base):
     __table_args__ = (Index("ix_entity_snapshots_entity_captured", "entity_id", "captured_at"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    entity_id: Mapped[int] = mapped_column(ForeignKey("entities.id", ondelete="CASCADE"), index=True)
+    entity_id: Mapped[int] = mapped_column(
+        ForeignKey("entities.id", ondelete="CASCADE"), index=True
+    )
     data: Mapped[dict] = mapped_column(JSONB)
-    captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    captured_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
 
 
 class ArticleEntity(Base):
@@ -330,8 +344,12 @@ class ArticleEntity(Base):
     __table_args__ = (UniqueConstraint("article_id", "entity_id"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    article_id: Mapped[int] = mapped_column(ForeignKey("articles.id", ondelete="CASCADE"), index=True)
-    entity_id: Mapped[int] = mapped_column(ForeignKey("entities.id", ondelete="CASCADE"), index=True)
+    article_id: Mapped[int] = mapped_column(
+        ForeignKey("articles.id", ondelete="CASCADE"), index=True
+    )
+    entity_id: Mapped[int] = mapped_column(
+        ForeignKey("entities.id", ondelete="CASCADE"), index=True
+    )
     source: Mapped[str] = mapped_column(String(8))  # 'primary' | 'inline'
     position: Mapped[int] = mapped_column(Integer, default=0)
 
@@ -342,7 +360,9 @@ class UserArticleState(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
-    article_id: Mapped[int] = mapped_column(ForeignKey("articles.id", ondelete="CASCADE"), index=True)
+    article_id: Mapped[int] = mapped_column(
+        ForeignKey("articles.id", ondelete="CASCADE"), index=True
+    )
     is_read: Mapped[bool] = mapped_column(Boolean, default=False)
     is_saved: Mapped[bool] = mapped_column(Boolean, default=False)
     # When and how the article got read: 'opened' | 'scrolled' | 'story' |
@@ -389,16 +409,26 @@ class UserDislikeRule(Base):
     # (two clicks, or React StrictMode double-firing the create effect).
     __table_args__ = (
         Index(
-            "uq_dislike_user_kind_article", "user_id", "kind", "article_id",
-            unique=True, postgresql_where=text("article_id IS NOT NULL"),
+            "uq_dislike_user_kind_article",
+            "user_id",
+            "kind",
+            "article_id",
+            unique=True,
+            postgresql_where=text("article_id IS NOT NULL"),
         ),
         Index(
-            "uq_dislike_user_entity", "user_id", "entity_id",
-            unique=True, postgresql_where=text("entity_id IS NOT NULL"),
+            "uq_dislike_user_entity",
+            "user_id",
+            "entity_id",
+            unique=True,
+            postgresql_where=text("entity_id IS NOT NULL"),
         ),
         Index(
-            "uq_dislike_user_phrase", "user_id", text("lower(phrase)"),
-            unique=True, postgresql_where=text("phrase IS NOT NULL"),
+            "uq_dislike_user_phrase",
+            "user_id",
+            text("lower(phrase)"),
+            unique=True,
+            postgresql_where=text("phrase IS NOT NULL"),
         ),
     )
 
@@ -470,7 +500,9 @@ class ReadingActivity(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
-    article_id: Mapped[int] = mapped_column(ForeignKey("articles.id", ondelete="CASCADE"), index=True)
+    article_id: Mapped[int] = mapped_column(
+        ForeignKey("articles.id", ondelete="CASCADE"), index=True
+    )
     day: Mapped[date] = mapped_column(Date)
     source: Mapped[str] = mapped_column(String(8))  # 'web' | 'mobile'
     seconds: Mapped[int] = mapped_column(Integer, default=0)
@@ -483,8 +515,12 @@ class Share(Base):
     __tablename__ = "shares"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    from_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
-    article_id: Mapped[int] = mapped_column(ForeignKey("articles.id", ondelete="CASCADE"), index=True)
+    from_user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    article_id: Mapped[int] = mapped_column(
+        ForeignKey("articles.id", ondelete="CASCADE"), index=True
+    )
     note: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -568,7 +604,9 @@ class ProjectMember(Base):
     __table_args__ = (UniqueConstraint("project_id", "user_id"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     role: Mapped[str] = mapped_column(String(12), default="member")  # 'owner' | 'member'
     # Powers the "new since last visit" badge.
@@ -592,9 +630,15 @@ class ProjectArticle(Base):
     __table_args__ = (UniqueConstraint("project_id", "article_id", "added_by_user_id"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
-    article_id: Mapped[int] = mapped_column(ForeignKey("articles.id", ondelete="CASCADE"), index=True)
-    added_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    article_id: Mapped[int] = mapped_column(
+        ForeignKey("articles.id", ondelete="CASCADE"), index=True
+    )
+    added_by_user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
     is_shared: Mapped[bool] = mapped_column(Boolean, default=False)
     shared_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Legacy — notes now live in ProjectArticleComment. The column stays so the
@@ -617,8 +661,12 @@ class ProjectArticleState(Base):
     __table_args__ = (UniqueConstraint("project_id", "article_id"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
-    article_id: Mapped[int] = mapped_column(ForeignKey("articles.id", ondelete="CASCADE"), index=True)
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    article_id: Mapped[int] = mapped_column(
+        ForeignKey("articles.id", ondelete="CASCADE"), index=True
+    )
     # Allowed values are the schema's ProjectTicketStatus literal — extend there.
     status: Mapped[str] = mapped_column(String(16), default="open")
     updated_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
@@ -637,11 +685,17 @@ class ProjectArticleComment(Base):
     db.MIGRATIONS folded legacy ProjectArticle.note values in here)."""
 
     __tablename__ = "project_article_comments"
-    __table_args__ = (Index("ix_project_article_comments_thread", "project_id", "article_id", "created_at"),)
+    __table_args__ = (
+        Index("ix_project_article_comments_thread", "project_id", "article_id", "created_at"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
-    article_id: Mapped[int] = mapped_column(ForeignKey("articles.id", ondelete="CASCADE"), index=True)
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    article_id: Mapped[int] = mapped_column(
+        ForeignKey("articles.id", ondelete="CASCADE"), index=True
+    )
     author_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     body: Mapped[str] = mapped_column(Text)
     link_url: Mapped[str | None] = mapped_column(Text)
@@ -724,7 +778,9 @@ class ExternalShare(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
-    article_id: Mapped[int] = mapped_column(ForeignKey("articles.id", ondelete="CASCADE"), index=True)
+    article_id: Mapped[int] = mapped_column(
+        ForeignKey("articles.id", ondelete="CASCADE"), index=True
+    )
     platform: Mapped[str] = mapped_column(String(16))
     target_display: Mapped[str] = mapped_column(String(255))
     message: Mapped[str] = mapped_column(Text, default="")

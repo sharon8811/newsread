@@ -28,9 +28,7 @@ async def test_send_push_success(session, users):
     await _device(session, user, "tok-1")
     await _device(session, user, "tok-2", platform="android")
     route = respx.post(push.EXPO_PUSH_URL).mock(
-        return_value=httpx.Response(
-            200, json={"data": [{"status": "ok"}, {"status": "ok"}]}
-        )
+        return_value=httpx.Response(200, json={"data": [{"status": "ok"}, {"status": "ok"}]})
     )
     sent = await push.send_push([user.id], "Title", "Body", data={"share_id": 1})
     assert sent == 2

@@ -1,12 +1,11 @@
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
-import pytest
 from sqlalchemy import select
 
 from app import llm, qa_agent
-from app.routers import ai as ai_router
 from app.models import Conversation, Message
+from app.routers import ai as ai_router
 from app.summarizer import ThinContentError
 
 
@@ -19,6 +18,7 @@ async def _setup(users, data):
 
 
 # --- ai/status ---
+
 
 async def test_ai_status_unconfigured(client, users, monkeypatch):
     monkeypatch.setattr(llm, "is_configured", lambda: False)
@@ -46,6 +46,7 @@ async def test_ai_status_configured(client, users, monkeypatch):
 
 
 # --- summarize ---
+
 
 async def test_summarize_returns_cached(client, users, data, monkeypatch):
     user, feed, art = await _setup(users, data)
@@ -116,8 +117,9 @@ async def test_summarize_force_regenerates(client, users, data, monkeypatch):
         article.summary_short = "new short"
 
     monkeypatch.setattr(ai_router, "generate_summaries", fake_generate)
-    resp = await client.post(f"/api/articles/{art.id}/summarize",
-                             params={"force": "true"}, headers=users.auth(user))
+    resp = await client.post(
+        f"/api/articles/{art.id}/summarize", params={"force": "true"}, headers=users.auth(user)
+    )
     assert resp.json()["summary"] == "new full"
 
 
@@ -128,6 +130,7 @@ async def test_summarize_article_not_found(client, users, data):
 
 
 # --- get conversation ---
+
 
 async def test_get_conversation_empty(client, users, data):
     user, feed, art = await _setup(users, data)
@@ -142,8 +145,14 @@ async def test_get_conversation_with_messages(client, users, data, session):
     session.add(conv)
     await session.flush()
     session.add(Message(conversation_id=conv.id, role="user", content="hi"))
-    session.add(Message(conversation_id=conv.id, role="assistant", content="hello",
-                        tool_events=[{"name": "web_search", "args": {}, "summary": "x"}]))
+    session.add(
+        Message(
+            conversation_id=conv.id,
+            role="assistant",
+            content="hello",
+            tool_events=[{"name": "web_search", "args": {}, "summary": "x"}],
+        )
+    )
     await session.commit()
     resp = await client.get(f"/api/articles/{art.id}/qa", headers=users.auth(user))
     body = resp.json()
@@ -158,6 +167,7 @@ async def test_get_conversation_article_not_found(client, users, data):
 
 
 # --- ask stream ---
+
 
 def _parse_sse(text):
     events = []
@@ -184,8 +194,11 @@ async def test_ask_stream_success(client, users, data, session, monkeypatch):
 
     monkeypatch.setattr(qa_agent, "stream_answer", fake_stream)
 
-    resp = await client.post(f"/api/articles/{art.id}/qa/stream",
-                             json={"content": "What is this?"}, headers=users.auth(user))
+    resp = await client.post(
+        f"/api/articles/{art.id}/qa/stream",
+        json={"content": "What is this?"},
+        headers=users.auth(user),
+    )
     assert resp.status_code == 200
     events = _parse_sse(resp.text)
     types = [e["type"] for e in events]
@@ -215,8 +228,9 @@ async def test_ask_stream_thin_text_adds_hint(client, users, data, monkeypatch):
         yield {"type": "result", "content": "answer", "tool_events": []}
 
     monkeypatch.setattr(qa_agent, "stream_answer", fake_stream)
-    resp = await client.post(f"/api/articles/{art.id}/qa/stream",
-                             json={"content": "q"}, headers=users.auth(user))
+    resp = await client.post(
+        f"/api/articles/{art.id}/qa/stream", json={"content": "q"}, headers=users.auth(user)
+    )
     assert resp.status_code == 200
     assert "web_extract" in captured["text"]
 
@@ -224,8 +238,9 @@ async def test_ask_stream_thin_text_adds_hint(client, users, data, monkeypatch):
 async def test_ask_stream_no_llm(client, users, data, monkeypatch):
     user, feed, art = await _setup(users, data)
     monkeypatch.setattr(llm, "is_configured", lambda: False)
-    resp = await client.post(f"/api/articles/{art.id}/qa/stream",
-                             json={"content": "q"}, headers=users.auth(user))
+    resp = await client.post(
+        f"/api/articles/{art.id}/qa/stream", json={"content": "q"}, headers=users.auth(user)
+    )
     assert resp.status_code == 503
 
 
@@ -244,8 +259,9 @@ async def test_ask_stream_agent_error(client, users, data, monkeypatch):
         yield  # pragma: no cover
 
     monkeypatch.setattr(qa_agent, "stream_answer", boom_stream)
-    resp = await client.post(f"/api/articles/{art.id}/qa/stream",
-                             json={"content": "q"}, headers=users.auth(user))
+    resp = await client.post(
+        f"/api/articles/{art.id}/qa/stream", json={"content": "q"}, headers=users.auth(user)
+    )
     events = _parse_sse(resp.text)
     assert any(e["type"] == "error" for e in events)
 
@@ -264,8 +280,9 @@ async def test_ask_stream_empty_answer(client, users, data, monkeypatch):
         yield {"type": "result", "content": "", "tool_events": []}
 
     monkeypatch.setattr(qa_agent, "stream_answer", empty_stream)
-    resp = await client.post(f"/api/articles/{art.id}/qa/stream",
-                             json={"content": "q"}, headers=users.auth(user))
+    resp = await client.post(
+        f"/api/articles/{art.id}/qa/stream", json={"content": "q"}, headers=users.auth(user)
+    )
     events = _parse_sse(resp.text)
     assert any(e["type"] == "error" and "empty" in e["detail"] for e in events)
 
@@ -274,8 +291,12 @@ async def test_ask_stream_with_entities_context(client, users, data, session, mo
     from app.models import ArticleEntity, Entity
 
     user, feed, art = await _setup(users, data)
-    entity = Entity(kind="github", canonical_key="a/b", url="https://github.com/a/b",
-                    data={"full_name": "a/b", "stargazers_count": 5})
+    entity = Entity(
+        kind="github",
+        canonical_key="a/b",
+        url="https://github.com/a/b",
+        data={"full_name": "a/b", "stargazers_count": 5},
+    )
     session.add(entity)
     await session.flush()
     session.add(ArticleEntity(article_id=art.id, entity_id=entity.id, source="primary", position=0))
@@ -295,19 +316,22 @@ async def test_ask_stream_with_entities_context(client, users, data, session, mo
         yield {"type": "result", "content": "answer", "tool_events": []}
 
     monkeypatch.setattr(qa_agent, "stream_answer", fake_stream)
-    await client.post(f"/api/articles/{art.id}/qa/stream",
-                      json={"content": "q"}, headers=users.auth(user))
+    await client.post(
+        f"/api/articles/{art.id}/qa/stream", json={"content": "q"}, headers=users.auth(user)
+    )
     assert captured["entities"][0]["kind"] == "github"
 
 
 async def test_ask_stream_article_not_found(client, users, data, monkeypatch):
     user, feed, art = await _setup(users, data)
-    resp = await client.post("/api/articles/99999/qa/stream",
-                             json={"content": "q"}, headers=users.auth(user))
+    resp = await client.post(
+        "/api/articles/99999/qa/stream", json={"content": "q"}, headers=users.auth(user)
+    )
     assert resp.status_code == 404
 
 
 # --- Hacker News discussion Q&A ---
+
 
 def _discussion_snapshot(discussion_id: str):
     return {
@@ -316,26 +340,26 @@ def _discussion_snapshot(discussion_id: str):
         "fetched_at": "2026-07-12T12:00:00Z",
         "reported_total": 4,
         "included_total": 1,
-        "comments": [{
-            "id": 101,
-            "parent_id": int(discussion_id),
-            "author": "reader",
-            "text": "A useful correction",
-            "created_at": "2026-07-12T11:00:00Z",
-            "depth": 0,
-            "position": 0,
-            "deleted": False,
-            "dead": False,
-        }],
+        "comments": [
+            {
+                "id": 101,
+                "parent_id": int(discussion_id),
+                "author": "reader",
+                "text": "A useful correction",
+                "created_at": "2026-07-12T11:00:00Z",
+                "depth": 0,
+                "position": 0,
+                "deleted": False,
+                "dead": False,
+            }
+        ],
     }
 
 
 async def test_discussion_conversation_is_separate(client, users, data, session):
     user, feed, art = await _setup(users, data)
     art.comments_url = "https://news.ycombinator.com/item?id=99"
-    article_conv = Conversation(
-        user_id=user.id, article_id=art.id, kind="article", messages=[]
-    )
+    article_conv = Conversation(user_id=user.id, article_id=art.id, kind="article", messages=[])
     discussion_conv = Conversation(
         user_id=user.id, article_id=art.id, kind="discussion", messages=[]
     )
@@ -352,9 +376,7 @@ async def test_discussion_conversation_is_separate(client, users, data, session)
     assert discussion_resp.json()[0]["content"] == "discussion"
 
 
-async def test_discussion_stream_uses_client_snapshot(
-    client, users, data, session, monkeypatch
-):
+async def test_discussion_stream_uses_client_snapshot(client, users, data, session, monkeypatch):
     user, feed, art = await _setup(users, data)
     art.comments_url = "https://news.ycombinator.com/item?id=99"
     await session.commit()
@@ -410,8 +432,8 @@ async def test_discussion_snapshot_size_and_count_are_validated(client, users, d
 
 # --- project Q&A ---
 
+
 async def _project_with_pins(users, data, session, *, comment=None, with_summary=True):
-    from datetime import datetime, timezone
 
     from app.models import Project, ProjectArticle, ProjectArticleComment, ProjectMember
 
@@ -420,8 +442,9 @@ async def _project_with_pins(users, data, session, *, comment=None, with_summary
     feed = await data.feed()
     await data.subscribe(owner, feed)
     art = await data.article(
-        feed, title="Corpus Article",
-        published_at=datetime(2026, 7, 1, tzinfo=timezone.utc),
+        feed,
+        title="Corpus Article",
+        published_at=datetime(2026, 7, 1, tzinfo=UTC),
         **({"summary_medium": "the medium summary"} if with_summary else {}),
     )
     project = Project(owner_id=owner.id, name="Research", description="focus")
@@ -433,14 +456,22 @@ async def _project_with_pins(users, data, session, *, comment=None, with_summary
     await session.commit()
     await session.refresh(project)
     pin = ProjectArticle(
-        project_id=project.id, article_id=art.id, added_by_user_id=owner.id,
-        is_shared=True, shared_at=datetime.now(timezone.utc),
+        project_id=project.id,
+        article_id=art.id,
+        added_by_user_id=owner.id,
+        is_shared=True,
+        shared_at=datetime.now(UTC),
     )
     session.add(pin)
     if comment:
-        session.add(ProjectArticleComment(
-            project_id=project.id, article_id=art.id, author_id=owner.id, body=comment,
-        ))
+        session.add(
+            ProjectArticleComment(
+                project_id=project.id,
+                article_id=art.id,
+                author_id=owner.id,
+                body=comment,
+            )
+        )
     await session.commit()
     return owner, member, project, art
 
@@ -476,16 +507,28 @@ async def test_ask_project_stream_success(client, users, data, session, monkeypa
     from app.models import ProjectArticleComment, ProjectArticleState
 
     owner, member, project, art = await _project_with_pins(
-        users, data, session, comment="worth reading",
+        users,
+        data,
+        session,
+        comment="worth reading",
     )
-    session.add(ProjectArticleState(
-        project_id=project.id, article_id=art.id, status="done",
-        updated_by_user_id=owner.id,
-    ))
-    session.add(ProjectArticleComment(
-        project_id=project.id, article_id=art.id, author_id=member.id,
-        body="wrapped up", link_url="https://github.com/o/r/pull/7",
-    ))
+    session.add(
+        ProjectArticleState(
+            project_id=project.id,
+            article_id=art.id,
+            status="done",
+            updated_by_user_id=owner.id,
+        )
+    )
+    session.add(
+        ProjectArticleComment(
+            project_id=project.id,
+            article_id=art.id,
+            author_id=member.id,
+            body="wrapped up",
+            link_url="https://github.com/o/r/pull/7",
+        )
+    )
     await session.commit()
     monkeypatch.setattr(llm, "is_configured", lambda: True)
     captured = {}
@@ -496,8 +539,11 @@ async def test_ask_project_stream_success(client, users, data, session, monkeypa
         yield {"type": "result", "content": "Across the articles…", "tool_events": []}
 
     monkeypatch.setattr(qa_agent, "stream_project_answer", fake_stream)
-    resp = await client.post(f"/api/projects/{project.id}/qa/stream",
-                             json={"content": "themes?"}, headers=users.auth(owner))
+    resp = await client.post(
+        f"/api/projects/{project.id}/qa/stream",
+        json={"content": "themes?"},
+        headers=users.auth(owner),
+    )
     assert resp.status_code == 200
     events = _parse_sse(resp.text)
     assert [e["type"] for e in events][-1] == "done"
@@ -514,19 +560,26 @@ async def test_ask_project_stream_success(client, users, data, session, monkeypa
 
 
 async def test_ask_project_stream_excludes_others_private_pins(
-    client, users, data, session, monkeypatch,
+    client,
+    users,
+    data,
+    session,
+    monkeypatch,
 ):
-    from datetime import datetime, timezone
 
     from app.models import ProjectArticle
 
     owner, member, project, art = await _project_with_pins(users, data, session)
     feed2 = await data.feed()
     secret = await data.article(feed2, title="Secret Research")
-    session.add(ProjectArticle(
-        project_id=project.id, article_id=secret.id, added_by_user_id=owner.id,
-        is_shared=False,
-    ))
+    session.add(
+        ProjectArticle(
+            project_id=project.id,
+            article_id=secret.id,
+            added_by_user_id=owner.id,
+            is_shared=False,
+        )
+    )
     await session.commit()
     monkeypatch.setattr(llm, "is_configured", lambda: True)
     captured = {}
@@ -536,8 +589,9 @@ async def test_ask_project_stream_excludes_others_private_pins(
         yield {"type": "result", "content": "answer", "tool_events": []}
 
     monkeypatch.setattr(qa_agent, "stream_project_answer", fake_stream)
-    resp = await client.post(f"/api/projects/{project.id}/qa/stream",
-                             json={"content": "q"}, headers=users.auth(member))
+    resp = await client.post(
+        f"/api/projects/{project.id}/qa/stream", json={"content": "q"}, headers=users.auth(member)
+    )
     assert resp.status_code == 200
     assert "Secret Research" not in captured["corpus"]
     assert "Corpus Article" in captured["corpus"]
@@ -552,16 +606,18 @@ async def test_ask_project_stream_empty_project_422(client, users, data, session
     session.add(project)
     await session.commit()
     monkeypatch.setattr(llm, "is_configured", lambda: True)
-    resp = await client.post(f"/api/projects/{project.id}/qa/stream",
-                             json={"content": "q"}, headers=users.auth(user))
+    resp = await client.post(
+        f"/api/projects/{project.id}/qa/stream", json={"content": "q"}, headers=users.auth(user)
+    )
     assert resp.status_code == 422
 
 
 async def test_ask_project_stream_no_llm(client, users, data, session, monkeypatch):
     owner, member, project, art = await _project_with_pins(users, data, session)
     monkeypatch.setattr(llm, "is_configured", lambda: False)
-    resp = await client.post(f"/api/projects/{project.id}/qa/stream",
-                             json={"content": "q"}, headers=users.auth(owner))
+    resp = await client.post(
+        f"/api/projects/{project.id}/qa/stream", json={"content": "q"}, headers=users.auth(owner)
+    )
     assert resp.status_code == 503
 
 
@@ -574,8 +630,9 @@ async def test_ask_project_stream_agent_error(client, users, data, session, monk
         yield  # pragma: no cover
 
     monkeypatch.setattr(qa_agent, "stream_project_answer", boom)
-    resp = await client.post(f"/api/projects/{project.id}/qa/stream",
-                             json={"content": "q"}, headers=users.auth(owner))
+    resp = await client.post(
+        f"/api/projects/{project.id}/qa/stream", json={"content": "q"}, headers=users.auth(owner)
+    )
     assert any(e["type"] == "error" for e in _parse_sse(resp.text))
 
 
@@ -587,16 +644,24 @@ async def test_ask_project_stream_empty_answer(client, users, data, session, mon
         yield {"type": "result", "content": "", "tool_events": []}
 
     monkeypatch.setattr(qa_agent, "stream_project_answer", empty)
-    resp = await client.post(f"/api/projects/{project.id}/qa/stream",
-                             json={"content": "q"}, headers=users.auth(owner))
+    resp = await client.post(
+        f"/api/projects/{project.id}/qa/stream", json={"content": "q"}, headers=users.auth(owner)
+    )
     assert any(e["type"] == "error" for e in _parse_sse(resp.text))
 
 
 async def test_ask_project_stream_article_without_summary_gets_hint(
-    client, users, data, session, monkeypatch,
+    client,
+    users,
+    data,
+    session,
+    monkeypatch,
 ):
     owner, member, project, art = await _project_with_pins(
-        users, data, session, with_summary=False,
+        users,
+        data,
+        session,
+        with_summary=False,
     )
     art.excerpt = ""
     await session.commit()
@@ -608,8 +673,9 @@ async def test_ask_project_stream_article_without_summary_gets_hint(
         yield {"type": "result", "content": "a", "tool_events": []}
 
     monkeypatch.setattr(qa_agent, "stream_project_answer", fake_stream)
-    await client.post(f"/api/projects/{project.id}/qa/stream",
-                      json={"content": "q"}, headers=users.auth(owner))
+    await client.post(
+        f"/api/projects/{project.id}/qa/stream", json={"content": "q"}, headers=users.auth(owner)
+    )
     assert "no summary available" in captured["corpus"]
 
 
@@ -622,10 +688,15 @@ OWN_KEY = "sk-own-12345678"
 
 
 async def _own_key(session, user, *, provider="openai", model="gpt-5"):
-    session.add(UserAISettings(
-        user_id=user.id, provider=provider, model=model,
-        api_key_enc=crypto.encrypt_token(OWN_KEY), key_hint=OWN_KEY[-4:],
-    ))
+    session.add(
+        UserAISettings(
+            user_id=user.id,
+            provider=provider,
+            model=model,
+            api_key_enc=crypto.encrypt_token(OWN_KEY),
+            key_hint=OWN_KEY[-4:],
+        )
+    )
     await session.commit()
 
 
@@ -723,8 +794,9 @@ async def test_share_message_on_user_key_logs_usage(client, users, data, session
         return "a note"
 
     monkeypatch.setattr(llm, "share_message", fake_share)
-    resp = await client.post("/api/ai/share-message",
-                             json={"article_id": art.id}, headers=users.auth(user))
+    resp = await client.post(
+        "/api/ai/share-message", json={"article_id": art.id}, headers=users.auth(user)
+    )
     assert resp.status_code == 200
     row = (await session.scalars(select(LLMUsage))).one()
     assert row.feature == "share"
@@ -745,12 +817,17 @@ async def test_ask_stream_on_user_key_logs_usage(client, users, data, session, m
 
     async def fake_stream(**kwargs):
         captured["config"] = kwargs["config"]
-        yield {"type": "result", "content": "answer", "tool_events": [],
-               "usage": {"prompt_tokens": 11, "completion_tokens": 22}}
+        yield {
+            "type": "result",
+            "content": "answer",
+            "tool_events": [],
+            "usage": {"prompt_tokens": 11, "completion_tokens": 22},
+        }
 
     monkeypatch.setattr(qa_agent, "stream_answer", fake_stream)
-    resp = await client.post(f"/api/articles/{art.id}/qa/stream",
-                             json={"content": "q"}, headers=users.auth(user))
+    resp = await client.post(
+        f"/api/articles/{art.id}/qa/stream", json={"content": "q"}, headers=users.auth(user)
+    )
     assert resp.status_code == 200
     assert captured["config"].user_owned is True
     row = (await session.scalars(select(LLMUsage))).one()
@@ -775,8 +852,9 @@ async def test_ask_stream_error_on_user_key_logs_error(client, users, data, sess
         yield  # pragma: no cover
 
     monkeypatch.setattr(qa_agent, "stream_answer", boom_stream)
-    resp = await client.post(f"/api/articles/{art.id}/qa/stream",
-                             json={"content": "q"}, headers=users.auth(user))
+    resp = await client.post(
+        f"/api/articles/{art.id}/qa/stream", json={"content": "q"}, headers=users.auth(user)
+    )
     assert any(e["type"] == "error" for e in _parse_sse(resp.text))
     row = (await session.scalars(select(LLMUsage))).one()
     assert row.status == "error"
@@ -806,12 +884,15 @@ async def test_share_message_empty_502(client, users, data, monkeypatch):
         return ""
 
     monkeypatch.setattr(llm, "share_message", fake_share)
-    resp = await client.post("/api/ai/share-message",
-                             json={"article_id": art.id}, headers=users.auth(user))
+    resp = await client.post(
+        "/api/ai/share-message", json={"article_id": art.id}, headers=users.auth(user)
+    )
     assert resp.status_code == 502
 
 
-async def test_ask_stream_error_discards_flushed_conversation(client, users, data, session, monkeypatch):
+async def test_ask_stream_error_discards_flushed_conversation(
+    client, users, data, session, monkeypatch
+):
     """A failed first question must not persist an empty conversation row —
     the error-path usage commit rolls back first."""
     user, feed, art = await _setup(users, data)
@@ -828,14 +909,17 @@ async def test_ask_stream_error_discards_flushed_conversation(client, users, dat
         yield  # pragma: no cover
 
     monkeypatch.setattr(qa_agent, "stream_answer", boom_stream)
-    await client.post(f"/api/articles/{art.id}/qa/stream",
-                      json={"content": "q"}, headers=users.auth(user))
+    await client.post(
+        f"/api/articles/{art.id}/qa/stream", json={"content": "q"}, headers=users.auth(user)
+    )
     assert (await session.scalars(select(Conversation))).all() == []
     row = (await session.scalars(select(LLMUsage))).one()
     assert row.status == "error"
 
 
-async def test_share_message_empty_on_user_key_logs_error(client, users, data, session, monkeypatch):
+async def test_share_message_empty_on_user_key_logs_error(
+    client, users, data, session, monkeypatch
+):
     user, feed, art = await _setup(users, data)
     await _own_key(session, user)
 
@@ -843,8 +927,9 @@ async def test_share_message_empty_on_user_key_logs_error(client, users, data, s
         return ""
 
     monkeypatch.setattr(llm, "share_message", fake_share)
-    resp = await client.post("/api/ai/share-message",
-                             json={"article_id": art.id}, headers=users.auth(user))
+    resp = await client.post(
+        "/api/ai/share-message", json={"article_id": art.id}, headers=users.auth(user)
+    )
     assert resp.status_code == 502
     row = (await session.scalars(select(LLMUsage))).one()
     assert row.status == "error"
@@ -852,6 +937,7 @@ async def test_share_message_empty_on_user_key_logs_error(client, users, data, s
 
 
 # --- POST /articles/{id}/related-synthesis ---
+
 
 async def _with_related(users, data, session):
     """Article + one related article, linked via a shared entity so the
@@ -934,9 +1020,9 @@ async def test_synthesis_unparseable_timeline_echoes_raw(client, users, data, se
         )
 
     monkeypatch.setattr(ai_router.llm, "synthesize_related", fake_synthesize)
-    body = (await client.post(
-        f"/api/articles/{art.id}/related-synthesis", headers=users.auth(user)
-    )).json()
+    body = (
+        await client.post(f"/api/articles/{art.id}/related-synthesis", headers=users.auth(user))
+    ).json()
     assert body["timeline"] is None
     assert body["timeline_raw"] == "events unfolded gradually"
 

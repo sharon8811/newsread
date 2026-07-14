@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
@@ -27,7 +27,7 @@ async def register_device(
     else:
         device.user_id = user.id
         device.platform = body.platform
-        device.last_seen_at = datetime.now(timezone.utc)
+        device.last_seen_at = datetime.now(UTC)
     await session.commit()
     await session.refresh(device)
     return DeviceOut.model_validate(device)

@@ -38,9 +38,7 @@ async def extract_named(
 ) -> int:
     """Tag one article; returns how many entities were linked. Re-running is
     idempotent (name upsert + link on_conflict_do_nothing)."""
-    pairs = await llm.named_entities(
-        article.title, body_for(article), config=config, usage=usage
-    )
+    pairs = await llm.named_entities(article.title, body_for(article), config=config, usage=usage)
     linked = 0
     for kind, name in pairs[:MAX_NER_PER_ARTICLE]:
         if kind not in NER_KINDS:

@@ -40,10 +40,17 @@ async def log_time(session, user, article, day, seconds, source="web"):
 
 async def test_heartbeat_creates_row(client, users, data, session):
     user, _, article = await reader(users, data)
-    resp = await client.post("/api/activity/heartbeat", json=beat(article), headers=users.auth(user))
+    resp = await client.post(
+        "/api/activity/heartbeat", json=beat(article), headers=users.auth(user)
+    )
     assert resp.status_code == 204
     row = await session.scalar(select(ReadingActivity))
-    assert (row.user_id, row.article_id, row.seconds, row.source) == (user.id, article.id, 30, "web")
+    assert (row.user_id, row.article_id, row.seconds, row.source) == (
+        user.id,
+        article.id,
+        30,
+        "web",
+    )
     assert row.day == TODAY
 
 
@@ -99,7 +106,9 @@ async def test_heartbeat_rejects_out_of_range_seconds(client, users, data):
 async def test_heartbeat_rejects_bad_source(client, users, data):
     user, _, article = await reader(users, data)
     resp = await client.post(
-        "/api/activity/heartbeat", json=beat(article, source="carrier-pigeon"), headers=users.auth(user)
+        "/api/activity/heartbeat",
+        json=beat(article, source="carrier-pigeon"),
+        headers=users.auth(user),
     )
     assert resp.status_code == 422
 

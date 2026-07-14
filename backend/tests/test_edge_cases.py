@@ -1,9 +1,7 @@
 """Small branch-coverage edge cases across modules."""
 
 import httpx
-import pytest
 import respx
-from sqlalchemy import text
 
 from app import db as app_db
 from app.db import init_db
@@ -21,6 +19,7 @@ def _clean(path, host="github.com", query=None):
 
 # --- github matcher branches ---
 
+
 def test_github_reserved_owner():
     assert GitHubEnricher().matches(_clean("/issues/somerepo")) is None
 
@@ -31,11 +30,13 @@ def test_github_empty_repo_after_git_strip():
 
 # --- npm scoped package without name ---
 
+
 def test_npm_scoped_missing_name():
     assert NpmEnricher().matches(_clean("/package/@babel", host="npmjs.com")) is None
 
 
 # --- arxiv ---
+
 
 def test_arxiv_parse_id_prefix_but_bad_id():
     assert _parse_id("/abs/not-a-real-id") is None
@@ -55,11 +56,11 @@ async def test_arxiv_fetch_respects_rate_limit(monkeypatch):
         slept["seconds"] = seconds
 
     monkeypatch.setattr("app.enrichers.arxiv.asyncio.sleep", fake_sleep)
-    xml = ('<feed xmlns="http://www.w3.org/2005/Atom"><entry>'
-           '<title>A Paper</title><summary>s</summary></entry></feed>')
-    respx.get("https://export.arxiv.org/api/query").mock(
-        return_value=httpx.Response(200, text=xml)
+    xml = (
+        '<feed xmlns="http://www.w3.org/2005/Atom"><entry>'
+        "<title>A Paper</title><summary>s</summary></entry></feed>"
     )
+    respx.get("https://export.arxiv.org/api/query").mock(return_value=httpx.Response(200, text=xml))
     async with httpx.AsyncClient() as client:
         data = await ArxivEnricher().fetch("1706.03762", client)
     assert data["title"] == "A Paper"
@@ -67,6 +68,7 @@ async def test_arxiv_fetch_respects_rate_limit(monkeypatch):
 
 
 # --- clean_url / extract_links error branches ---
+
 
 def test_clean_url_malformed_raises_returns_none():
     # urlsplit raises ValueError on an invalid IPv6 literal.
@@ -83,6 +85,7 @@ def test_extract_links_parser_error(monkeypatch):
 
 # --- fetcher: entry with neither link nor guid ---
 
+
 def test_parse_xml_feed_skips_entry_without_guid():
     xml = """<?xml version="1.0"?>
     <rss version="2.0"><channel><title>F</title>
@@ -93,6 +96,7 @@ def test_parse_xml_feed_skips_entry_without_guid():
 
 
 # --- db: pgvector extension unavailable ---
+
 
 async def test_init_db_without_pgvector(monkeypatch):
     real_engine = app_db.engine

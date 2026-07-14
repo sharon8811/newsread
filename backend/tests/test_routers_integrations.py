@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -234,9 +234,7 @@ async def test_search_targets_marks_saved(client, users, session, monkeypatch):
     assert body["C2"]["saved_id"] is None
 
 
-async def test_search_targets_reconnect_error_flags_connection(
-    client, users, session, monkeypatch
-):
+async def test_search_targets_reconnect_error_flags_connection(client, users, session, monkeypatch):
     me = await users.create()
     connection = await _connect(session, me)
 
@@ -263,10 +261,17 @@ async def test_search_targets_requires_connection(client, users):
 async def test_save_list_delete_target(client, users, session):
     me = await users.create()
     await _connect(session, me)
-    resp = await client.post("/api/share-targets", json={
-        "platform": "slack", "external_id": "C7", "display_name": "#news",
-        "target_type": "channel", "meta": {},
-    }, headers=users.auth(me))
+    resp = await client.post(
+        "/api/share-targets",
+        json={
+            "platform": "slack",
+            "external_id": "C7",
+            "display_name": "#news",
+            "target_type": "channel",
+            "meta": {},
+        },
+        headers=users.auth(me),
+    )
     assert resp.status_code == 201
     target_id = resp.json()["id"]
     assert resp.json()["platform"] == "slack"
@@ -284,7 +289,9 @@ async def test_save_target_is_idempotent(client, users, session):
     me = await users.create()
     await _connect(session, me)
     body = {
-        "platform": "slack", "external_id": "C7", "display_name": "#news",
+        "platform": "slack",
+        "external_id": "C7",
+        "display_name": "#news",
         "target_type": "channel",
     }
     first = await client.post("/api/share-targets", json=body, headers=users.auth(me))
@@ -322,15 +329,23 @@ async def test_send_to_saved_target(client, users, data, session, monkeypatch):
         calls.update(token=token, external_id=external_id, message=message, url=url)
 
     monkeypatch.setattr("app.messaging.slack.send_message", fake_send)
-    resp = await client.post("/api/shares/external", json={
-        "article_id": article.id, "message": "worth a read", "target_id": target.id,
-    }, headers=users.auth(me))
+    resp = await client.post(
+        "/api/shares/external",
+        json={
+            "article_id": article.id,
+            "message": "worth a read",
+            "target_id": target.id,
+        },
+        headers=users.auth(me),
+    )
     assert resp.status_code == 201
     assert resp.json()["status"] == "sent"
     assert resp.json()["target_display"] == "#general"
     assert calls == {
-        "token": "tok-1", "external_id": "C1",
-        "message": "worth a read", "url": article.url,
+        "token": "tok-1",
+        "external_id": "C1",
+        "message": "worth a read",
+        "url": article.url,
     }
     await session.refresh(target)
     assert target.last_used_at is not None
@@ -344,14 +359,21 @@ async def test_send_to_adhoc_target(client, users, data, session, monkeypatch):
         assert (target_type, external_id, meta) == ("channel", "ch1", {"team_id": "t1"})
 
     monkeypatch.setattr("app.messaging.teams.send_message", fake_send)
-    resp = await client.post("/api/shares/external", json={
-        "article_id": article.id,
-        "message": "",
-        "target": {
-            "platform": "teams", "external_id": "ch1", "display_name": "Eng › General",
-            "target_type": "channel", "meta": {"team_id": "t1"},
+    resp = await client.post(
+        "/api/shares/external",
+        json={
+            "article_id": article.id,
+            "message": "",
+            "target": {
+                "platform": "teams",
+                "external_id": "ch1",
+                "display_name": "Eng › General",
+                "target_type": "channel",
+                "meta": {"team_id": "t1"},
+            },
         },
-    }, headers=users.auth(me))
+        headers=users.auth(me),
+    )
     assert resp.status_code == 201
 
 
@@ -364,9 +386,15 @@ async def test_send_failure_logs_and_returns_502(client, users, data, session, m
         raise MessagingError("You're not a member of that channel on Slack")
 
     monkeypatch.setattr("app.messaging.slack.send_message", fake_send)
-    resp = await client.post("/api/shares/external", json={
-        "article_id": article.id, "message": "m", "target_id": target.id,
-    }, headers=users.auth(me))
+    resp = await client.post(
+        "/api/shares/external",
+        json={
+            "article_id": article.id,
+            "message": "m",
+            "target_id": target.id,
+        },
+        headers=users.auth(me),
+    )
     assert resp.status_code == 502
     assert resp.json()["detail"]["reconnect"] is False
 
@@ -385,9 +413,14 @@ async def test_send_auth_failure_flags_reconnect(client, users, data, session, m
         raise MessagingError("revoked", reconnect=True)
 
     monkeypatch.setattr("app.messaging.slack.send_message", fake_send)
-    resp = await client.post("/api/shares/external", json={
-        "article_id": article.id, "target_id": target.id,
-    }, headers=users.auth(me))
+    resp = await client.post(
+        "/api/shares/external",
+        json={
+            "article_id": article.id,
+            "target_id": target.id,
+        },
+        headers=users.auth(me),
+    )
     assert resp.status_code == 502
     assert resp.json()["detail"]["reconnect"] is True
     await session.refresh(connection)
@@ -396,9 +429,14 @@ async def test_send_auth_failure_flags_reconnect(client, users, data, session, m
 
 async def test_send_requires_some_target(client, users, data):
     me, article = await _sharable(users, data)
-    resp = await client.post("/api/shares/external", json={
-        "article_id": article.id, "message": "m",
-    }, headers=users.auth(me))
+    resp = await client.post(
+        "/api/shares/external",
+        json={
+            "article_id": article.id,
+            "message": "m",
+        },
+        headers=users.auth(me),
+    )
     assert resp.status_code == 422
 
 
@@ -408,34 +446,46 @@ async def test_send_inaccessible_article_404(client, users, data, session):
     article = await data.article(feed)
     connection = await _connect(session, me)
     target = await _saved_target(session, me, connection)
-    resp = await client.post("/api/shares/external", json={
-        "article_id": article.id, "target_id": target.id,
-    }, headers=users.auth(me))
+    resp = await client.post(
+        "/api/shares/external",
+        json={
+            "article_id": article.id,
+            "target_id": target.id,
+        },
+        headers=users.auth(me),
+    )
     assert resp.status_code == 404
 
 
 async def test_send_refreshes_expired_teams_token(client, users, data, session, monkeypatch):
     me, article = await _sharable(users, data)
     connection = await _connect(
-        session, me, "teams",
+        session,
+        me,
+        "teams",
         refresh_token_enc=crypto.encrypt_token("rt-old"),
-        token_expires_at=datetime.now(timezone.utc) - timedelta(minutes=5),
+        token_expires_at=datetime.now(UTC) - timedelta(minutes=5),
     )
     target = await _saved_target(session, me, connection, external_id="chat1", target_type="chat")
     sent_with = {}
 
     async def fake_refresh(refresh_token):
         assert refresh_token == "rt-old"
-        return "at-new", "rt-new", datetime.now(timezone.utc) + timedelta(hours=1)
+        return "at-new", "rt-new", datetime.now(UTC) + timedelta(hours=1)
 
     async def fake_send(token, *args, **kwargs):
         sent_with["token"] = token
 
     monkeypatch.setattr("app.messaging.teams.refresh_tokens", fake_refresh)
     monkeypatch.setattr("app.messaging.teams.send_message", fake_send)
-    resp = await client.post("/api/shares/external", json={
-        "article_id": article.id, "target_id": target.id,
-    }, headers=users.auth(me))
+    resp = await client.post(
+        "/api/shares/external",
+        json={
+            "article_id": article.id,
+            "target_id": target.id,
+        },
+        headers=users.auth(me),
+    )
     assert resp.status_code == 201
     assert sent_with["token"] == "at-new"
     await session.refresh(connection)
@@ -447,9 +497,13 @@ async def test_send_refreshes_expired_teams_token(client, users, data, session, 
 
 async def test_share_message_requires_llm(client, users, data):
     me, article = await _sharable(users, data)
-    resp = await client.post("/api/ai/share-message", json={
-        "article_id": article.id,
-    }, headers=users.auth(me))
+    resp = await client.post(
+        "/api/ai/share-message",
+        json={
+            "article_id": article.id,
+        },
+        headers=users.auth(me),
+    )
     assert resp.status_code == 503
 
 
@@ -462,9 +516,14 @@ async def test_share_message_generates(client, users, data, monkeypatch):
         return "A polished message."
 
     monkeypatch.setattr("app.llm.share_message", fake_share_message)
-    resp = await client.post("/api/ai/share-message", json={
-        "article_id": article.id, "draft": "my draft",
-    }, headers=users.auth(me))
+    resp = await client.post(
+        "/api/ai/share-message",
+        json={
+            "article_id": article.id,
+            "draft": "my draft",
+        },
+        headers=users.auth(me),
+    )
     assert resp.status_code == 200
     assert resp.json()["message"] == "A polished message."
 
@@ -477,7 +536,11 @@ async def test_share_message_llm_failure_502(client, users, data, monkeypatch):
         raise RuntimeError("llm down")
 
     monkeypatch.setattr("app.llm.share_message", boom)
-    resp = await client.post("/api/ai/share-message", json={
-        "article_id": article.id,
-    }, headers=users.auth(me))
+    resp = await client.post(
+        "/api/ai/share-message",
+        json={
+            "article_id": article.id,
+        },
+        headers=users.auth(me),
+    )
     assert resp.status_code == 502

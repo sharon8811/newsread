@@ -1,7 +1,7 @@
 """Shared summary generation, used by the API (on demand) and the worker (batch)."""
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -51,7 +51,7 @@ async def generate_summaries(
     article.summary_medium = medium
     article.summary = full
     article.summary_model = config.model if config is not None else settings.openai_model
-    article.summary_generated_at = datetime.now(timezone.utc)
+    article.summary_generated_at = datetime.now(UTC)
     await session.commit()
 
 
@@ -64,9 +64,7 @@ async def _summarize_from_screenshot(
 ) -> tuple[str, str, str]:
     """The image-only fallback: render the page and let a vision model read it.
     Raises ThinContentError when vision isn't available or the render fails."""
-    vision_capable = (
-        config.supports_vision if config is not None else settings.openai_model_vision
-    )
+    vision_capable = config.supports_vision if config is not None else settings.openai_model_vision
     if not (allow_vision and vision_capable):
         raise ThinContentError()
     shot = await screenshot.capture(article.url)

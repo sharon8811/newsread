@@ -8,7 +8,7 @@ the same scrapling + trafilatura pipeline the article enricher uses."""
 import logging
 import re
 from collections.abc import AsyncIterator
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import urljoin, urlparse
 
@@ -189,12 +189,15 @@ async def _extract_local(url: str) -> str:
         return f"Could not extract {url}: {exc}"
     if page.status != 200:
         return f"Could not extract {url}: the page returned HTTP {page.status}."
-    text = trafilatura.extract(
-        page.html_content,
-        output_format="markdown",
-        include_links=True,
-        include_comments=False,
-    ) or ""
+    text = (
+        trafilatura.extract(
+            page.html_content,
+            output_format="markdown",
+            include_links=True,
+            include_comments=False,
+        )
+        or ""
+    )
     if not text:
         return f"Could not extract {url}: the page returned no content."
     return _absolutize_links(text, url)
@@ -205,9 +208,7 @@ _MD_LINK_TARGET = re.compile(r"\]\(([^)\s]+)\)")
 
 def _absolutize_links(markdown: str, base_url: str) -> str:
     """Resolve relative link targets so the agent can cite them verbatim."""
-    return _MD_LINK_TARGET.sub(
-        lambda m: f"]({urljoin(base_url, m.group(1))})", markdown
-    )
+    return _MD_LINK_TARGET.sub(lambda m: f"]({urljoin(base_url, m.group(1))})", markdown)
 
 
 def _tools() -> list:
@@ -244,7 +245,10 @@ def _entities_block(entities: list[dict]) -> str:
         if facts:
             line += f" — {facts}"
         lines.append(line)
-    return "\n\nLinked resources already looked up (current data, no need to search for these):\n" + "\n".join(lines)
+    return (
+        "\n\nLinked resources already looked up (current data, no need to search for these):\n"
+        + "\n".join(lines)
+    )
 
 
 def _instructions(
@@ -254,11 +258,9 @@ def _instructions(
     published_at: datetime | None,
     entities: list[dict],
 ) -> str:
-    published = (
-        f"Article published: {published_at.date().isoformat()}\n" if published_at else ""
-    )
+    published = f"Article published: {published_at.date().isoformat()}\n" if published_at else ""
     return QA_INSTRUCTIONS.format(
-        today=datetime.now(timezone.utc).date().isoformat(),
+        today=datetime.now(UTC).date().isoformat(),
         title=title,
         url=url,
         published=published,
@@ -283,7 +285,11 @@ def _tool_args(part) -> dict:
     except Exception:
         return {}
     # Keep the payload UI-sized; queries and URLs are short, drop anything huge.
-    return {k: v for k, v in args.items() if isinstance(v, (str, int, float, bool)) and len(str(v)) < 500}
+    return {
+        k: v
+        for k, v in args.items()
+        if isinstance(v, (str, int, float, bool)) and len(str(v)) < 500
+    }
 
 
 def _domain(url: Any) -> str:
@@ -354,7 +360,7 @@ def _discussion_instructions(
             f"{comment.get('text') or '[no visible text]'}"
         )
     return DISCUSSION_QA_INSTRUCTIONS.format(
-        today=datetime.now(timezone.utc).date().isoformat(),
+        today=datetime.now(UTC).date().isoformat(),
         title=title,
         url=url,
         article_text=article_text,
@@ -397,7 +403,7 @@ async def stream_project_answer(
 ) -> AsyncIterator[dict[str, Any]]:
     """Same event stream as stream_answer, over a project's collection."""
     instructions = PROJECT_QA_INSTRUCTIONS.format(
-        today=datetime.now(timezone.utc).date().isoformat(),
+        today=datetime.now(UTC).date().isoformat(),
         name=name,
         description=f"\nProject description: {description}\n" if description else "",
         corpus=corpus,

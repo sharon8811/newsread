@@ -1,7 +1,3 @@
-import types
-
-import pytest
-
 from app import queue
 
 

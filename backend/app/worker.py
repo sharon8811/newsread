@@ -6,7 +6,7 @@ Run with: arq app.worker.WorkerSettings
 
 import asyncio
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from arq import cron
 from arq.connections import RedisSettings
@@ -96,7 +96,9 @@ async def enrich_and_summarize(ctx: dict | None = None, feed_id: int | None = No
         # vector leg no-ops without embeddings).
         await suppress_articles_batch(feed_id=feed_id)
         if enrich_ids or extracted:
-            logger.info("Enriched %d articles, extracted entities for %d", len(enrich_ids), extracted)
+            logger.info(
+                "Enriched %d articles, extracted entities for %d", len(enrich_ids), extracted
+            )
         return
 
     async with SessionLocal() as session:
@@ -151,7 +153,7 @@ async def _ner_one(article_id: int, semaphore: asyncio.Semaphore) -> None:
                 logger.warning("Entity tagging of article %s failed: %s", article_id, exc)
                 await session.rollback()
             # Always stamp: never re-tag on failure, never block the cycle.
-            article.ner_extracted_at = datetime.now(timezone.utc)
+            article.ner_extracted_at = datetime.now(UTC)
             await session.commit()
 
 
@@ -243,7 +245,7 @@ async def suppress_articles_batch(feed_id: int | None = None) -> int:
                     UserDislikeRule.expires_at <= func.now(),
                 )
             )
-            cutoff = datetime.now(timezone.utc) - suppressions.SUPPRESS_WINDOW
+            cutoff = datetime.now(UTC) - suppressions.SUPPRESS_WINDOW
             count = await suppressions.apply_entity_rules(session, cutoff=cutoff, feed_id=feed_id)
             count += await suppressions.apply_vector_rules(session, cutoff=cutoff, feed_id=feed_id)
             await session.commit()
@@ -307,9 +309,7 @@ async def send_project_pin_push(ctx: dict, pin_id: int) -> None:
                     ProjectArticleComment.author_id == pin.added_by_user_id,
                     ProjectArticleComment.body != "",
                 )
-                .order_by(
-                    ProjectArticleComment.created_at.desc(), ProjectArticleComment.id.desc()
-                )
+                .order_by(ProjectArticleComment.created_at.desc(), ProjectArticleComment.id.desc())
                 .limit(1)
             )
     if pin is None or not pin.is_shared:
@@ -356,11 +356,13 @@ async def refresh_catalog_embeddings(ctx: dict) -> None:
 
 
 async def poll_feeds(ctx: dict) -> None:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     async with SessionLocal() as session:
         feeds = (await session.scalars(select(Feed))).all()
         for feed in feeds:
-            interval = timedelta(minutes=feed.refresh_interval_minutes or settings.feed_refresh_minutes)
+            interval = timedelta(
+                minutes=feed.refresh_interval_minutes or settings.feed_refresh_minutes
+            )
             due = feed.last_fetched_at is None or feed.last_fetched_at + interval <= now
             if not due:
                 continue

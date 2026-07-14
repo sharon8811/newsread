@@ -1,8 +1,5 @@
 import asyncio
-from datetime import datetime, timedelta, timezone
-
-import pytest
-from sqlalchemy import select
+from datetime import UTC, datetime, timedelta
 
 from app import worker
 from app.models import Article, ArticleEmbedding, Feed
@@ -10,8 +7,9 @@ from app.summarizer import ThinContentError
 
 
 async def _feed(session, **kwargs):
-    feed = Feed(url=f"https://feed/{kwargs.get('url', 'x')}",
-                last_fetched_at=kwargs.get("last_fetched_at"))
+    feed = Feed(
+        url=f"https://feed/{kwargs.get('url', 'x')}", last_fetched_at=kwargs.get("last_fetched_at")
+    )
     session.add(feed)
     await session.commit()
     await session.refresh(feed)
@@ -19,8 +17,15 @@ async def _feed(session, **kwargs):
 
 
 async def _article(session, feed, **kwargs):
-    defaults = dict(guid=f"g{id(kwargs)}", url="https://x/a", title="T",
-                    content_html="", excerpt="", full_text="", image_url=None)
+    defaults = dict(
+        guid=f"g{id(kwargs)}",
+        url="https://x/a",
+        title="T",
+        content_html="",
+        excerpt="",
+        full_text="",
+        image_url=None,
+    )
     defaults.update(kwargs)
     art = Article(feed_id=feed.id, **defaults)
     session.add(art)
@@ -30,6 +35,7 @@ async def _article(session, feed, **kwargs):
 
 
 # --- _enrich_one / _summarize_one ---
+
 
 async def test_enrich_one_missing_article(monkeypatch):
     sem = asyncio.Semaphore(1)
@@ -88,6 +94,7 @@ async def test_summarize_one_missing(monkeypatch):
 
 
 # --- enrich_and_summarize orchestration ---
+
 
 async def test_enrich_and_summarize_no_llm(session, monkeypatch):
     feed = await _feed(session)
@@ -209,9 +216,14 @@ async def test_enrich_and_summarize_skips_ai_disabled_feed(session, monkeypatch)
     feed.ai_enabled = False
     await session.commit()
     # Already enriched so only the summarize stage would pick it up.
-    art = await _article(session, feed, full_text="text", summary_short="",
-                         full_text_fetched_at=datetime.now(timezone.utc),
-                         image_url="https://x/i.png")
+    await _article(
+        session,
+        feed,
+        full_text="text",
+        summary_short="",
+        full_text_fetched_at=datetime.now(UTC),
+        image_url="https://x/i.png",
+    )
 
     async def fake_extract(feed_id=None):
         return 0
@@ -253,6 +265,7 @@ async def test_embed_articles_batch_skips_ai_disabled_feed(session, monkeypatch)
 
 # --- embed_articles_batch ---
 
+
 async def test_embed_articles_batch_not_configured(monkeypatch):
     monkeypatch.setattr(worker.embeddings, "is_configured", lambda: False)
     assert await worker.embed_articles_batch() == 0
@@ -285,10 +298,14 @@ async def test_embed_articles_batch_error(session, monkeypatch):
 async def test_embed_articles_batch_scoped_and_skips_current_model(session, monkeypatch):
     feed = await _feed(session)
     art = await _article(session, feed, excerpt="body")
-    session.add(ArticleEmbedding(
-        article_id=art.id, model="current", embedding=[0.1, 0.2],
-        input_hash=worker.embeddings.input_hash_for(art),
-    ))
+    session.add(
+        ArticleEmbedding(
+            article_id=art.id,
+            model="current",
+            embedding=[0.1, 0.2],
+            input_hash=worker.embeddings.input_hash_for(art),
+        )
+    )
     await session.commit()
     monkeypatch.setattr(worker.embeddings, "is_configured", lambda: True)
     monkeypatch.setattr(worker.settings, "openai_embedding_model", "current")
@@ -312,17 +329,26 @@ async def test_ner_batch_not_configured(monkeypatch):
 
 async def test_ner_batch_selects_stamps_and_retags(session, monkeypatch):
     feed = await _feed(session)
-    now = datetime.now(timezone.utc)
-    ready = await _article(session, feed, guid="ready",
-                           full_text_fetched_at=now, full_text="body")
-    pending = await _article(session, feed, guid="pending")  # never enriched: wait
+    now = datetime.now(UTC)
+    ready = await _article(session, feed, guid="ready", full_text_fetched_at=now, full_text="body")
+    await _article(session, feed, guid="pending")  # never enriched: wait
     # Tagged before its summary existed -> re-tagged.
-    stale = await _article(session, feed, guid="stale", summary_medium="sum",
-                           summary_generated_at=now,
-                           ner_extracted_at=now - timedelta(hours=1))
-    done = await _article(session, feed, guid="done", summary_medium="sum",
-                          summary_generated_at=now - timedelta(hours=1),
-                          ner_extracted_at=now)
+    stale = await _article(
+        session,
+        feed,
+        guid="stale",
+        summary_medium="sum",
+        summary_generated_at=now,
+        ner_extracted_at=now - timedelta(hours=1),
+    )
+    await _article(
+        session,
+        feed,
+        guid="done",
+        summary_medium="sum",
+        summary_generated_at=now - timedelta(hours=1),
+        ner_extracted_at=now,
+    )
     monkeypatch.setattr(worker.llm, "is_configured", lambda: True)
 
     seen = []
@@ -359,15 +385,23 @@ async def test_embed_articles_batch_reembeds_stale_input(session, monkeypatch):
     arrived after embedding, or the hash predates tracking) is re-embedded."""
     feed = await _feed(session)
     stale = await _article(session, feed, guid="stale", excerpt="body")
-    session.add(ArticleEmbedding(
-        article_id=stale.id, model="current", embedding=[0.1, 0.2],
-        input_hash=worker.embeddings.input_hash_for(stale),
-    ))
+    session.add(
+        ArticleEmbedding(
+            article_id=stale.id,
+            model="current",
+            embedding=[0.1, 0.2],
+            input_hash=worker.embeddings.input_hash_for(stale),
+        )
+    )
     legacy = await _article(session, feed, guid="legacy", excerpt="body")
-    session.add(ArticleEmbedding(
-        article_id=legacy.id, model="current", embedding=[0.1, 0.2],
-        input_hash=None,
-    ))
+    session.add(
+        ArticleEmbedding(
+            article_id=legacy.id,
+            model="current",
+            embedding=[0.1, 0.2],
+            input_hash=None,
+        )
+    )
     stale.summary_medium = "a summary arrived later"
     await session.commit()
     monkeypatch.setattr(worker.embeddings, "is_configured", lambda: True)
@@ -385,6 +419,7 @@ async def test_embed_articles_batch_reembeds_stale_input(session, monkeypatch):
 
 
 # --- enrich_feed / refresh_entities ---
+
 
 async def test_enrich_feed(monkeypatch):
     called = {}
@@ -419,12 +454,12 @@ async def test_refresh_entities_error(monkeypatch):
 
 # --- poll_feeds ---
 
+
 async def test_poll_feeds_refreshes_due(session, monkeypatch):
     # Never-fetched feed is due.
     await _feed(session, url="due")
     # Recently fetched feed is not due.
-    await _feed(session, url="fresh",
-                last_fetched_at=datetime.now(timezone.utc))
+    await _feed(session, url="fresh", last_fetched_at=datetime.now(UTC))
 
     refreshed = []
 
@@ -457,8 +492,11 @@ async def test_poll_feeds_refresh_error_rolls_back(session, monkeypatch):
 
 async def test_poll_feeds_due_by_interval(session, monkeypatch):
     # Fetched long ago relative to its interval -> due.
-    feed = Feed(url="https://feed/old", refresh_interval_minutes=15,
-                last_fetched_at=datetime.now(timezone.utc) - timedelta(hours=1))
+    feed = Feed(
+        url="https://feed/old",
+        refresh_interval_minutes=15,
+        last_fetched_at=datetime.now(UTC) - timedelta(hours=1),
+    )
     session.add(feed)
     await session.commit()
 
@@ -478,6 +516,7 @@ async def test_poll_feeds_due_by_interval(session, monkeypatch):
 
 # --- startup ---
 
+
 async def test_startup(monkeypatch):
     called = {}
 
@@ -492,12 +531,15 @@ async def test_startup(monkeypatch):
 
 def test_worker_settings_shape():
     assert worker.WorkerSettings.functions == [
-        worker.enrich_feed, worker.send_share_push, worker.send_project_pin_push,
+        worker.enrich_feed,
+        worker.send_share_push,
+        worker.send_project_pin_push,
     ]
     assert len(worker.WorkerSettings.cron_jobs) == 3
 
 
 # --- send_share_push ---
+
 
 async def test_send_share_push_missing_share(monkeypatch):
     async def boom(*args, **kwargs):
@@ -560,8 +602,9 @@ async def test_send_share_push_note_becomes_body(session, users, monkeypatch):
 
 # --- send_project_pin_push ---
 
+
 async def _pinned_project(session, users, *, muted=False, shared=True):
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     from app.models import Project, ProjectArticle, ProjectMember
 
@@ -578,9 +621,11 @@ async def _pinned_project(session, users, *, muted=False, shared=True):
     await session.commit()
     await session.refresh(project)
     pin = ProjectArticle(
-        project_id=project.id, article_id=art.id, added_by_user_id=adder.id,
+        project_id=project.id,
+        article_id=art.id,
+        added_by_user_id=adder.id,
         is_shared=shared,
-        shared_at=datetime.now(timezone.utc) if shared else None,
+        shared_at=datetime.now(UTC) if shared else None,
     )
     session.add(pin)
     await session.commit()
@@ -640,22 +685,39 @@ async def test_send_project_pin_push_adder_comment_becomes_body(session, users, 
 
     adder, member, pin = await _pinned_project(session, users)
     # The adder's latest comment wins; others' comments and link-only ones don't.
-    session.add(ProjectArticleComment(
-        project_id=pin.project_id, article_id=pin.article_id,
-        author_id=adder.id, body="first thought",
-    ))
-    session.add(ProjectArticleComment(
-        project_id=pin.project_id, article_id=pin.article_id,
-        author_id=adder.id, body="must read",
-    ))
-    session.add(ProjectArticleComment(
-        project_id=pin.project_id, article_id=pin.article_id,
-        author_id=adder.id, body="", link_url="https://youtu.be/x",
-    ))
-    session.add(ProjectArticleComment(
-        project_id=pin.project_id, article_id=pin.article_id,
-        author_id=member.id, body="someone else's take",
-    ))
+    session.add(
+        ProjectArticleComment(
+            project_id=pin.project_id,
+            article_id=pin.article_id,
+            author_id=adder.id,
+            body="first thought",
+        )
+    )
+    session.add(
+        ProjectArticleComment(
+            project_id=pin.project_id,
+            article_id=pin.article_id,
+            author_id=adder.id,
+            body="must read",
+        )
+    )
+    session.add(
+        ProjectArticleComment(
+            project_id=pin.project_id,
+            article_id=pin.article_id,
+            author_id=adder.id,
+            body="",
+            link_url="https://youtu.be/x",
+        )
+    )
+    session.add(
+        ProjectArticleComment(
+            project_id=pin.project_id,
+            article_id=pin.article_id,
+            author_id=member.id,
+            body="someone else's take",
+        )
+    )
     await session.commit()
     captured = {}
 
