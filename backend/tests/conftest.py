@@ -74,6 +74,7 @@ import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from alembic import command as alembic_command
 from app import db as app_db
 from app.config import settings
 
@@ -124,12 +125,24 @@ async def _schema():
         await admin.dispose()
 
     async with engine.begin() as conn:
+        stamped = await conn.scalar(text("SELECT to_regclass('public.alembic_version')"))
+        if stamped is None:
+            # Anything without alembic_version is either empty or a pre-Alembic
+            # leftover from an earlier checkout. Test databases are throwaway,
+            # so rebuild from the migrations instead of trusting stale tables.
+            await conn.execute(text("DROP SCHEMA public CASCADE"))
+            await conn.execute(text("CREATE SCHEMA public"))
+    async with engine.begin() as conn:
         await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
     app_db.vector_enabled = True
+
+    def _upgrade(sync_conn):
+        config = app_db.alembic_config()
+        config.attributes["connection"] = sync_conn
+        alembic_command.upgrade(config, "head")
+
     async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-        for statement in app_db.MIGRATIONS:
-            await conn.execute(text(statement))
+        await conn.run_sync(_upgrade)
     yield
     await engine.dispose()
 

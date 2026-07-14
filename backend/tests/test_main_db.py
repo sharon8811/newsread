@@ -38,6 +38,17 @@ async def test_init_db_happy_path():
     assert app_db.vector_enabled is True
 
 
+async def test_init_db_stamps_pre_alembic_database():
+    # A database with tables but no alembic_version (built by the retired
+    # create_all + MIGRATIONS path) must be adopted via stamp, not re-created.
+    async with app_db.engine.begin() as conn:
+        await conn.execute(text("DROP TABLE alembic_version"))
+    await init_db()
+    async with app_db.engine.connect() as conn:
+        version = await conn.scalar(text("SELECT version_num FROM alembic_version"))
+    assert version is not None
+
+
 async def test_clean_hnrss_content_repairs_existing_rows(session, data):
     feed = await data.feed()
     article = await data.article(

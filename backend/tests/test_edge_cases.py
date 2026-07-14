@@ -1,6 +1,7 @@
 """Small branch-coverage edge cases across modules."""
 
 import httpx
+import pytest
 import respx
 
 from app import db as app_db
@@ -102,8 +103,9 @@ async def test_init_db_without_pgvector(monkeypatch):
     real_engine = app_db.engine
 
     class FakeEngine:
-        """Ping + create_all succeed via the real engine; only CREATE EXTENSION
-        (the first engine.begin) fails, exercising the vector-disabled branch."""
+        """Ping succeeds via the real engine; only CREATE EXTENSION (the first
+        engine.begin) fails. pgvector is a hard requirement of the schema, so
+        init_db must refuse to boot rather than degrade."""
 
         def __init__(self):
             self._begins = 0
@@ -119,7 +121,7 @@ async def test_init_db_without_pgvector(monkeypatch):
 
     monkeypatch.setattr(app_db, "engine", FakeEngine())
     try:
-        await init_db()
-        assert app_db.vector_enabled is False
+        with pytest.raises(RuntimeError, match="pgvector extension is required"):
+            await init_db()
     finally:
         app_db.vector_enabled = True  # restore for other tests

@@ -1311,7 +1311,7 @@ async def test_delete_comment_wrong_project_404(client, users, data, session):
 async def test_note_backfill_migration_idempotent(client, users, data, session):
     from sqlalchemy import text
 
-    from app.db import MIGRATIONS
+    from app.db import ONE_SHOT_MIGRATIONS
 
     owner, member, feed, article = await _team(users, data)
     project = await _project(session, owner, member)
@@ -1327,7 +1327,7 @@ async def test_note_backfill_migration_idempotent(client, users, data, session):
         {"id": pin.id},
     )
     await session.commit()
-    backfill = [m for m in MIGRATIONS if "project_article_comments" in m or "SET note = NULL" in m]
+    backfill = ONE_SHOT_MIGRATIONS["migrate_pin_notes_to_comments"]
     assert len(backfill) == 2
     for _ in range(2):  # running the pair twice must not duplicate comments
         for statement in backfill:

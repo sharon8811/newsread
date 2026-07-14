@@ -533,8 +533,7 @@ class Share(Base):
 
 class Conversation(Base):
     """One Q&A thread per (article, user, kind) — or per project and user when the
-    chat spans a project's collection (then article_id is NULL). The
-    (project_id, user_id) uniqueness lives in a partial index (db.MIGRATIONS)."""
+    chat spans a project's collection (then article_id is NULL)."""
 
     __tablename__ = "conversations"
     __table_args__ = (
@@ -545,6 +544,13 @@ class Conversation(Base):
             "kind",
             unique=True,
             postgresql_where=text("article_id IS NOT NULL"),
+        ),
+        Index(
+            "uq_conversations_project_user",
+            "project_id",
+            "user_id",
+            unique=True,
+            postgresql_where=text("project_id IS NOT NULL"),
         ),
     )
 
@@ -642,7 +648,8 @@ class ProjectArticle(Base):
     is_shared: Mapped[bool] = mapped_column(Boolean, default=False)
     shared_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Legacy — notes now live in ProjectArticleComment. The column stays so the
-    # db.MIGRATIONS backfill can reference it on fresh databases; always NULL.
+    # migrate_pin_notes_to_comments one-shot (db.ONE_SHOT_MIGRATIONS) can
+    # reference it; always NULL.
     note: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -681,8 +688,8 @@ class ProjectArticleComment(Base):
     """One comment on an article's thread within a project. Threads are per
     (project, article) like the grouped card and the ticket status — anyone
     who can see the article in the project sees the whole thread, including
-    comments that began life as private-pin notes (the backfill in
-    db.MIGRATIONS folded legacy ProjectArticle.note values in here)."""
+    comments that began life as private-pin notes (the migrate_pin_notes_to_comments
+    one-shot in db.ONE_SHOT_MIGRATIONS folded legacy ProjectArticle.note values in here)."""
 
     __tablename__ = "project_article_comments"
     __table_args__ = (
