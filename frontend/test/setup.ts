@@ -1,6 +1,10 @@
 import "@testing-library/jest-dom/vitest";
 import { afterEach, vi } from "vitest";
-import { cleanup } from "@testing-library/react";
+import { cleanup, configure } from "@testing-library/react";
+
+// CI runners get descheduled long enough for legitimate waits to blow the
+// 1s default; passing tests aren't slowed (waitFor returns on success).
+configure({ asyncUtilTimeout: 5000 });
 
 // jsdom's localStorage isn't reliably functional under Vitest here; install a
 // simple in-memory Storage so lib/api's token helpers work.

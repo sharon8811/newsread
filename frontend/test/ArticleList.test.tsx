@@ -784,10 +784,12 @@ describe("<ArticleList> reading mode guards", () => {
     vi.stubGlobal("fetch", fetchMock);
     const { container } = renderReading(<ArticleList filter="all" emptyTitle="Empty" />);
     await screen.findByText("Read One");
-    fireEvent.click(screen.getByText("1 unread ↓"));
-    await waitFor(() =>
-      expect(fetchMock.mock.calls.some((c) => String(c[0]).includes("cursor=n1"))).toBe(true),
-    );
+    // Re-click on retry: the pill renders one commit before nextCursor state
+    // lands, so an early click is a silent no-op (no unread below, no cursor).
+    await waitFor(() => {
+      fireEvent.click(screen.getByText("1 unread ↓"));
+      expect(fetchMock.mock.calls.some((c) => String(c[0]).includes("cursor=n1"))).toBe(true);
+    });
     await screen.findByText("Deep Unread");
     // After the retry the fetched unread below gets scrolled to.
     const target = container.querySelector('[data-article-id="52"]') as HTMLElement;
