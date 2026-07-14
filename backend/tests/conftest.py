@@ -14,6 +14,14 @@ os.environ.setdefault(
     "NEWSREAD_DATABASE_URL",
     "postgresql+asyncpg://newsread:newsread@localhost:5433/newsread_test",
 )
+# Under pytest-xdist each worker runs in its own process and gets its own
+# database (newsread_test_gw0, _gw1, ...), so parallel workers never see each
+# other's rows and the per-test TRUNCATE stays safe. The databases are created
+# on demand by the session-scoped _schema fixture below.
+_XDIST_WORKER = os.environ.get("PYTEST_XDIST_WORKER")
+if _XDIST_WORKER:
+    _base, _, _dbname = os.environ["NEWSREAD_DATABASE_URL"].rpartition("/")
+    os.environ["NEWSREAD_DATABASE_URL"] = f"{_base}/{_dbname}_{_XDIST_WORKER}"
 # Neutralise anything the repo-root .env would otherwise inject, so tests are
 # deterministic regardless of the developer's environment.
 for _var in (
@@ -99,8 +107,21 @@ def anyio_backend():
 
 @pytest_asyncio.fixture(scope="session", autouse=True)
 async def _schema():
-    """Create the schema once for the whole test session."""
+    """Create the (per-xdist-worker) database and schema once per session."""
     from app import models  # noqa: F401  register mappings
+
+    if _XDIST_WORKER:
+        # CREATE DATABASE can't run inside a transaction, hence AUTOCOMMIT.
+        base, _, dbname = settings.database_url.rpartition("/")
+        admin = create_async_engine(f"{base}/postgres", isolation_level="AUTOCOMMIT")
+        async with admin.connect() as conn:
+            exists = await conn.scalar(
+                text("SELECT 1 FROM pg_database WHERE datname = :name"),
+                {"name": dbname},
+            )
+            if not exists:
+                await conn.execute(text(f'CREATE DATABASE "{dbname}"'))
+        await admin.dispose()
 
     async with engine.begin() as conn:
         await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))

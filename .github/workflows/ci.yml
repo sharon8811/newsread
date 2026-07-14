@@ -26,11 +26,15 @@ jobs:
           POSTGRES_DB: newsread_test
         ports:
           - 5432:5432
+        # tmpfs data dir: the suite is bound by commit/TRUNCATE fsync latency,
+        # not CPU — RAM-backed storage halves the suite (measured ~31s -> ~16s
+        # at 4 workers). The databases are throwaway, so durability is moot.
         options: >-
           --health-cmd "pg_isready -U newsread"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+          --tmpfs /var/lib/postgresql/data
 
     env:
       # conftest.py reads this (via setdefault) to reach the CI database.
@@ -51,7 +55,12 @@ jobs:
           VIRTUAL_ENV=.venv uv pip install -r requirements.txt -r requirements-dev.txt
 
       - name: Run tests with coverage (fail under 90%)
-        run: .venv/bin/python -m pytest --cov --cov-report=term-missing --cov-fail-under=90
+        # -n auto: pytest-xdist, one worker per CPU; each worker gets its own
+        # database (see tests/conftest.py), created on demand. Don't raise the
+        # worker count past the core count: the suite bottlenecks on Postgres,
+        # and oversubscribed workers measurably slow it down (4w 31s / 8w 40s /
+        # 20w 54s on a 10-core dev box).
+        run: .venv/bin/python -m pytest -n auto --cov --cov-report=term-missing --cov-fail-under=90
 
   frontend:
     name: Frontend tests (Next.js / React)
