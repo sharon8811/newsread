@@ -4,10 +4,10 @@ from fastapi import APIRouter, HTTPException
 from sqlalchemy import and_, exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from .. import queue
 from ..deps import CurrentUser, DbSession
 from ..fetcher import FeedRateLimited, refresh_feed
 from ..models import Article, Feed, Share, Subscription, User, UserArticleState
-from ..queue import enqueue
 from ..schemas import AddFeedIn, FeedOut, FeedSettingsIn
 
 logger = logging.getLogger(__name__)
@@ -91,7 +91,7 @@ def _to_feed_out(
     return FeedOut(
         id=feed.id,
         url=feed.url,
-        title=subscription.title_override or feed.title or feed.url,
+        title=subscription.title_override or feed.display_title,
         site_url=feed.site_url,
         description=feed.description,
         last_fetched_at=feed.last_fetched_at,
@@ -176,7 +176,7 @@ async def add_feed(
     await session.commit()
 
     # Background: fetch og:images + full text, then pre-generate summaries.
-    await enqueue("enrich_feed", feed.id)
+    await queue.enqueue("enrich_feed", feed.id)
 
     row = (await session.execute(_feed_list_stmt(user.id).where(Feed.id == feed.id))).one()
     return _to_feed_out(*row)
@@ -199,7 +199,7 @@ async def refresh(
         raise HTTPException(
             status_code=502, detail="Could not refresh this feed right now"
         ) from exc
-    await enqueue("enrich_feed", feed.id)
+    await queue.enqueue("enrich_feed", feed.id)
     row = (await session.execute(_feed_list_stmt(user.id).where(Feed.id == feed.id))).one()
     return _to_feed_out(*row)
 

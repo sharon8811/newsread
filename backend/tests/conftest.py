@@ -80,20 +80,14 @@ from app.config import settings
 
 # The app engine uses pool_pre_ping=True, whose ping runs a sync await outside
 # the async greenlet under tests (MissingGreenlet). Swap in an engine without
-# pre-ping and rebind it everywhere the app reads it — including modules that
-# imported SessionLocal by value (worker, pipeline). Pooling is safe here (and
+# pre-ping and rebind it on app.db — worker and pipeline read SessionLocal as a
+# db module attribute, so this one patch covers them. Pooling is safe here (and
 # much faster than NullPool's connection-per-session) because pyproject.toml pins
 # one session-scoped event loop, so pooled connections never cross loops.
 engine = create_async_engine(settings.database_url)
 SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
 app_db.engine = engine
 app_db.SessionLocal = SessionLocal
-
-import app.enrichers.pipeline as _pipeline  # noqa: E402
-import app.worker as _worker  # noqa: E402
-
-_worker.SessionLocal = SessionLocal
-_pipeline.SessionLocal = SessionLocal
 
 from app.db import Base  # noqa: E402
 from app.main import app  # noqa: E402
@@ -286,11 +280,12 @@ async def data(session):
 
 @pytest_asyncio.fixture(autouse=True)
 def _no_enqueue(monkeypatch):
-    """Feed/share routes enqueue background jobs; keep tests off Redis."""
+    """Routes enqueue background jobs; keep tests off Redis by handing the
+    real enqueue a no-op pool. Tests of app.queue itself and tests asserting
+    on enqueued jobs override _pool / enqueue with their own fakes."""
 
-    async def _noop(*args, **kwargs):
-        return None
+    class _NullPool:
+        async def enqueue_job(self, *args, **kwargs):
+            return None
 
-    monkeypatch.setattr("app.routers.feeds.enqueue", _noop)
-    monkeypatch.setattr("app.routers.shares.enqueue", _noop)
-    monkeypatch.setattr("app.routers.projects.enqueue", _noop)
+    monkeypatch.setattr("app.queue._pool", _NullPool())

@@ -834,7 +834,7 @@ async def test_add_shared_pin_enqueues_push(client, users, data, session, monkey
     async def record(job_name, *args):
         jobs.append((job_name, args))
 
-    monkeypatch.setattr("app.routers.projects.enqueue", record)
+    monkeypatch.setattr("app.queue.enqueue", record)
     resp = await client.post(
         f"/api/projects/{project.id}/articles",
         json={"article_id": article.id, "is_shared": True},
@@ -852,7 +852,7 @@ async def test_add_private_pin_enqueues_nothing(client, users, data, session, mo
     async def record(job_name, *args):
         jobs.append((job_name, args))
 
-    monkeypatch.setattr("app.routers.projects.enqueue", record)
+    monkeypatch.setattr("app.queue.enqueue", record)
     await client.post(
         f"/api/projects/{project.id}/articles",
         json={"article_id": article.id},
@@ -870,7 +870,7 @@ async def test_publish_flip_enqueues_push_once(client, users, data, session, mon
     async def record(job_name, *args):
         jobs.append((job_name, args))
 
-    monkeypatch.setattr("app.routers.projects.enqueue", record)
+    monkeypatch.setattr("app.queue.enqueue", record)
     await client.patch(
         f"/api/projects/{project.id}/articles/{pin.id}",
         json={"is_shared": True},

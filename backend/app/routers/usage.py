@@ -20,10 +20,9 @@ from ..schemas import (
     UsageModelOut,
     UsageSummaryOut,
 )
+from ..timewindow import window_bounds
 
 router = APIRouter(prefix="/usage", tags=["usage"])
-
-RANGE_DAYS: dict[str, int] = {"week": 7, "month": 30, "year": 365}
 
 EVENTS_MAX = 100
 
@@ -42,9 +41,7 @@ async def summary(
     # UTC on purpose: the Date cast above buckets in the DB session's UTC, and
     # the window boundary must agree with it.
     today = datetime.now(UTC).date()
-    window = RANGE_DAYS[range_]
-    start = today - timedelta(days=window - 1)
-    prev_start = start - timedelta(days=window)
+    window, start, prev_start = window_bounds(today, range_)
 
     in_window = (
         LLMUsage.user_id == user.id,

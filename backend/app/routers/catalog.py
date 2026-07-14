@@ -12,7 +12,7 @@ from sqlalchemy import and_, case, func, literal_column, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .. import embeddings
+from .. import embeddings, ranking
 from ..config import settings
 from ..deps import CurrentUser, DbSession
 from ..fetcher import FeedParseError, FeedRateLimited, fetch_feed_data, strip_html
@@ -36,8 +36,6 @@ from ..schemas import (
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/catalog", tags=["catalog"])
-SEARCH_POOL = 60
-RRF_K = 60
 PREVIEW_ITEM_LIMIT = 8
 PREVIEW_SUMMARY_CHARS = 240
 PREVIEW_TTL_SECONDS = 600
@@ -223,7 +221,7 @@ async def _hybrid_catalog_ids(
         select(CatalogEntry.id)
         .where(*_catalog_filter(category), tsv.op("@@")(tsquery))
         .order_by(func.ts_rank(tsv, tsquery).desc())
-        .limit(SEARCH_POOL)
+        .limit(ranking.SEARCH_POOL)
     )
     keyword_ids = list(await session.scalars(keyword_stmt))
     pattern = f"%{q}%"
@@ -240,7 +238,7 @@ async def _hybrid_catalog_ids(
                 ),
             )
             .order_by(func.lower(CatalogEntry.title))
-            .limit(SEARCH_POOL)
+            .limit(ranking.SEARCH_POOL)
         )
     )
     text_ids = list(dict.fromkeys([*keyword_ids, *partial_ids]))
@@ -260,16 +258,14 @@ async def _hybrid_catalog_ids(
                 CatalogEntryEmbedding.model == settings.openai_embedding_model,
             )
             .order_by(CatalogEntryEmbedding.embedding.cosine_distance(query_vector))
-            .limit(SEARCH_POOL)
+            .limit(ranking.SEARCH_POOL)
         )
     )
-    scores: dict[int, float] = {}
     reasons: dict[int, set[str]] = {}
     for label, leg in (("Semantic match", vector_ids), ("Keyword match", text_ids)):
-        for rank, entry_id in enumerate(leg):
-            scores[entry_id] = scores.get(entry_id, 0.0) + 1.0 / (RRF_K + rank + 1)
+        for entry_id in leg:
             reasons.setdefault(entry_id, set()).add(label)
-    ranked = sorted(scores, key=lambda entry_id: (-scores[entry_id], -entry_id))
+    ranked = ranking.rrf_fuse(vector_ids, text_ids)
     labels = {
         entry_id: "Keyword and semantic match"
         if len(reasons[entry_id]) == 2
@@ -297,10 +293,7 @@ async def _recommended_ids(session: AsyncSession, user_id: int, category: str | 
     )
     if not subscribed:
         return []
-    dimensions = len(subscribed[0])
-    centroid = [
-        sum(vector[i] for vector in subscribed) / len(subscribed) for i in range(dimensions)
-    ]
+    centroid = ranking.centroid([[float(x) for x in vector] for vector in subscribed])
     return list(
         await session.scalars(
             select(CatalogEntry.id)

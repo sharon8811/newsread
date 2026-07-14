@@ -5,10 +5,10 @@ from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from .. import queue
 from ..access import accessible_article
 from ..deps import CurrentUser, DbSession
 from ..models import Article, Share, ShareRecipient, User, UserArticleState
-from ..queue import enqueue
 from ..schemas import ShareCreateIn, ShareOut, UnseenCountOut, UserPublic
 from .articles import to_list_item
 
@@ -75,15 +75,13 @@ async def create_share(
     share.recipients = [ShareRecipient(to_user_id=r.id) for r in recipients]
     session.add(share)
     await session.commit()
-    await enqueue("send_share_push", share.id)
+    await queue.enqueue("send_share_push", share.id)
 
     share = await session.scalar(
         select(Share).where(Share.id == share.id).options(*_share_load_options)
     )
     states = await _states_for(session, user.id, [article.id])
-    return _share_out(
-        share, share.article.feed.title or share.article.feed.url, states.get(article.id), user
-    )
+    return _share_out(share, share.article.feed.display_title, states.get(article.id), user)
 
 
 @router.get("/received", response_model=list[ShareOut])
@@ -105,8 +103,7 @@ async def received_shares(
     ).all()
     states = await _states_for(session, user.id, [s.article_id for s in shares])
     return [
-        _share_out(s, s.article.feed.title or s.article.feed.url, states.get(s.article_id), user)
-        for s in shares
+        _share_out(s, s.article.feed.display_title, states.get(s.article_id), user) for s in shares
     ]
 
 
@@ -126,8 +123,7 @@ async def sent_shares(
     ).all()
     states = await _states_for(session, user.id, [s.article_id for s in shares])
     return [
-        _share_out(s, s.article.feed.title or s.article.feed.url, states.get(s.article_id), user)
-        for s in shares
+        _share_out(s, s.article.feed.display_title, states.get(s.article_id), user) for s in shares
     ]
 
 

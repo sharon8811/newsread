@@ -1,4 +1,3 @@
-import asyncio
 from datetime import UTC, datetime, timedelta
 
 from app import worker
@@ -34,16 +33,17 @@ async def _article(session, feed, **kwargs):
     return art
 
 
-# --- _enrich_one / _summarize_one ---
+# --- _for_each_article / _summarize_quietly ---
 
 
-async def test_enrich_one_missing_article(monkeypatch):
-    sem = asyncio.Semaphore(1)
-    # No article with this id -> returns without calling enrich_article.
-    await worker._enrich_one(99999, sem)
+async def test_for_each_article_missing_article():
+    async def fail(s, article):
+        raise AssertionError("fn must not be called for a missing article")
+
+    await worker._for_each_article([99999], concurrency=1, label="Enrichment", fn=fail)
 
 
-async def test_enrich_one_calls_enricher(session, monkeypatch):
+async def test_for_each_article_calls_fn(session):
     feed = await _feed(session)
     art = await _article(session, feed)
     called = {}
@@ -51,23 +51,21 @@ async def test_enrich_one_calls_enricher(session, monkeypatch):
     async def fake_enrich(s, article):
         called["id"] = article.id
 
-    monkeypatch.setattr(worker, "enrich_article", fake_enrich)
-    await worker._enrich_one(art.id, asyncio.Semaphore(1))
+    await worker._for_each_article([art.id], concurrency=1, label="Enrichment", fn=fake_enrich)
     assert called["id"] == art.id
 
 
-async def test_enrich_one_swallows_errors(session, monkeypatch):
+async def test_for_each_article_swallows_errors(session):
     feed = await _feed(session)
     art = await _article(session, feed)
 
     async def boom(s, article):
         raise RuntimeError("enrich failed")
 
-    monkeypatch.setattr(worker, "enrich_article", boom)
-    await worker._enrich_one(art.id, asyncio.Semaphore(1))  # no raise
+    await worker._for_each_article([art.id], concurrency=1, label="Enrichment", fn=boom)  # no raise
 
 
-async def test_summarize_one_thin_content(session, monkeypatch):
+async def test_summarize_quietly_thin_content(session, monkeypatch):
     feed = await _feed(session)
     art = await _article(session, feed)
 
@@ -75,10 +73,12 @@ async def test_summarize_one_thin_content(session, monkeypatch):
         raise ThinContentError()
 
     monkeypatch.setattr(worker, "generate_summaries", raise_thin)
-    await worker._summarize_one(art.id, asyncio.Semaphore(1))  # no raise
+    await worker._for_each_article(
+        [art.id], concurrency=1, label="Auto-summary", fn=worker._summarize_quietly
+    )  # no raise
 
 
-async def test_summarize_one_generic_error(session, monkeypatch):
+async def test_summarize_quietly_generic_error(session, monkeypatch):
     feed = await _feed(session)
     art = await _article(session, feed)
 
@@ -86,11 +86,9 @@ async def test_summarize_one_generic_error(session, monkeypatch):
         raise RuntimeError("oops")
 
     monkeypatch.setattr(worker, "generate_summaries", boom)
-    await worker._summarize_one(art.id, asyncio.Semaphore(1))
-
-
-async def test_summarize_one_missing(monkeypatch):
-    await worker._summarize_one(99999, asyncio.Semaphore(1))
+    await worker._for_each_article(
+        [art.id], concurrency=1, label="Auto-summary", fn=worker._summarize_quietly
+    )  # swallowed and logged by the batch helper
 
 
 # --- enrich_and_summarize orchestration ---
