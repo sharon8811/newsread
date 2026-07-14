@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import { api, setToken, getToken, type User } from "./api";
+import { clearReadingSessions } from "./readingSession";
 
 type AuthState = {
   user: User | null;
@@ -43,6 +44,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const login = useCallback(async (identifier: string, password: string) => {
+    clearReadingSessions();
     const res = await api<TokenResponse>("/auth/login", {
       method: "POST",
       body: { identifier, password },
@@ -58,6 +60,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       name: string;
       password: string;
     }) => {
+      clearReadingSessions();
       const res = await api<TokenResponse>("/auth/register", {
         method: "POST",
         body: data,
@@ -69,6 +72,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   const logout = useCallback(() => {
+    clearReadingSessions();
     setToken(null);
     setUser(null);
   }, []);

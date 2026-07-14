@@ -61,6 +61,25 @@ describe("ArticlePage", () => {
     expect(screen.queryByText("A Great Article")).not.toBeInTheDocument();
   });
 
+  it("opens article detail at the top of the app scroller", () => {
+    swrMock.mockReturnValue({ data: makeArticleDetail({ is_read: true }), error: undefined });
+    const { container, rerender } = render(
+      <main style={{ overflow: "auto" }}>
+        <ArticlePage />
+      </main>,
+    );
+    const scroller = container.querySelector("main") as HTMLElement;
+    scroller.scrollTop = 500;
+
+    paramsState.id = "2";
+    rerender(
+      <main style={{ overflow: "auto" }}>
+        <ArticlePage />
+      </main>,
+    );
+    expect(scroller.scrollTop).toBe(0);
+  });
+
   it("shows an error state and navigates home", async () => {
     swrMock.mockReturnValue({ data: undefined, error: new Error("nope") });
     render(<ArticlePage />);

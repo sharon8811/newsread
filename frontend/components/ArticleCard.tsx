@@ -15,6 +15,7 @@ export default function ArticleCard({
   onShare,
   onAddToProject,
   onNotInterested,
+  onOpen,
 }: {
   article: Article;
   selected?: boolean;
@@ -23,6 +24,7 @@ export default function ArticleCard({
   onShare: (article: Article) => void;
   onAddToProject: (article: Article) => void;
   onNotInterested: (article: Article) => void;
+  onOpen?: (article: Article) => void;
 }) {
   const router = useRouter();
   const summary = article.summary_short || article.excerpt;
@@ -30,7 +32,9 @@ export default function ArticleCard({
   return (
     <article
       data-row-index={index}
-      onClick={() => router.push(`/article/${article.id}`)}
+      onClick={() =>
+        onOpen ? onOpen(article) : router.push(`/article/${article.id}`)
+      }
       className="group flex cursor-pointer flex-col overflow-hidden rounded-lg border transition-all duration-150 hover:-translate-y-0.5"
       style={{
         borderColor: selected ? "var(--accent-border)" : "var(--line-soft)",

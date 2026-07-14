@@ -10,6 +10,12 @@ import {
 import { useRouter } from "next/navigation";
 import useSWR, { mutate } from "swr";
 import { api, fetcher, type Article } from "@/lib/api";
+import {
+  clearReadingReturnAnchor,
+  getReadingReturnAnchor,
+  readingSessionKey,
+  setReadingReturnAnchor,
+} from "@/lib/readingSession";
 import { ARTICLES_REFRESH_EVENT, useReadingWindow } from "@/lib/useReadingWindow";
 import ArticleCard from "./ArticleCard";
 import ArticleRow from "./ArticleRow";
@@ -56,7 +62,11 @@ export default function ArticleList(props: ListProps) {
   const readingMode = !props.q && props.filter !== "saved";
   if (readingMode) {
     return (
-      <ReadingList {...props} filter={props.filter as "all" | "unread"} />
+      <ReadingList
+        key={readingSessionKey(props.filter as "all" | "unread", props.feedId)}
+        {...props}
+        filter={props.filter as "all" | "unread"}
+      />
     );
   }
   return <QueryList {...props} />;
@@ -113,9 +123,17 @@ function useListKeyboard(opts: {
   modalOpen: boolean;
   toggleSaved: (a: Article) => void;
   toggleRead: (a: Article) => void;
+  openArticle: (a: Article) => void;
 }) {
-  const { articles, selected, setSelected, modalOpen, toggleSaved, toggleRead } = opts;
-  const router = useRouter();
+  const {
+    articles,
+    selected,
+    setSelected,
+    modalOpen,
+    toggleSaved,
+    toggleRead,
+    openArticle,
+  } = opts;
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -135,7 +153,7 @@ function useListKeyboard(opts: {
         setSelected((s) => Math.max(s - 1, 0));
       } else if (e.key === "Enter") {
         const article = articles[selected];
-        if (article) router.push(`/article/${article.id}`);
+        if (article) openArticle(article);
       } else if (e.key === "s") {
         const article = articles[selected];
         if (article) toggleSaved(article);
@@ -149,7 +167,7 @@ function useListKeyboard(opts: {
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [articles, selected, modalOpen, router, setSelected, toggleSaved, toggleRead]);
+  }, [articles, selected, modalOpen, setSelected, toggleSaved, toggleRead, openArticle]);
 
   useEffect(() => {
     document
@@ -212,8 +230,10 @@ function ReadingList({
     resetToTop,
     markPassed,
     toggleRead,
+    markOpened,
     toggleSaved,
   } = useReadingWindow({ filter, feedId, enabled: true });
+  const router = useRouter();
 
   const [selected, setSelected] = useState(0);
   const [sharing, setSharing] = useState<Article | null>(null);
@@ -230,10 +250,14 @@ function ReadingList({
     articlesLive.current = articles;
   }, [articles]);
 
-  const key = `${filter}|${feedId ?? ""}`;
+  const key = readingSessionKey(filter, feedId);
+  // Capture this only at mount. The anchor is written immediately before
+  // navigation; a local optimistic read render must not consume it while the
+  // user is still leaving the list.
+  const returnAnchor = useRef(getReadingReturnAnchor(key));
   useEffect(() => setSelected(0), [key]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     scrollerRef.current = listRef.current?.closest("main") ?? null;
   }, []);
 
@@ -293,6 +317,36 @@ function ReadingList({
     }
     compensation.current = null;
   }, [articles]);
+
+  // Route navigation keeps the list window in memory. On return, pin the
+  // clicked article to the same visual position instead of restoring a raw
+  // scroll offset against a changed data set.
+  useLayoutEffect(() => {
+    const anchor = returnAnchor.current;
+    const scroller = scrollerRef.current;
+    const article = anchor ? itemEls.current.get(anchor.articleId) : null;
+    if (!anchor || !scroller || !article) return;
+    const currentOffset =
+      article.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
+    scroller.scrollTop += currentOffset - anchor.offset;
+    clearReadingReturnAnchor(key);
+    returnAnchor.current = null;
+  }, [articles, key]);
+
+  const openArticle = useCallback(
+    (article: Article) => {
+      const scroller = scrollerRef.current;
+      const element = itemEls.current.get(article.id);
+      const offset =
+        scroller && element
+          ? element.getBoundingClientRect().top - scroller.getBoundingClientRect().top
+          : 0;
+      setReadingReturnAnchor(key, { articleId: article.id, offset });
+      markOpened(article.id);
+      router.push(`/article/${article.id}`);
+    },
+    [key, markOpened, router],
+  );
 
   const loadOlderCompensated = useCallback(async () => {
     const scroller = scrollerRef.current;
@@ -378,6 +432,7 @@ function ReadingList({
     modalOpen: Boolean(sharing || pickingProject || dismissing),
     toggleSaved,
     toggleRead,
+    openArticle,
   });
 
   // The wrapper (and its ref) must exist from the first render — the scroll
@@ -408,6 +463,7 @@ function ReadingList({
       onShare: setSharing,
       onAddToProject: setPickingProject,
       onNotInterested: setDismissing,
+      onOpen: openArticle,
     };
     return (
       <div key={article.id} ref={itemRef(article.id)} data-article-id={article.id}>
@@ -506,6 +562,7 @@ function QueryList({
   variant = "list",
   refreshInterval = 0,
 }: ListProps) {
+  const router = useRouter();
   const key = articlesKey({ filter, feedId, q });
   // While any listed article has an AI illustration rendering, poll fast so
   // the "generating" cards resolve into images (and each poll lets the server
@@ -540,6 +597,11 @@ function QueryList({
     mutateArticleLists();
   }, []);
 
+  const openArticle = useCallback(
+    (article: Article) => router.push(`/article/${article.id}`),
+    [router],
+  );
+
   useListKeyboard({
     articles,
     selected,
@@ -547,6 +609,7 @@ function QueryList({
     modalOpen: Boolean(sharing || pickingProject || dismissing),
     toggleSaved,
     toggleRead,
+    openArticle,
   });
 
   if (isLoading) return <LoadingSkeleton variant={variant} />;

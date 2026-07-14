@@ -3,6 +3,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { mutate } from "swr";
 import { api, apiWithHeaders, sendReadBatch, type Article } from "./api";
+import {
+  getReadingSession,
+  markArticleReadInReadingSessions,
+  readingSessionKey,
+  setReadingSession,
+} from "./readingSession";
 
 // Reading-mode window over the article list: opens anchored at the resume
 // point (server-side reading frontier), pages backward through read history
@@ -28,6 +34,7 @@ function listPath(
   const params = new URLSearchParams({
     filter: opts.filter,
     limit: String(PAGE_SIZE),
+    reading_window: "true",
     ...extra,
   });
   if (opts.feedId) params.set("feed_id", opts.feedId);
@@ -37,18 +44,43 @@ function listPath(
 export function useReadingWindow(opts: WindowOpts) {
   const { filter, feedId, enabled } = opts;
   const key = listPath({ filter, feedId, enabled });
+  const sessionKey = readingSessionKey(filter, feedId);
+  const initialSession = getReadingSession(sessionKey);
 
-  const [articles, setArticles] = useState<Article[] | null>(null);
-  const [prevCursor, setPrevCursor] = useState<string | null>(null);
-  const [nextCursor, setNextCursor] = useState<string | null>(null);
-  const [unreadCount, setUnreadCount] = useState<number | null>(null);
-  const [newAbove, setNewAbove] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const [articles, setArticles] = useState<Article[] | null>(initialSession?.articles ?? null);
+  const [prevCursor, setPrevCursor] = useState<string | null>(
+    initialSession?.prevCursor ?? null,
+  );
+  const [nextCursor, setNextCursor] = useState<string | null>(
+    initialSession?.nextCursor ?? null,
+  );
+  const [unreadCount, setUnreadCount] = useState<number | null>(
+    initialSession?.unreadCount ?? null,
+  );
+  const [newAbove, setNewAbove] = useState(initialSession?.newAbove ?? 0);
+  const [loading, setLoading] = useState(initialSession === null);
 
-  const articlesRef = useRef<Article[] | null>(null);
+  const articlesRef = useRef<Article[] | null>(articles);
+  const stateSessionKeyRef = useRef(sessionKey);
   useEffect(() => {
     articlesRef.current = articles;
   }, [articles]);
+
+  useEffect(() => {
+    if (
+      !enabled ||
+      articles === null ||
+      stateSessionKeyRef.current !== sessionKey
+    )
+      return;
+    setReadingSession(sessionKey, {
+      articles,
+      prevCursor,
+      nextCursor,
+      unreadCount,
+      newAbove,
+    });
+  }, [enabled, sessionKey, articles, prevCursor, nextCursor, unreadCount, newAbove]);
   const pendingRef = useRef<Set<number>>(new Set());
   const frontierRef = useRef<number | null>(null);
   const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -135,6 +167,17 @@ export function useReadingWindow(opts: WindowOpts) {
   // Initial load + reload on scope change.
   useEffect(() => {
     if (!enabled) return;
+    const session = getReadingSession(sessionKey);
+    stateSessionKeyRef.current = sessionKey;
+    if (session) {
+      setArticles(session.articles);
+      setPrevCursor(session.prevCursor);
+      setNextCursor(session.nextCursor);
+      setUnreadCount(session.unreadCount);
+      setNewAbove(session.newAbove);
+      setLoading(false);
+      return;
+    }
     setArticles(null);
     setPrevCursor(null);
     setNextCursor(null);
@@ -142,7 +185,7 @@ export function useReadingWindow(opts: WindowOpts) {
     setNewAbove(0);
     reload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, enabled]);
+  }, [key, sessionKey, enabled]);
 
   // Re-anchor when something else invalidates article lists (mark all read,
   // feed refresh, subscribe…). Flush first so our own marks aren't lost.
@@ -272,6 +315,20 @@ export function useReadingWindow(opts: WindowOpts) {
     mutate("/feeds");
   }, []);
 
+  const markOpened = useCallback((articleId: number) => {
+    const article = articlesRef.current?.find((item) => item.id === articleId);
+    if (!article || article.is_read) return;
+    markArticleReadInReadingSessions(articleId);
+    setArticles((list) =>
+      list
+        ? list.map((item) =>
+            item.id === articleId ? { ...item, is_read: true } : item,
+          )
+        : list,
+    );
+    setUnreadCount((count) => (count === null ? count : Math.max(0, count - 1)));
+  }, []);
+
   const toggleSaved = useCallback(async (article: Article) => {
     const next = !article.is_saved;
     setArticles((list) =>
@@ -324,6 +381,7 @@ export function useReadingWindow(opts: WindowOpts) {
     resetToTop,
     markPassed,
     toggleRead,
+    markOpened,
     toggleSaved,
     reload,
   };
