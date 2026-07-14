@@ -4,7 +4,6 @@ backfill. Ongoing matching happens in the worker's suppression stage
 call to suggest topic phrases, one embedding call when a phrase is chosen."""
 
 import logging
-import time
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, HTTPException, Response
@@ -90,37 +89,20 @@ async def dislike_options(
         except crypto.TokenCryptoError:
             config = llm.system_config()
         if config is not None:
-            user_id = user.id
-            usage = llm.TokenUsage()
-            started = time.monotonic()
-            try:
+            # swallow_errors: a failed suggestion degrades to no topic chips.
+            async with llm.usage_tracker(
+                session,
+                user_id=user.id,
+                feature="topics",
+                config=config,
+                log_label=f"Topic suggestion for article {article.id}",
+                swallow_errors=True,
+            ) as usage:
                 topics = await llm.dislike_topics(
                     article.title,
                     article.summary_medium or article.excerpt or "",
                     config=config,
                     usage=usage,
-                )
-            except Exception as exc:
-                logger.warning("Topic suggestion failed for article %s: %s", article.id, exc)
-                await session.rollback()
-                await llm.record_usage(
-                    session,
-                    user_id=user_id,
-                    feature="topics",
-                    config=config,
-                    usage=usage,
-                    duration_ms=int((time.monotonic() - started) * 1000),
-                    status="error",
-                    error=str(exc),
-                )
-            else:
-                await llm.record_usage(
-                    session,
-                    user_id=user_id,
-                    feature="topics",
-                    config=config,
-                    usage=usage,
-                    duration_ms=int((time.monotonic() - started) * 1000),
                 )
 
     return DislikeOptionsOut(entities=entities, topics=topics, story_available=story_available)
