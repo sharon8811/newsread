@@ -15,6 +15,7 @@ export type ReadingReturnAnchor = {
 
 const snapshots = new Map<string, ReadingSessionSnapshot>();
 const returnAnchors = new Map<string, ReadingReturnAnchor>();
+let latestReturnKey: string | null = null;
 
 export function readingSessionKey(filter: "all" | "unread", feedId?: string | null) {
   return `${filter}|${feedId ?? ""}`;
@@ -47,6 +48,7 @@ export function markArticleReadInReadingSessions(articleId: number) {
 }
 
 export function setReadingReturnAnchor(key: string, anchor: ReadingReturnAnchor) {
+  latestReturnKey = key;
   returnAnchors.set(key, anchor);
 }
 
@@ -54,11 +56,22 @@ export function getReadingReturnAnchor(key: string): ReadingReturnAnchor | null 
   return returnAnchors.get(key) ?? null;
 }
 
+export function getLatestReadingReturnAnchor(): {
+  key: string;
+  anchor: ReadingReturnAnchor;
+} | null {
+  if (latestReturnKey === null) return null;
+  const anchor = returnAnchors.get(latestReturnKey);
+  return anchor ? { key: latestReturnKey, anchor } : null;
+}
+
 export function clearReadingReturnAnchor(key: string) {
   returnAnchors.delete(key);
+  if (latestReturnKey === key) latestReturnKey = null;
 }
 
 export function clearReadingSessions() {
   snapshots.clear();
   returnAnchors.clear();
+  latestReturnKey = null;
 }

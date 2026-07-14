@@ -11,8 +11,6 @@ import { useRouter } from "next/navigation";
 import useSWR, { mutate } from "swr";
 import { api, fetcher, type Article } from "@/lib/api";
 import {
-  clearReadingReturnAnchor,
-  getReadingReturnAnchor,
   readingSessionKey,
   setReadingReturnAnchor,
 } from "@/lib/readingSession";
@@ -251,10 +249,6 @@ function ReadingList({
   }, [articles]);
 
   const key = readingSessionKey(filter, feedId);
-  // Capture this only at mount. The anchor is written immediately before
-  // navigation; a local optimistic read render must not consume it while the
-  // user is still leaving the list.
-  const returnAnchor = useRef(getReadingReturnAnchor(key));
   useEffect(() => setSelected(0), [key]);
 
   useLayoutEffect(() => {
@@ -317,21 +311,6 @@ function ReadingList({
     }
     compensation.current = null;
   }, [articles]);
-
-  // Route navigation keeps the list window in memory. On return, pin the
-  // clicked article to the same visual position instead of restoring a raw
-  // scroll offset against a changed data set.
-  useLayoutEffect(() => {
-    const anchor = returnAnchor.current;
-    const scroller = scrollerRef.current;
-    const article = anchor ? itemEls.current.get(anchor.articleId) : null;
-    if (!anchor || !scroller || !article) return;
-    const currentOffset =
-      article.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
-    scroller.scrollTop += currentOffset - anchor.offset;
-    clearReadingReturnAnchor(key);
-    returnAnchor.current = null;
-  }, [articles, key]);
 
   const openArticle = useCallback(
     (article: Article) => {

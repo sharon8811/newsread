@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   clearReadingReturnAnchor,
   clearReadingSessions,
+  getLatestReadingReturnAnchor,
   getReadingReturnAnchor,
   getReadingSession,
   markArticleReadInReadingSessions,
@@ -36,7 +37,12 @@ describe("readingSession", () => {
     setReadingReturnAnchor(key, { articleId: 42, offset: 180 });
 
     expect(getReadingReturnAnchor(key)).toEqual({ articleId: 42, offset: 180 });
+    expect(getLatestReadingReturnAnchor()).toEqual({
+      key,
+      anchor: { articleId: 42, offset: 180 },
+    });
     clearReadingReturnAnchor(key);
     expect(getReadingReturnAnchor(key)).toBeNull();
+    expect(getLatestReadingReturnAnchor()).toBeNull();
   });
 });

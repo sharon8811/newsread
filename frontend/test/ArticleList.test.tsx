@@ -677,7 +677,10 @@ describe("<ArticleList> reading mode interactions", () => {
     expect(await screen.findByText("Return Here")).toBeInTheDocument();
     expect(screen.getByText("Still Below")).toBeInTheDocument();
     expect(screen.getByText("1 unread ↓")).toBeInTheDocument();
-    expect(getReadingReturnAnchor(readingSessionKey("unread"))).toBeNull();
+    expect(getReadingReturnAnchor(readingSessionKey("unread"))).toEqual({
+      articleId: 81,
+      offset: 0,
+    });
     expect(
       fetchMock.mock.calls.filter((call) => String(call[0]).includes("anchor=resume")),
     ).toHaveLength(1);
