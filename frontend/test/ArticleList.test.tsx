@@ -570,15 +570,34 @@ describe("<ArticleList> reading mode interactions", () => {
         headers: { "X-Unread-Count": "1" },
       },
     ]);
-    const { container } = renderReading(<ArticleList filter="all" emptyTitle="Empty" />);
-    await screen.findByText("Unread Two");
-    const target = container.querySelector('[data-article-id="2"]') as HTMLElement;
-    target.getBoundingClientRect = () =>
-      ({ top: 500, bottom: 700, width: 100, height: 200 }) as DOMRect;
+    // Stub at the prototype, not on a queried instance: a re-render between
+    // the stub and the click can swap the row element, and the component
+    // reads rects/scrolls through its own ref to the CURRENT node.
+    const origRect = Element.prototype.getBoundingClientRect;
     const scrollSpy = vi.fn();
-    target.scrollIntoView = scrollSpy;
-    fireEvent.click(screen.getByText("1 unread ↓"));
-    await waitFor(() => expect(scrollSpy).toHaveBeenCalled());
+    Element.prototype.getBoundingClientRect = function () {
+      if ((this as Element).getAttribute?.("data-article-id") === "2") {
+        return { top: 500, bottom: 700, width: 100, height: 200 } as DOMRect;
+      }
+      return origRect.call(this);
+    };
+    const origScroll = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = scrollSpy;
+    try {
+      renderReading(<ArticleList filter="all" emptyTitle="Empty" />);
+      await screen.findByText("Unread Two");
+      // Re-click on retry: a click that lands before the component's live
+      // refs are wired is a silent no-op.
+      await waitFor(() => {
+        fireEvent.click(screen.getByText("1 unread ↓"));
+        expect(scrollSpy).toHaveBeenCalledWith(
+          expect.objectContaining({ block: "start" }),
+        );
+      });
+    } finally {
+      Element.prototype.getBoundingClientRect = origRect;
+      Element.prototype.scrollIntoView = origScroll;
+    }
   });
 
   it("unread pill falls back to the top when only new-above items remain", async () => {
