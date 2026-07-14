@@ -388,7 +388,7 @@ async def test_backfill_rewrites_absolute_generated_image_urls(session):
     session.add_all([generated, scraped])
     await session.commit()
 
-    backfill = next(s for s in app_db.MIGRATIONS if "generated-image" in s)
+    [backfill] = app_db.ONE_SHOT_MIGRATIONS["relativize_generated_image_urls"]
     await session.execute(text(backfill))
     await session.execute(text(backfill))  # idempotent
     await session.commit()

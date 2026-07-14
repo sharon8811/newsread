@@ -79,6 +79,25 @@ your machine's LAN IP (e.g. `http://192.168.1.20:8000`), not `localhost`
 (which would be the phone itself). Push notifications need a development
 build with an EAS project id; in Expo Go the app simply skips registration.
 
+### Database migrations
+
+The schema is managed by Alembic (`backend/alembic/versions/`). Migrations run
+automatically at startup — both the API and the worker call `init_db`, which
+upgrades to head under an advisory lock; databases created before the Alembic
+switch are stamped at the baseline on first boot. To add a schema change:
+
+```bash
+cd backend
+# 1. Edit app/models.py, then generate a revision from the diff
+uv run alembic revision --autogenerate -m "describe the change"
+# 2. Review the generated file (autogenerate misses generated columns,
+#    partial indexes, and data backfills), then restart the backend to apply
+```
+
+One-off data repairs belong in `db.ONE_SHOT_MIGRATIONS` (SQL) or
+`db.ONE_SHOT_REPAIRS` (Python) — each named group runs exactly once per
+database and must still be idempotent.
+
 ### Catalog maintenance
 
 Catalog cleanup is dry-run by default and always emits a reviewable JSON report:

@@ -27,6 +27,7 @@ dependencies = [
     # instructions Docker Desktop's Apple-Silicon VM doesn't expose, so any Fernet
     # call SIGILLs (crashes the backend on startup). 43-45 run fine.
     "cryptography>=43,<46",
+    "alembic>=1.18.5",
 ]
 
 [dependency-groups]

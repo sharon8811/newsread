@@ -1,9 +1,13 @@
 import asyncio
 import logging
+from pathlib import Path
 
+from alembic.config import Config as AlembicConfig
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
+
+from alembic import command as alembic_command
 
 from .config import settings
 
@@ -27,108 +31,25 @@ async def get_session():
         yield session
 
 
-# Additive migrations for tables that predate a column (create_all only creates tables).
-MIGRATIONS = [
-    "ALTER TABLE articles ADD COLUMN IF NOT EXISTS full_text TEXT NOT NULL DEFAULT ''",
-    "ALTER TABLE articles ADD COLUMN IF NOT EXISTS full_text_fetched_at TIMESTAMPTZ",
-    "ALTER TABLE articles ADD COLUMN IF NOT EXISTS summary TEXT NOT NULL DEFAULT ''",
-    "ALTER TABLE articles ADD COLUMN IF NOT EXISTS summary_short TEXT NOT NULL DEFAULT ''",
-    "ALTER TABLE articles ADD COLUMN IF NOT EXISTS summary_medium TEXT NOT NULL DEFAULT ''",
-    "ALTER TABLE articles ADD COLUMN IF NOT EXISTS summary_model VARCHAR(120)",
-    "ALTER TABLE articles ADD COLUMN IF NOT EXISTS summary_generated_at TIMESTAMPTZ",
-    "ALTER TABLE users ADD COLUMN IF NOT EXISTS default_view VARCHAR(16) NOT NULL DEFAULT 'list'",
-    "ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS view_override VARCHAR(16)",
-    "ALTER TABLE articles ADD COLUMN IF NOT EXISTS entities_extracted_at TIMESTAMPTZ",
-    "ALTER TABLE messages ADD COLUMN IF NOT EXISTS tool_events JSONB",
-    # Article text and public-discussion chats have independent histories.
-    "ALTER TABLE conversations ADD COLUMN IF NOT EXISTS kind VARCHAR(16) NOT NULL DEFAULT 'article'",
-    "ALTER TABLE conversations DROP CONSTRAINT IF EXISTS conversations_article_id_user_id_key",
-    "CREATE UNIQUE INDEX IF NOT EXISTS uq_conversations_article_user_kind "
-    "ON conversations (article_id, user_id, kind) WHERE article_id IS NOT NULL",
-    # Per-subscription feed settings + the global per-feed AI switch.
-    "ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS title_override VARCHAR(512)",
-    "ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS sort_order VARCHAR(16)",
-    "ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS retention_days INTEGER",
-    "ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS is_muted BOOLEAN NOT NULL DEFAULT FALSE",
-    "ALTER TABLE feeds ADD COLUMN IF NOT EXISTS ai_enabled BOOLEAN NOT NULL DEFAULT TRUE",
-    # Keyword leg of hybrid article search (the semantic leg is article_embeddings).
-    "ALTER TABLE articles ADD COLUMN IF NOT EXISTS search_tsv tsvector GENERATED ALWAYS AS "
-    "(to_tsvector('english', coalesce(title, '') || ' ' || coalesce(excerpt, '') || ' ' "
-    "|| coalesce(summary_medium, ''))) STORED",
-    "CREATE INDEX IF NOT EXISTS ix_articles_search_tsv ON articles USING gin (search_tsv)",
-    # Catalog health metadata and full-text search. The vector leg lives in
-    # catalog_entry_embeddings and intentionally uses exact scans at this scale.
-    "ALTER TABLE catalog_entries ADD COLUMN IF NOT EXISTS source VARCHAR(64) NOT NULL DEFAULT 'awesome-rss-feeds'",
-    "ALTER TABLE catalog_entries ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE",
-    "ALTER TABLE catalog_entries ADD COLUMN IF NOT EXISTS health_status VARCHAR(24) NOT NULL DEFAULT 'unchecked'",
-    "ALTER TABLE catalog_entries ADD COLUMN IF NOT EXISTS checked_at TIMESTAMPTZ",
-    "ALTER TABLE catalog_entries ADD COLUMN IF NOT EXISTS item_count INTEGER",
-    "ALTER TABLE catalog_entries ADD COLUMN IF NOT EXISTS latest_item_at TIMESTAMPTZ",
-    "ALTER TABLE catalog_entries ADD COLUMN IF NOT EXISTS final_url VARCHAR(2048)",
-    "ALTER TABLE catalog_entries ADD COLUMN IF NOT EXISTS content_type VARCHAR(120)",
-    "ALTER TABLE catalog_entries ADD COLUMN IF NOT EXISTS preview_items JSONB NOT NULL DEFAULT '[]'::jsonb",
-    "ALTER TABLE catalog_entries ADD COLUMN IF NOT EXISTS search_tsv tsvector GENERATED ALWAYS AS "
-    "(setweight(to_tsvector('english', coalesce(title, '')), 'A') || "
-    "setweight(to_tsvector('english', coalesce(description, '')), 'B') || "
-    "setweight(to_tsvector('english', coalesce(category, '') || ' ' || coalesce(site_url, '') || ' ' || coalesce(url, '')), 'C')) STORED",
-    "CREATE INDEX IF NOT EXISTS ix_catalog_entries_search_tsv ON catalog_entries USING gin (search_tsv)",
-    "CREATE INDEX IF NOT EXISTS ix_catalog_entries_active_category ON catalog_entries (is_active, category)",
-    # Per-member project push mute (project_members predates the column).
-    "ALTER TABLE project_members ADD COLUMN IF NOT EXISTS is_muted BOOLEAN NOT NULL DEFAULT FALSE",
-    # Project-wide Q&A threads: conversations gain an optional project scope.
-    "ALTER TABLE conversations ALTER COLUMN article_id DROP NOT NULL",
-    "ALTER TABLE conversations ADD COLUMN IF NOT EXISTS project_id INTEGER "
-    "REFERENCES projects(id) ON DELETE CASCADE",
-    "CREATE INDEX IF NOT EXISTS ix_conversations_project_id ON conversations (project_id)",
-    "CREATE UNIQUE INDEX IF NOT EXISTS uq_conversations_project_user "
-    "ON conversations (project_id, user_id) WHERE project_id IS NOT NULL",
-    # The zen view was replaced by the cards view; remap stored preferences.
-    "ALTER TABLE users ALTER COLUMN default_view SET DEFAULT 'cards'",
-    "UPDATE users SET default_view = 'cards' WHERE default_view = 'zen'",
-    "UPDATE subscriptions SET view_override = 'cards' WHERE view_override = 'zen'",
-    # Ticket threads: legacy per-pin notes become each thread's first comment
-    # (author = the pin's adder, timestamp = pin time), then the notes are
-    # cleared. The pair is idempotent because the second statement empties
-    # what the first selects; both run in init_db's single transaction.
-    "INSERT INTO project_article_comments (project_id, article_id, author_id, body, created_at) "
-    "SELECT project_id, article_id, added_by_user_id, note, created_at FROM project_articles "
-    "WHERE note IS NOT NULL AND btrim(note) <> ''",
-    "UPDATE project_articles SET note = NULL WHERE note IS NOT NULL",
-    # Generated article images (bring-your-own-key feature).
-    "ALTER TABLE users ADD COLUMN IF NOT EXISTS image_prompt TEXT",
-    "ALTER TABLE articles ADD COLUMN IF NOT EXISTS image_gen_attempted_at TIMESTAMPTZ",
-    # Generated-image URLs were briefly stored absolute (built from the OAuth
-    # redirect base, which may point at a tunnel browsers can't reach);
-    # relative paths survive any deployment host. Idempotent: already-relative
-    # rows are excluded by the NOT LIKE.
-    "UPDATE articles SET image_url = '/api/articles/' || id || '/generated-image' "
-    "WHERE image_url LIKE '%/api/articles/%/generated-image' AND image_url NOT LIKE '/api/%'",
-    # Screenshot summaries: whether the user's own model accepts image input.
-    "ALTER TABLE user_ai_settings ADD COLUMN IF NOT EXISTS supports_vision "
-    "BOOLEAN NOT NULL DEFAULT FALSE",
-    # Per-feed image-generation switch + per-user monthly budget; the article
-    # column attributes each generation claim to the user whose budget it spends.
-    "ALTER TABLE feeds ADD COLUMN IF NOT EXISTS image_gen_enabled BOOLEAN NOT NULL DEFAULT TRUE",
-    "ALTER TABLE users ADD COLUMN IF NOT EXISTS image_gen_monthly_limit INTEGER",
-    "ALTER TABLE articles ADD COLUMN IF NOT EXISTS image_gen_user_id INTEGER "
-    "REFERENCES users(id) ON DELETE SET NULL",
-    # Model-specific request parameters for the user's own image model.
-    "ALTER TABLE user_ai_settings ADD COLUMN IF NOT EXISTS image_extra_params TEXT",
-    # Scroll auto-read: when and how an article was marked read ('opened',
-    # 'scrolled', 'story', 'mark_all').
-    "ALTER TABLE user_article_states ADD COLUMN IF NOT EXISTS read_at TIMESTAMPTZ",
-    "ALTER TABLE user_article_states ADD COLUMN IF NOT EXISTS read_source VARCHAR(16)",
-    # Embedding staleness tracking (see embeddings.text_for / stale_input).
-    # Existing rows stay NULL, which the worker treats as stale, so every
-    # pre-hash vector is re-embedded from the article's current text.
-    "ALTER TABLE article_embeddings ADD COLUMN IF NOT EXISTS input_hash VARCHAR(32)",
-    # LLM named-entity tagging stamp (see ner.py / the worker's NER stage).
-    "ALTER TABLE articles ADD COLUMN IF NOT EXISTS ner_extracted_at TIMESTAMPTZ",
-]
+# Schema lives in Alembic revisions (backend/alembic/). init_db upgrades to
+# head on every boot; pre-Alembic databases (built by the old create_all +
+# MIGRATIONS path) are stamped at baseline on first contact.
+_BACKEND_ROOT = Path(__file__).resolve().parent.parent
 
-# Data repairs that scan whole tables. Unlike MIGRATIONS (cheap, re-run every
-# boot), each named group runs exactly once per database, tracked in
-# one_shot_migrations.
+# Serializes schema setup across concurrently booting processes (the API and
+# the arq worker start together in docker-compose). Arbitrary but stable.
+_SCHEMA_LOCK_KEY = 0x6E657773
+
+
+def alembic_config() -> AlembicConfig:
+    return AlembicConfig(str(_BACKEND_ROOT / "alembic.ini"))
+
+
+# Data repairs and backfills. Each named group runs exactly once per
+# database (tracked in one_shot_migrations) and must stay idempotent anyway:
+# groups that predate the Alembic switch already ran on old databases via the
+# retired MIGRATIONS list, then were re-claimed (as no-ops) under this
+# mechanism.
 ONE_SHOT_MIGRATIONS: dict[str, list[str]] = {
     # Recover HN thread references for rows ingested before content-based
     # discussion detection. Strict host/path matching avoids generic HN links;
@@ -143,6 +64,29 @@ ONE_SHOT_MIGRATIONS: dict[str, list[str]] = {
         "from 'news\\.ycombinator\\.com/item\\?id=([0-9]+)') "
         "WHERE comments_url IS NULL "
         "AND content_html ~* 'Comments URL:.*news\\.ycombinator\\.com/item\\?id=[0-9]+'",
+    ],
+    # The zen view was replaced by the cards view; remap stored preferences.
+    "remap_zen_view_to_cards": [
+        "UPDATE users SET default_view = 'cards' WHERE default_view = 'zen'",
+        "UPDATE subscriptions SET view_override = 'cards' WHERE view_override = 'zen'",
+    ],
+    # Ticket threads: legacy per-pin notes become each thread's first comment
+    # (author = the pin's adder, timestamp = pin time), then the notes are
+    # cleared. The pair is idempotent because the second statement empties
+    # what the first selects; both run in init_db's single transaction.
+    "migrate_pin_notes_to_comments": [
+        "INSERT INTO project_article_comments (project_id, article_id, author_id, body, created_at) "
+        "SELECT project_id, article_id, added_by_user_id, note, created_at FROM project_articles "
+        "WHERE note IS NOT NULL AND btrim(note) <> ''",
+        "UPDATE project_articles SET note = NULL WHERE note IS NOT NULL",
+    ],
+    # Generated-image URLs were briefly stored absolute (built from the OAuth
+    # redirect base, which may point at a tunnel browsers can't reach);
+    # relative paths survive any deployment host. Idempotent: already-relative
+    # rows are excluded by the NOT LIKE.
+    "relativize_generated_image_urls": [
+        "UPDATE articles SET image_url = '/api/articles/' || id || '/generated-image' "
+        "WHERE image_url LIKE '%/api/articles/%/generated-image' AND image_url NOT LIKE '/api/%'",
     ],
 }
 
@@ -181,7 +125,7 @@ ONE_SHOT_REPAIRS = {"clean_hnrss_boilerplate_lxml": _clean_hnrss_content}
 
 
 async def init_db(max_attempts: int = 30) -> None:
-    """Create tables, waiting for the database to accept connections."""
+    """Migrate the schema to head, waiting for the database to accept connections."""
     global vector_enabled
 
     from . import models  # noqa: F401  (register mappings)
@@ -201,22 +145,34 @@ async def init_db(max_attempts: int = 30) -> None:
     try:
         async with engine.begin() as conn:
             await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
-        vector_enabled = True
     except Exception as exc:
-        vector_enabled = False
-        logger.warning("pgvector extension unavailable, semantic search disabled: %s", exc)
+        raise RuntimeError(
+            "The pgvector extension is required (the compose stack ships "
+            "pgvector/pgvector:pg16) but could not be created"
+        ) from exc
+    vector_enabled = True
 
     async with engine.begin() as conn:
-        tables = [
-            table
-            for table in Base.metadata.sorted_tables
-            if vector_enabled
-            or table.name
-            not in {"article_embeddings", "catalog_entry_embeddings", "dislike_rule_embeddings"}
-        ]
-        await conn.run_sync(lambda sync: Base.metadata.create_all(sync, tables=tables))
-        for statement in MIGRATIONS:
-            await conn.execute(text(statement))
+        # Both the API and the arq worker run init_db at boot; the lock makes
+        # the loser wait instead of racing the DDL. Transaction-scoped, so it
+        # releases even on failure.
+        await conn.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": _SCHEMA_LOCK_KEY})
+        stamped = await conn.scalar(text("SELECT to_regclass('public.alembic_version')"))
+        populated = await conn.scalar(text("SELECT to_regclass('public.users')"))
+
+        def _migrate(sync_conn) -> None:
+            config = alembic_config()
+            config.attributes["connection"] = sync_conn
+            if stamped is None and populated is not None:
+                # Pre-Alembic database built by the retired create_all +
+                # MIGRATIONS path; its schema equals the baseline revision.
+                alembic_command.stamp(config, "head")
+            else:
+                alembic_command.upgrade(config, "head")
+
+        await conn.run_sync(_migrate)
+        # Redundant on fresh databases (the baseline creates it); pre-Alembic
+        # databases got it from the old init path, so this is belt-and-braces.
         await conn.execute(
             text(
                 "CREATE TABLE IF NOT EXISTS one_shot_migrations "

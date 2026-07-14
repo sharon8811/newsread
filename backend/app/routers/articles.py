@@ -495,8 +495,8 @@ async def _hybrid_search_ids(
         .order_by(ArticleEmbedding.embedding.cosine_distance(query_vector))
         .limit(SEARCH_POOL)
     )
-    # search_tsv is a generated column added by migration (see db.MIGRATIONS),
-    # intentionally unmapped so create_all never emits a conflicting plain column.
+    # search_tsv is a generated column owned by the Alembic baseline,
+    # intentionally unmapped: the ORM can't express GENERATED ALWAYS AS here.
     tsv = literal_column("articles.search_tsv")
     tsquery = func.websearch_to_tsquery("english", q)
     keyword_stmt = (
