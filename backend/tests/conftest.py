@@ -81,7 +81,7 @@ from app.config import settings
 # the async greenlet under tests (MissingGreenlet). Swap in an engine without
 # pre-ping and rebind it everywhere the app reads it — including modules that
 # imported SessionLocal by value (worker, pipeline). Pooling is safe here (and
-# much faster than NullPool's connection-per-session) because pytest.ini pins
+# much faster than NullPool's connection-per-session) because pyproject.toml pins
 # one session-scoped event loop, so pooled connections never cross loops.
 engine = create_async_engine(settings.database_url)
 SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
