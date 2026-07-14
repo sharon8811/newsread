@@ -319,7 +319,7 @@ export type EntityBadge = {
   kind: string; // github | hf_model | hf_dataset | arxiv | pypi | npm | youtube
   key: string;
   url: string;
-  source: "primary" | "inline";
+  source: "primary" | "inline" | "ner";
   badge: Record<string, string | number | null | undefined>;
 };
 
