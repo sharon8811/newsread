@@ -13,6 +13,7 @@ import {
 } from "@/lib/api";
 import {
   CheckIcon,
+  ExternalIcon,
   ShareIcon,
   SlackIcon,
   SparkleIcon,
@@ -36,6 +37,8 @@ export default function ShareModal({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [aiBusy, setAiBusy] = useState(false);
+  const [appShareBusy, setAppShareBusy] = useState(false);
+  const [appShareStatus, setAppShareStatus] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
   // External targets selected for this share; internal share tracked separately
   // so a retry after a partial failure doesn't re-send what already went out.
@@ -90,6 +93,47 @@ export default function ShareModal({
       setError(err instanceof Error ? err.message : "The AI suggestion failed");
     } finally {
       setAiBusy(false);
+    }
+  }
+
+  async function shareWithApp() {
+    if (appShareBusy) return;
+    setError(null);
+    setAppShareStatus(null);
+
+    const trimmedNote = note.trim();
+    const shareData: ShareData = {
+      title: article.title,
+      url: article.url,
+      ...(trimmedNote ? { text: trimmedNote } : {}),
+    };
+
+    if (typeof navigator.share !== "function") {
+      if (typeof navigator.clipboard?.writeText !== "function") {
+        setError("App sharing is not supported in this browser");
+        return;
+      }
+      try {
+        const text = trimmedNote ? `${trimmedNote}\n${article.url}` : article.url;
+        await navigator.clipboard.writeText(text);
+        setAppShareStatus("Message and link copied. Paste them into any app.");
+      } catch {
+        setError("Could not open the app picker or copy the link");
+      }
+      return;
+    }
+
+    setAppShareBusy(true);
+    try {
+      await navigator.share(shareData);
+      setSent(true);
+      setTimeout(onClose, 900);
+    } catch (err) {
+      if (!(err instanceof DOMException && err.name === "AbortError")) {
+        setError(err instanceof Error ? err.message : "Could not open the app picker");
+      }
+    } finally {
+      setAppShareBusy(false);
     }
   }
 
@@ -275,7 +319,9 @@ export default function ShareModal({
                     ) : (
                       <TeamsIcon size={12} />
                     )}
-                    {target.display_name}
+                    {target.platform === "slack"
+                      ? target.display_name.replace(/^#\s*/, "")
+                      : target.display_name}
                     {active && <CheckIcon size={11} />}
                   </button>
                 );
@@ -317,16 +363,26 @@ export default function ShareModal({
               </div>
             )}
 
+            {appShareStatus && (
+              <p
+                className="mt-2 text-right text-[12px]"
+                role="status"
+                style={{ color: "var(--ink-faint)" }}
+              >
+                {appShareStatus}
+              </p>
+            )}
+
             {error && (
               <p className="mt-2 text-[12.5px]" style={{ color: "var(--danger)" }}>
                 {error}
               </p>
             )}
 
-            <div className="mt-4 flex items-center justify-between">
+            <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <p className="font-mono-nr text-[11px]" style={{ color: "var(--ink-faint)" }}>
                 {nothingChosen
-                  ? "Add a reader or pick a channel"
+                  ? "Select a reader or channel"
                   : [
                       recipients.length > 0 &&
                         `${recipients.length} reader${recipients.length > 1 ? "s" : ""}`,
@@ -337,14 +393,25 @@ export default function ShareModal({
                       .filter(Boolean)
                       .join(" · ")}
               </p>
-              <button
-                className="btn btn-accent"
-                disabled={nothingChosen || busy}
-                onClick={submit}
-              >
-                <ShareIcon size={14} />
-                {busy ? "Sending…" : "Send"}
-              </button>
+              <div className="flex items-center justify-end gap-2">
+                <button
+                  className="btn"
+                  disabled={appShareBusy}
+                  onClick={shareWithApp}
+                  title="Open your device's app picker"
+                >
+                  <ExternalIcon size={13} />
+                  {appShareBusy ? "Opening…" : "Choose an app"}
+                </button>
+                <button
+                  className="btn btn-accent"
+                  disabled={nothingChosen || busy}
+                  onClick={submit}
+                >
+                  <ShareIcon size={14} />
+                  {busy ? "Sending…" : "Send"}
+                </button>
+              </div>
             </div>
           </>
         )}

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import ShareModal from "@/components/ShareModal";
@@ -58,10 +58,17 @@ describe("<ShareModal> external targets", () => {
     mutateMock.mockClear();
   });
 
-  it("renders saved quick-share chips and a WhatsApp chip", () => {
+  afterEach(() => {
+    Reflect.deleteProperty(navigator, "share");
+    Reflect.deleteProperty(navigator, "clipboard");
+    vi.unstubAllGlobals();
+  });
+
+  it("renders saved quick-share chips without a duplicate Slack hash", () => {
     mockSWRData();
     render(<ShareModal article={makeArticle()} onClose={vi.fn()} />);
-    expect(screen.getByText("#ai-news")).toBeInTheDocument();
+    expect(screen.getByText("ai-news")).toBeInTheDocument();
+    expect(screen.queryByText("#ai-news")).not.toBeInTheDocument();
     expect(screen.getByText("Eng › General")).toBeInTheDocument();
     expect(screen.getByText("WhatsApp")).toBeInTheDocument();
   });
@@ -73,7 +80,7 @@ describe("<ShareModal> external targets", () => {
     const onClose = vi.fn();
     render(<ShareModal article={makeArticle({ id: 7 })} onClose={onClose} />);
 
-    await userEvent.click(screen.getByText("#ai-news"));
+    await userEvent.click(screen.getByText("ai-news"));
     await userEvent.type(
       screen.getByPlaceholderText(/Why are you sharing this/),
       "worth a read",
@@ -100,7 +107,7 @@ describe("<ShareModal> external targets", () => {
     vi.stubGlobal("fetch", fn);
     render(<ShareModal article={makeArticle()} onClose={vi.fn()} />);
 
-    await userEvent.click(screen.getByText("#ai-news"));
+    await userEvent.click(screen.getByText("ai-news"));
     await userEvent.click(screen.getByRole("button", { name: /Send/ }));
 
     expect(await screen.findByText(/#ai-news: not a member/)).toBeInTheDocument();
@@ -136,6 +143,226 @@ describe("<ShareModal> external targets", () => {
     vi.unstubAllGlobals();
   });
 
+  it("opens the native app picker with the title, note, and url", async () => {
+    mockSWRData({ targets: [] });
+    const share = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "share", {
+      configurable: true,
+      value: share,
+    });
+    render(
+      <ShareModal
+        article={
+          makeArticle({
+            title: "A useful story",
+            url: "https://a.example/native",
+          })
+        }
+        onClose={vi.fn()}
+      />,
+    );
+
+    await userEvent.type(
+      screen.getByPlaceholderText(/Why are you sharing this/),
+      "Worth your time",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Choose an app" }));
+
+    expect(share).toHaveBeenCalledWith({
+      title: "A useful story",
+      text: "Worth your time",
+      url: "https://a.example/native",
+    });
+    expect(await screen.findByText("Shared.")).toBeInTheDocument();
+  });
+
+  it("omits text from the native payload when the note is blank", async () => {
+    mockSWRData({ targets: [] });
+    const share = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "share", {
+      configurable: true,
+      value: share,
+    });
+    render(
+      <ShareModal
+        article={
+          makeArticle({
+            title: "A useful story",
+            url: "https://a.example/native",
+          })
+        }
+        onClose={vi.fn()}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Choose an app" }));
+
+    expect(share).toHaveBeenCalledWith({
+      title: "A useful story",
+      url: "https://a.example/native",
+    });
+    expect(await screen.findByText("Shared.")).toBeInTheDocument();
+  });
+
+  it("shows an opening state while the native picker is pending", async () => {
+    mockSWRData({ targets: [] });
+    let resolveShare!: () => void;
+    const share = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveShare = resolve;
+        }),
+    );
+    Object.defineProperty(navigator, "share", {
+      configurable: true,
+      value: share,
+    });
+    render(<ShareModal article={makeArticle()} onClose={vi.fn()} />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Choose an app" }));
+
+    expect(screen.getByRole("button", { name: "Opening…" })).toBeDisabled();
+    expect(share).toHaveBeenCalledTimes(1);
+
+    resolveShare();
+    expect(await screen.findByText("Shared.")).toBeInTheDocument();
+  });
+
+  it("keeps the modal open without an error when native sharing is cancelled", async () => {
+    mockSWRData({ targets: [] });
+    const share = vi.fn().mockRejectedValue(new DOMException("cancelled", "AbortError"));
+    Object.defineProperty(navigator, "share", {
+      configurable: true,
+      value: share,
+    });
+    render(<ShareModal article={makeArticle()} onClose={vi.fn()} />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Choose an app" }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Choose an app" })).toBeEnabled(),
+    );
+    expect(screen.queryByText("Shared.")).not.toBeInTheDocument();
+    expect(screen.queryByText("cancelled")).not.toBeInTheDocument();
+  });
+
+  it("shows the native share error and allows a retry", async () => {
+    mockSWRData({ targets: [] });
+    const share = vi.fn().mockRejectedValue(new Error("Native share failed"));
+    Object.defineProperty(navigator, "share", {
+      configurable: true,
+      value: share,
+    });
+    render(<ShareModal article={makeArticle()} onClose={vi.fn()} />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Choose an app" }));
+
+    expect(await screen.findByText("Native share failed")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Choose an app" })).toBeEnabled();
+  });
+
+  it("falls back to a generic error for a non-Error native rejection", async () => {
+    mockSWRData({ targets: [] });
+    const share = vi.fn().mockRejectedValue("failed");
+    Object.defineProperty(navigator, "share", {
+      configurable: true,
+      value: share,
+    });
+    render(<ShareModal article={makeArticle()} onClose={vi.fn()} />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Choose an app" }));
+
+    expect(await screen.findByText("Could not open the app picker")).toBeInTheDocument();
+  });
+
+  it("groups the app picker with Send instead of the AI drafting action", () => {
+    mockSWRData({ ai: true });
+    render(<ShareModal article={makeArticle()} onClose={vi.fn()} />);
+
+    const chooseApp = screen.getByRole("button", { name: "Choose an app" });
+    const send = screen.getByRole("button", { name: "Send" });
+    const draft = screen.getByRole("button", { name: "Draft with AI" });
+
+    expect(chooseApp.parentElement).toBe(send.parentElement);
+    expect(draft.parentElement).not.toBe(chooseApp.parentElement);
+  });
+
+  it("copies the message and link when native app sharing is unavailable", async () => {
+    mockSWRData({ targets: [] });
+    Reflect.deleteProperty(navigator, "share");
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    render(
+      <ShareModal
+        article={makeArticle({ url: "https://a.example/fallback" })}
+        onClose={vi.fn()}
+      />,
+    );
+
+    await userEvent.type(
+      screen.getByPlaceholderText(/Why are you sharing this/),
+      "Read this",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Choose an app" }));
+
+    expect(writeText).toHaveBeenCalledWith("Read this\nhttps://a.example/fallback");
+    expect(
+      await screen.findByText("Message and link copied. Paste them into any app."),
+    ).toBeInTheDocument();
+  });
+
+  it("copies only the link when native sharing is unavailable and the note is blank", async () => {
+    mockSWRData({ targets: [] });
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    render(
+      <ShareModal
+        article={makeArticle({ url: "https://a.example/fallback" })}
+        onClose={vi.fn()}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Choose an app" }));
+
+    expect(writeText).toHaveBeenCalledWith("https://a.example/fallback");
+    expect(
+      await screen.findByText("Message and link copied. Paste them into any app."),
+    ).toBeInTheDocument();
+  });
+
+  it("shows an unsupported message when neither native sharing nor clipboard exists", async () => {
+    mockSWRData({ targets: [] });
+    render(<ShareModal article={makeArticle()} onClose={vi.fn()} />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Choose an app" }));
+
+    expect(
+      await screen.findByText("App sharing is not supported in this browser"),
+    ).toBeInTheDocument();
+  });
+
+  it("shows an error when the clipboard fallback fails", async () => {
+    mockSWRData({ targets: [] });
+    const writeText = vi.fn().mockRejectedValue(new Error("denied"));
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    render(<ShareModal article={makeArticle()} onClose={vi.fn()} />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Choose an app" }));
+
+    expect(
+      await screen.findByText("Could not open the app picker or copy the link"),
+    ).toBeInTheDocument();
+  });
+
   it("hides the AI button when the LLM is not configured", () => {
     mockSWRData({ ai: false });
     render(<ShareModal article={makeArticle()} onClose={vi.fn()} />);
@@ -164,7 +391,7 @@ describe("<ShareModal> external targets", () => {
   it("requires a reader or a channel before sending", () => {
     mockSWRData();
     render(<ShareModal article={makeArticle()} onClose={vi.fn()} />);
-    expect(screen.getByText("Add a reader or pick a channel")).toBeInTheDocument();
+    expect(screen.getByText("Select a reader or channel")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Send/ })).toBeDisabled();
   });
 });
