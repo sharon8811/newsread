@@ -14,6 +14,9 @@ export default defineConfig({
     globals: true,
     setupFiles: ["./test/setup.ts"],
     include: ["test/**/*.test.{ts,tsx}"],
+    // Must exceed setup.ts's 5s asyncUtilTimeout, or a slow (but passing)
+    // waitFor turns into a test timeout on loaded CI runners.
+    testTimeout: 15000,
     coverage: {
       provider: "v8",
       reporter: ["text", "text-summary"],

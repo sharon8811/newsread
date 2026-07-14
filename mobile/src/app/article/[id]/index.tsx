@@ -17,6 +17,7 @@ import Markdown from "react-native-markdown-display";
 import RenderHTML, { type MixedStyleDeclaration } from "react-native-render-html";
 import useSWR from "swr";
 
+import EntityChips from "@/components/EntityChips";
 import GeneratingImage from "@/components/GeneratingImage";
 import RelatedCoverage from "@/components/RelatedCoverage";
 import { api, imageSrc } from "@/lib/api";
@@ -217,6 +218,8 @@ export default function ArticleScreen() {
             defaultTextProps={{ selectable: true }}
             enableExperimentalMarginCollapsing
           />
+
+          <EntityChips entities={data.entities} />
 
           <View style={[styles.links, { borderTopColor: colors.border }]}>
             <Pressable style={styles.linkRow} onPress={() => openLink(data.url)}>

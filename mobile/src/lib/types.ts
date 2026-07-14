@@ -53,7 +53,7 @@ export type EntityBadge = {
   kind: string;
   key: string;
   url: string;
-  source: "primary" | "inline";
+  source: "primary" | "inline" | "ner";
   badge: Record<string, string | number | null | undefined>;
 };
 
@@ -81,9 +81,27 @@ export type Article = {
   entities: EntityBadge[];
 };
 
+// Article-detail entities carry the enricher payload on top of the badge
+// (the web's EntityFull, minus the snapshot history mobile doesn't render).
+export type ArticleEntity = EntityBadge & {
+  data: Record<string, unknown>;
+};
+
 export type ArticleDetail = Omit<Article, "entities"> & {
   content_html: string;
   summary_model: string | null;
+  entities: ArticleEntity[];
+};
+
+// The /entity/[id] screen: who/what this is plus coverage from the user's feeds.
+export type EntityPage = {
+  id: number;
+  kind: string;
+  key: string;
+  url: string;
+  name: string;
+  badge: Record<string, string | number | null | undefined>;
+  articles: Article[];
 };
 
 export type AiStatus = {

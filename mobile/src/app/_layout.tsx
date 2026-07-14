@@ -29,6 +29,7 @@ function RootNavigator() {
         <Stack.Screen name="catalog" options={{ title: "Catalog" }} />
         <Stack.Screen name="article/[id]/index" options={{ title: "" }} />
         <Stack.Screen name="article/[id]/qa" options={{ title: "Ask the article" }} />
+        <Stack.Screen name="entity/[id]" options={{ title: "" }} />
       </Stack.Protected>
       <Stack.Protected guard={status === "signed-out"}>
         <Stack.Screen name="login" options={{ headerShown: false }} />
