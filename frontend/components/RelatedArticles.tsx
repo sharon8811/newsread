@@ -16,10 +16,11 @@ import {
 import { timeAgo } from "@/lib/format";
 import { SparkleIcon } from "./icons";
 
-/** Related coverage from the user's subscribed feeds (embedding KNN, entity
- * overlap as fallback — server-side), plus the lazy "synthesize coverage"
- * action: one LLM call over stored summaries, only ever on click. The whole
- * section hides when there is nothing related. */
+/** Related coverage from the user's subscribed feeds (server-side hybrid:
+ * shared-resource entities lead, embedding KNN boosted by shared name
+ * entities fills the rest — up to five, fewer when the tail is weak), plus
+ * the lazy "synthesize coverage" action: one LLM call over stored summaries,
+ * only ever on click. The whole section hides when there is nothing related. */
 export default function RelatedArticles({ article }: { article: ArticleDetail }) {
   const router = useRouter();
   const { data: related } = useSWR<RelatedArticle[]>(

@@ -73,6 +73,11 @@ RELATED_LIMIT = 5
 # the RELATED_MAX_DISTANCE pool; it never admits candidates past the cutoff
 # (both articles mentioning one company is not, by itself, related coverage).
 RELATED_NER_BOOST = 0.08
+# The list is RELATED_LIMIT at most, not always: boosted score must clear
+# this bar, so generic neighbors need distance < 0.60 (the same-topic edge
+# of the calibration above) while name-sharers may run up to the ceiling.
+# Padding every list to five made ~30% of rank-4/5 slots weak fillers.
+RELATED_DISPLAY_SCORE = 0.60
 # News-recency window: an old article at a close distance is rarely what
 # "related coverage" means; it also bounds the entity-overlap leg.
 RELATED_WINDOW = timedelta(days=90)
@@ -406,6 +411,7 @@ async def related_articles(session: AsyncSession, user_id: int, article: Article
         .group_by(ArticleEntity.article_id)
         .subquery()
     )
+    score = distance - func.coalesce(shared_ner.c.shared, 0) * RELATED_NER_BOOST
     stmt = (
         _related_scope(user_id, article.id)
         .add_columns(distance.label("distance"))
@@ -416,8 +422,9 @@ async def related_articles(session: AsyncSession, user_id: int, article: Article
             Article.fetched_at >= cutoff,
             Article.id.notin_(seen),
             distance < RELATED_MAX_DISTANCE,
+            score < RELATED_DISPLAY_SCORE,
         )
-        .order_by(distance - func.coalesce(shared_ner.c.shared, 0) * RELATED_NER_BOOST)
+        .order_by(score)
         .limit(remaining)
     )
     vector_rows = (await session.execute(stmt)).all()

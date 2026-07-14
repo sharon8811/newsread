@@ -1156,6 +1156,35 @@ async def test_related_ner_boost_reorders_but_never_admits(client, users, data, 
     assert [item["tier"] for item in body] == ["related", "related"]
 
 
+async def test_related_drops_weak_tail_instead_of_padding(client, users, data, session, monkeypatch):
+    """The list is at most five, not always five: a generic neighbor past the
+    0.60 display bar is dropped, while a name-sharer at the same distance
+    stays (its boosted score clears the bar)."""
+    user = await users.create()
+    feed = await data.feed()
+    await data.subscribe(user, feed)
+    source = await data.article(feed, title="Source")
+    close = await data.article(feed, title="Close topical")
+    weak_generic = await data.article(feed, title="Weak generic")
+    weak_named = await data.article(feed, title="Weak but shares a name")
+    await _related_embed(session, source, [1.0, 0.0, 0.0])
+    await _related_embed(session, close, [0.5, 0.866, 0.0])          # distance 0.50
+    await _related_embed(session, weak_generic, [0.35, 0.9367, 0.0])  # distance 0.65
+    await _related_embed(session, weak_named, [0.35, -0.9367, 0.0])   # distance 0.65
+    _configure_related(monkeypatch)
+
+    org = Entity(kind="org", canonical_key="anthropic", url="", data={"name": "Anthropic"})
+    session.add(org)
+    await session.commit()
+    for art in (source, weak_named):
+        await _link_entity(session, art, org, source="ner")
+
+    resp = await client.get(f"/api/articles/{source.id}/related", headers=users.auth(user))
+    body = resp.json()
+    # 0.65 - 0.08 = 0.57 < 0.60 keeps the name-sharer; the generic 0.65 is out.
+    assert [item["id"] for item in body] == [close.id, weak_named.id]
+
+
 async def test_related_entity_leg_ranking(client, users, data, session, monkeypatch):
     user = await users.create()
     feed = await data.feed()
