@@ -12,9 +12,27 @@ from fastapi.responses import JSONResponse
 
 from .crypto import TokenCryptoError
 from .fetcher import FeedRateLimited
+from .llm import LLMRequestFailed
+from .summarizer import ThinContentError
 
 
 def register(app: FastAPI) -> None:
+    @app.exception_handler(LLMRequestFailed)
+    async def _llm_failed(request: Request, exc: LLMRequestFailed) -> JSONResponse:
+        # Covers EmptyResponseError too — its message is user-facing.
+        return JSONResponse(status_code=502, content={"detail": str(exc)})
+
+    @app.exception_handler(ThinContentError)
+    async def _thin_content(request: Request, exc: ThinContentError) -> JSONResponse:
+        # Summarizing a headline stub just makes the model invent details.
+        return JSONResponse(
+            status_code=422,
+            content={
+                "detail": "Couldn't fetch the article's full text — the site may "
+                "block automated readers. Open the original instead."
+            },
+        )
+
     @app.exception_handler(TokenCryptoError)
     async def _token_crypto(request: Request, exc: TokenCryptoError) -> JSONResponse:
         return JSONResponse(

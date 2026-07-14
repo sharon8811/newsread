@@ -8,6 +8,8 @@ every provider in the dropdown."""
 import base64
 import logging
 import re
+import time
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 
 from openai import AsyncOpenAI
@@ -130,6 +132,90 @@ async def record_usage(
         )
     )
     await session.commit()
+
+
+class LLMRequestFailed(Exception):
+    """An LLM-backed operation failed; the app-level handler answers 502."""
+
+
+class EmptyResponseError(LLMRequestFailed):
+    """The model answered, but with nothing usable. Message is user-facing."""
+
+
+def ms_since(started: float) -> int:
+    return int((time.monotonic() - started) * 1000)
+
+
+@asynccontextmanager
+async def usage_tracker(
+    session: AsyncSession,
+    *,
+    user_id: int,
+    feature: str,
+    config: LLMConfig | None,
+    log_label: str,
+    swallow_errors: bool = False,
+    passthrough: tuple[type[BaseException], ...] = (),
+):
+    """Meter one LLM-backed operation: yields the TokenUsage to thread into
+    the call(s), then records exactly one llm_usage row.
+
+    - Success: records status="ok".
+    - EmptyResponseError raised in the block: the call itself succeeded (the
+      transaction is healthy, so no rollback), recorded as an error and
+      re-raised for the app-level 502 handler.
+    - Any other exception: the transaction may be poisoned (e.g. a commit
+      failure mid-block), so roll back before writing the usage row, then
+      raise LLMRequestFailed — or return normally when swallow_errors is set
+      (degrade-gracefully callers).
+    - passthrough exceptions propagate unrecorded (e.g. ThinContentError:
+      no LLM call happened, so nothing belongs in llm_usage).
+
+    user_id is captured by value on entry: after a rollback, expired ORM
+    attributes (like user.id) must not be touched.
+    """
+    usage = TokenUsage()
+    started = time.monotonic()
+    try:
+        yield usage
+    except passthrough:
+        raise
+    except EmptyResponseError as exc:
+        await record_usage(
+            session,
+            user_id=user_id,
+            feature=feature,
+            config=config,
+            usage=usage,
+            duration_ms=ms_since(started),
+            status="error",
+            error=str(exc),
+        )
+        raise
+    except Exception as exc:
+        logger.warning("%s failed: %s", log_label, exc)
+        await session.rollback()
+        await record_usage(
+            session,
+            user_id=user_id,
+            feature=feature,
+            config=config,
+            usage=usage,
+            duration_ms=ms_since(started),
+            status="error",
+            error=str(exc),
+        )
+        if not swallow_errors:
+            raise LLMRequestFailed("The LLM request failed") from exc
+    else:
+        await record_usage(
+            session,
+            user_id=user_id,
+            feature=feature,
+            config=config,
+            usage=usage,
+            duration_ms=ms_since(started),
+        )
 
 
 def get_client() -> AsyncOpenAI:
