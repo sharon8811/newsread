@@ -614,13 +614,19 @@ describe("<ArticleList> reading mode interactions", () => {
     ]);
     renderReading(<ArticleList filter="all" emptyTitle="Empty" />);
     await screen.findByText("Read One");
-    fireEvent.click(screen.getByText("2 unread ↓"));
+    // Re-click on retry: the pill renders one commit before the newAbove
+    // state from the response headers lands, so an early click is a silent
+    // no-op (nothing unread below, "no new above" -> no reset).
+    await waitFor(() => {
+      const pill = screen.queryByText("2 unread ↓");
+      if (pill) fireEvent.click(pill);
+      expect(
+        fetchMock.mock.calls.some(
+          (c) => !String(c[0]).includes("anchor") && String(c[0]).includes("/articles?"),
+        ),
+      ).toBe(true);
+    });
     await screen.findByText("Fresh Top");
-    expect(
-      fetchMock.mock.calls.some(
-        (c) => !String(c[0]).includes("anchor") && String(c[0]).includes("/articles?"),
-      ),
-    ).toBe(true);
   });
 
   it("new-above pill resets the window to the top of the list", async () => {
@@ -637,8 +643,13 @@ describe("<ArticleList> reading mode interactions", () => {
     ]);
     renderReading(<ArticleList filter="all" emptyTitle="Empty" />);
     await screen.findByText("Mid Anchor");
-    fireEvent.click(screen.getByText("2 new ↑"));
-    await screen.findByText("Breaking Top");
+    // Same early-click no-op hazard as the unread pill: re-fire until the
+    // reset fetch happened (the pill disappears once it works).
+    await waitFor(() => {
+      const pill = screen.queryByText("2 new ↑");
+      if (pill) fireEvent.click(pill);
+      expect(screen.getByText("Breaking Top")).toBeInTheDocument();
+    });
     expect(screen.queryByText(/new ↑/)).not.toBeInTheDocument();
   });
 
