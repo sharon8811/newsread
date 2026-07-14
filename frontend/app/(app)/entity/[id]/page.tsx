@@ -44,6 +44,15 @@ export default function EntityPage() {
         className="border-b px-4 pb-5 pt-5 sm:px-6"
         style={{ borderColor: "var(--line-soft)" }}
       >
+        <button
+          className="font-mono-nr mb-4 block text-[11.5px] transition-colors"
+          style={{ color: "var(--ink-faint)" }}
+          onMouseEnter={(e) => (e.currentTarget.style.color = "var(--ink)")}
+          onMouseLeave={(e) => (e.currentTarget.style.color = "var(--ink-faint)")}
+          onClick={() => router.back()}
+        >
+          ← back
+        </button>
         <p className="mono-label">{KIND_LABELS[entity.kind] ?? entity.kind}</p>
         <div className="mt-1 flex items-center gap-2">
           <h1 className="text-[22px] font-semibold leading-tight tracking-tight">

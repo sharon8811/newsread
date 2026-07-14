@@ -7,7 +7,7 @@ import type { EntityPage as EntityPageData } from "@/lib/api";
 
 const { swrMock, routerMock, paramsMock } = vi.hoisted(() => ({
   swrMock: vi.fn(),
-  routerMock: { push: vi.fn() },
+  routerMock: { push: vi.fn(), back: vi.fn() },
   paramsMock: { value: { id: "7" } as { id: string } | null },
 }));
 vi.mock("swr", () => ({ default: swrMock }));
@@ -63,6 +63,13 @@ describe("<EntityPage>", () => {
     expect(screen.getByText("Peter Thiel")).toBeInTheDocument();
     expect(screen.getByText("No articles from your feeds mention this yet.")).toBeInTheDocument();
     expect(screen.queryByLabelText("Open source page")).toBeNull();
+  });
+
+  it("navigates back via the back button", async () => {
+    swrMock.mockReturnValue({ data: makeEntityPage() });
+    render(<EntityPage />);
+    await userEvent.click(screen.getByText("← back"));
+    expect(routerMock.back).toHaveBeenCalled();
   });
 
   it("falls back to the raw kind for unknown kinds and links the source url", () => {

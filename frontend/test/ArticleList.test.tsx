@@ -300,6 +300,16 @@ class MockIntersectionObserver {
   }
 }
 
+/** The component observes its targets in an effect, which may not have
+ * flushed when the test reaches for the observer — retry until it has. */
+async function ioFor(el: Element): Promise<MockIntersectionObserver> {
+  return await vi.waitFor(() => {
+    const io = MockIntersectionObserver.instances.find((i) => i.observed.has(el));
+    expect(io).toBeTruthy();
+    return io!;
+  });
+}
+
 function pageResponse(
   articles: unknown[],
   headers: Record<string, string> = {},
@@ -400,9 +410,7 @@ describe("<ArticleList> reading mode", () => {
 
       // Simulate the item's box fully exiting through the scroller's top edge.
       const target = container.querySelector('[data-article-id="11"]')!;
-      const io = MockIntersectionObserver.instances.find((i) =>
-        i.observed.has(target),
-      )!;
+      const io = await ioFor(target);
       io.callback([
         {
           isIntersecting: false,
@@ -444,9 +452,7 @@ describe("<ArticleList> reading mode", () => {
         expect(container.querySelector('[data-article-id="21"]')).toBeTruthy(),
       );
       const target = container.querySelector('[data-article-id="21"]')!;
-      const io = MockIntersectionObserver.instances.find((i) =>
-        i.observed.has(target),
-      )!;
+      const io = await ioFor(target);
       io.callback([
         {
           isIntersecting: false,
@@ -520,7 +526,7 @@ describe("<ArticleList> reading mode interactions", () => {
     expect(screen.getByText(/loading more/)).toBeInTheDocument();
 
     const sentinel = screen.getByText(/loading more/).parentElement!;
-    const io = MockIntersectionObserver.instances.find((i) => i.observed.has(sentinel))!;
+    const io = await ioFor(sentinel);
     io.callback([{ isIntersecting: true, target: sentinel } as IntersectionObserverEntry]);
 
     await screen.findByText("Second");
@@ -545,7 +551,7 @@ describe("<ArticleList> reading mode interactions", () => {
     renderReading(<ArticleList filter="all" emptyTitle="Empty" />);
     await screen.findByText("Anchor");
     const sentinel = screen.getByText(/loading earlier/).parentElement!;
-    const io = MockIntersectionObserver.instances.find((i) => i.observed.has(sentinel))!;
+    const io = await ioFor(sentinel);
     io.callback([{ isIntersecting: true, target: sentinel } as IntersectionObserverEntry]);
     await screen.findByText("History");
     expect(
@@ -720,7 +726,7 @@ describe("<ArticleList> reading mode guards", () => {
         expect(container.querySelector('[data-article-id="31"]')).toBeTruthy(),
       );
       const target = container.querySelector('[data-article-id="31"]')!;
-      const io = MockIntersectionObserver.instances.find((i) => i.observed.has(target))!;
+      const io = await ioFor(target);
       io.callback([
         {
           // unmount storm: zero rect must not mark
