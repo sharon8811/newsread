@@ -1123,6 +1123,39 @@ async def test_related_entity_leg_ignores_ner_kinds(client, users, data, session
     assert resp.json() == []
 
 
+async def test_related_ner_boost_reorders_but_never_admits(client, users, data, session, monkeypatch):
+    """A candidate sharing a name entity outranks a slightly-closer generic
+    neighbor, but no shared-name count can pull a candidate past the
+    distance ceiling."""
+    user = await users.create()
+    feed = await data.feed()
+    await data.subscribe(user, feed)
+    source = await data.article(feed, title="Source")
+    generic = await data.article(feed, title="Generic topical")
+    shares_org = await data.article(feed, title="Shares the org")
+    far = await data.article(feed, title="Far but shares names")
+    await _related_embed(session, source, [1.0, 0.0, 0.0])
+    await _related_embed(session, generic, [0.5, 0.866, 0.0])       # distance 0.50
+    await _related_embed(session, shares_org, [0.45, 0.893, 0.0])   # distance 0.55
+    await _related_embed(session, far, [0.25, 0.968, 0.0])          # distance 0.75 > ceiling
+    _configure_related(monkeypatch)
+
+    org = Entity(kind="org", canonical_key="anthropic", url="", data={"name": "Anthropic"})
+    person = Entity(kind="person", canonical_key="sam altman", url="", data={"name": "Sam Altman"})
+    session.add_all([org, person])
+    await session.commit()
+    for art in (source, shares_org, far):
+        await _link_entity(session, art, org, source="ner")
+    for art in (source, far):
+        await _link_entity(session, art, person, source="ner")
+
+    resp = await client.get(f"/api/articles/{source.id}/related", headers=users.auth(user))
+    body = resp.json()
+    # 0.55 - 0.08 = 0.47 beats 0.50; the 0.75 candidate stays out even with 2 shared names.
+    assert [item["id"] for item in body] == [shares_org.id, generic.id]
+    assert [item["tier"] for item in body] == ["related", "related"]
+
+
 async def test_related_entity_leg_ranking(client, users, data, session, monkeypatch):
     user = await users.create()
     feed = await data.feed()

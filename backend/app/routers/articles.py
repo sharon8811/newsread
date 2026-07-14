@@ -66,6 +66,13 @@ RRF_K = 60
 RELATED_SAME_STORY = 0.35
 RELATED_MAX_DISTANCE = 0.70
 RELATED_LIMIT = 5
+# Ranking boost per shared LLM name entity (person/org/product), capped at 3.
+# Calibrated on the live corpus (2026-07): pairs sharing 1 entity have median
+# distance 0.646, 2 -> 0.376, 3 -> 0.056, vs 0.762 for none — so each shared
+# name is worth roughly a tenth of distance. The boost only reorders inside
+# the RELATED_MAX_DISTANCE pool; it never admits candidates past the cutoff
+# (both articles mentioning one company is not, by itself, related coverage).
+RELATED_NER_BOOST = 0.08
 # News-recency window: an old article at a close distance is rarely what
 # "related coverage" means; it also bounds the entity-overlap leg.
 RELATED_WINDOW = timedelta(days=90)
@@ -368,8 +375,9 @@ async def _entity_related(
 
 async def related_articles(session: AsyncSession, user_id: int, article: Article) -> list[RelatedRow]:
     """Entity-first hybrid: shared-resource matches lead the list, then
-    embedding KNN fills the remaining slots. The entity leg also carries
-    installs with no embeddings at all."""
+    embedding KNN fills the remaining slots, with candidates sharing LLM
+    name entities (person/org/product) boosted within the distance pool.
+    The entity leg also carries installs with no embeddings at all."""
     cutoff = datetime.now(timezone.utc) - RELATED_WINDOW
     rows = await _entity_related(session, user_id, article, cutoff)
     remaining = RELATED_LIMIT - len(rows)
@@ -380,17 +388,33 @@ async def related_articles(session: AsyncSession, user_id: int, article: Article
         return rows
     seen = [row.article.id for row in rows]
     distance = ArticleEmbedding.embedding.cosine_distance(source.embedding)
+    shared_ner = (
+        select(
+            ArticleEntity.article_id.label("article_id"),
+            func.least(func.count(), 3).label("shared"),
+        )
+        .join(Entity, Entity.id == ArticleEntity.entity_id)
+        .where(
+            Entity.kind.in_(NER_KINDS),
+            ArticleEntity.entity_id.in_(
+                select(ArticleEntity.entity_id).where(ArticleEntity.article_id == article.id)
+            ),
+        )
+        .group_by(ArticleEntity.article_id)
+        .subquery()
+    )
     stmt = (
         _related_scope(user_id, article.id)
         .add_columns(distance.label("distance"))
         .join(ArticleEmbedding, ArticleEmbedding.article_id == Article.id)
+        .outerjoin(shared_ner, shared_ner.c.article_id == Article.id)
         .where(
             ArticleEmbedding.model == settings.openai_embedding_model,
             Article.fetched_at >= cutoff,
             Article.id.notin_(seen),
             distance < RELATED_MAX_DISTANCE,
         )
-        .order_by(distance)
+        .order_by(distance - func.coalesce(shared_ner.c.shared, 0) * RELATED_NER_BOOST)
         .limit(remaining)
     )
     vector_rows = (await session.execute(stmt)).all()

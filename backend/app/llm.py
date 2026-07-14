@@ -408,7 +408,9 @@ async def named_entities(
         kind = match.group(1).lower()
         name = " ".join(match.group(2).split()).strip(" .\"'*`")[:120]
         key = (kind, name.casefold())
-        if name and key not in seen:
+        # Models sometimes echo the no-entities sentinel per category
+        # ("PERSON: NONE") instead of bare NONE.
+        if name and name.casefold() not in ("none", "n/a") and key not in seen:
             seen.add(key)
             pairs.append((kind, name))
     return pairs

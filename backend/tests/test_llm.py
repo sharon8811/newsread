@@ -306,3 +306,11 @@ async def test_named_entities_none(monkeypatch):
 
     monkeypatch.setattr(llm, "_complete", fake_complete)
     assert await llm.named_entities("T", "x") == []
+
+
+async def test_named_entities_per_category_none_sentinel(monkeypatch):
+    async def fake_complete(messages, max_tokens, **kwargs):
+        return "PERSON: NONE\nORG: OpenAI\nPRODUCT: N/A"
+
+    monkeypatch.setattr(llm, "_complete", fake_complete)
+    assert await llm.named_entities("T", "x") == [("org", "OpenAI")]
