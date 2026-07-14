@@ -1,9 +1,8 @@
 import asyncio
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import httpx
-import pytest
 from sqlalchemy import select
 
 from app.enrichers import pipeline
@@ -20,9 +19,14 @@ async def _feed(session):
 
 
 async def _article(session, feed, **kwargs):
-    defaults = dict(guid="g1", url="https://github.com/pytorch/pytorch", title="T",
-                    content_html="", comments_url=None,
-                    published_at=datetime.now(timezone.utc))
+    defaults = dict(
+        guid="g1",
+        url="https://github.com/pytorch/pytorch",
+        title="T",
+        content_html="",
+        comments_url=None,
+        published_at=datetime.now(UTC),
+    )
     defaults.update(kwargs)
     art = Article(feed_id=feed.id, **defaults)
     session.add(art)
@@ -33,6 +37,7 @@ async def _article(session, feed, **kwargs):
 
 def _patch_client(monkeypatch):
     """Neutralise the outbound httpx client the pipeline builds."""
+
     class FakeClient:
         async def __aenter__(self):
             return self
@@ -44,6 +49,7 @@ def _patch_client(monkeypatch):
 
 
 # --- _get_or_refresh ---
+
 
 async def test_get_or_refresh_fetches_and_snapshots(session, monkeypatch):
     from app.enrichers.github import GitHubEnricher
@@ -65,9 +71,13 @@ async def test_get_or_refresh_uses_fresh_cache(session, monkeypatch):
     from app.enrichers.github import GitHubEnricher
 
     enricher = GitHubEnricher()
-    entity = Entity(kind="github", canonical_key="a/b", url="u",
-                    data={"stargazers_count": 5},
-                    fetched_at=datetime.now(timezone.utc))
+    entity = Entity(
+        kind="github",
+        canonical_key="a/b",
+        url="u",
+        data={"stargazers_count": 5},
+        fetched_at=datetime.now(UTC),
+    )
     session.add(entity)
     await session.commit()
 
@@ -83,9 +93,13 @@ async def test_get_or_refresh_enrich_error_returns_stale(session, monkeypatch):
     from app.enrichers.github import GitHubEnricher
 
     enricher = GitHubEnricher()
-    entity = Entity(kind="github", canonical_key="a/b", url="u",
-                    data={"stargazers_count": 5},
-                    fetched_at=datetime.now(timezone.utc) - timedelta(days=1))
+    entity = Entity(
+        kind="github",
+        canonical_key="a/b",
+        url="u",
+        data={"stargazers_count": 5},
+        fetched_at=datetime.now(UTC) - timedelta(days=1),
+    )
     session.add(entity)
     await session.commit()
 
@@ -123,11 +137,11 @@ async def test_get_or_refresh_snapshots_only_on_change(session, monkeypatch):
     monkeypatch.setattr(enricher, "fetch", fetch)
     # First fetch: creates + snapshot.
     e = await pipeline._get_or_refresh(session, enricher, "a/b", client=None)
-    e.fetched_at = datetime.now(timezone.utc) - timedelta(days=1)
+    e.fetched_at = datetime.now(UTC) - timedelta(days=1)
     await session.commit()
     # Second fetch: identical data -> no new snapshot.
     e = await pipeline._get_or_refresh(session, enricher, "a/b", client=None)
-    e.fetched_at = datetime.now(timezone.utc) - timedelta(days=1)
+    e.fetched_at = datetime.now(UTC) - timedelta(days=1)
     await session.commit()
     # Third fetch: changed data -> new snapshot.
     await pipeline._get_or_refresh(session, enricher, "a/b", client=None)
@@ -137,18 +151,24 @@ async def test_get_or_refresh_snapshots_only_on_change(session, monkeypatch):
 
 # --- link_article_entities ---
 
+
 async def test_link_article_entities(session, monkeypatch):
     feed = await _feed(session)
     art = await _article(
-        session, feed,
+        session,
+        feed,
         url="https://github.com/pytorch/pytorch",
         content_html='<a href="https://arxiv.org/abs/1706.03762">paper</a>',
     )
 
     async def fake_get_or_refresh(s, enricher, key, client):
-        entity = Entity(kind=enricher.kind, canonical_key=key,
-                        url=enricher.entity_url(key), data={"x": 1},
-                        fetched_at=datetime.now(timezone.utc))
+        entity = Entity(
+            kind=enricher.kind,
+            canonical_key=key,
+            url=enricher.entity_url(key),
+            data={"x": 1},
+            fetched_at=datetime.now(UTC),
+        )
         s.add(entity)
         await s.flush()
         return entity
@@ -158,21 +178,26 @@ async def test_link_article_entities(session, monkeypatch):
     count = await pipeline.link_article_entities(session, art, None, locks)
     assert count == 2  # primary github + inline arxiv
     links = (await session.scalars(select(ArticleEntity))).all()
-    assert {l.source for l in links} == {"primary", "inline"}
+    assert {link.source for link in links} == {"primary", "inline"}
 
 
 async def test_link_article_entities_dedupes(session, monkeypatch):
     feed = await _feed(session)
     art = await _article(
-        session, feed,
+        session,
+        feed,
         url="https://github.com/a/b",
         content_html='<a href="https://github.com/a/b">same</a>',
     )
 
     async def fake_get_or_refresh(s, enricher, key, client):
-        entity = Entity(kind=enricher.kind, canonical_key=key,
-                        url=enricher.entity_url(key), data={"x": 1},
-                        fetched_at=datetime.now(timezone.utc))
+        entity = Entity(
+            kind=enricher.kind,
+            canonical_key=key,
+            url=enricher.entity_url(key),
+            data={"x": 1},
+            fetched_at=datetime.now(UTC),
+        )
         s.add(entity)
         await s.flush()
         return entity
@@ -185,16 +210,21 @@ async def test_link_article_entities_dedupes(session, monkeypatch):
 async def test_link_article_entities_scans_full_text(session, monkeypatch):
     feed = await _feed(session)
     art = await _article(
-        session, feed,
+        session,
+        feed,
         url="https://example.com/story",
         content_html="",
         full_text="Great write-up. The code lives at https://github.com/a/b, worth a star.",
     )
 
     async def fake_refresh(s, enricher, key, client):
-        entity = Entity(kind=enricher.kind, canonical_key=key,
-                        url=enricher.entity_url(key), data={},
-                        fetched_at=datetime.now(timezone.utc))
+        entity = Entity(
+            kind=enricher.kind,
+            canonical_key=key,
+            url=enricher.entity_url(key),
+            data={},
+            fetched_at=datetime.now(UTC),
+        )
         s.add(entity)
         await s.flush()
         return entity
@@ -220,13 +250,18 @@ async def test_link_article_entities_skips_unresolvable(session, monkeypatch):
 
 async def test_link_article_entities_with_comments_url(session, monkeypatch):
     feed = await _feed(session)
-    art = await _article(session, feed, url="https://example.com/story",
-                         comments_url="https://github.com/a/b")
+    art = await _article(
+        session, feed, url="https://example.com/story", comments_url="https://github.com/a/b"
+    )
 
     async def fake_refresh(s, enricher, key, client):
-        entity = Entity(kind=enricher.kind, canonical_key=key,
-                        url=enricher.entity_url(key), data={},
-                        fetched_at=datetime.now(timezone.utc))
+        entity = Entity(
+            kind=enricher.kind,
+            canonical_key=key,
+            url=enricher.entity_url(key),
+            data={},
+            fetched_at=datetime.now(UTC),
+        )
         s.add(entity)
         await s.flush()
         return entity
@@ -239,16 +274,21 @@ async def test_link_article_entities_with_comments_url(session, monkeypatch):
 async def test_link_article_entities_caps_per_article(session, monkeypatch):
     feed = await _feed(session)
     art = await _article(
-        session, feed,
+        session,
+        feed,
         url="https://github.com/a/b",
         content_html='<a href="https://pypi.org/project/requests/">pkg</a>',
     )
     monkeypatch.setattr(pipeline, "MAX_ENTITIES_PER_ARTICLE", 1)
 
     async def fake_refresh(s, enricher, key, client):
-        entity = Entity(kind=enricher.kind, canonical_key=key,
-                        url=enricher.entity_url(key), data={},
-                        fetched_at=datetime.now(timezone.utc))
+        entity = Entity(
+            kind=enricher.kind,
+            canonical_key=key,
+            url=enricher.entity_url(key),
+            data={},
+            fetched_at=datetime.now(UTC),
+        )
         s.add(entity)
         await s.flush()
         return entity
@@ -268,10 +308,13 @@ async def test_extract_one_missing_article(session, monkeypatch):
         pass
 
     # Article id that doesn't exist -> early return, no link call.
-    await pipeline._extract_one(99999, asyncio.Semaphore(1), FakeClient(), defaultdict(asyncio.Lock))
+    await pipeline._extract_one(
+        99999, asyncio.Semaphore(1), FakeClient(), defaultdict(asyncio.Lock)
+    )
 
 
 # --- extract_entities ---
+
 
 async def test_extract_entities_none_pending(session, monkeypatch):
     _patch_client(monkeypatch)
@@ -299,9 +342,10 @@ async def test_extract_entities_rescans_after_late_fulltext(session, monkeypatch
     its body links were invisible the first time — and the fresh stamp
     stops the loop."""
     feed = await _feed(session)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     art = await _article(
-        session, feed,
+        session,
+        feed,
         entities_extracted_at=now - timedelta(hours=2),
         full_text_fetched_at=now - timedelta(hours=1),
     )
@@ -358,6 +402,7 @@ async def test_extract_entities_scoped_to_feed(session, monkeypatch):
 
 # --- refresh_stale_entities ---
 
+
 async def test_refresh_stale_entities_none(session, monkeypatch):
     _patch_client(monkeypatch)
     assert await pipeline.refresh_stale_entities() == 0
@@ -365,10 +410,15 @@ async def test_refresh_stale_entities_none(session, monkeypatch):
 
 async def test_refresh_stale_entities_refreshes(session, monkeypatch):
     feed = await _feed(session)
-    art = await _article(session, feed, published_at=datetime.now(timezone.utc))
+    art = await _article(session, feed, published_at=datetime.now(UTC))
     # Stale github entity referenced by the fresh article.
-    entity = Entity(kind="github", canonical_key="a/b", url="u", data={"stargazers_count": 1},
-                    fetched_at=datetime.now(timezone.utc) - timedelta(days=30))
+    entity = Entity(
+        kind="github",
+        canonical_key="a/b",
+        url="u",
+        data={"stargazers_count": 1},
+        fetched_at=datetime.now(UTC) - timedelta(days=30),
+    )
     session.add(entity)
     await session.flush()
     session.add(ArticleEntity(article_id=art.id, entity_id=entity.id, source="primary", position=0))
@@ -389,9 +439,14 @@ async def test_refresh_stale_entities_refreshes(session, monkeypatch):
 
 async def test_refresh_stale_entities_hits_batch_cap(session, monkeypatch):
     feed = await _feed(session)
-    art = await _article(session, feed, published_at=datetime.now(timezone.utc))
-    entity = Entity(kind="github", canonical_key="a/b", url="u", data={"x": 1},
-                    fetched_at=datetime.now(timezone.utc) - timedelta(days=30))
+    art = await _article(session, feed, published_at=datetime.now(UTC))
+    entity = Entity(
+        kind="github",
+        canonical_key="a/b",
+        url="u",
+        data={"x": 1},
+        fetched_at=datetime.now(UTC) - timedelta(days=30),
+    )
     session.add(entity)
     await session.flush()
     session.add(ArticleEntity(article_id=art.id, entity_id=entity.id, source="primary", position=0))
@@ -411,9 +466,14 @@ async def test_refresh_stale_entities_hits_batch_cap(session, monkeypatch):
 
 async def test_refresh_stale_entities_swallows_refresh_error(session, monkeypatch):
     feed = await _feed(session)
-    art = await _article(session, feed, published_at=datetime.now(timezone.utc))
-    entity = Entity(kind="github", canonical_key="a/b", url="u", data={"x": 1},
-                    fetched_at=datetime.now(timezone.utc) - timedelta(days=30))
+    art = await _article(session, feed, published_at=datetime.now(UTC))
+    entity = Entity(
+        kind="github",
+        canonical_key="a/b",
+        url="u",
+        data={"x": 1},
+        fetched_at=datetime.now(UTC) - timedelta(days=30),
+    )
     session.add(entity)
     await session.flush()
     session.add(ArticleEntity(article_id=art.id, entity_id=entity.id, source="primary", position=0))

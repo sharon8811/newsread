@@ -684,7 +684,9 @@ describe("<ArticleList> reading mode interactions", () => {
     await screen.findByText("Openable");
     fireEvent.keyDown(window, { key: "Enter" });
     expect(pushMock).toHaveBeenCalledWith("/article/77");
-    expect(screen.getByText("All caught up ✓")).toBeInTheDocument();
+    // The caught-up banner lands after an async state update; a sync
+    // getByText races it under CI load.
+    expect(await screen.findByText("All caught up ✓")).toBeInTheDocument();
   });
 
   it("keeps a clicked unread row in place when the list remounts", async () => {

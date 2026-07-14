@@ -24,13 +24,14 @@ def clean_url(raw: str) -> CleanUrl | None:
     host = host.lower()
     for prefix in ("www.", "m."):
         if host.startswith(prefix):
-            host = host[len(prefix):]
+            host = host[len(prefix) :]
             break
     if not host:
         return None
     path = parts.path.rstrip("/")
     query = {
-        k: v for k, v in parse_qsl(parts.query, keep_blank_values=False)
+        k: v
+        for k, v in parse_qsl(parts.query, keep_blank_values=False)
         if not _TRACKING_PARAMS.match(k)
     }
     return CleanUrl(raw=raw, host=host, path=path, query=query)

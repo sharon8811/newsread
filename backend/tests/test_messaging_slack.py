@@ -31,11 +31,14 @@ def test_authorize_url():
 @respx.mock
 async def test_exchange_code():
     respx.post("https://slack.com/api/oauth.v2.access").mock(
-        return_value=Response(200, json={
-            "ok": True,
-            "authed_user": {"id": "U1", "access_token": "xoxp-1", "scope": "chat:write"},
-            "team": {"id": "T1", "name": "Acme"},
-        })
+        return_value=Response(
+            200,
+            json={
+                "ok": True,
+                "authed_user": {"id": "U1", "access_token": "xoxp-1", "scope": "chat:write"},
+                "team": {"id": "T1", "name": "Acme"},
+            },
+        )
     )
     respx.post("https://slack.com/api/auth.test").mock(
         return_value=Response(200, json={"ok": True, "user": "sharon", "team": "Acme"})
@@ -75,17 +78,25 @@ def _conversations(payload):
 
 @respx.mock
 async def test_list_targets_maps_types_and_membership():
-    _conversations([
-        {"id": "C1", "name": "general", "is_member": True},
-        {"id": "C2", "name": "secret", "is_member": False},  # can't post -> dropped
-        {"id": "G1", "is_mpim": True, "name_normalized": "mpdm-alice--bob-1"},
-        {"id": "D1", "is_im": True, "user": "U2"},
-        {"id": "D2", "is_im": True, "user": "ME"},  # self-DM dropped
-    ])
+    _conversations(
+        [
+            {"id": "C1", "name": "general", "is_member": True},
+            {"id": "C2", "name": "secret", "is_member": False},  # can't post -> dropped
+            {"id": "G1", "is_mpim": True, "name_normalized": "mpdm-alice--bob-1"},
+            {"id": "D1", "is_im": True, "user": "U2"},
+            {"id": "D2", "is_im": True, "user": "ME"},  # self-DM dropped
+        ]
+    )
     respx.post("https://slack.com/api/users.list").mock(
-        return_value=Response(200, json={"ok": True, "members": [
-            {"id": "U2", "name": "bob", "profile": {"display_name": "Bob"}},
-        ]})
+        return_value=Response(
+            200,
+            json={
+                "ok": True,
+                "members": [
+                    {"id": "U2", "name": "bob", "profile": {"display_name": "Bob"}},
+                ],
+            },
+        )
     )
     targets = await slack.list_targets("xoxp", "ME")
     by_id = {t.external_id: t for t in targets}
@@ -97,10 +108,12 @@ async def test_list_targets_maps_types_and_membership():
 
 @respx.mock
 async def test_list_targets_query_filter():
-    _conversations([
-        {"id": "C1", "name": "ai-news", "is_member": True},
-        {"id": "C2", "name": "random", "is_member": True},
-    ])
+    _conversations(
+        [
+            {"id": "C1", "name": "ai-news", "is_member": True},
+            {"id": "C2", "name": "random", "is_member": True},
+        ]
+    )
     targets = await slack.list_targets("xoxp", "ME", query="ai")
     assert [t.external_id for t in targets] == ["C1"]
 
@@ -110,11 +123,10 @@ async def test_send_message_includes_url():
     route = respx.post("https://slack.com/api/chat.postMessage").mock(
         return_value=Response(200, json={"ok": True})
     )
-    await slack.send_message("xoxp", "channel", "C1", {}, "worth a read", "https://a.example/x", "T")
-    sent = dict(
-        pair.split("=", 1)
-        for pair in route.calls.last.request.content.decode().split("&")
+    await slack.send_message(
+        "xoxp", "channel", "C1", {}, "worth a read", "https://a.example/x", "T"
     )
+    sent = dict(pair.split("=", 1) for pair in route.calls.last.request.content.decode().split("&"))
     assert sent["channel"] == "C1"
     assert "worth+a+read" in sent["text"] and "https%3A%2F%2Fa.example%2Fx" in sent["text"]
 

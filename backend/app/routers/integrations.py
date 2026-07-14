@@ -4,7 +4,7 @@ against Slack/Microsoft, and the resulting per-user tokens are stored
 Fernet-encrypted (crypto.py)."""
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import jwt
 from fastapi import APIRouter, Depends, HTTPException
@@ -48,7 +48,7 @@ def _make_state(user_id: int, platform: str) -> str:
     payload = {
         "sub": str(user_id),
         "platform": platform,
-        "exp": datetime.now(timezone.utc) + _STATE_TTL,
+        "exp": datetime.now(UTC) + _STATE_TTL,
     }
     return jwt.encode(payload, _state_key(), algorithm="HS256")
 
@@ -60,7 +60,7 @@ def _read_state(state: str, platform: str) -> int:
             raise ValueError("platform mismatch")
         return int(payload["sub"])
     except (jwt.PyJWTError, KeyError, ValueError):
-        raise HTTPException(status_code=400, detail="Invalid or expired OAuth state")
+        raise HTTPException(status_code=400, detail="Invalid or expired OAuth state") from None
 
 
 def _adapter_or_404(platform: str):
@@ -90,7 +90,7 @@ async def _fresh_token(session: AsyncSession, connection: MessagingConnection) -
     reconnect instead of retrying into the same wall."""
     if (
         connection.token_expires_at is not None
-        and connection.token_expires_at <= datetime.now(timezone.utc)
+        and connection.token_expires_at <= datetime.now(UTC)
         and connection.refresh_token_enc
     ):
         adapter = ADAPTERS[connection.platform]
@@ -239,7 +239,7 @@ async def search_targets(
             await session.commit()
         raise HTTPException(
             status_code=502, detail={"message": str(exc), "reconnect": exc.reconnect}
-        )
+        ) from exc
     saved = {
         t.external_id: t.id
         for t in await session.scalars(
@@ -404,10 +404,10 @@ async def send_external_share(
         await session.commit()
         raise HTTPException(
             status_code=502, detail={"message": str(exc), "reconnect": exc.reconnect}
-        )
+        ) from exc
 
     if saved_target is not None:
-        saved_target.last_used_at = datetime.now(timezone.utc)
+        saved_target.last_used_at = datetime.now(UTC)
     session.add(record)
     await session.commit()
     await session.refresh(record)

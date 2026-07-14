@@ -26,9 +26,7 @@ async def send_push(user_ids: list[int], title: str, body: str, data: dict | Non
     if not user_ids:
         return 0
     async with db.SessionLocal() as session:
-        devices = (
-            await session.scalars(select(Device).where(Device.user_id.in_(user_ids)))
-        ).all()
+        devices = (await session.scalars(select(Device).where(Device.user_id.in_(user_ids)))).all()
     if not devices:
         return 0
 
@@ -54,7 +52,7 @@ async def send_push(user_ids: list[int], title: str, body: str, data: dict | Non
             except Exception as exc:
                 logger.warning("Expo push request failed: %s", exc)
                 continue
-            for message, ticket in zip(chunk, tickets):
+            for message, ticket in zip(chunk, tickets, strict=False):
                 if ticket.get("status") == "ok":
                     sent += 1
                 elif (ticket.get("details") or {}).get("error") == "DeviceNotRegistered":

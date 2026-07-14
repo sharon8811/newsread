@@ -3,7 +3,7 @@ from datetime import timedelta
 import httpx
 
 from ..config import settings
-from .base import CleanUrl, EnrichError, Enricher
+from .base import CleanUrl, Enricher, EnrichError
 
 HF_HOSTS = frozenset({"huggingface.co", "hf.co"})
 

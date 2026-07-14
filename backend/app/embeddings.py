@@ -34,9 +34,7 @@ _query_cache: OrderedDict[str, tuple[float, list[float]]] = OrderedDict()
 
 
 def is_configured() -> bool:
-    return bool(
-        settings.openai_api_key and settings.openai_embedding_model and db.vector_enabled
-    )
+    return bool(settings.openai_api_key and settings.openai_embedding_model and db.vector_enabled)
 
 
 def text_for(article: Article) -> str:
@@ -117,7 +115,7 @@ async def embed_articles(session: AsyncSession, articles: list[Article]) -> int:
                 "embedding": vector,
                 "input_hash": hashlib.md5(text.encode("utf-8")).hexdigest(),
             }
-            for article, text, vector in zip(articles, texts, vectors)
+            for article, text, vector in zip(articles, texts, vectors, strict=False)
         ]
     )
     stmt = stmt.on_conflict_do_update(

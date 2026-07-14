@@ -1,14 +1,14 @@
 """Feed fetching and parsing: JSON Feed + RSS/Atom, sanitized on ingest."""
 
-import logging
-import ipaddress
+import asyncio
 import html
+import ipaddress
+import logging
 import re
 import socket
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from urllib.parse import parse_qs, urljoin, urlsplit
-import asyncio
 
 import feedparser
 import httpx
@@ -30,9 +30,7 @@ USER_AGENT = "NewsRead/0.1 (+https://github.com/newsread)"
 # hnrss-style boilerplate, e.g. "Points: 186" / "# Comments: 124"
 _HN_POINTS_RE = re.compile(r"Points:\s*(\d+)")
 _HN_COMMENTS_RE = re.compile(r"#\s*Comments:\s*(\d+)")
-_HN_ITEM_URL_RE = re.compile(
-    r"https?://news\.ycombinator\.com/item\?[^\s\"'<>]+", re.IGNORECASE
-)
+_HN_ITEM_URL_RE = re.compile(r"https?://news\.ycombinator\.com/item\?[^\s\"'<>]+", re.IGNORECASE)
 _HN_COMMENTS_URL_LABEL_RE = re.compile(r"comments\s+url\s*:", re.IGNORECASE)
 _HNRSS_META_START_RE = re.compile(
     r"^\s*(?:Article URL|Comments URL|Points|#\s*Comments)\s*:", re.IGNORECASE
@@ -78,8 +76,8 @@ def _to_utc(dt: datetime | None) -> datetime | None:
     if dt is None:
         return None
     if dt.tzinfo is None:
-        return dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(timezone.utc)
+        return dt.replace(tzinfo=UTC)
+    return dt.astimezone(UTC)
 
 
 def _parse_date(value: str | None) -> datetime | None:
@@ -151,7 +149,7 @@ def detect_comments_url(
     # Self-posts may link other HN threads in their body; only the link
     # following the boilerplate label is the article's own discussion.
     label = _HN_COMMENTS_URL_LABEL_RE.search(text)
-    scan = text[label.end():] if label else text
+    scan = text[label.end() :] if label else text
     for match in _HN_ITEM_URL_RE.finditer(scan):
         canonical = canonical_hn_comments_url(match.group(0))
         if canonical:
@@ -184,9 +182,10 @@ def strip_hnrss_boilerplate(content_html: str, comments_url: str | None) -> str:
 
     if not removed:
         return content_html
-    return ((root.text or "") + "".join(
-        etree.tostring(child, encoding="unicode", method="html") for child in root
-    )).strip()
+    return (
+        (root.text or "")
+        + "".join(etree.tostring(child, encoding="unicode", method="html") for child in root)
+    ).strip()
 
 
 def derive_excerpt(content_html: str, max_len: int = 320) -> str:
@@ -261,7 +260,7 @@ def parse_xml_feed(text: str) -> ParsedFeed:
         published = None
         for key in ("published_parsed", "updated_parsed"):
             if entry.get(key):
-                published = datetime(*entry[key][:6], tzinfo=timezone.utc)
+                published = datetime(*entry[key][:6], tzinfo=UTC)
                 break
         image_url = None
         for media in (entry.get("media_content") or []) + (entry.get("media_thumbnail") or []):
@@ -364,9 +363,7 @@ async def fetch_feed_data(url: str, *, require_articles: bool = False) -> Parsed
     return parsed
 
 
-async def refresh_feed(
-    session: AsyncSession, feed: Feed, *, require_articles: bool = False
-) -> int:
+async def refresh_feed(session: AsyncSession, feed: Feed, *, require_articles: bool = False) -> int:
     """Fetch a feed and insert new articles. Returns the number of new articles.
 
     Polling tolerates feeds that are temporarily empty (require_articles=False);
@@ -394,7 +391,7 @@ async def refresh_feed(
 
     new_count = 0
     seen: set[str] = set()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     for position, item in enumerate(parsed.articles):
         if item.guid in seen:
             continue
@@ -429,7 +426,7 @@ async def refresh_feed(
         )
         new_count += 1
 
-    feed.last_fetched_at = datetime.now(timezone.utc)
+    feed.last_fetched_at = datetime.now(UTC)
     await session.commit()
     logger.info("Refreshed feed %s (%s): %d new articles", feed.id, feed.url, new_count)
     return new_count

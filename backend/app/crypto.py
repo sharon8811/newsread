@@ -31,7 +31,7 @@ def _get_fernet() -> Fernet:
         try:
             _fernet = Fernet(settings.token_encryption_key.encode())
         except (ValueError, TypeError) as exc:
-            raise TokenCryptoError(f"Invalid NEWSREAD_TOKEN_ENCRYPTION_KEY: {exc}")
+            raise TokenCryptoError(f"Invalid NEWSREAD_TOKEN_ENCRYPTION_KEY: {exc}") from exc
     return _fernet
 
 
@@ -45,4 +45,4 @@ def decrypt_token(ciphertext: str) -> str:
     except InvalidToken:
         raise TokenCryptoError(
             "Stored token cannot be decrypted (encryption key changed?)"
-        )
+        ) from None

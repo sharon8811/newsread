@@ -10,8 +10,8 @@ from sqlalchemy import select
 from app import crypto, image_gen, llm
 from app.models import Article, Feed, GeneratedImage, LLMUsage, UserAISettings
 
-
 # --- prompt templating ---
+
 
 def test_default_prompt_is_exact():
     assert image_gen.DEFAULT_IMAGE_PROMPT == (
@@ -24,7 +24,8 @@ def test_default_prompt_is_exact():
 def test_render_prompt_replaces_tags():
     out = image_gen.render_prompt(
         "Draw {article_title} — context: {article_excerpt}",
-        title="Big News", excerpt="something happened",
+        title="Big News",
+        excerpt="something happened",
     )
     assert out == "Draw Big News — context: something happened"
 
@@ -35,6 +36,7 @@ def test_render_prompt_keeps_unknown_braces():
 
 
 # --- config resolution ---
+
 
 def test_system_config_from_env(monkeypatch):
     monkeypatch.setattr(image_gen.settings, "image_generation_api_key", "sk-img")
@@ -57,12 +59,18 @@ def test_system_config_from_env(monkeypatch):
 
 async def test_resolve_config_prefers_user_image_block(session, users):
     user = await users.create()
-    session.add(UserAISettings(
-        user_id=user.id, provider="openai", model="gpt-5",
-        api_key_enc=crypto.encrypt_token("sk-main-12345678"), key_hint="5678",
-        image_provider="openai", image_model="gpt-image-1",
-        image_extra_params='{"aspect_ratio": "16:9"}',
-    ))
+    session.add(
+        UserAISettings(
+            user_id=user.id,
+            provider="openai",
+            model="gpt-5",
+            api_key_enc=crypto.encrypt_token("sk-main-12345678"),
+            key_hint="5678",
+            image_provider="openai",
+            image_model="gpt-image-1",
+            image_extra_params='{"aspect_ratio": "16:9"}',
+        )
+    )
     await session.commit()
     config = await image_gen.resolve_config(session, user.id)
     assert config.user_owned is True
@@ -74,12 +82,19 @@ async def test_resolve_config_prefers_user_image_block(session, users):
 
 async def test_resolve_config_uses_dedicated_image_key(session, users):
     user = await users.create()
-    session.add(UserAISettings(
-        user_id=user.id, provider="openai", model="gpt-5",
-        api_key_enc=crypto.encrypt_token("sk-main-12345678"), key_hint="5678",
-        image_provider="anthropic", image_model="img-model",
-        image_api_key_enc=crypto.encrypt_token("sk-img-87654321"), image_key_hint="4321",
-    ))
+    session.add(
+        UserAISettings(
+            user_id=user.id,
+            provider="openai",
+            model="gpt-5",
+            api_key_enc=crypto.encrypt_token("sk-main-12345678"),
+            key_hint="5678",
+            image_provider="anthropic",
+            image_model="img-model",
+            image_api_key_enc=crypto.encrypt_token("sk-img-87654321"),
+            image_key_hint="4321",
+        )
+    )
     await session.commit()
     config = await image_gen.resolve_config(session, user.id)
     assert config.api_key == "sk-img-87654321"
@@ -91,10 +106,15 @@ async def test_resolve_config_falls_back_to_system(session, users, monkeypatch):
     monkeypatch.setattr(image_gen.settings, "image_generation_model", "gemini-image")
     user = await users.create()
     # A chat-only BYO row must not disable image generation.
-    session.add(UserAISettings(
-        user_id=user.id, provider="openai", model="gpt-5",
-        api_key_enc=crypto.encrypt_token("sk-main-12345678"), key_hint="5678",
-    ))
+    session.add(
+        UserAISettings(
+            user_id=user.id,
+            provider="openai",
+            model="gpt-5",
+            api_key_enc=crypto.encrypt_token("sk-main-12345678"),
+            key_hint="5678",
+        )
+    )
     await session.commit()
     config = await image_gen.resolve_config(session, user.id)
     assert config.provider == "system"
@@ -127,9 +147,7 @@ class _FakeClient:
             _FakeClient.images_call = call
             return images_response
 
-        self.chat = types.SimpleNamespace(
-            completions=types.SimpleNamespace(create=chat_create)
-        )
+        self.chat = types.SimpleNamespace(completions=types.SimpleNamespace(create=chat_create))
         self.images = types.SimpleNamespace(generate=images_generate)
 
     async def __aenter__(self):
@@ -141,7 +159,9 @@ class _FakeClient:
 
 def _openrouter_config(**overrides):
     defaults = dict(
-        provider="system", api_key="sk-img", model="google/gemini-2.5-flash-image",
+        provider="system",
+        api_key="sk-img",
+        model="google/gemini-2.5-flash-image",
         base_url="https://openrouter.ai/api/v1",
     )
     defaults.update(overrides)
@@ -185,8 +205,7 @@ class _FakeHTTPClient:
 async def test_generate_via_openrouter_images_endpoint(monkeypatch):
     body = {
         "created": 1748372400,
-        "data": [{"b64_json": base64.b64encode(PNG_BYTES).decode(),
-                  "media_type": "image/webp"}],
+        "data": [{"b64_json": base64.b64encode(PNG_BYTES).decode(), "media_type": "image/webp"}],
         "usage": {"prompt_tokens": 12, "completion_tokens": 1290},
     }
     monkeypatch.setattr(image_gen.httpx, "AsyncClient", _FakeHTTPClient(body))
@@ -220,9 +239,7 @@ async def test_generate_openrouter_no_image_raises(monkeypatch):
 
 
 async def test_generate_openrouter_http_error_raises(monkeypatch):
-    monkeypatch.setattr(
-        image_gen.httpx, "AsyncClient", _FakeHTTPClient({}, status_code=402)
-    )
+    monkeypatch.setattr(image_gen.httpx, "AsyncClient", _FakeHTTPClient({}, status_code=402))
     with pytest.raises(RuntimeError, match="402"):
         await image_gen.generate(_openrouter_config(), "p")
 
@@ -232,7 +249,8 @@ async def test_generate_via_images_api(monkeypatch):
         data=[types.SimpleNamespace(b64_json=base64.b64encode(PNG_BYTES).decode(), url=None)]
     )
     monkeypatch.setattr(
-        image_gen, "AsyncOpenAI",
+        image_gen,
+        "AsyncOpenAI",
         lambda **kw: _FakeClient(images_response=response, **kw),
     )
     config = _openrouter_config(provider="openai", base_url=None)
@@ -248,7 +266,8 @@ async def test_generate_via_images_api_passes_extra_params(monkeypatch):
         data=[types.SimpleNamespace(b64_json=base64.b64encode(PNG_BYTES).decode(), url=None)]
     )
     monkeypatch.setattr(
-        image_gen, "AsyncOpenAI",
+        image_gen,
+        "AsyncOpenAI",
         lambda **kw: _FakeClient(images_response=response, **kw),
     )
     config = _openrouter_config(
@@ -260,18 +279,18 @@ async def test_generate_via_images_api_passes_extra_params(monkeypatch):
 
 # --- extra params parsing ---
 
+
 def test_parse_extra_params():
     assert image_gen.parse_extra_params(None) == {}
     assert image_gen.parse_extra_params("  ") == {}
-    assert image_gen.parse_extra_params('{"aspect_ratio": "16:9"}') == {
-        "aspect_ratio": "16:9"
-    }
+    assert image_gen.parse_extra_params('{"aspect_ratio": "16:9"}') == {"aspect_ratio": "16:9"}
     # Malformed values degrade to plain generation instead of breaking it.
     assert image_gen.parse_extra_params("not json") == {}
     assert image_gen.parse_extra_params('["not", "an", "object"]') == {}
 
 
 # --- background task ---
+
 
 async def _article(session):
     feed = Feed(url="https://feed/img")
@@ -316,9 +335,7 @@ async def test_generate_for_article_keeps_existing_image_url(session, users, mon
         return PNG_BYTES, "image/png", llm.TokenUsage()
 
     monkeypatch.setattr(image_gen, "generate", fake_generate)
-    await image_gen.generate_for_article(
-        article.id, user.id, _openrouter_config(), "p"
-    )
+    await image_gen.generate_for_article(article.id, user.id, _openrouter_config(), "p")
     await session.refresh(article)
     assert article.image_url == "https://original/og.png"
 
@@ -354,10 +371,20 @@ async def test_backfill_rewrites_absolute_generated_image_urls(session):
     feed = Feed(url="https://feed/backfill")
     session.add(feed)
     await session.flush()
-    generated = Article(feed_id=feed.id, guid="bf-1", url="https://x/1", title="T1",
-                        image_url="https://tunnel.ngrok.io/api/articles/999/generated-image")
-    scraped = Article(feed_id=feed.id, guid="bf-2", url="https://x/2", title="T2",
-                      image_url="https://site.example/og.png")
+    generated = Article(
+        feed_id=feed.id,
+        guid="bf-1",
+        url="https://x/1",
+        title="T1",
+        image_url="https://tunnel.ngrok.io/api/articles/999/generated-image",
+    )
+    scraped = Article(
+        feed_id=feed.id,
+        guid="bf-2",
+        url="https://x/2",
+        title="T2",
+        image_url="https://site.example/og.png",
+    )
     session.add_all([generated, scraped])
     await session.commit()
 

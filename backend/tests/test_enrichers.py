@@ -25,8 +25,8 @@ from app.enrichers.npm import NpmEnricher
 from app.enrichers.pypi_pkg import PyPIEnricher, _normalize
 from app.enrichers.youtube import YouTubeEnricher
 
-
 # --- clean_url / extract_links ---
+
 
 def test_clean_url_strips_www_and_tracking():
     u = clean_url("https://www.example.com/a/b/?utm_source=x&keep=1#frag")
@@ -69,9 +69,12 @@ def test_extract_links_handles_anchor_without_href():
 
 # --- extract_text_links ---
 
+
 def test_extract_text_links_strips_prose_punctuation():
-    text = ("The code is at https://github.com/a/b. See also "
-            "(https://arxiv.org/abs/1706.03762) and https://github.com/a/b again.")
+    text = (
+        "The code is at https://github.com/a/b. See also "
+        "(https://arxiv.org/abs/1706.03762) and https://github.com/a/b again."
+    )
     assert extract_text_links(text) == [
         "https://github.com/a/b",
         "https://arxiv.org/abs/1706.03762",
@@ -86,6 +89,7 @@ def test_extract_text_links_empty_and_caps():
 
 
 # --- badge_for ---
+
 
 def test_badge_for_unknown_kind():
     assert badge_for("nonexistent", {"x": 1}) == {}
@@ -108,23 +112,27 @@ def test_badge_for_swallows_enricher_errors(monkeypatch):
 
 # --- GitHub ---
 
+
 @respx.mock
 async def test_github_fetch_success():
     respx.get("https://api.github.com/repos/pytorch/pytorch").mock(
-        return_value=httpx.Response(200, json={
-            "full_name": "pytorch/pytorch",
-            "description": "Tensors",
-            "stargazers_count": 80000,
-            "forks_count": 2000,
-            "open_issues_count": 100,
-            "language": "Python",
-            "license": {"spdx_id": "BSD-3-Clause"},
-            "pushed_at": "2024-01-01T00:00:00Z",
-            "archived": False,
-            "topics": list(range(20)),
-            "homepage": "https://pytorch.org",
-            "subscribers_count": 500,
-        })
+        return_value=httpx.Response(
+            200,
+            json={
+                "full_name": "pytorch/pytorch",
+                "description": "Tensors",
+                "stargazers_count": 80000,
+                "forks_count": 2000,
+                "open_issues_count": 100,
+                "language": "Python",
+                "license": {"spdx_id": "BSD-3-Clause"},
+                "pushed_at": "2024-01-01T00:00:00Z",
+                "archived": False,
+                "topics": list(range(20)),
+                "homepage": "https://pytorch.org",
+                "subscribers_count": 500,
+            },
+        )
     )
     async with httpx.AsyncClient() as client:
         data = await GitHubEnricher().fetch("pytorch/pytorch", client)
@@ -147,9 +155,7 @@ async def test_github_fetch_noassertion_license():
 @respx.mock
 @pytest.mark.parametrize("status", [404, 451])
 async def test_github_fetch_not_found(status):
-    respx.get("https://api.github.com/repos/a/b").mock(
-        return_value=httpx.Response(status)
-    )
+    respx.get("https://api.github.com/repos/a/b").mock(return_value=httpx.Response(status))
     async with httpx.AsyncClient() as client:
         with pytest.raises(EnrichError):
             await GitHubEnricher().fetch("a/b", client)
@@ -158,9 +164,7 @@ async def test_github_fetch_not_found(status):
 @respx.mock
 @pytest.mark.parametrize("status", [403, 429])
 async def test_github_fetch_rate_limited(status):
-    respx.get("https://api.github.com/repos/a/b").mock(
-        return_value=httpx.Response(status)
-    )
+    respx.get("https://api.github.com/repos/a/b").mock(return_value=httpx.Response(status))
     async with httpx.AsyncClient() as client:
         with pytest.raises(EnrichError):
             await GitHubEnricher().fetch("a/b", client)
@@ -182,6 +186,7 @@ def test_github_entity_url():
 
 
 # --- arxiv ---
+
 
 def test_parse_id_variants():
     assert _parse_id("/abs/1706.03762v3") == "1706.03762"
@@ -239,9 +244,7 @@ async def test_arxiv_fetch_not_found(monkeypatch):
 async def test_arxiv_fetch_error_title(monkeypatch):
     monkeypatch.setattr("app.enrichers.arxiv._MIN_INTERVAL", 0.0)
     xml = '<feed xmlns="http://www.w3.org/2005/Atom"><entry><title>Error</title></entry></feed>'
-    respx.get("https://export.arxiv.org/api/query").mock(
-        return_value=httpx.Response(200, text=xml)
-    )
+    respx.get("https://export.arxiv.org/api/query").mock(return_value=httpx.Response(200, text=xml))
     async with httpx.AsyncClient() as client:
         with pytest.raises(EnrichError):
             await ArxivEnricher().fetch("bad", client)
@@ -261,6 +264,7 @@ def test_arxiv_entity_url():
 
 # --- Hugging Face ---
 
+
 def test_license_of_from_carddata():
     assert _license_of({"cardData": {"license": "mit"}}) == "mit"
     assert _license_of({"cardData": {"license": ["apache-2.0", "mit"]}}) == "apache-2.0"
@@ -277,13 +281,20 @@ def test_license_of_none():
 @respx.mock
 async def test_hf_model_fetch():
     respx.get("https://huggingface.co/api/models/Qwen/Qwen2.5-7B").mock(
-        return_value=httpx.Response(200, json={
-            "id": "Qwen/Qwen2.5-7B", "downloads": 1000, "likes": 50,
-            "pipeline_tag": "text-generation", "lastModified": "2024-01-01",
-            "library_name": "transformers", "gated": False,
-            "cardData": {"license": "apache-2.0"},
-            "safetensors": {"total": 7_000_000_000},
-        })
+        return_value=httpx.Response(
+            200,
+            json={
+                "id": "Qwen/Qwen2.5-7B",
+                "downloads": 1000,
+                "likes": 50,
+                "pipeline_tag": "text-generation",
+                "lastModified": "2024-01-01",
+                "library_name": "transformers",
+                "gated": False,
+                "cardData": {"license": "apache-2.0"},
+                "safetensors": {"total": 7_000_000_000},
+            },
+        )
     )
     async with httpx.AsyncClient() as client:
         data = await HFModelEnricher().fetch("Qwen/Qwen2.5-7B", client)
@@ -295,11 +306,17 @@ async def test_hf_model_fetch():
 @respx.mock
 async def test_hf_dataset_fetch():
     respx.get("https://huggingface.co/api/datasets/allenai/c4").mock(
-        return_value=httpx.Response(200, json={
-            "id": "allenai/c4", "downloads": 500, "likes": 20,
-            "lastModified": "2024-01-01", "gated": False,
-            "cardData": {"task_categories": ["text"], "size_categories": ["1B"]},
-        })
+        return_value=httpx.Response(
+            200,
+            json={
+                "id": "allenai/c4",
+                "downloads": 500,
+                "likes": 20,
+                "lastModified": "2024-01-01",
+                "gated": False,
+                "cardData": {"task_categories": ["text"], "size_categories": ["1B"]},
+            },
+        )
     )
     async with httpx.AsyncClient() as client:
         data = await HFDatasetEnricher().fetch("allenai/c4", client)
@@ -310,9 +327,7 @@ async def test_hf_dataset_fetch():
 @respx.mock
 @pytest.mark.parametrize("status", [401, 403, 404])
 async def test_hf_fetch_unavailable(status):
-    respx.get("https://huggingface.co/api/models/a/b").mock(
-        return_value=httpx.Response(status)
-    )
+    respx.get("https://huggingface.co/api/models/a/b").mock(return_value=httpx.Response(status))
     async with httpx.AsyncClient() as client:
         with pytest.raises(EnrichError):
             await HFModelEnricher().fetch("a/b", client)
@@ -320,9 +335,7 @@ async def test_hf_fetch_unavailable(status):
 
 @respx.mock
 async def test_hf_fetch_rate_limited():
-    respx.get("https://huggingface.co/api/models/a/b").mock(
-        return_value=httpx.Response(429)
-    )
+    respx.get("https://huggingface.co/api/models/a/b").mock(return_value=httpx.Response(429))
     async with httpx.AsyncClient() as client:
         with pytest.raises(EnrichError):
             await HFModelEnricher().fetch("a/b", client)
@@ -346,6 +359,7 @@ def test_hf_entity_urls():
 
 # --- PyPI ---
 
+
 def test_pypi_normalize():
     assert _normalize("Typing_Extensions") == "typing-extensions"
     assert _normalize("a.b_c") == "a-b-c"
@@ -354,14 +368,20 @@ def test_pypi_normalize():
 @respx.mock
 async def test_pypi_fetch():
     respx.get("https://pypi.org/pypi/requests/json").mock(
-        return_value=httpx.Response(200, json={
-            "info": {
-                "name": "requests", "version": "2.31.0", "summary": "HTTP",
-                "requires_python": ">=3.8", "license_expression": "Apache-2.0",
-                "project_urls": {"Homepage": "https://requests.readthedocs.io"},
+        return_value=httpx.Response(
+            200,
+            json={
+                "info": {
+                    "name": "requests",
+                    "version": "2.31.0",
+                    "summary": "HTTP",
+                    "requires_python": ">=3.8",
+                    "license_expression": "Apache-2.0",
+                    "project_urls": {"Homepage": "https://requests.readthedocs.io"},
+                },
+                "urls": [{"upload_time_iso_8601": "2023-05-22T00:00:00Z"}],
             },
-            "urls": [{"upload_time_iso_8601": "2023-05-22T00:00:00Z"}],
-        })
+        )
     )
     async with httpx.AsyncClient() as client:
         data = await PyPIEnricher().fetch("requests", client)
@@ -384,9 +404,7 @@ async def test_pypi_fetch_long_license_dropped():
 
 @respx.mock
 async def test_pypi_fetch_not_found():
-    respx.get("https://pypi.org/pypi/nope/json").mock(
-        return_value=httpx.Response(404)
-    )
+    respx.get("https://pypi.org/pypi/nope/json").mock(return_value=httpx.Response(404))
     async with httpx.AsyncClient() as client:
         with pytest.raises(EnrichError):
             await PyPIEnricher().fetch("nope", client)
@@ -398,13 +416,20 @@ def test_pypi_entity_url():
 
 # --- npm ---
 
+
 @respx.mock
 async def test_npm_fetch_with_downloads():
     respx.get("https://registry.npmjs.org/react/latest").mock(
-        return_value=httpx.Response(200, json={
-            "name": "react", "version": "18.2.0", "description": "UI",
-            "license": "MIT", "homepage": "https://react.dev",
-        })
+        return_value=httpx.Response(
+            200,
+            json={
+                "name": "react",
+                "version": "18.2.0",
+                "description": "UI",
+                "license": "MIT",
+                "homepage": "https://react.dev",
+            },
+        )
     )
     respx.get("https://api.npmjs.org/downloads/point/last-week/react").mock(
         return_value=httpx.Response(200, json={"downloads": 20_000_000})
@@ -445,9 +470,7 @@ async def test_npm_fetch_downloads_non_200():
 
 @respx.mock
 async def test_npm_fetch_not_found():
-    respx.get("https://registry.npmjs.org/nope/latest").mock(
-        return_value=httpx.Response(404)
-    )
+    respx.get("https://registry.npmjs.org/nope/latest").mock(return_value=httpx.Response(404))
     async with httpx.AsyncClient() as client:
         with pytest.raises(EnrichError):
             await NpmEnricher().fetch("nope", client)
@@ -472,15 +495,19 @@ def test_npm_entity_url():
 
 # --- YouTube ---
 
+
 @respx.mock
 async def test_youtube_fetch():
     respx.get("https://www.youtube.com/oembed").mock(
-        return_value=httpx.Response(200, json={
-            "title": "Never Gonna Give You Up",
-            "author_name": "Rick Astley",
-            "author_url": "https://youtube.com/@rick",
-            "thumbnail_url": "https://i.ytimg.com/x.jpg",
-        })
+        return_value=httpx.Response(
+            200,
+            json={
+                "title": "Never Gonna Give You Up",
+                "author_name": "Rick Astley",
+                "author_url": "https://youtube.com/@rick",
+                "thumbnail_url": "https://i.ytimg.com/x.jpg",
+            },
+        )
     )
     async with httpx.AsyncClient() as client:
         data = await YouTubeEnricher().fetch("dQw4w9WgXcQ", client)
@@ -491,9 +518,7 @@ async def test_youtube_fetch():
 @respx.mock
 @pytest.mark.parametrize("status", [400, 401, 403, 404])
 async def test_youtube_fetch_unavailable(status):
-    respx.get("https://www.youtube.com/oembed").mock(
-        return_value=httpx.Response(status)
-    )
+    respx.get("https://www.youtube.com/oembed").mock(return_value=httpx.Response(status))
     async with httpx.AsyncClient() as client:
         with pytest.raises(EnrichError):
             await YouTubeEnricher().fetch("dQw4w9WgXcQ", client)
@@ -504,6 +529,7 @@ def test_youtube_entity_url():
 
 
 # --- registry dispatch ---
+
 
 def test_match_url_dataset_before_model():
     enricher, key = match_url("https://huggingface.co/datasets/allenai/c4")

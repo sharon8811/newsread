@@ -8,7 +8,7 @@ stale row or skip".
 import asyncio
 import logging
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import httpx
 from sqlalchemy import and_, exists, or_, select
@@ -18,7 +18,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..db import SessionLocal
 from ..fetcher import USER_AGENT
 from ..models import Article, ArticleEntity, Entity, EntitySnapshot
-from . import BY_KIND, ENRICHERS, Enricher, EnrichError, extract_links, extract_text_links, match_url
+from . import (
+    BY_KIND,
+    ENRICHERS,
+    Enricher,
+    EnrichError,
+    extract_links,
+    extract_text_links,
+    match_url,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +53,7 @@ async def _get_or_refresh(
     key: str,
     client: httpx.AsyncClient,
 ) -> Entity | None:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     entity = await session.scalar(
         select(Entity).where(Entity.kind == enricher.kind, Entity.canonical_key == key)
     )
@@ -144,7 +152,7 @@ async def _extract_one(
             except Exception as exc:
                 logger.warning("Entity extraction for article %s failed: %s", article_id, exc)
             # Always stamp, even on failure — never rescan, never block.
-            article.entities_extracted_at = datetime.now(timezone.utc)
+            article.entities_extracted_at = datetime.now(UTC)
             await session.commit()
 
 
@@ -183,7 +191,7 @@ async def extract_entities(feed_id: int | None = None) -> int:
 
 async def refresh_stale_entities() -> int:
     """Refetch entities past their TTL that fresh articles still reference."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     stale: list[tuple[int, str, str]] = []
     async with SessionLocal() as session:
         for enricher in ENRICHERS:

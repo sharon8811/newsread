@@ -4,7 +4,7 @@ connections keep a refresh token and the router refreshes before use."""
 
 import html
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from urllib.parse import urlencode
 
 import httpx
@@ -76,12 +76,10 @@ async def _token_request(client: httpx.AsyncClient, **data) -> dict:
 
 def _expiry(payload: dict) -> datetime:
     # A small safety margin so we never send with a token mid-expiry.
-    return datetime.now(timezone.utc) + timedelta(seconds=int(payload.get("expires_in", 3600)) - 120)
+    return datetime.now(UTC) + timedelta(seconds=int(payload.get("expires_in", 3600)) - 120)
 
 
-async def _graph(
-    client: httpx.AsyncClient, token: str, method: str, path: str, **kwargs
-) -> dict:
+async def _graph(client: httpx.AsyncClient, token: str, method: str, path: str, **kwargs) -> dict:
     response = await client.request(
         method,
         f"{GRAPH_BASE}{path}",

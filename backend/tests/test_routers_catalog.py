@@ -1,5 +1,5 @@
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 import pytest_asyncio
@@ -7,8 +7,8 @@ from sqlalchemy import func, select
 
 from app.fetcher import FeedParseError, FeedRateLimited, ParsedArticle, ParsedFeed
 from app.models import CatalogEntry, CatalogEntryEmbedding
-from app.routers import feeds as feeds_router
 from app.routers import catalog as catalog_router
+from app.routers import feeds as feeds_router
 from app.seeds import CATALOG_SEED_PATH, seed_catalog
 
 
@@ -16,8 +16,7 @@ from app.seeds import CATALOG_SEED_PATH, seed_catalog
 async def catalog(session):
     """Create catalog entries directly in the DB."""
 
-    async def make(*, url=None, title="A Blog", description=None, site_url=None,
-                   category="Tech"):
+    async def make(*, url=None, title="A Blog", description=None, site_url=None, category="Tech"):
         count = await session.scalar(select(func.count()).select_from(CatalogEntry))
         entry = CatalogEntry(
             url=url or f"https://catalog{count + 1}.example/rss",
@@ -183,10 +182,16 @@ async def test_semantic_search_ranks_by_catalog_embedding(
     user = await users.create()
     climate = await catalog(title="Climate Desk", description="environment reporting")
     chess = await catalog(title="Chess Board", description="tournaments and openings")
-    session.add_all([
-        CatalogEntryEmbedding(catalog_entry_id=climate.id, model="emb", content_hash="a", embedding=[1.0, 0.0]),
-        CatalogEntryEmbedding(catalog_entry_id=chess.id, model="emb", content_hash="b", embedding=[0.0, 1.0]),
-    ])
+    session.add_all(
+        [
+            CatalogEntryEmbedding(
+                catalog_entry_id=climate.id, model="emb", content_hash="a", embedding=[1.0, 0.0]
+            ),
+            CatalogEntryEmbedding(
+                catalog_entry_id=chess.id, model="emb", content_hash="b", embedding=[0.0, 1.0]
+            ),
+        ]
+    )
     await session.commit()
     monkeypatch.setattr(catalog_router.embeddings, "is_configured", lambda: True)
     monkeypatch.setattr(catalog_router.settings, "openai_embedding_model", "emb")
@@ -195,7 +200,9 @@ async def test_semantic_search_ranks_by_catalog_embedding(
         return [[1.0, 0.0]]
 
     monkeypatch.setattr(catalog_router.embeddings, "embed_texts", fake_embed)
-    resp = await client.get("/api/catalog?q=independent+planet+journalism", headers=users.auth(user))
+    resp = await client.get(
+        "/api/catalog?q=independent+planet+journalism", headers=users.auth(user)
+    )
     assert resp.json()[0]["title"] == "Climate Desk"
     assert resp.json()[0]["match_reason"] == "Semantic match"
 
@@ -221,7 +228,6 @@ async def test_catalog_submission_is_validated(client, users, monkeypatch):
     assert resp.json()["status"] == "pending"
 
 
-
 async def test_preview_requires_auth(client):
     resp = await client.get("/api/catalog/1/preview")
     assert resp.status_code == 401
@@ -241,8 +247,12 @@ async def test_preview_unknown_entry_is_404(client, users, session, catalog):
 
 async def test_preview_returns_live_items(client, users, catalog, monkeypatch):
     user = await users.create()
-    entry = await catalog(url="https://live.example/rss", title="Stored Title",
-                          description="Stored description", site_url="https://stored.example")
+    entry = await catalog(
+        url="https://live.example/rss",
+        title="Stored Title",
+        description="Stored description",
+        site_url="https://stored.example",
+    )
 
     async def fake_fetch(url):
         assert url == entry.url
@@ -253,7 +263,7 @@ async def test_preview_returns_live_items(client, users, catalog, monkeypatch):
                 title="First story",
                 content_html="<p>Hello <b>world</b> &amp; a fine read.</p>",
                 author="Ann Author",
-                published_at=datetime(2026, 7, 11, 8, 0, tzinfo=timezone.utc),
+                published_at=datetime(2026, 7, 11, 8, 0, tzinfo=UTC),
             ),
             ParsedArticle(
                 guid="2",
@@ -265,8 +275,12 @@ async def test_preview_returns_live_items(client, users, catalog, monkeypatch):
             ParsedArticle(guid=str(i), url=f"https://live.example/{i}", title=f"Story {i}")
             for i in range(3, 13)
         ]
-        return ParsedFeed(title="Live Title", description="Live description",
-                          site_url="https://live.example", articles=articles)
+        return ParsedFeed(
+            title="Live Title",
+            description="Live description",
+            site_url="https://live.example",
+            articles=articles,
+        )
 
     monkeypatch.setattr(catalog_router, "fetch_feed_data", fake_fetch)
     resp = await client.get(f"/api/catalog/{entry.id}/preview", headers=users.auth(user))
@@ -294,13 +308,17 @@ async def test_preview_returns_live_items(client, users, catalog, monkeypatch):
 
 async def test_preview_falls_back_to_stored_metadata(client, users, catalog, monkeypatch):
     user = await users.create()
-    entry = await catalog(title="Stored Title", description="Stored description",
-                          site_url="https://stored.example")
+    entry = await catalog(
+        title="Stored Title", description="Stored description", site_url="https://stored.example"
+    )
 
     async def sparse_feed(url):
-        return ParsedFeed(title="", articles=[
-            ParsedArticle(guid="1", url="https://x.example/1", title="Only story"),
-        ])
+        return ParsedFeed(
+            title="",
+            articles=[
+                ParsedArticle(guid="1", url="https://x.example/1", title="Only story"),
+            ],
+        )
 
     monkeypatch.setattr(catalog_router, "fetch_feed_data", sparse_feed)
     resp = await client.get(f"/api/catalog/{entry.id}/preview", headers=users.auth(user))
@@ -371,9 +389,7 @@ async def test_preview_rate_limited_is_503_and_backs_off(client, users, catalog,
     assert calls == 1
 
 
-async def test_preview_resolves_relative_and_missing_item_urls(
-    client, users, catalog, monkeypatch
-):
+async def test_preview_resolves_relative_and_missing_item_urls(client, users, catalog, monkeypatch):
     """Items may carry relative links (resolve against the feed URL) or none
     at all (guid-only) — those must come back null, never an empty string."""
     user = await users.create()
@@ -414,7 +430,11 @@ async def test_smart_list_describes_providers(client, users):
     assert resp.status_code == 200
     body = resp.json()
     assert {p["key"] for p in body} == {
-        "reddit", "google-news", "hacker-news", "medium", "mastodon",
+        "reddit",
+        "google-news",
+        "hacker-news",
+        "medium",
+        "mastodon",
     }
     reddit = next(p for p in body if p["key"] == "reddit")
     assert reddit["topic_label"] == "Subreddit"
@@ -444,17 +464,18 @@ def test_resolve_smart_topic_slug_forms():
     assert catalog_router.resolve_smart_topic(medium, "Machine Learning").url == (
         "https://medium.com/feed/tag/machine-learning"
     )
-    assert catalog_router.resolve_smart_topic(
-        medium, "https://medium.com/tag/ai"
-    ).topic == "ai"
+    assert catalog_router.resolve_smart_topic(medium, "https://medium.com/tag/ai").topic == "ai"
 
     mastodon = catalog_router.SMART_FEEDS["mastodon"]
     resolved = catalog_router.resolve_smart_topic(mastodon, "#photography")
     assert resolved.url == "https://mastodon.social/tags/photography.rss"
     assert resolved.title == "#photography"
-    assert catalog_router.resolve_smart_topic(
-        mastodon, "https://mastodon.social/tags/opensource"
-    ).topic == "opensource"
+    assert (
+        catalog_router.resolve_smart_topic(
+            mastodon, "https://mastodon.social/tags/opensource"
+        ).topic
+        == "opensource"
+    )
 
 
 def test_resolve_smart_topic_query_forms():
@@ -465,9 +486,10 @@ def test_resolve_smart_topic_query_forms():
     )
     assert resolved.title == "Google News · climate change"
     # A pasted Google News search URL resolves to its query.
-    assert catalog_router.resolve_smart_topic(
-        google, "https://news.google.com/search?q=spacex"
-    ).topic == "spacex"
+    assert (
+        catalog_router.resolve_smart_topic(google, "https://news.google.com/search?q=spacex").topic
+        == "spacex"
+    )
 
     hn = catalog_router.SMART_FEEDS["hacker-news"]
     assert catalog_router.resolve_smart_topic(hn, "c++").url == (
@@ -488,7 +510,8 @@ def test_resolve_smart_topic_rejects_junk():
 async def test_smart_resolve_endpoint(client, users):
     user = await users.create()
     resp = await client.get(
-        "/api/catalog/smart/reddit/resolve", params={"topic": "r/rust"},
+        "/api/catalog/smart/reddit/resolve",
+        params={"topic": "r/rust"},
         headers=users.auth(user),
     )
     assert resp.status_code == 200
@@ -505,7 +528,8 @@ async def test_smart_resolve_endpoint(client, users):
     assert resp.status_code == 404
 
     resp = await client.get(
-        "/api/catalog/smart/reddit/resolve", params={"topic": "not a subreddit"},
+        "/api/catalog/smart/reddit/resolve",
+        params={"topic": "not a subreddit"},
         headers=users.auth(user),
     )
     assert resp.status_code == 422
@@ -517,13 +541,17 @@ async def test_smart_preview_fetches_resolved_url(client, users, monkeypatch):
 
     async def fake_fetch(url):
         assert url == "https://www.reddit.com/r/rust/.rss"
-        return ParsedFeed(title="", articles=[
-            ParsedArticle(guid="1", url="https://reddit.example/1", title="A post"),
-        ])
+        return ParsedFeed(
+            title="",
+            articles=[
+                ParsedArticle(guid="1", url="https://reddit.example/1", title="A post"),
+            ],
+        )
 
     monkeypatch.setattr(catalog_router, "fetch_feed_data", fake_fetch)
     resp = await client.get(
-        "/api/catalog/smart/reddit/preview", params={"topic": "rust"},
+        "/api/catalog/smart/reddit/preview",
+        params={"topic": "rust"},
         headers=users.auth(user),
     )
     assert resp.status_code == 200
@@ -545,7 +573,8 @@ async def test_smart_preview_is_cached_by_url(client, users, monkeypatch):
     monkeypatch.setattr(catalog_router, "fetch_feed_data", counting_fetch)
     for _ in range(2):
         resp = await client.get(
-            "/api/catalog/smart/reddit/preview", params={"topic": "rust"},
+            "/api/catalog/smart/reddit/preview",
+            params={"topic": "rust"},
             headers=users.auth(user),
         )
         assert resp.status_code == 200
@@ -559,7 +588,8 @@ async def test_smart_preview_rejects_bad_input(client, users):
     )
     assert resp.status_code == 404
     resp = await client.get(
-        "/api/catalog/smart/reddit/preview", params={"topic": "not a subreddit"},
+        "/api/catalog/smart/reddit/preview",
+        params={"topic": "not a subreddit"},
         headers=users.auth(user),
     )
     assert resp.status_code == 422

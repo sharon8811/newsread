@@ -50,9 +50,7 @@ class Settings(BaseSettings):
     # endpoint as openai_model. Unset -> search falls back to keyword matching.
     openai_embedding_model: str = Field(
         default="",
-        validation_alias=AliasChoices(
-            "NEWSREAD_OPENAI_EMBEDDING_MODEL", "OPENAI_EMBEDDING_MODEL"
-        ),
+        validation_alias=AliasChoices("NEWSREAD_OPENAI_EMBEDDING_MODEL", "OPENAI_EMBEDDING_MODEL"),
     )
 
     # Server-wide default for generating images for articles that have none

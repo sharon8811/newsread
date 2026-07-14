@@ -11,7 +11,7 @@ import html
 import json
 from collections import Counter
 from dataclasses import asdict, dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import httpx
@@ -41,7 +41,13 @@ async def _inspect_once(entry: dict, semaphore: asyncio.Semaphore, stale_days: i
             parsed = await fetch_feed_data(entry["url"], require_articles=True)
         except httpx.HTTPStatusError as exc:
             code = exc.response.status_code
-            status = "gone" if code in {404, 410} else "blocked" if code in {401, 403, 429} else "transient"
+            status = (
+                "gone"
+                if code in {404, 410}
+                else "blocked"
+                if code in {401, 403, 429}
+                else "transient"
+            )
             return AuditResult(entry["url"], status, f"HTTP {code}")
         except FeedParseError as exc:
             message = str(exc)
@@ -58,13 +64,18 @@ async def _inspect_once(entry: dict, semaphore: asyncio.Semaphore, stale_days: i
             description = decoded
         if not description:
             return AuditResult(
-                entry["url"], "missing_description", "No description in seed or live feed",
-                final_url=parsed.final_url, title=parsed.title, site_url=parsed.site_url,
-                content_type=parsed.content_type, item_count=len(parsed.articles),
+                entry["url"],
+                "missing_description",
+                "No description in seed or live feed",
+                final_url=parsed.final_url,
+                title=parsed.title,
+                site_url=parsed.site_url,
+                content_type=parsed.content_type,
+                item_count=len(parsed.articles),
             )
         dated = [article.published_at for article in parsed.articles if article.published_at]
         latest = max(dated) if dated else None
-        cutoff = datetime.now(timezone.utc) - timedelta(days=stale_days)
+        cutoff = datetime.now(UTC) - timedelta(days=stale_days)
         status = "stale" if latest and latest < cutoff else "healthy"
         preview = [
             {
@@ -75,11 +86,16 @@ async def _inspect_once(entry: dict, semaphore: asyncio.Semaphore, stale_days: i
             for article in parsed.articles[:3]
         ]
         return AuditResult(
-            entry["url"], status,
+            entry["url"],
+            status,
             f"Latest item is older than {stale_days} days" if status == "stale" else "",
-            final_url=parsed.final_url, title=parsed.title, description=description,
-            site_url=parsed.site_url, content_type=parsed.content_type,
-            item_count=len(parsed.articles), latest_item_at=latest.isoformat() if latest else None,
+            final_url=parsed.final_url,
+            title=parsed.title,
+            description=description,
+            site_url=parsed.site_url,
+            content_type=parsed.content_type,
+            item_count=len(parsed.articles),
+            latest_item_at=latest.isoformat() if latest else None,
             preview_items=preview,
         )
 
@@ -95,13 +111,13 @@ async def inspect(entry: dict, semaphore: asyncio.Semaphore, stale_days: int) ->
 async def run(args: argparse.Namespace) -> None:
     entries = json.loads(CATALOG_SEED_PATH.read_text())
     semaphore = asyncio.Semaphore(args.concurrency)
-    results = await asyncio.gather(*(
-        inspect(entry, semaphore, args.stale_days) for entry in entries
-    ))
+    results = await asyncio.gather(
+        *(inspect(entry, semaphore, args.stale_days) for entry in entries)
+    )
     by_url = {result.url: result for result in results}
     counts = Counter(result.status for result in results)
     report = {
-        "checked_at": datetime.now(timezone.utc).isoformat(),
+        "checked_at": datetime.now(UTC).isoformat(),
         "total": len(results),
         "counts": dict(sorted(counts.items())),
         "results": [asdict(result) for result in results],
@@ -137,7 +153,17 @@ async def run(args: argparse.Namespace) -> None:
             entry["preview_items"] = result.preview_items or []
         cleaned.append(entry)
 
-    print(json.dumps({"report": str(report_path), "kept": len(cleaned), "removed": len(entries) - len(cleaned), "counts": counts}, default=dict))
+    print(
+        json.dumps(
+            {
+                "report": str(report_path),
+                "kept": len(cleaned),
+                "removed": len(entries) - len(cleaned),
+                "counts": counts,
+            },
+            default=dict,
+        )
+    )
     if args.apply:
         CATALOG_SEED_PATH.write_text(json.dumps(cleaned, indent=1, ensure_ascii=False) + "\n")
 
@@ -145,7 +171,9 @@ async def run(args: argparse.Namespace) -> None:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--apply", action="store_true", help="write the cleaned seed")
-    parser.add_argument("--remove-stale", action="store_true", help="remove feeds with no recent dated item")
+    parser.add_argument(
+        "--remove-stale", action="store_true", help="remove feeds with no recent dated item"
+    )
     parser.add_argument("--stale-days", type=int, default=548)
     parser.add_argument("--concurrency", type=int, default=12)
     parser.add_argument("--report", default="catalog-audit-report.json")

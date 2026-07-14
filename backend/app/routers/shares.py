@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import and_, func, select
@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from ..db import get_session
-from ..models import Article, Feed, Share, ShareRecipient, User, UserArticleState
+from ..models import Article, Share, ShareRecipient, User, UserArticleState
 from ..queue import enqueue
 from ..schemas import ShareCreateIn, ShareOut, UnseenCountOut, UserPublic
 from ..security import get_current_user
@@ -83,7 +83,9 @@ async def create_share(
         select(Share).where(Share.id == share.id).options(*_share_load_options)
     )
     states = await _states_for(session, user.id, [article.id])
-    return _share_out(share, share.article.feed.title or share.article.feed.url, states.get(article.id), user)
+    return _share_out(
+        share, share.article.feed.title or share.article.feed.url, states.get(article.id), user
+    )
 
 
 @router.get("/received", response_model=list[ShareOut])
@@ -145,7 +147,7 @@ async def mark_seen(
     if recipient is None:
         raise HTTPException(status_code=404, detail="Share not found")
     if recipient.seen_at is None:
-        recipient.seen_at = datetime.now(timezone.utc)
+        recipient.seen_at = datetime.now(UTC)
         await session.commit()
 
 

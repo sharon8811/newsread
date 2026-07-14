@@ -3,7 +3,7 @@ import logging
 import re
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Literal
 from urllib.parse import parse_qs, quote, quote_plus, urljoin, urlsplit
 
@@ -157,7 +157,9 @@ SMART_FEEDS: dict[str, SmartFeedProvider] = {
 
 
 def _looks_like_url(raw: str) -> bool:
-    return "://" in raw or raw.lower().startswith("www.") or "/" in raw and "." in raw.split("/", 1)[0]
+    return (
+        "://" in raw or raw.lower().startswith("www.") or "/" in raw and "." in raw.split("/", 1)[0]
+    )
 
 
 def resolve_smart_topic(provider: SmartFeedProvider, raw: str) -> SmartFeedResolveOut:
@@ -168,7 +170,9 @@ def resolve_smart_topic(provider: SmartFeedProvider, raw: str) -> SmartFeedResol
     if provider.kind == "query":
         # A pasted Google-News-style search URL still resolves to its query.
         if _looks_like_url(topic):
-            query = parse_qs(urlsplit(topic if "://" in topic else f"https://{topic}").query).get("q")
+            query = parse_qs(urlsplit(topic if "://" in topic else f"https://{topic}").query).get(
+                "q"
+            )
             if query and query[0].strip():
                 topic = query[0].strip()
         if len(topic) > 120:
@@ -182,16 +186,20 @@ def resolve_smart_topic(provider: SmartFeedProvider, raw: str) -> SmartFeedResol
     if _looks_like_url(topic):
         match = provider.url_topic_re.search(topic) if provider.url_topic_re else None
         if match is None:
-            raise ValueError(f"That link does not look like a {provider.name} {provider.topic_label.lower()} URL")
+            raise ValueError(
+                f"That link does not look like a {provider.name} {provider.topic_label.lower()} URL"
+            )
         topic = match.group(1)
     for prefix in provider.strip_prefixes:
         if topic.lower().startswith(prefix.lower()):
-            topic = topic[len(prefix):]
+            topic = topic[len(prefix) :]
     topic = topic.strip().strip("/")
     if provider.lowercase:
         topic = re.sub(r"\s+", "-", topic.lower())
     if not provider.topic_re.fullmatch(topic):
-        raise ValueError(f"That does not look like a valid {provider.name} {provider.topic_label.lower()}")
+        raise ValueError(
+            f"That does not look like a valid {provider.name} {provider.topic_label.lower()}"
+        )
     return SmartFeedResolveOut(
         key=provider.key,
         topic=topic,
@@ -221,20 +229,22 @@ async def _hybrid_catalog_ids(
     )
     keyword_ids = list(await session.scalars(keyword_stmt))
     pattern = f"%{q}%"
-    partial_ids = list(await session.scalars(
-        select(CatalogEntry.id)
-        .where(
-            *_catalog_filter(category),
-            or_(
-                CatalogEntry.title.ilike(pattern),
-                CatalogEntry.description.ilike(pattern),
-                CatalogEntry.category.ilike(pattern),
-                CatalogEntry.url.ilike(pattern),
-            ),
+    partial_ids = list(
+        await session.scalars(
+            select(CatalogEntry.id)
+            .where(
+                *_catalog_filter(category),
+                or_(
+                    CatalogEntry.title.ilike(pattern),
+                    CatalogEntry.description.ilike(pattern),
+                    CatalogEntry.category.ilike(pattern),
+                    CatalogEntry.url.ilike(pattern),
+                ),
+            )
+            .order_by(func.lower(CatalogEntry.title))
+            .limit(SEARCH_POOL)
         )
-        .order_by(func.lower(CatalogEntry.title))
-        .limit(SEARCH_POOL)
-    ))
+    )
     text_ids = list(dict.fromkeys([*keyword_ids, *partial_ids]))
     if len(q) < 3 or not embeddings.is_configured():
         return (text_ids, {entry_id: "Keyword match" for entry_id in text_ids})
@@ -243,16 +253,18 @@ async def _hybrid_catalog_ids(
     except Exception as exc:
         logger.warning("Catalog query embedding failed, using full-text search: %s", exc)
         return (text_ids, {entry_id: "Keyword match" for entry_id in text_ids})
-    vector_ids = list(await session.scalars(
-        select(CatalogEntry.id)
-        .join(CatalogEntryEmbedding)
-        .where(
-            *_catalog_filter(category),
-            CatalogEntryEmbedding.model == settings.openai_embedding_model,
+    vector_ids = list(
+        await session.scalars(
+            select(CatalogEntry.id)
+            .join(CatalogEntryEmbedding)
+            .where(
+                *_catalog_filter(category),
+                CatalogEntryEmbedding.model == settings.openai_embedding_model,
+            )
+            .order_by(CatalogEntryEmbedding.embedding.cosine_distance(query_vector))
+            .limit(SEARCH_POOL)
         )
-        .order_by(CatalogEntryEmbedding.embedding.cosine_distance(query_vector))
-        .limit(SEARCH_POOL)
-    ))
+    )
     scores: dict[int, float] = {}
     reasons: dict[int, set[str]] = {}
     for label, leg in (("Semantic match", vector_ids), ("Keyword match", text_ids)):
@@ -261,47 +273,53 @@ async def _hybrid_catalog_ids(
             reasons.setdefault(entry_id, set()).add(label)
     ranked = sorted(scores, key=lambda entry_id: (-scores[entry_id], -entry_id))
     labels = {
-        entry_id: "Keyword and semantic match" if len(reasons[entry_id]) == 2 else next(iter(reasons[entry_id]))
+        entry_id: "Keyword and semantic match"
+        if len(reasons[entry_id]) == 2
+        else next(iter(reasons[entry_id]))
         for entry_id in ranked
     }
     return ranked, labels
 
 
-async def _recommended_ids(
-    session: AsyncSession, user_id: int, category: str | None
-) -> list[int]:
+async def _recommended_ids(session: AsyncSession, user_id: int, category: str | None) -> list[int]:
     """Rank catalog entries near the centroid of the user's subscriptions."""
     if not embeddings.is_configured():
         return []
-    subscribed = list(await session.scalars(
-        select(CatalogEntryEmbedding.embedding)
-        .join(CatalogEntry, CatalogEntry.id == CatalogEntryEmbedding.catalog_entry_id)
-        .join(Feed, Feed.url == CatalogEntry.url)
-        .join(Subscription, Subscription.feed_id == Feed.id)
-        .where(
-            Subscription.user_id == user_id,
-            CatalogEntryEmbedding.model == settings.openai_embedding_model,
+    subscribed = list(
+        await session.scalars(
+            select(CatalogEntryEmbedding.embedding)
+            .join(CatalogEntry, CatalogEntry.id == CatalogEntryEmbedding.catalog_entry_id)
+            .join(Feed, Feed.url == CatalogEntry.url)
+            .join(Subscription, Subscription.feed_id == Feed.id)
+            .where(
+                Subscription.user_id == user_id,
+                CatalogEntryEmbedding.model == settings.openai_embedding_model,
+            )
         )
-    ))
+    )
     if not subscribed:
         return []
     dimensions = len(subscribed[0])
-    centroid = [sum(vector[i] for vector in subscribed) / len(subscribed) for i in range(dimensions)]
-    return list(await session.scalars(
-        select(CatalogEntry.id)
-        .join(CatalogEntryEmbedding)
-        .outerjoin(Feed, Feed.url == CatalogEntry.url)
-        .outerjoin(
-            Subscription,
-            and_(Subscription.feed_id == Feed.id, Subscription.user_id == user_id),
+    centroid = [
+        sum(vector[i] for vector in subscribed) / len(subscribed) for i in range(dimensions)
+    ]
+    return list(
+        await session.scalars(
+            select(CatalogEntry.id)
+            .join(CatalogEntryEmbedding)
+            .outerjoin(Feed, Feed.url == CatalogEntry.url)
+            .outerjoin(
+                Subscription,
+                and_(Subscription.feed_id == Feed.id, Subscription.user_id == user_id),
+            )
+            .where(
+                *_catalog_filter(category),
+                CatalogEntryEmbedding.model == settings.openai_embedding_model,
+                Subscription.id.is_(None),
+            )
+            .order_by(CatalogEntryEmbedding.embedding.cosine_distance(centroid))
         )
-        .where(
-            *_catalog_filter(category),
-            CatalogEntryEmbedding.model == settings.openai_embedding_model,
-            Subscription.id.is_(None),
-        )
-        .order_by(CatalogEntryEmbedding.embedding.cosine_distance(centroid))
-    ))
+    )
 
 
 @router.get("", response_model=list[CatalogEntryOut])
@@ -323,17 +341,19 @@ async def browse_catalog(
         # without embeddings/FTS matches.
         if not ranked_ids:
             pattern = f"%{normalized_q}%"
-            ranked_ids = list(await session.scalars(
-                select(CatalogEntry.id).where(
-                    *_catalog_filter(category),
-                    or_(
-                        CatalogEntry.title.ilike(pattern),
-                        CatalogEntry.description.ilike(pattern),
-                        CatalogEntry.category.ilike(pattern),
-                        CatalogEntry.url.ilike(pattern),
-                    ),
+            ranked_ids = list(
+                await session.scalars(
+                    select(CatalogEntry.id).where(
+                        *_catalog_filter(category),
+                        or_(
+                            CatalogEntry.title.ilike(pattern),
+                            CatalogEntry.description.ilike(pattern),
+                            CatalogEntry.category.ilike(pattern),
+                            CatalogEntry.url.ilike(pattern),
+                        ),
+                    )
                 )
-            ))
+            )
             match_reasons = {entry_id: "Text match" for entry_id in ranked_ids}
     elif sort == "recommended":
         recommended = await _recommended_ids(session, user.id, category)
@@ -363,10 +383,15 @@ async def browse_catalog(
     if ranked_ids is not None:
         if not ranked_ids:
             return []
-        rank_order = case({entry_id: rank for rank, entry_id in enumerate(ranked_ids)}, value=CatalogEntry.id)
+        rank_order = case(
+            {entry_id: rank for rank, entry_id in enumerate(ranked_ids)}, value=CatalogEntry.id
+        )
         stmt = stmt.where(CatalogEntry.id.in_(ranked_ids)).order_by(rank_order)
     elif sort == "popular":
-        stmt = stmt.order_by(func.coalesce(subscriber_counts.c.subscriber_count, 0).desc(), func.lower(CatalogEntry.title))
+        stmt = stmt.order_by(
+            func.coalesce(subscriber_counts.c.subscriber_count, 0).desc(),
+            func.lower(CatalogEntry.title),
+        )
     else:
         stmt = stmt.order_by(CatalogEntry.category, func.lower(CatalogEntry.title))
 
@@ -455,7 +480,7 @@ async def _cached_preview(
         title=parsed.title or fallback_title,
         description=parsed.description or fallback_description,
         site_url=parsed.site_url or fallback_site_url,
-        fetched_at=datetime.now(timezone.utc),
+        fetched_at=datetime.now(UTC),
         items=[
             CatalogPreviewItemOut(
                 title=article.title,
@@ -559,7 +584,9 @@ async def submit_feed(
     except (FeedParseError, ValueError, OSError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=422, detail="Could not fetch a valid feed at that URL") from exc
+        raise HTTPException(
+            status_code=422, detail="Could not fetch a valid feed at that URL"
+        ) from exc
     if not (parsed.description or "").strip():
         raise HTTPException(status_code=422, detail="The feed has no description")
     submission = CatalogSubmission(

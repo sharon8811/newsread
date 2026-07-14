@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 
@@ -6,7 +6,6 @@ from app.models import (
     Project,
     ProjectArticle,
     ProjectArticleComment,
-    ProjectArticleState,
     ProjectMember,
 )
 
@@ -22,12 +21,17 @@ async def _project(session, owner, *members, name="Research", description=""):
     return project
 
 
-async def _pin(session, project, article, user, *, is_shared=False, shared_at=None,
-               created_at=None):
+async def _pin(
+    session, project, article, user, *, is_shared=False, shared_at=None, created_at=None
+):
     extra = {"created_at": created_at} if created_at else {}
     pin = ProjectArticle(
-        project_id=project.id, article_id=article.id, added_by_user_id=user.id,
-        is_shared=is_shared, shared_at=shared_at, **extra,
+        project_id=project.id,
+        article_id=article.id,
+        added_by_user_id=user.id,
+        is_shared=is_shared,
+        shared_at=shared_at,
+        **extra,
     )
     session.add(pin)
     await session.commit()
@@ -37,8 +41,11 @@ async def _pin(session, project, article, user, *, is_shared=False, shared_at=No
 
 async def _comment(session, project, article, user, body, *, link_url=None):
     comment = ProjectArticleComment(
-        project_id=project.id, article_id=article.id, author_id=user.id,
-        body=body, link_url=link_url,
+        project_id=project.id,
+        article_id=article.id,
+        author_id=user.id,
+        body=body,
+        link_url=link_url,
     )
     session.add(comment)
     await session.commit()
@@ -59,11 +66,17 @@ async def _team(users, data):
 
 # --- project CRUD ---
 
+
 async def test_create_project(client, users):
     user = await users.create()
-    resp = await client.post("/api/projects", json={
-        "name": "  AI News  ", "description": " weekly digest ",
-    }, headers=users.auth(user))
+    resp = await client.post(
+        "/api/projects",
+        json={
+            "name": "  AI News  ",
+            "description": " weekly digest ",
+        },
+        headers=users.auth(user),
+    )
     assert resp.status_code == 201
     body = resp.json()
     assert body["name"] == "AI News"
@@ -89,15 +102,16 @@ async def test_create_project_blank_name_rejected(client, users):
 async def test_update_project_blank_name_rejected(client, users, session):
     owner = await users.create()
     project = await _project(session, owner)
-    resp = await client.patch(f"/api/projects/{project.id}", json={"name": " \t "},
-                              headers=users.auth(owner))
+    resp = await client.patch(
+        f"/api/projects/{project.id}", json={"name": " \t "}, headers=users.auth(owner)
+    )
     assert resp.status_code == 422
 
 
 async def test_count_deduplicates_articles_pinned_by_two_members(client, users, data, session):
     owner, member, feed, article = await _team(users, data)
     project = await _project(session, owner, member)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     await _pin(session, project, article, owner, is_shared=True, shared_at=now)
     await _pin(session, project, article, member, is_shared=True, shared_at=now)
     resp = await client.get("/api/projects", headers=users.auth(owner))
@@ -122,8 +136,7 @@ async def test_list_projects_count_excludes_others_private(client, users, data, 
     owner, member, feed, article = await _team(users, data)
     other_article = await data.article(feed, title="Second")
     project = await _project(session, owner, member)
-    await _pin(session, project, article, owner, is_shared=True,
-               shared_at=datetime.now(timezone.utc))
+    await _pin(session, project, article, owner, is_shared=True, shared_at=datetime.now(UTC))
     await _pin(session, project, other_article, owner)  # owner's private pin
     resp = await client.get("/api/projects", headers=users.auth(member))
     assert resp.json()[0]["article_count"] == 1
@@ -150,8 +163,9 @@ async def test_get_project_non_member_404(client, users, session):
 async def test_update_project(client, users, session):
     owner = await users.create()
     project = await _project(session, owner, description="old")
-    resp = await client.patch(f"/api/projects/{project.id}", json={"name": " Renamed "},
-                              headers=users.auth(owner))
+    resp = await client.patch(
+        f"/api/projects/{project.id}", json={"name": " Renamed "}, headers=users.auth(owner)
+    )
     assert resp.status_code == 200
     assert resp.json()["name"] == "Renamed"
     assert resp.json()["description"] == "old"  # untouched by partial patch
@@ -160,9 +174,11 @@ async def test_update_project(client, users, session):
 async def test_update_project_description(client, users, session):
     owner = await users.create()
     project = await _project(session, owner)
-    resp = await client.patch(f"/api/projects/{project.id}",
-                              json={"description": " focus areas "},
-                              headers=users.auth(owner))
+    resp = await client.patch(
+        f"/api/projects/{project.id}",
+        json={"description": " focus areas "},
+        headers=users.auth(owner),
+    )
     assert resp.json()["description"] == "focus areas"
     assert resp.json()["name"] == "Research"
 
@@ -171,8 +187,9 @@ async def test_update_project_member_forbidden(client, users, session):
     owner = await users.create()
     member = await users.create()
     project = await _project(session, owner, member)
-    resp = await client.patch(f"/api/projects/{project.id}", json={"name": "X"},
-                              headers=users.auth(member))
+    resp = await client.patch(
+        f"/api/projects/{project.id}", json={"name": "X"}, headers=users.auth(member)
+    )
     assert resp.status_code == 403
 
 
@@ -195,12 +212,16 @@ async def test_delete_project_member_forbidden(client, users, session):
 
 # --- membership ---
 
+
 async def test_add_member(client, users, session):
     owner = await users.create()
     await users.create(username="Newbie")
     project = await _project(session, owner)
-    resp = await client.post(f"/api/projects/{project.id}/members",
-                             json={"username": "@newbie"}, headers=users.auth(owner))
+    resp = await client.post(
+        f"/api/projects/{project.id}/members",
+        json={"username": "@newbie"},
+        headers=users.auth(owner),
+    )
     assert resp.status_code == 201
     assert {m["user"]["username"] for m in resp.json()["members"]} == {owner.username, "Newbie"}
 
@@ -208,8 +229,9 @@ async def test_add_member(client, users, session):
 async def test_add_member_unknown_user(client, users, session):
     owner = await users.create()
     project = await _project(session, owner)
-    resp = await client.post(f"/api/projects/{project.id}/members",
-                             json={"username": "ghost"}, headers=users.auth(owner))
+    resp = await client.post(
+        f"/api/projects/{project.id}/members", json={"username": "ghost"}, headers=users.auth(owner)
+    )
     assert resp.status_code == 404
 
 
@@ -217,8 +239,9 @@ async def test_add_member_already_member(client, users, session):
     owner = await users.create()
     member = await users.create(username="mia")
     project = await _project(session, owner, member)
-    resp = await client.post(f"/api/projects/{project.id}/members",
-                             json={"username": "mia"}, headers=users.auth(owner))
+    resp = await client.post(
+        f"/api/projects/{project.id}/members", json={"username": "mia"}, headers=users.auth(owner)
+    )
     assert resp.status_code == 409
 
 
@@ -227,8 +250,11 @@ async def test_add_member_by_member_forbidden(client, users, session):
     member = await users.create()
     await users.create(username="third")
     project = await _project(session, owner, member)
-    resp = await client.post(f"/api/projects/{project.id}/members",
-                             json={"username": "third"}, headers=users.auth(member))
+    resp = await client.post(
+        f"/api/projects/{project.id}/members",
+        json={"username": "third"},
+        headers=users.auth(member),
+    )
     assert resp.status_code == 403
 
 
@@ -236,20 +262,22 @@ async def test_member_leaves(client, users, session):
     owner = await users.create()
     member = await users.create()
     project = await _project(session, owner, member)
-    resp = await client.delete(f"/api/projects/{project.id}/members/{member.id}",
-                               headers=users.auth(member))
+    resp = await client.delete(
+        f"/api/projects/{project.id}/members/{member.id}", headers=users.auth(member)
+    )
     assert resp.status_code == 204
-    assert (await client.get(f"/api/projects/{project.id}",
-                             headers=users.auth(member))).status_code == 404
+    assert (
+        await client.get(f"/api/projects/{project.id}", headers=users.auth(member))
+    ).status_code == 404
 
 
 async def test_departed_member_shared_pins_stay(client, users, data, session):
     owner, member, feed, article = await _team(users, data)
     project = await _project(session, owner, member)
-    await _pin(session, project, article, member, is_shared=True,
-               shared_at=datetime.now(timezone.utc))
-    await client.delete(f"/api/projects/{project.id}/members/{member.id}",
-                        headers=users.auth(member))
+    await _pin(session, project, article, member, is_shared=True, shared_at=datetime.now(UTC))
+    await client.delete(
+        f"/api/projects/{project.id}/members/{member.id}", headers=users.auth(member)
+    )
     resp = await client.get(f"/api/projects/{project.id}/articles", headers=users.auth(owner))
     assert [p["article"]["title"] for p in resp.json()] == ["Pinned Article"]
 
@@ -257,8 +285,9 @@ async def test_departed_member_shared_pins_stay(client, users, data, session):
 async def test_owner_cannot_leave(client, users, session):
     owner = await users.create()
     project = await _project(session, owner)
-    resp = await client.delete(f"/api/projects/{project.id}/members/{owner.id}",
-                               headers=users.auth(owner))
+    resp = await client.delete(
+        f"/api/projects/{project.id}/members/{owner.id}", headers=users.auth(owner)
+    )
     assert resp.status_code == 422
 
 
@@ -266,8 +295,9 @@ async def test_owner_removes_member(client, users, session):
     owner = await users.create()
     member = await users.create()
     project = await _project(session, owner, member)
-    resp = await client.delete(f"/api/projects/{project.id}/members/{member.id}",
-                               headers=users.auth(owner))
+    resp = await client.delete(
+        f"/api/projects/{project.id}/members/{member.id}", headers=users.auth(owner)
+    )
     assert resp.status_code == 204
 
 
@@ -276,8 +306,9 @@ async def test_member_removes_other_forbidden(client, users, session):
     m1 = await users.create()
     m2 = await users.create()
     project = await _project(session, owner, m1, m2)
-    resp = await client.delete(f"/api/projects/{project.id}/members/{m2.id}",
-                               headers=users.auth(m1))
+    resp = await client.delete(
+        f"/api/projects/{project.id}/members/{m2.id}", headers=users.auth(m1)
+    )
     assert resp.status_code == 403
 
 
@@ -285,19 +316,20 @@ async def test_owner_removes_nonexistent_member(client, users, session):
     owner = await users.create()
     outsider = await users.create()
     project = await _project(session, owner)
-    resp = await client.delete(f"/api/projects/{project.id}/members/{outsider.id}",
-                               headers=users.auth(owner))
+    resp = await client.delete(
+        f"/api/projects/{project.id}/members/{outsider.id}", headers=users.auth(owner)
+    )
     assert resp.status_code == 404
 
 
 # --- pin listing & visibility ---
 
+
 async def test_list_articles_hides_others_private(client, users, data, session):
     owner, member, feed, article = await _team(users, data)
     second = await data.article(feed, title="Private One")
     project = await _project(session, owner, member)
-    await _pin(session, project, article, owner, is_shared=True,
-               shared_at=datetime.now(timezone.utc))
+    await _pin(session, project, article, owner, is_shared=True, shared_at=datetime.now(UTC))
     await _pin(session, project, second, owner)
     mine = await client.get(f"/api/projects/{project.id}/articles", headers=users.auth(owner))
     assert {p["article"]["title"] for p in mine.json()} == {"Pinned Article", "Private One"}
@@ -309,14 +341,15 @@ async def test_list_articles_scopes(client, users, data, session):
     owner, member, feed, article = await _team(users, data)
     second = await data.article(feed, title="Mine Private")
     project = await _project(session, owner, member)
-    await _pin(session, project, article, member, is_shared=True,
-               shared_at=datetime.now(timezone.utc))
+    await _pin(session, project, article, member, is_shared=True, shared_at=datetime.now(UTC))
     await _pin(session, project, second, owner)
-    shared = await client.get(f"/api/projects/{project.id}/articles?scope=shared",
-                              headers=users.auth(owner))
+    shared = await client.get(
+        f"/api/projects/{project.id}/articles?scope=shared", headers=users.auth(owner)
+    )
     assert [p["article"]["title"] for p in shared.json()] == ["Pinned Article"]
-    mine = await client.get(f"/api/projects/{project.id}/articles?scope=mine",
-                            headers=users.auth(owner))
+    mine = await client.get(
+        f"/api/projects/{project.id}/articles?scope=mine", headers=users.auth(owner)
+    )
     assert [p["article"]["title"] for p in mine.json()] == ["Mine Private"]
 
 
@@ -324,16 +357,29 @@ async def test_list_articles_orders_by_publish_time(client, users, data, session
     owner, member, feed, article = await _team(users, data)
     old = await data.article(feed, title="Old But Published Today")
     project = await _project(session, owner, member)
-    await _pin(session, project, article, owner, is_shared=True,
-               shared_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
-               created_at=datetime(2026, 1, 1, tzinfo=timezone.utc))
+    await _pin(
+        session,
+        project,
+        article,
+        owner,
+        is_shared=True,
+        shared_at=datetime(2026, 1, 1, tzinfo=UTC),
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+    )
     # Added long ago, published just now → must surface first.
-    await _pin(session, project, old, owner, is_shared=True,
-               shared_at=datetime(2026, 7, 1, tzinfo=timezone.utc),
-               created_at=datetime(2025, 12, 1, tzinfo=timezone.utc))
+    await _pin(
+        session,
+        project,
+        old,
+        owner,
+        is_shared=True,
+        shared_at=datetime(2026, 7, 1, tzinfo=UTC),
+        created_at=datetime(2025, 12, 1, tzinfo=UTC),
+    )
     resp = await client.get(f"/api/projects/{project.id}/articles", headers=users.auth(owner))
     assert [p["article"]["title"] for p in resp.json()] == [
-        "Old But Published Today", "Pinned Article",
+        "Old But Published Today",
+        "Pinned Article",
     ]
 
 
@@ -341,8 +387,7 @@ async def test_list_articles_includes_state_and_meta(client, users, data, sessio
     owner, member, feed, article = await _team(users, data)
     await data.state(member, article, is_saved=True)
     project = await _project(session, owner, member)
-    await _pin(session, project, article, owner, is_shared=True,
-               shared_at=datetime.now(timezone.utc))
+    await _pin(session, project, article, owner, is_shared=True, shared_at=datetime.now(UTC))
     await _comment(session, project, article, owner, "worth a read")
     resp = await client.get(f"/api/projects/{project.id}/articles", headers=users.auth(member))
     [pin] = resp.json()
@@ -359,18 +404,21 @@ async def test_list_articles_non_member_404(client, users, session):
     owner = await users.create()
     outsider = await users.create()
     project = await _project(session, owner)
-    resp = await client.get(f"/api/projects/{project.id}/articles",
-                            headers=users.auth(outsider))
+    resp = await client.get(f"/api/projects/{project.id}/articles", headers=users.auth(outsider))
     assert resp.status_code == 404
 
 
 # --- adding pins ---
 
+
 async def test_add_article_private_default(client, users, data, session):
     owner, member, feed, article = await _team(users, data)
     project = await _project(session, owner, member)
-    resp = await client.post(f"/api/projects/{project.id}/articles",
-                             json={"article_id": article.id}, headers=users.auth(member))
+    resp = await client.post(
+        f"/api/projects/{project.id}/articles",
+        json={"article_id": article.id},
+        headers=users.auth(member),
+    )
     assert resp.status_code == 201
     body = resp.json()
     assert body["is_shared"] is False
@@ -403,9 +451,11 @@ async def test_add_article_shared_stamps_shared_at(client, users, data, session)
 async def test_add_article_blank_note_posts_no_comment(client, users, data, session):
     owner, member, feed, article = await _team(users, data)
     project = await _project(session, owner)
-    resp = await client.post(f"/api/projects/{project.id}/articles",
-                             json={"article_id": article.id, "note": "   "},
-                             headers=users.auth(owner))
+    resp = await client.post(
+        f"/api/projects/{project.id}/articles",
+        json={"article_id": article.id, "note": "   "},
+        headers=users.auth(owner),
+    )
     assert resp.json()["comment_count"] == 0
 
 
@@ -413,10 +463,12 @@ async def test_add_article_duplicate_by_same_user(client, users, data, session):
     owner, member, feed, article = await _team(users, data)
     project = await _project(session, owner)
     payload = {"article_id": article.id}
-    await client.post(f"/api/projects/{project.id}/articles", json=payload,
-                      headers=users.auth(owner))
-    resp = await client.post(f"/api/projects/{project.id}/articles", json=payload,
-                             headers=users.auth(owner))
+    await client.post(
+        f"/api/projects/{project.id}/articles", json=payload, headers=users.auth(owner)
+    )
+    resp = await client.post(
+        f"/api/projects/{project.id}/articles", json=payload, headers=users.auth(owner)
+    )
     assert resp.status_code == 409
 
 
@@ -424,10 +476,12 @@ async def test_add_article_same_article_two_users_ok(client, users, data, sessio
     owner, member, feed, article = await _team(users, data)
     project = await _project(session, owner, member)
     payload = {"article_id": article.id}
-    r1 = await client.post(f"/api/projects/{project.id}/articles", json=payload,
-                           headers=users.auth(owner))
-    r2 = await client.post(f"/api/projects/{project.id}/articles", json=payload,
-                           headers=users.auth(member))
+    r1 = await client.post(
+        f"/api/projects/{project.id}/articles", json=payload, headers=users.auth(owner)
+    )
+    r2 = await client.post(
+        f"/api/projects/{project.id}/articles", json=payload, headers=users.auth(member)
+    )
     assert (r1.status_code, r2.status_code) == (201, 201)
 
 
@@ -436,16 +490,22 @@ async def test_add_article_no_access(client, users, data, session):
     feed = await data.feed()  # not subscribed
     article = await data.article(feed)
     project = await _project(session, owner)
-    resp = await client.post(f"/api/projects/{project.id}/articles",
-                             json={"article_id": article.id}, headers=users.auth(owner))
+    resp = await client.post(
+        f"/api/projects/{project.id}/articles",
+        json={"article_id": article.id},
+        headers=users.auth(owner),
+    )
     assert resp.status_code == 404
 
 
 async def test_add_article_nonexistent(client, users, session):
     owner = await users.create()
     project = await _project(session, owner)
-    resp = await client.post(f"/api/projects/{project.id}/articles",
-                             json={"article_id": 99999}, headers=users.auth(owner))
+    resp = await client.post(
+        f"/api/projects/{project.id}/articles",
+        json={"article_id": 99999},
+        headers=users.auth(owner),
+    )
     assert resp.status_code == 404
 
 
@@ -453,8 +513,11 @@ async def test_add_article_non_member_404(client, users, data, session):
     owner, member, feed, article = await _team(users, data)
     outsider = await users.create()
     project = await _project(session, owner)
-    resp = await client.post(f"/api/projects/{project.id}/articles",
-                             json={"article_id": article.id}, headers=users.auth(outsider))
+    resp = await client.post(
+        f"/api/projects/{project.id}/articles",
+        json={"article_id": article.id},
+        headers=users.auth(outsider),
+    )
     assert resp.status_code == 404
 
 
@@ -464,22 +527,28 @@ async def test_add_article_accessible_via_other_project(client, users, data, ses
     owner, member, feed, article = await _team(users, data)
     stranger = await users.create(username="sasha")  # no subscription at all
     source = await _project(session, owner, stranger, name="Source")
-    await _pin(session, source, article, owner, is_shared=True,
-               shared_at=datetime.now(timezone.utc))
+    await _pin(session, source, article, owner, is_shared=True, shared_at=datetime.now(UTC))
     own = await _project(session, stranger, name="Sasha's")
-    resp = await client.post(f"/api/projects/{own.id}/articles",
-                             json={"article_id": article.id}, headers=users.auth(stranger))
+    resp = await client.post(
+        f"/api/projects/{own.id}/articles",
+        json={"article_id": article.id},
+        headers=users.auth(stranger),
+    )
     assert resp.status_code == 201
 
 
 # --- editing pins ---
 
+
 async def test_publish_pin_sets_shared_at(client, users, data, session):
     owner, member, feed, article = await _team(users, data)
     project = await _project(session, owner)
     pin = await _pin(session, project, article, owner)
-    resp = await client.patch(f"/api/projects/{project.id}/articles/{pin.id}",
-                              json={"is_shared": True}, headers=users.auth(owner))
+    resp = await client.patch(
+        f"/api/projects/{project.id}/articles/{pin.id}",
+        json={"is_shared": True},
+        headers=users.auth(owner),
+    )
     assert resp.status_code == 200
     assert resp.json()["is_shared"] is True
     assert resp.json()["shared_at"] is not None
@@ -488,10 +557,12 @@ async def test_publish_pin_sets_shared_at(client, users, data, session):
 async def test_unpublish_pin_clears_shared_at(client, users, data, session):
     owner, member, feed, article = await _team(users, data)
     project = await _project(session, owner)
-    pin = await _pin(session, project, article, owner, is_shared=True,
-                     shared_at=datetime.now(timezone.utc))
-    resp = await client.patch(f"/api/projects/{project.id}/articles/{pin.id}",
-                              json={"is_shared": False}, headers=users.auth(owner))
+    pin = await _pin(session, project, article, owner, is_shared=True, shared_at=datetime.now(UTC))
+    resp = await client.patch(
+        f"/api/projects/{project.id}/articles/{pin.id}",
+        json={"is_shared": False},
+        headers=users.auth(owner),
+    )
     assert resp.json()["is_shared"] is False
     assert resp.json()["shared_at"] is None
 
@@ -499,30 +570,37 @@ async def test_unpublish_pin_clears_shared_at(client, users, data, session):
 async def test_republish_keeps_original_shared_at(client, users, data, session):
     owner, member, feed, article = await _team(users, data)
     project = await _project(session, owner)
-    stamp = datetime(2026, 6, 1, tzinfo=timezone.utc)
+    stamp = datetime(2026, 6, 1, tzinfo=UTC)
     pin = await _pin(session, project, article, owner, is_shared=True, shared_at=stamp)
-    resp = await client.patch(f"/api/projects/{project.id}/articles/{pin.id}",
-                              json={"is_shared": True}, headers=users.auth(owner))
+    resp = await client.patch(
+        f"/api/projects/{project.id}/articles/{pin.id}",
+        json={"is_shared": True},
+        headers=users.auth(owner),
+    )
     assert resp.json()["shared_at"] == "2026-06-01T00:00:00Z"
 
 
 async def test_update_pin_null_flag_ignored(client, users, data, session):
     owner, member, feed, article = await _team(users, data)
     project = await _project(session, owner)
-    pin = await _pin(session, project, article, owner, is_shared=True,
-                     shared_at=datetime.now(timezone.utc))
-    resp = await client.patch(f"/api/projects/{project.id}/articles/{pin.id}",
-                              json={"is_shared": None}, headers=users.auth(owner))
+    pin = await _pin(session, project, article, owner, is_shared=True, shared_at=datetime.now(UTC))
+    resp = await client.patch(
+        f"/api/projects/{project.id}/articles/{pin.id}",
+        json={"is_shared": None},
+        headers=users.auth(owner),
+    )
     assert resp.json()["is_shared"] is True  # explicit null = unchanged
 
 
 async def test_update_pin_not_adder_forbidden(client, users, data, session):
     owner, member, feed, article = await _team(users, data)
     project = await _project(session, owner, member)
-    pin = await _pin(session, project, article, member, is_shared=True,
-                     shared_at=datetime.now(timezone.utc))
-    resp = await client.patch(f"/api/projects/{project.id}/articles/{pin.id}",
-                              json={"is_shared": False}, headers=users.auth(owner))
+    pin = await _pin(session, project, article, member, is_shared=True, shared_at=datetime.now(UTC))
+    resp = await client.patch(
+        f"/api/projects/{project.id}/articles/{pin.id}",
+        json={"is_shared": False},
+        headers=users.auth(owner),
+    )
     assert resp.status_code == 403
 
 
@@ -530,8 +608,11 @@ async def test_update_pin_others_private_is_404(client, users, data, session):
     owner, member, feed, article = await _team(users, data)
     project = await _project(session, owner, member)
     pin = await _pin(session, project, article, member)  # private
-    resp = await client.patch(f"/api/projects/{project.id}/articles/{pin.id}",
-                              json={"is_shared": True}, headers=users.auth(owner))
+    resp = await client.patch(
+        f"/api/projects/{project.id}/articles/{pin.id}",
+        json={"is_shared": True},
+        headers=users.auth(owner),
+    )
     assert resp.status_code == 404
 
 
@@ -540,29 +621,34 @@ async def test_update_pin_wrong_project_404(client, users, data, session):
     project = await _project(session, owner)
     other = await _project(session, owner, name="Other")
     pin = await _pin(session, project, article, owner)
-    resp = await client.patch(f"/api/projects/{other.id}/articles/{pin.id}",
-                              json={"is_shared": True}, headers=users.auth(owner))
+    resp = await client.patch(
+        f"/api/projects/{other.id}/articles/{pin.id}",
+        json={"is_shared": True},
+        headers=users.auth(owner),
+    )
     assert resp.status_code == 404
 
 
 # --- removing pins ---
 
+
 async def test_adder_removes_own_pin(client, users, data, session):
     owner, member, feed, article = await _team(users, data)
     project = await _project(session, owner, member)
     pin = await _pin(session, project, article, member)
-    resp = await client.delete(f"/api/projects/{project.id}/articles/{pin.id}",
-                               headers=users.auth(member))
+    resp = await client.delete(
+        f"/api/projects/{project.id}/articles/{pin.id}", headers=users.auth(member)
+    )
     assert resp.status_code == 204
 
 
 async def test_owner_removes_others_shared_pin(client, users, data, session):
     owner, member, feed, article = await _team(users, data)
     project = await _project(session, owner, member)
-    pin = await _pin(session, project, article, member, is_shared=True,
-                     shared_at=datetime.now(timezone.utc))
-    resp = await client.delete(f"/api/projects/{project.id}/articles/{pin.id}",
-                               headers=users.auth(owner))
+    pin = await _pin(session, project, article, member, is_shared=True, shared_at=datetime.now(UTC))
+    resp = await client.delete(
+        f"/api/projects/{project.id}/articles/{pin.id}", headers=users.auth(owner)
+    )
     assert resp.status_code == 204
 
 
@@ -570,8 +656,9 @@ async def test_owner_cannot_remove_others_private_pin(client, users, data, sessi
     owner, member, feed, article = await _team(users, data)
     project = await _project(session, owner, member)
     pin = await _pin(session, project, article, member)
-    resp = await client.delete(f"/api/projects/{project.id}/articles/{pin.id}",
-                               headers=users.auth(owner))
+    resp = await client.delete(
+        f"/api/projects/{project.id}/articles/{pin.id}", headers=users.auth(owner)
+    )
     assert resp.status_code == 404  # invisible, not merely forbidden
 
 
@@ -579,16 +666,16 @@ async def test_member_cannot_remove_others_shared_pin(client, users, data, sessi
     owner, member, feed, article = await _team(users, data)
     m2 = await users.create()
     project = await _project(session, owner, member, m2)
-    pin = await _pin(session, project, article, member, is_shared=True,
-                     shared_at=datetime.now(timezone.utc))
-    resp = await client.delete(f"/api/projects/{project.id}/articles/{pin.id}",
-                               headers=users.auth(m2))
+    pin = await _pin(session, project, article, member, is_shared=True, shared_at=datetime.now(UTC))
+    resp = await client.delete(
+        f"/api/projects/{project.id}/articles/{pin.id}", headers=users.auth(m2)
+    )
     assert resp.status_code == 403
 
 
 async def test_remove_by_article_removes_own_and_shared_for_owner(client, users, data, session):
     owner, member, feed, article = await _team(users, data)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     project = await _project(session, owner, member)
     await _pin(session, project, article, owner)  # owner's private pin
     await _pin(session, project, article, member, is_shared=True, shared_at=now)
@@ -597,14 +684,15 @@ async def test_remove_by_article_removes_own_and_shared_for_owner(client, users,
         headers=users.auth(owner),
     )
     assert resp.status_code == 204
-    left = (await client.get(f"/api/projects/{project.id}/articles",
-                             headers=users.auth(member))).json()
+    left = (
+        await client.get(f"/api/projects/{project.id}/articles", headers=users.auth(member))
+    ).json()
     assert left == []
 
 
 async def test_remove_by_article_member_keeps_others_shared(client, users, data, session):
     owner, member, feed, article = await _team(users, data)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     project = await _project(session, owner, member)
     await _pin(session, project, article, member)  # member's own private pin
     await _pin(session, project, article, owner, is_shared=True, shared_at=now)
@@ -613,8 +701,9 @@ async def test_remove_by_article_member_keeps_others_shared(client, users, data,
         headers=users.auth(member),
     )
     assert resp.status_code == 204
-    left = (await client.get(f"/api/projects/{project.id}/articles",
-                             headers=users.auth(member))).json()
+    left = (
+        await client.get(f"/api/projects/{project.id}/articles", headers=users.auth(member))
+    ).json()
     # The owner's shared pin survives; only the member's own pin went away.
     assert [p["added_by"]["username"] for p in left] == [owner.username]
 
@@ -632,7 +721,7 @@ async def test_remove_by_article_nothing_visible_404(client, users, data, sessio
 
 async def test_remove_by_article_member_cannot_remove_others_shared(client, users, data, session):
     owner, member, feed, article = await _team(users, data)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     project = await _project(session, owner, member)
     await _pin(session, project, article, owner, is_shared=True, shared_at=now)
     resp = await client.delete(
@@ -644,21 +733,25 @@ async def test_remove_by_article_member_cannot_remove_others_shared(client, user
 
 # --- unseen counts, visits, mute ---
 
+
 async def test_unseen_counts_others_published_since_visit(client, users, data, session):
     owner, member, feed, article = await _team(users, data)
     second = await data.article(feed, title="Newer")
     project = await _project(session, owner, member)
     # Member visited between the two publishes.
-    await _pin(session, project, article, owner, is_shared=True,
-               shared_at=datetime(2026, 7, 1, tzinfo=timezone.utc))
-    membership = await session.scalar(
-        select(ProjectMember).where(ProjectMember.project_id == project.id,
-                                    ProjectMember.user_id == member.id)
+    await _pin(
+        session, project, article, owner, is_shared=True, shared_at=datetime(2026, 7, 1, tzinfo=UTC)
     )
-    membership.last_visited_at = datetime(2026, 7, 2, tzinfo=timezone.utc)
+    membership = await session.scalar(
+        select(ProjectMember).where(
+            ProjectMember.project_id == project.id, ProjectMember.user_id == member.id
+        )
+    )
+    membership.last_visited_at = datetime(2026, 7, 2, tzinfo=UTC)
     await session.commit()
-    await _pin(session, project, second, owner, is_shared=True,
-               shared_at=datetime(2026, 7, 3, tzinfo=timezone.utc))
+    await _pin(
+        session, project, second, owner, is_shared=True, shared_at=datetime(2026, 7, 3, tzinfo=UTC)
+    )
 
     resp = await client.get("/api/projects", headers=users.auth(member))
     assert resp.json()[0]["unseen_count"] == 1
@@ -667,8 +760,7 @@ async def test_unseen_counts_others_published_since_visit(client, users, data, s
 async def test_unseen_counts_everything_before_first_visit(client, users, data, session):
     owner, member, feed, article = await _team(users, data)
     project = await _project(session, owner, member)
-    await _pin(session, project, article, owner, is_shared=True,
-               shared_at=datetime.now(timezone.utc))
+    await _pin(session, project, article, owner, is_shared=True, shared_at=datetime.now(UTC))
     resp = await client.get("/api/projects", headers=users.auth(member))
     assert resp.json()[0]["unseen_count"] == 1
 
@@ -677,8 +769,9 @@ async def test_unseen_ignores_own_and_private_pins(client, users, data, session)
     owner, member, feed, article = await _team(users, data)
     second = await data.article(feed, title="Private One")
     project = await _project(session, owner, member)
-    await _pin(session, project, article, member, is_shared=True,
-               shared_at=datetime.now(timezone.utc))  # member's own publish
+    await _pin(
+        session, project, article, member, is_shared=True, shared_at=datetime.now(UTC)
+    )  # member's own publish
     await _pin(session, project, second, owner)  # owner's private pin
     resp = await client.get("/api/projects", headers=users.auth(member))
     assert resp.json()[0]["unseen_count"] == 0
@@ -687,8 +780,7 @@ async def test_unseen_ignores_own_and_private_pins(client, users, data, session)
 async def test_visit_resets_unseen(client, users, data, session):
     owner, member, feed, article = await _team(users, data)
     project = await _project(session, owner, member)
-    await _pin(session, project, article, owner, is_shared=True,
-               shared_at=datetime.now(timezone.utc))
+    await _pin(session, project, article, owner, is_shared=True, shared_at=datetime.now(UTC))
     resp = await client.post(f"/api/projects/{project.id}/visit", headers=users.auth(member))
     assert resp.status_code == 204
     resp = await client.get("/api/projects", headers=users.auth(member))
@@ -707,8 +799,11 @@ async def test_membership_mute_toggle(client, users, session):
     owner = await users.create()
     member = await users.create()
     project = await _project(session, owner, member)
-    resp = await client.patch(f"/api/projects/{project.id}/membership",
-                              json={"is_muted": True}, headers=users.auth(member))
+    resp = await client.patch(
+        f"/api/projects/{project.id}/membership",
+        json={"is_muted": True},
+        headers=users.auth(member),
+    )
     assert resp.status_code == 200
     assert resp.json()["is_muted"] is True
     # The other member's view is unaffected.
@@ -720,12 +815,16 @@ async def test_membership_non_member_404(client, users, session):
     owner = await users.create()
     outsider = await users.create()
     project = await _project(session, owner)
-    resp = await client.patch(f"/api/projects/{project.id}/membership",
-                              json={"is_muted": True}, headers=users.auth(outsider))
+    resp = await client.patch(
+        f"/api/projects/{project.id}/membership",
+        json={"is_muted": True},
+        headers=users.auth(outsider),
+    )
     assert resp.status_code == 404
 
 
 # --- publish push enqueues ---
+
 
 async def test_add_shared_pin_enqueues_push(client, users, data, session, monkeypatch):
     owner, member, feed, article = await _team(users, data)
@@ -736,9 +835,11 @@ async def test_add_shared_pin_enqueues_push(client, users, data, session, monkey
         jobs.append((job_name, args))
 
     monkeypatch.setattr("app.routers.projects.enqueue", record)
-    resp = await client.post(f"/api/projects/{project.id}/articles",
-                             json={"article_id": article.id, "is_shared": True},
-                             headers=users.auth(owner))
+    resp = await client.post(
+        f"/api/projects/{project.id}/articles",
+        json={"article_id": article.id, "is_shared": True},
+        headers=users.auth(owner),
+    )
     assert resp.status_code == 201
     assert jobs == [("send_project_pin_push", (resp.json()["id"],))]
 
@@ -752,8 +853,11 @@ async def test_add_private_pin_enqueues_nothing(client, users, data, session, mo
         jobs.append((job_name, args))
 
     monkeypatch.setattr("app.routers.projects.enqueue", record)
-    await client.post(f"/api/projects/{project.id}/articles",
-                      json={"article_id": article.id}, headers=users.auth(owner))
+    await client.post(
+        f"/api/projects/{project.id}/articles",
+        json={"article_id": article.id},
+        headers=users.auth(owner),
+    )
     assert jobs == []
 
 
@@ -767,24 +871,32 @@ async def test_publish_flip_enqueues_push_once(client, users, data, session, mon
         jobs.append((job_name, args))
 
     monkeypatch.setattr("app.routers.projects.enqueue", record)
-    await client.patch(f"/api/projects/{project.id}/articles/{pin.id}",
-                       json={"is_shared": True}, headers=users.auth(owner))
+    await client.patch(
+        f"/api/projects/{project.id}/articles/{pin.id}",
+        json={"is_shared": True},
+        headers=users.auth(owner),
+    )
     # Re-publishing an already-shared pin must not notify again.
-    await client.patch(f"/api/projects/{project.id}/articles/{pin.id}",
-                       json={"is_shared": True}, headers=users.auth(owner))
+    await client.patch(
+        f"/api/projects/{project.id}/articles/{pin.id}",
+        json={"is_shared": True},
+        headers=users.auth(owner),
+    )
     assert jobs == [("send_project_pin_push", (pin.id,))]
 
 
 # --- picker status ---
+
 
 async def test_article_project_status(client, users, data, session):
     owner, member, feed, article = await _team(users, data)
     with_my_pin = await _project(session, member, name="Mine")
     await _pin(session, with_my_pin, article, member)
     shared_by_other = await _project(session, owner, member, name="Theirs")
-    await _pin(session, shared_by_other, article, owner, is_shared=True,
-               shared_at=datetime.now(timezone.utc))
-    empty = await _project(session, member, name="Empty")
+    await _pin(
+        session, shared_by_other, article, owner, is_shared=True, shared_at=datetime.now(UTC)
+    )
+    await _project(session, member, name="Empty")
 
     resp = await client.get(f"/api/projects/article/{article.id}", headers=users.auth(member))
     by_name = {s["project_name"]: s for s in resp.json()}
@@ -809,12 +921,12 @@ async def test_article_project_status_ignores_others_private(client, users, data
 
 # --- access through projects (user_can_access leg) ---
 
+
 async def test_get_article_via_shared_project_pin(client, users, data, session):
     owner, member, feed, article = await _team(users, data)
     stranger = await users.create(username="reader")
     project = await _project(session, owner, stranger)
-    await _pin(session, project, article, owner, is_shared=True,
-               shared_at=datetime.now(timezone.utc))
+    await _pin(session, project, article, owner, is_shared=True, shared_at=datetime.now(UTC))
     resp = await client.get(f"/api/articles/{article.id}", headers=users.auth(stranger))
     assert resp.status_code == 200
 
@@ -829,6 +941,7 @@ async def test_get_article_others_private_pin_denies(client, users, data, sessio
 
 
 # --- embedding-based suggestions ---
+
 
 def _vec(direction: str) -> list[float]:
     """Orthogonal toy vectors: 'ai' articles vs 'sports' articles."""
@@ -852,14 +965,13 @@ async def test_status_suggests_best_matching_project(client, users, data, sessio
     await _embed(session, new_article, "ai")
 
     ai_project = await _project(session, owner, name="AI")
-    await _pin(session, ai_project, ai_article, owner, is_shared=True,
-               shared_at=datetime.now(timezone.utc))
+    await _pin(session, ai_project, ai_article, owner, is_shared=True, shared_at=datetime.now(UTC))
     sports_project = await _project(session, owner, name="Sports")
-    await _pin(session, sports_project, sports_article, owner, is_shared=True,
-               shared_at=datetime.now(timezone.utc))
+    await _pin(
+        session, sports_project, sports_article, owner, is_shared=True, shared_at=datetime.now(UTC)
+    )
 
-    resp = await client.get(f"/api/projects/article/{new_article.id}",
-                            headers=users.auth(owner))
+    resp = await client.get(f"/api/projects/article/{new_article.id}", headers=users.auth(owner))
     by_name = {s["project_name"]: s for s in resp.json()}
     assert by_name["AI"]["suggested"] is True
     assert by_name["Sports"]["suggested"] is False
@@ -870,11 +982,9 @@ async def test_status_no_suggestion_without_embedding(client, users, data, sessi
     project = await _project(session, owner, name="AI")
     pinned = await data.article(feed, title="Pinned")
     await _embed(session, pinned, "ai")
-    await _pin(session, project, pinned, owner, is_shared=True,
-               shared_at=datetime.now(timezone.utc))
+    await _pin(session, project, pinned, owner, is_shared=True, shared_at=datetime.now(UTC))
     # `article` itself has no embedding row.
-    resp = await client.get(f"/api/projects/article/{article.id}",
-                            headers=users.auth(owner))
+    resp = await client.get(f"/api/projects/article/{article.id}", headers=users.auth(owner))
     assert all(s["suggested"] is False for s in resp.json())
 
 
@@ -884,12 +994,10 @@ async def test_status_never_suggests_where_already_pinned(client, users, data, s
     await _embed(session, article, "ai")
     await _embed(session, twin, "ai")
     project = await _project(session, owner, name="AI")
-    await _pin(session, project, twin, owner, is_shared=True,
-               shared_at=datetime.now(timezone.utc))
+    await _pin(session, project, twin, owner, is_shared=True, shared_at=datetime.now(UTC))
     await _pin(session, project, article, owner)  # already added by viewer
 
-    resp = await client.get(f"/api/projects/article/{article.id}",
-                            headers=users.auth(owner))
+    resp = await client.get(f"/api/projects/article/{article.id}", headers=users.auth(owner))
     [status] = resp.json()
     assert status["suggested"] is False
 
@@ -902,14 +1010,17 @@ async def test_status_suggestion_ignores_others_private_pins(client, users, data
     project = await _project(session, owner, member, name="AI")
     await _pin(session, project, hidden, owner)  # private → invisible to member
 
-    resp = await client.get(f"/api/projects/article/{article.id}",
-                            headers=users.auth(member))
+    resp = await client.get(f"/api/projects/article/{article.id}", headers=users.auth(member))
     [status] = resp.json()
     assert status["suggested"] is False
 
 
 async def test_status_suggestion_skipped_without_vector_support(
-    client, users, data, session, monkeypatch,
+    client,
+    users,
+    data,
+    session,
+    monkeypatch,
 ):
     from app import db as app_db
 
@@ -918,33 +1029,31 @@ async def test_status_suggestion_skipped_without_vector_support(
     await _embed(session, article, "ai")
     await _embed(session, pinned, "ai")
     project = await _project(session, owner, name="AI")
-    await _pin(session, project, pinned, owner, is_shared=True,
-               shared_at=datetime.now(timezone.utc))
+    await _pin(session, project, pinned, owner, is_shared=True, shared_at=datetime.now(UTC))
     monkeypatch.setattr(app_db, "vector_enabled", False)
-    resp = await client.get(f"/api/projects/article/{article.id}",
-                            headers=users.auth(owner))
+    resp = await client.get(f"/api/projects/article/{article.id}", headers=users.auth(owner))
     [status] = resp.json()
     assert status["suggested"] is False
 
 
 # --- ticket status ---
 
+
 async def test_set_status_done_by_any_member(client, users, data, session):
     owner, member, feed, article = await _team(users, data)
     project = await _project(session, owner, member)
-    await _pin(session, project, article, owner, is_shared=True,
-               shared_at=datetime.now(timezone.utc))
+    await _pin(session, project, article, owner, is_shared=True, shared_at=datetime.now(UTC))
     resp = await client.put(
         f"/api/projects/{project.id}/articles/by-article/{article.id}/status",
-        json={"status": "done"}, headers=users.auth(member),
+        json={"status": "done"},
+        headers=users.auth(member),
     )
     assert resp.status_code == 200
     body = resp.json()
     assert body["status"] == "done"
     assert body["updated_by"]["username"] == member.username
     assert body["comment"] is None
-    listing = await client.get(f"/api/projects/{project.id}/articles",
-                               headers=users.auth(owner))
+    listing = await client.get(f"/api/projects/{project.id}/articles", headers=users.auth(owner))
     [pin] = listing.json()
     assert pin["status"] == "done"
     assert pin["status_updated_by"]["username"] == member.username
@@ -953,12 +1062,10 @@ async def test_set_status_done_by_any_member(client, users, data, session):
 async def test_set_status_with_resolution_comment_and_link(client, users, data, session):
     owner, member, feed, article = await _team(users, data)
     project = await _project(session, owner, member)
-    await _pin(session, project, article, owner, is_shared=True,
-               shared_at=datetime.now(timezone.utc))
+    await _pin(session, project, article, owner, is_shared=True, shared_at=datetime.now(UTC))
     resp = await client.put(
         f"/api/projects/{project.id}/articles/by-article/{article.id}/status",
-        json={"status": "done", "comment": " merged ",
-              "link_url": "https://github.com/o/r/pull/7"},
+        json={"status": "done", "comment": " merged ", "link_url": "https://github.com/o/r/pull/7"},
         headers=users.auth(member),
     )
     comment = resp.json()["comment"]
@@ -988,14 +1095,12 @@ async def test_set_status_link_only_comment(client, users, data, session):
 async def test_reopen_after_done(client, users, data, session):
     owner, member, feed, article = await _team(users, data)
     project = await _project(session, owner, member)
-    await _pin(session, project, article, owner, is_shared=True,
-               shared_at=datetime.now(timezone.utc))
+    await _pin(session, project, article, owner, is_shared=True, shared_at=datetime.now(UTC))
     url = f"/api/projects/{project.id}/articles/by-article/{article.id}/status"
     await client.put(url, json={"status": "done"}, headers=users.auth(owner))
     resp = await client.put(url, json={"status": "open"}, headers=users.auth(member))
     assert resp.json()["status"] == "open"
-    listing = await client.get(f"/api/projects/{project.id}/articles",
-                               headers=users.auth(owner))
+    listing = await client.get(f"/api/projects/{project.id}/articles", headers=users.auth(owner))
     [pin] = listing.json()
     assert pin["status"] == "open"
     assert pin["status_updated_by"]["username"] == member.username
@@ -1004,15 +1109,15 @@ async def test_reopen_after_done(client, users, data, session):
 async def test_status_shared_across_pins_of_same_article(client, users, data, session):
     owner, member, feed, article = await _team(users, data)
     project = await _project(session, owner, member)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     await _pin(session, project, article, owner, is_shared=True, shared_at=now)
     await _pin(session, project, article, member, is_shared=True, shared_at=now)
     await client.put(
         f"/api/projects/{project.id}/articles/by-article/{article.id}/status",
-        json={"status": "done"}, headers=users.auth(owner),
+        json={"status": "done"},
+        headers=users.auth(owner),
     )
-    listing = await client.get(f"/api/projects/{project.id}/articles",
-                               headers=users.auth(member))
+    listing = await client.get(f"/api/projects/{project.id}/articles", headers=users.auth(member))
     assert [pin["status"] for pin in listing.json()] == ["done", "done"]
 
 
@@ -1022,7 +1127,8 @@ async def test_set_status_invalid_value_422(client, users, data, session):
     await _pin(session, project, article, owner)
     resp = await client.put(
         f"/api/projects/{project.id}/articles/by-article/{article.id}/status",
-        json={"status": "blocked"}, headers=users.auth(owner),
+        json={"status": "blocked"},
+        headers=users.auth(owner),
     )
     assert resp.status_code == 422
 
@@ -1044,7 +1150,8 @@ async def test_set_status_unpinned_article_404(client, users, data, session):
     project = await _project(session, owner)
     resp = await client.put(
         f"/api/projects/{project.id}/articles/by-article/{article.id}/status",
-        json={"status": "done"}, headers=users.auth(owner),
+        json={"status": "done"},
+        headers=users.auth(owner),
     )
     assert resp.status_code == 404
 
@@ -1055,7 +1162,8 @@ async def test_set_status_others_private_pin_404(client, users, data, session):
     await _pin(session, project, article, owner)  # private to owner
     resp = await client.put(
         f"/api/projects/{project.id}/articles/by-article/{article.id}/status",
-        json={"status": "done"}, headers=users.auth(member),
+        json={"status": "done"},
+        headers=users.auth(member),
     )
     assert resp.status_code == 404
 
@@ -1064,37 +1172,37 @@ async def test_set_status_non_member_404(client, users, data, session):
     owner, member, feed, article = await _team(users, data)
     outsider = await users.create()
     project = await _project(session, owner)
-    await _pin(session, project, article, owner, is_shared=True,
-               shared_at=datetime.now(timezone.utc))
+    await _pin(session, project, article, owner, is_shared=True, shared_at=datetime.now(UTC))
     resp = await client.put(
         f"/api/projects/{project.id}/articles/by-article/{article.id}/status",
-        json={"status": "done"}, headers=users.auth(outsider),
+        json={"status": "done"},
+        headers=users.auth(outsider),
     )
     assert resp.status_code == 404
 
 
 # --- comment threads ---
 
+
 async def test_comment_thread_post_and_list_in_order(client, users, data, session):
     owner, member, feed, article = await _team(users, data)
     project = await _project(session, owner, member)
-    await _pin(session, project, article, owner, is_shared=True,
-               shared_at=datetime.now(timezone.utc))
+    await _pin(session, project, article, owner, is_shared=True, shared_at=datetime.now(UTC))
     url = f"/api/projects/{project.id}/articles/by-article/{article.id}/comments"
-    first = await client.post(url, json={"body": " looks relevant "},
-                              headers=users.auth(owner))
+    first = await client.post(url, json={"body": " looks relevant "}, headers=users.auth(owner))
     assert first.status_code == 201
     assert first.json()["body"] == "looks relevant"
-    await client.post(url, json={"body": "on it", "link_url": "https://youtu.be/x"},
-                      headers=users.auth(member))
+    await client.post(
+        url, json={"body": "on it", "link_url": "https://youtu.be/x"}, headers=users.auth(member)
+    )
     resp = await client.get(url, headers=users.auth(owner))
     thread = resp.json()
     assert [(c["author"]["username"], c["body"]) for c in thread] == [
-        (owner.username, "looks relevant"), (member.username, "on it"),
+        (owner.username, "looks relevant"),
+        (member.username, "on it"),
     ]
     assert thread[1]["link_url"] == "https://youtu.be/x"
-    listing = await client.get(f"/api/projects/{project.id}/articles",
-                               headers=users.auth(owner))
+    listing = await client.get(f"/api/projects/{project.id}/articles", headers=users.auth(owner))
     assert listing.json()[0]["comment_count"] == 2
 
 
@@ -1104,7 +1212,8 @@ async def test_comment_blank_body_422(client, users, data, session):
     await _pin(session, project, article, owner)
     resp = await client.post(
         f"/api/projects/{project.id}/articles/by-article/{article.id}/comments",
-        json={"body": "   "}, headers=users.auth(owner),
+        json={"body": "   "},
+        headers=users.auth(owner),
     )
     assert resp.status_code == 422
 
@@ -1115,7 +1224,8 @@ async def test_comment_invalid_link_422(client, users, data, session):
     await _pin(session, project, article, owner)
     resp = await client.post(
         f"/api/projects/{project.id}/articles/by-article/{article.id}/comments",
-        json={"body": "see", "link_url": "ftp://nope"}, headers=users.auth(owner),
+        json={"body": "see", "link_url": "ftp://nope"},
+        headers=users.auth(owner),
     )
     assert resp.status_code == 422
 
@@ -1135,8 +1245,7 @@ async def test_comment_thread_non_member_404(client, users, data, session):
     owner, member, feed, article = await _team(users, data)
     outsider = await users.create()
     project = await _project(session, owner)
-    await _pin(session, project, article, owner, is_shared=True,
-               shared_at=datetime.now(timezone.utc))
+    await _pin(session, project, article, owner, is_shared=True, shared_at=datetime.now(UTC))
     resp = await client.get(
         f"/api/projects/{project.id}/articles/by-article/{article.id}/comments",
         headers=users.auth(outsider),
@@ -1147,11 +1256,11 @@ async def test_comment_thread_non_member_404(client, users, data, session):
 async def test_delete_comment_by_author(client, users, data, session):
     owner, member, feed, article = await _team(users, data)
     project = await _project(session, owner, member)
-    await _pin(session, project, article, owner, is_shared=True,
-               shared_at=datetime.now(timezone.utc))
+    await _pin(session, project, article, owner, is_shared=True, shared_at=datetime.now(UTC))
     comment = await _comment(session, project, article, member, "oops")
-    resp = await client.delete(f"/api/projects/{project.id}/comments/{comment.id}",
-                               headers=users.auth(member))
+    resp = await client.delete(
+        f"/api/projects/{project.id}/comments/{comment.id}", headers=users.auth(member)
+    )
     assert resp.status_code == 204
     thread = await client.get(
         f"/api/projects/{project.id}/articles/by-article/{article.id}/comments",
@@ -1163,11 +1272,11 @@ async def test_delete_comment_by_author(client, users, data, session):
 async def test_delete_comment_by_owner(client, users, data, session):
     owner, member, feed, article = await _team(users, data)
     project = await _project(session, owner, member)
-    await _pin(session, project, article, owner, is_shared=True,
-               shared_at=datetime.now(timezone.utc))
+    await _pin(session, project, article, owner, is_shared=True, shared_at=datetime.now(UTC))
     comment = await _comment(session, project, article, member, "spam")
-    resp = await client.delete(f"/api/projects/{project.id}/comments/{comment.id}",
-                               headers=users.auth(owner))
+    resp = await client.delete(
+        f"/api/projects/{project.id}/comments/{comment.id}", headers=users.auth(owner)
+    )
     assert resp.status_code == 204
 
 
@@ -1175,11 +1284,11 @@ async def test_delete_comment_other_member_forbidden(client, users, data, sessio
     owner, member, feed, article = await _team(users, data)
     other = await users.create(username="oren")
     project = await _project(session, owner, member, other)
-    await _pin(session, project, article, owner, is_shared=True,
-               shared_at=datetime.now(timezone.utc))
+    await _pin(session, project, article, owner, is_shared=True, shared_at=datetime.now(UTC))
     comment = await _comment(session, project, article, owner, "keep")
-    resp = await client.delete(f"/api/projects/{project.id}/comments/{comment.id}",
-                               headers=users.auth(member))
+    resp = await client.delete(
+        f"/api/projects/{project.id}/comments/{comment.id}", headers=users.auth(member)
+    )
     assert resp.status_code == 403
 
 
@@ -1198,6 +1307,7 @@ async def test_delete_comment_wrong_project_404(client, users, data, session):
 
 # --- note → comment backfill migration ---
 
+
 async def test_note_backfill_migration_idempotent(client, users, data, session):
     from sqlalchemy import text
 
@@ -1205,8 +1315,7 @@ async def test_note_backfill_migration_idempotent(client, users, data, session):
 
     owner, member, feed, article = await _team(users, data)
     project = await _project(session, owner, member)
-    pin = await _pin(session, project, article, owner, is_shared=True,
-                     shared_at=datetime.now(timezone.utc))
+    pin = await _pin(session, project, article, owner, is_shared=True, shared_at=datetime.now(UTC))
     blank = await data.article(feed, title="Blank Note")
     await _pin(session, project, blank, owner)
     await session.execute(
@@ -1214,11 +1323,11 @@ async def test_note_backfill_migration_idempotent(client, users, data, session):
         {"id": pin.id},
     )
     await session.execute(
-        text("UPDATE project_articles SET note = '   ' WHERE id != :id"), {"id": pin.id},
+        text("UPDATE project_articles SET note = '   ' WHERE id != :id"),
+        {"id": pin.id},
     )
     await session.commit()
-    backfill = [m for m in MIGRATIONS if "project_article_comments" in m or
-                "SET note = NULL" in m]
+    backfill = [m for m in MIGRATIONS if "project_article_comments" in m or "SET note = NULL" in m]
     assert len(backfill) == 2
     for _ in range(2):  # running the pair twice must not duplicate comments
         for statement in backfill:

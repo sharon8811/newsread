@@ -3,7 +3,7 @@ from datetime import timedelta
 
 import httpx
 
-from .base import CleanUrl, EnrichError, Enricher
+from .base import CleanUrl, Enricher, EnrichError
 
 _VIDEO_ID = re.compile(r"^[A-Za-z0-9_-]{11}$")
 

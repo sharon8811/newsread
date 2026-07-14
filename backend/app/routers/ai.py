@@ -47,9 +47,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["ai"])
 
 
-async def _accessible_article(
-    session: AsyncSession, user: User, article_id: int
-) -> Article:
+async def _accessible_article(session: AsyncSession, user: User, article_id: int) -> Article:
     article = await session.get(Article, article_id)
     if article is None or not await user_can_access(session, user.id, article):
         raise HTTPException(status_code=404, detail="Article not found")
@@ -65,7 +63,7 @@ async def _resolve_llm(session: AsyncSession, user: User) -> llm.LLMConfig:
         raise HTTPException(
             status_code=503,
             detail="Your stored API key can't be decrypted — re-enter it in Settings.",
-        )
+        ) from None
     if config is None:
         raise HTTPException(
             status_code=503,
@@ -114,28 +112,36 @@ async def summarize_article(
     usage = llm.TokenUsage()
     started = time.monotonic()
     try:
-        await generate_summaries(
-            session, article, config=config, usage=usage, allow_vision=True
-        )
+        await generate_summaries(session, article, config=config, usage=usage, allow_vision=True)
     except ThinContentError:
         # Summarizing a headline stub just makes the model invent details.
         # No LLM call happened, so nothing lands in llm_usage.
         raise HTTPException(
             status_code=422,
             detail="Couldn't fetch the article's full text — the site may block automated readers. Open the original instead.",
-        )
+        ) from None
     except Exception as exc:
         logger.warning("Summarization failed for article %s: %s", article.id, exc)
         # The failure may have poisoned the transaction (e.g. a commit error
         # inside generate_summaries) — reset it before writing the usage row.
         await session.rollback()
         await llm.record_usage(
-            session, user_id=user_id, feature="summary", config=config, usage=usage,
-            duration_ms=_ms_since(started), status="error", error=str(exc),
+            session,
+            user_id=user_id,
+            feature="summary",
+            config=config,
+            usage=usage,
+            duration_ms=_ms_since(started),
+            status="error",
+            error=str(exc),
         )
-        raise HTTPException(status_code=502, detail="The LLM request failed")
+        raise HTTPException(status_code=502, detail="The LLM request failed") from exc
     await llm.record_usage(
-        session, user_id=user_id, feature="summary", config=config, usage=usage,
+        session,
+        user_id=user_id,
+        feature="summary",
+        config=config,
+        usage=usage,
         duration_ms=_ms_since(started),
     )
     return _summary_out(article)
@@ -179,21 +185,36 @@ async def share_message(
         logger.warning("Share-message generation failed for article %s: %s", article.id, exc)
         await session.rollback()
         await llm.record_usage(
-            session, user_id=user_id, feature="share", config=config, usage=usage,
-            duration_ms=_ms_since(started), status="error", error=str(exc),
+            session,
+            user_id=user_id,
+            feature="share",
+            config=config,
+            usage=usage,
+            duration_ms=_ms_since(started),
+            status="error",
+            error=str(exc),
         )
-        raise HTTPException(status_code=502, detail="The LLM request failed")
+        raise HTTPException(status_code=502, detail="The LLM request failed") from exc
     if not text:
         # An empty reply is a failed call — logged as such so the usage trail
         # matches the 502 the client sees.
         await llm.record_usage(
-            session, user_id=user_id, feature="share", config=config, usage=usage,
-            duration_ms=_ms_since(started), status="error",
+            session,
+            user_id=user_id,
+            feature="share",
+            config=config,
+            usage=usage,
+            duration_ms=_ms_since(started),
+            status="error",
             error="The LLM returned an empty message",
         )
         raise HTTPException(status_code=502, detail="The LLM returned an empty message")
     await llm.record_usage(
-        session, user_id=user_id, feature="share", config=config, usage=usage,
+        session,
+        user_id=user_id,
+        feature="share",
+        config=config,
+        usage=usage,
         duration_ms=_ms_since(started),
     )
     return ShareMessageOut(message=text)
@@ -233,19 +254,34 @@ async def synthesize_related_coverage(
         logger.warning("Coverage synthesis failed for article %s: %s", article_id, exc)
         await session.rollback()
         await llm.record_usage(
-            session, user_id=user_id, feature="synthesis", config=config, usage=usage,
-            duration_ms=_ms_since(started), status="error", error=str(exc),
+            session,
+            user_id=user_id,
+            feature="synthesis",
+            config=config,
+            usage=usage,
+            duration_ms=_ms_since(started),
+            status="error",
+            error=str(exc),
         )
-        raise HTTPException(status_code=502, detail="The LLM request failed")
+        raise HTTPException(status_code=502, detail="The LLM request failed") from exc
     if not result.overview:
         await llm.record_usage(
-            session, user_id=user_id, feature="synthesis", config=config, usage=usage,
-            duration_ms=_ms_since(started), status="error",
+            session,
+            user_id=user_id,
+            feature="synthesis",
+            config=config,
+            usage=usage,
+            duration_ms=_ms_since(started),
+            status="error",
             error="The LLM returned an empty synthesis",
         )
         raise HTTPException(status_code=502, detail="The LLM returned an empty synthesis")
     await llm.record_usage(
-        session, user_id=user_id, feature="synthesis", config=config, usage=usage,
+        session,
+        user_id=user_id,
+        feature="synthesis",
+        config=config,
+        usage=usage,
         duration_ms=_ms_since(started),
     )
     items = llm.parse_timeline(result.timeline_raw)
@@ -273,9 +309,7 @@ async def _get_or_create_conversation(
     if conversation is None:
         # messages is set while the object is transient — an assignment after
         # flush would trigger a sync lazy-load, which async sessions forbid.
-        conversation = Conversation(
-            user_id=user_id, article_id=article_id, kind=kind, messages=[]
-        )
+        conversation = Conversation(user_id=user_id, article_id=article_id, kind=kind, messages=[])
         session.add(conversation)
         await session.flush()
     return conversation
@@ -385,8 +419,13 @@ async def ask_article_stream(
             # record before yielding so a disconnected client can't skip it.
             await session.rollback()
             await llm.record_usage(
-                session, user_id=user_id, feature="qa", config=config,
-                duration_ms=_ms_since(started), status="error", error=str(exc),
+                session,
+                user_id=user_id,
+                feature="qa",
+                config=config,
+                duration_ms=_ms_since(started),
+                status="error",
+                error=str(exc),
             )
             yield _sse({"type": "error", "detail": "The LLM request failed"})
             return
@@ -396,20 +435,27 @@ async def ask_article_stream(
         if result is None or not result["content"]:
             await session.rollback()
             await llm.record_usage(
-                session, user_id=user_id, feature="qa", config=config, usage=usage,
-                duration_ms=_ms_since(started), status="error",
+                session,
+                user_id=user_id,
+                feature="qa",
+                config=config,
+                usage=usage,
+                duration_ms=_ms_since(started),
+                status="error",
                 error="The LLM returned an empty answer",
             )
             yield _sse({"type": "error", "detail": "The LLM returned an empty answer"})
             return
         await llm.record_usage(
-            session, user_id=user_id, feature="qa", config=config, usage=usage,
+            session,
+            user_id=user_id,
+            feature="qa",
+            config=config,
+            usage=usage,
             duration_ms=_ms_since(started),
         )
 
-        session.add(
-            Message(conversation_id=conversation.id, role="user", content=question)
-        )
+        session.add(Message(conversation_id=conversation.id, role="user", content=question))
         assistant = Message(
             conversation_id=conversation.id,
             role="assistant",
@@ -576,9 +622,7 @@ async def _project_corpus(session: AsyncSession, project_id: int, user_id: int) 
             select(ProjectArticle)
             .where(ProjectArticle.project_id == project_id, visible_pins(user_id))
             .options(selectinload(ProjectArticle.article))
-            .order_by(
-                func.coalesce(ProjectArticle.shared_at, ProjectArticle.created_at).desc()
-            )
+            .order_by(func.coalesce(ProjectArticle.shared_at, ProjectArticle.created_at).desc())
             .limit(PROJECT_QA_ARTICLES * 2)  # headroom for multi-pin articles
         )
     ).all()
@@ -679,9 +723,7 @@ async def ask_project_stream(
 
     corpus = await _project_corpus(session, project_id, user.id)
     if not corpus:
-        raise HTTPException(
-            status_code=422, detail="Nothing in this project to ask about yet"
-        )
+        raise HTTPException(status_code=422, detail="Nothing in this project to ask about yet")
     conversation = await _get_or_create_project_conversation(session, user.id, project_id)
     history = [(m.role, m.content) for m in conversation.messages]
     question = body.content.strip()
@@ -710,8 +752,13 @@ async def ask_project_stream(
             # poisoned) transaction, record, then yield.
             await session.rollback()
             await llm.record_usage(
-                session, user_id=user_id, feature="qa", config=config,
-                duration_ms=_ms_since(started), status="error", error=str(exc),
+                session,
+                user_id=user_id,
+                feature="qa",
+                config=config,
+                duration_ms=_ms_since(started),
+                status="error",
+                error=str(exc),
             )
             yield _sse({"type": "error", "detail": "The LLM request failed"})
             return
@@ -721,20 +768,27 @@ async def ask_project_stream(
         if result is None or not result["content"]:
             await session.rollback()
             await llm.record_usage(
-                session, user_id=user_id, feature="qa", config=config, usage=usage,
-                duration_ms=_ms_since(started), status="error",
+                session,
+                user_id=user_id,
+                feature="qa",
+                config=config,
+                usage=usage,
+                duration_ms=_ms_since(started),
+                status="error",
                 error="The LLM returned an empty answer",
             )
             yield _sse({"type": "error", "detail": "The LLM returned an empty answer"})
             return
         await llm.record_usage(
-            session, user_id=user_id, feature="qa", config=config, usage=usage,
+            session,
+            user_id=user_id,
+            feature="qa",
+            config=config,
+            usage=usage,
             duration_ms=_ms_since(started),
         )
 
-        session.add(
-            Message(conversation_id=conversation.id, role="user", content=question)
-        )
+        session.add(Message(conversation_id=conversation.id, role="user", content=question))
         assistant = Message(
             conversation_id=conversation.id,
             role="assistant",

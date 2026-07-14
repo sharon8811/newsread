@@ -5,7 +5,7 @@ Only calls made on the user's own key are ever written to llm_usage
 history stays visible even after the key is deleted.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import Date, cast, desc, func, select
@@ -43,7 +43,7 @@ async def summary(
 ):
     # UTC on purpose: the Date cast above buckets in the DB session's UTC, and
     # the window boundary must agree with it.
-    today = datetime.now(timezone.utc).date()
+    today = datetime.now(UTC).date()
     window = RANGE_DAYS[range_]
     start = today - timedelta(days=window - 1)
     prev_start = start - timedelta(days=window)
@@ -55,9 +55,7 @@ async def summary(
     )
 
     day_rows = await session.execute(
-        select(_day.label("day"), func.count(), func.sum(_tokens))
-        .where(*in_window)
-        .group_by("day")
+        select(_day.label("day"), func.count(), func.sum(_tokens)).where(*in_window).group_by("day")
     )
     by_day = {day: (calls, tokens or 0) for day, calls, tokens in day_rows.all()}
     days = [
@@ -76,9 +74,7 @@ async def summary(
     ) or 0
 
     error_count = (
-        await session.scalar(
-            select(func.count()).where(*in_window, LLMUsage.status == "error")
-        )
+        await session.scalar(select(func.count()).where(*in_window, LLMUsage.status == "error"))
     ) or 0
 
     tokens_sum = func.sum(_tokens).label("tokens")

@@ -2,6 +2,7 @@
 usage recording, and the live test endpoint."""
 
 import types
+from datetime import UTC
 
 from sqlalchemy import select
 
@@ -17,6 +18,7 @@ async def _put(client, users, user, body=None):
 
 
 # --- GET ---
+
 
 async def test_get_unconfigured(client, users):
     user = await users.create()
@@ -36,6 +38,7 @@ async def test_get_reports_system_available(client, users, monkeypatch):
 
 
 # --- PUT ---
+
 
 async def test_put_creates_settings(client, users):
     user = await users.create()
@@ -116,7 +119,9 @@ async def test_put_image_custom_requires_base_url(client, users):
 
 async def test_put_without_image_clears_it(client, users):
     user = await users.create()
-    await _put(client, users, user, {**BODY, "image": {"provider": "openai", "model": "gpt-image-1"}})
+    await _put(
+        client, users, user, {**BODY, "image": {"provider": "openai", "model": "gpt-image-1"}}
+    )
     resp = await _put(client, users, user)
     assert resp.json()["image"] is None
 
@@ -128,6 +133,7 @@ async def test_put_503_when_crypto_unconfigured(client, users, monkeypatch):
 
 
 # --- DELETE ---
+
 
 async def test_delete_reverts_to_system(client, users):
     user = await users.create()
@@ -141,12 +147,18 @@ async def test_delete_reverts_to_system(client, users):
 
 # --- config resolution (llm.resolve_config) ---
 
+
 async def test_resolve_config_prefers_user_key(session, users):
     user = await users.create()
-    session.add(UserAISettings(
-        user_id=user.id, provider="anthropic", model="claude-x",
-        api_key_enc=crypto.encrypt_token("sk-ant-12345678"), key_hint="5678",
-    ))
+    session.add(
+        UserAISettings(
+            user_id=user.id,
+            provider="anthropic",
+            model="claude-x",
+            api_key_enc=crypto.encrypt_token("sk-ant-12345678"),
+            key_hint="5678",
+        )
+    )
     await session.commit()
     config = await llm.resolve_config(session, user.id)
     assert config.user_owned is True
@@ -177,14 +189,20 @@ def test_resolve_base_url():
 
 
 def test_user_client_builds_from_config():
-    config = llm.LLMConfig(provider="custom", api_key="sk-a-12345678",
-                           base_url="http://ollama.local/v1", model="m", user_owned=True)
+    config = llm.LLMConfig(
+        provider="custom",
+        api_key="sk-a-12345678",
+        base_url="http://ollama.local/v1",
+        model="m",
+        user_owned=True,
+    )
     client = llm.user_client(config)
     assert client.api_key == "sk-a-12345678"
     assert str(client.base_url).startswith("http://ollama.local/v1")
 
 
 # --- usage recording ---
+
 
 async def test_record_usage_skips_system_config(session, users):
     user = await users.create()
@@ -196,14 +214,21 @@ async def test_record_usage_skips_system_config(session, users):
 
 async def test_record_usage_writes_row_for_user_key(session, users):
     user = await users.create()
-    config = llm.LLMConfig(provider="openai", api_key="k", base_url=None,
-                           model="gpt-5", user_owned=True)
+    config = llm.LLMConfig(
+        provider="openai", api_key="k", base_url=None, model="gpt-5", user_owned=True
+    )
     usage = llm.TokenUsage()
     usage.add(100, 20)
     usage.add(None, 5)  # providers sometimes omit counts
     await llm.record_usage(
-        session, user_id=user.id, feature="qa", config=config, usage=usage,
-        duration_ms=1234, status="error", error="x" * 900,
+        session,
+        user_id=user.id,
+        feature="qa",
+        config=config,
+        usage=usage,
+        duration_ms=1234,
+        status="error",
+        error="x" * 900,
     )
     row = (await session.scalars(select(LLMUsage))).one()
     assert row.user_id == user.id
@@ -218,6 +243,7 @@ async def test_record_usage_writes_row_for_user_key(session, users):
 
 
 # --- POST /ai/settings/test ---
+
 
 class _FakeOpenAI:
     """Captures constructor args; create() behavior injected per test."""
@@ -234,9 +260,7 @@ class _FakeOpenAI:
                 raise type(self).create_error
             return types.SimpleNamespace()
 
-        self.chat = types.SimpleNamespace(
-            completions=types.SimpleNamespace(create=create)
-        )
+        self.chat = types.SimpleNamespace(completions=types.SimpleNamespace(create=create))
 
     async def close(self):
         type(self).captured["closed"] = True
@@ -294,8 +318,10 @@ async def test_test_endpoint_422_without_settings(client, users):
 
 async def test_put_update_keeps_stored_image_key(client, users):
     user = await users.create()
-    body = {**BODY, "image": {"provider": "anthropic", "model": "img",
-                              "api_key": "sk-img-87654321"}}
+    body = {
+        **BODY,
+        "image": {"provider": "anthropic", "model": "img", "api_key": "sk-img-87654321"},
+    }
     await _put(client, users, user, body)
     del body["image"]["api_key"]
     resp = await _put(client, users, user, body)
@@ -330,26 +356,31 @@ async def test_test_endpoint_never_sends_stored_key_elsewhere(client, users, mon
     _FakeOpenAI.create_error = None
     user = await users.create()
     await _put(client, users, user)
-    resp = await client.post("/api/ai/settings/test",
-                             json={"base_url": "https://evil.example/v1"},
-                             headers=users.auth(user))
+    resp = await client.post(
+        "/api/ai/settings/test",
+        json={"base_url": "https://evil.example/v1"},
+        headers=users.auth(user),
+    )
     assert resp.status_code == 422
-    resp = await client.post("/api/ai/settings/test",
-                             json={"provider": "custom"}, headers=users.auth(user))
+    resp = await client.post(
+        "/api/ai/settings/test", json={"provider": "custom"}, headers=users.auth(user)
+    )
     assert resp.status_code == 422
 
 
 async def test_test_endpoint_custom_requires_base_url(client, users):
     user = await users.create()
-    resp = await client.post("/api/ai/settings/test",
-                             json={**BODY, "provider": "custom"}, headers=users.auth(user))
+    resp = await client.post(
+        "/api/ai/settings/test", json={**BODY, "provider": "custom"}, headers=users.auth(user)
+    )
     assert resp.status_code == 422
 
 
 async def test_test_endpoint_key_alone_422(client, users):
     user = await users.create()
-    resp = await client.post("/api/ai/settings/test",
-                             json={"api_key": "sk-test-12345678"}, headers=users.auth(user))
+    resp = await client.post(
+        "/api/ai/settings/test", json={"api_key": "sk-test-12345678"}, headers=users.auth(user)
+    )
     assert resp.status_code == 422
 
 
@@ -357,8 +388,7 @@ async def test_put_custom_update_keeps_stored_base_url(client, users):
     user = await users.create()
     body = {**BODY, "provider": "custom", "base_url": "http://ollama.local/v1"}
     await _put(client, users, user, body)
-    resp = await _put(client, users, user,
-                      {"provider": "custom", "model": "llama3"})
+    resp = await _put(client, users, user, {"provider": "custom", "model": "llama3"})
     assert resp.status_code == 200
     assert resp.json()["base_url"] == "http://ollama.local/v1"
     assert resp.json()["model"] == "llama3"
@@ -374,10 +404,21 @@ async def test_put_provider_switch_requires_new_key(client, users):
 
 async def test_put_image_provider_switch_requires_new_key(client, users):
     user = await users.create()
-    await _put(client, users, user, {**BODY, "image": {
-        "provider": "anthropic", "model": "img", "api_key": "sk-img-87654321"}})
-    resp = await _put(client, users, user, {**BODY, "image": {
-        "provider": "custom", "model": "img", "base_url": "http://img.local/v1"}})
+    await _put(
+        client,
+        users,
+        user,
+        {**BODY, "image": {"provider": "anthropic", "model": "img", "api_key": "sk-img-87654321"}},
+    )
+    resp = await _put(
+        client,
+        users,
+        user,
+        {
+            **BODY,
+            "image": {"provider": "custom", "model": "img", "base_url": "http://img.local/v1"},
+        },
+    )
     assert resp.status_code == 422
 
 
@@ -388,6 +429,7 @@ async def test_base_url_must_be_http(client, users):
 
 
 # --- article image prompt (users.image_prompt via /users/me) ---
+
 
 async def test_get_exposes_image_prompt_defaults(client, users, monkeypatch):
     from app import image_gen
@@ -416,15 +458,18 @@ async def test_image_generation_available_via_user_block(client, users, monkeypa
 
     monkeypatch.setattr(image_gen.settings, "image_generation_api_key", "")
     user = await users.create()
-    await _put(client, users, user, {**BODY, "image": {"provider": "openai", "model": "gpt-image-1"}})
+    await _put(
+        client, users, user, {**BODY, "image": {"provider": "openai", "model": "gpt-image-1"}}
+    )
     body = (await client.get("/api/ai/settings", headers=users.auth(user))).json()
     assert body["image_generation_available"] is True
 
 
 async def test_patch_image_prompt_roundtrip(client, users):
     user = await users.create()
-    resp = await client.patch("/api/users/me", json={"image_prompt": "  Draw {article_title}  "},
-                              headers=users.auth(user))
+    resp = await client.patch(
+        "/api/users/me", json={"image_prompt": "  Draw {article_title}  "}, headers=users.auth(user)
+    )
     assert resp.status_code == 200
     body = (await client.get("/api/ai/settings", headers=users.auth(user))).json()
     assert body["image_prompt"] == "Draw {article_title}"
@@ -456,15 +501,16 @@ async def test_supports_vision_reaches_llm_config(client, users, session):
     config = llm.config_for_user_settings(row)
     assert config.supports_vision is True
 
+
 async def test_get_exposes_image_budget(client, users, data, session):
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
     from app.models import User
 
     user = await users.create()
     feed = await data.feed()
     # Two claims this month, one last month: only the fresh ones count.
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     for days_ago in (0, 0, 40):
         art = await data.article(feed)
         art.image_gen_attempted_at = now - timedelta(days=days_ago)
@@ -481,9 +527,14 @@ async def test_get_exposes_image_budget(client, users, data, session):
 async def test_put_image_extra_params_roundtrip(client, users):
     user = await users.create()
     body = {
-        "provider": "openai", "model": "gpt-5", "api_key": "sk-main-12345678",
-        "image": {"provider": "openai", "model": "gpt-image-1",
-                  "extra_params": '{"aspect_ratio": "16:9"}'},
+        "provider": "openai",
+        "model": "gpt-5",
+        "api_key": "sk-main-12345678",
+        "image": {
+            "provider": "openai",
+            "model": "gpt-image-1",
+            "extra_params": '{"aspect_ratio": "16:9"}',
+        },
     }
     resp = await client.put("/api/ai/settings", json=body, headers=users.auth(user))
     assert resp.status_code == 200
@@ -500,9 +551,14 @@ async def test_put_image_extra_params_roundtrip(client, users):
 async def test_put_image_extra_params_must_be_json_object(client, users):
     user = await users.create()
     body = {
-        "provider": "openai", "model": "gpt-5", "api_key": "sk-main-12345678",
-        "image": {"provider": "openai", "model": "gpt-image-1",
-                  "extra_params": "aspect_ratio=16:9"},
+        "provider": "openai",
+        "model": "gpt-5",
+        "api_key": "sk-main-12345678",
+        "image": {
+            "provider": "openai",
+            "model": "gpt-image-1",
+            "extra_params": "aspect_ratio=16:9",
+        },
     }
     resp = await client.put("/api/ai/settings", json=body, headers=users.auth(user))
     assert resp.status_code == 422

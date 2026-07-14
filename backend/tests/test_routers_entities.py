@@ -1,9 +1,14 @@
+from datetime import UTC
+
 from app.models import ArticleEntity, Entity
 
 
-async def _entity(session, *, kind="person", key="peter thiel", name="Peter Thiel", url="", data=None):
-    entity = Entity(kind=kind, canonical_key=key, url=url,
-                    data=data if data is not None else {"name": name})
+async def _entity(
+    session, *, kind="person", key="peter thiel", name="Peter Thiel", url="", data=None
+):
+    entity = Entity(
+        kind=kind, canonical_key=key, url=url, data=data if data is not None else {"name": name}
+    )
     session.add(entity)
     await session.commit()
     await session.refresh(entity)
@@ -34,9 +39,10 @@ async def test_entity_page_scopes_articles(client, users, data, session):
     entity = await _entity(session)
     for art in (visible_new, visible_old, foreign):
         await _link(session, art, entity)
-    from datetime import datetime, timedelta, timezone
-    visible_new.published_at = datetime.now(timezone.utc)
-    visible_old.published_at = datetime.now(timezone.utc) - timedelta(days=2)
+    from datetime import datetime, timedelta
+
+    visible_new.published_at = datetime.now(UTC)
+    visible_old.published_at = datetime.now(UTC) - timedelta(days=2)
     await session.commit()
 
     resp = await client.get(f"/api/entities/{entity.id}", headers=users.auth(user))
@@ -51,9 +57,13 @@ async def test_entity_page_scopes_articles(client, users, data, session):
 async def test_entity_page_name_fallbacks(client, users, data, session):
     user = await users.create()
     # Enricher kind with data -> badge label wins.
-    repo = await _entity(session, kind="github", key="acme/x",
-                         url="https://github.com/acme/x",
-                         data={"full_name": "acme/x", "stargazers_count": 5})
+    repo = await _entity(
+        session,
+        kind="github",
+        key="acme/x",
+        url="https://github.com/acme/x",
+        data={"full_name": "acme/x", "stargazers_count": 5},
+    )
     resp = await client.get(f"/api/entities/{repo.id}", headers=users.auth(user))
     body = resp.json()
     assert body["name"] == body["badge"]["label"]

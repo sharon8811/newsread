@@ -1,6 +1,5 @@
 import types
 
-import pytest
 from sqlalchemy import select
 
 from app import db as app_db
@@ -59,9 +58,7 @@ def _fake_client(vectors):
         data = [types.SimpleNamespace(embedding=v) for v in vectors]
         return types.SimpleNamespace(data=data)
 
-    return types.SimpleNamespace(
-        embeddings=types.SimpleNamespace(create=create)
-    )
+    return types.SimpleNamespace(embeddings=types.SimpleNamespace(create=create))
 
 
 async def test_embed_texts(monkeypatch):
@@ -105,7 +102,8 @@ async def test_embed_articles_upserts(session, monkeypatch):
     art = await _make_article(session)
     monkeypatch.setattr(embeddings.settings, "openai_embedding_model", "emb-model")
     monkeypatch.setattr(
-        embeddings, "embed_texts",
+        embeddings,
+        "embed_texts",
         lambda texts: _returns([[0.5] * 4 for _ in texts]),
     )
     n = await embeddings.embed_articles(session, [art])
@@ -117,7 +115,8 @@ async def test_embed_articles_upserts(session, monkeypatch):
 
     # Re-embed updates in place (on_conflict_do_update).
     monkeypatch.setattr(
-        embeddings, "embed_texts",
+        embeddings,
+        "embed_texts",
         lambda texts: _returns([[0.9] * 4 for _ in texts]),
     )
     n2 = await embeddings.embed_articles(session, [art])
@@ -128,7 +127,8 @@ async def test_embed_articles_stores_input_hash(session, monkeypatch):
     art = await _make_article(session)
     monkeypatch.setattr(embeddings.settings, "openai_embedding_model", "emb-model")
     monkeypatch.setattr(
-        embeddings, "embed_texts",
+        embeddings,
+        "embed_texts",
         lambda texts: _returns([[0.5] * 4 for _ in texts]),
     )
     await embeddings.embed_articles(session, [art])
@@ -150,8 +150,11 @@ async def test_stale_input_sql_matches_text_for(session, monkeypatch):
         dict(summary_medium="", excerpt="just an excerpt", full_text="ft"),
         dict(summary_medium="", excerpt="", full_text="full body text"),
         dict(summary_medium="", excerpt="", full_text=""),
-        dict(summary_medium="", excerpt="5 points · 3 comments · via Hacker News",
-             full_text="real body"),
+        dict(
+            summary_medium="",
+            excerpt="5 points · 3 comments · via Hacker News",
+            full_text="real body",
+        ),
         dict(summary_medium="", excerpt="12 points · via Hacker News", full_text=""),
         dict(summary_medium="", excerpt="", full_text="y" * 9000),
         dict(summary_medium="x" * 10000, excerpt="", full_text=""),
@@ -159,33 +162,42 @@ async def test_stale_input_sql_matches_text_for(session, monkeypatch):
     ]
     articles = []
     for i, fields in enumerate(cases):
-        art = Article(feed_id=feed.id, guid=f"hp{i}", url=f"https://x/{i}",
-                      title=f"Title {i}", **fields)
+        art = Article(
+            feed_id=feed.id, guid=f"hp{i}", url=f"https://x/{i}", title=f"Title {i}", **fields
+        )
         session.add(art)
         articles.append(art)
     await session.flush()
     for art in articles:
-        session.add(ArticleEmbedding(
-            article_id=art.id, model="emb", embedding=[0.1, 0.2],
-            input_hash=embeddings.input_hash_for(art),
-        ))
+        session.add(
+            ArticleEmbedding(
+                article_id=art.id,
+                model="emb",
+                embedding=[0.1, 0.2],
+                input_hash=embeddings.input_hash_for(art),
+            )
+        )
     await session.commit()
 
-    stale_ids = set(await session.scalars(
-        select(Article.id)
-        .join(ArticleEmbedding, ArticleEmbedding.article_id == Article.id)
-        .where(embeddings.stale_input())
-    ))
+    stale_ids = set(
+        await session.scalars(
+            select(Article.id)
+            .join(ArticleEmbedding, ArticleEmbedding.article_id == Article.id)
+            .where(embeddings.stale_input())
+        )
+    )
     assert stale_ids == set()
 
     # Text changes flip exactly the touched article to stale.
     articles[1].summary_medium = "a summary arrived later"
     await session.commit()
-    stale_ids = set(await session.scalars(
-        select(Article.id)
-        .join(ArticleEmbedding, ArticleEmbedding.article_id == Article.id)
-        .where(embeddings.stale_input())
-    ))
+    stale_ids = set(
+        await session.scalars(
+            select(Article.id)
+            .join(ArticleEmbedding, ArticleEmbedding.article_id == Article.id)
+            .where(embeddings.stale_input())
+        )
+    )
     assert stale_ids == {articles[1].id}
 
 

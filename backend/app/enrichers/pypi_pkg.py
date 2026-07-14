@@ -3,7 +3,7 @@ from datetime import timedelta
 
 import httpx
 
-from .base import CleanUrl, EnrichError, Enricher
+from .base import CleanUrl, Enricher, EnrichError
 
 
 def _normalize(name: str) -> str:

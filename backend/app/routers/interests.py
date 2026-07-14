@@ -5,7 +5,7 @@ call to suggest topic phrases, one embedding call when a phrase is chosen."""
 
 import logging
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy import func, select
@@ -18,7 +18,6 @@ from ..db import get_session
 from ..enrichers import badge_for
 from ..models import (
     Article,
-    ArticleEmbedding,
     ArticleEntity,
     ArticleSuppression,
     DislikeRuleEmbedding,
@@ -81,7 +80,11 @@ async def dislike_options(
             entity_id=entity.id,
             kind=entity.kind,
             key=entity.canonical_key,
-            label=str(badge_for(entity.kind, entity.data or {}).get("label") or (entity.data or {}).get("name") or entity.canonical_key),
+            label=str(
+                badge_for(entity.kind, entity.data or {}).get("label")
+                or (entity.data or {}).get("name")
+                or entity.canonical_key
+            ),
         )
         for _, entity in rows
     ]
@@ -109,13 +112,22 @@ async def dislike_options(
                 logger.warning("Topic suggestion failed for article %s: %s", article.id, exc)
                 await session.rollback()
                 await llm.record_usage(
-                    session, user_id=user_id, feature="topics", config=config, usage=usage,
+                    session,
+                    user_id=user_id,
+                    feature="topics",
+                    config=config,
+                    usage=usage,
                     duration_ms=int((time.monotonic() - started) * 1000),
-                    status="error", error=str(exc),
+                    status="error",
+                    error=str(exc),
                 )
             else:
                 await llm.record_usage(
-                    session, user_id=user_id, feature="topics", config=config, usage=usage,
+                    session,
+                    user_id=user_id,
+                    feature="topics",
+                    config=config,
+                    usage=usage,
                     duration_ms=int((time.monotonic() - started) * 1000),
                 )
 
@@ -192,7 +204,7 @@ async def create_dislike(
 
     user_id = user.id  # survives the rollback in the race handler below
     rule = UserDislikeRule(user_id=user_id, kind=body.kind)
-    cutoff = datetime.now(timezone.utc) - suppressions.BACKFILL_WINDOW
+    cutoff = datetime.now(UTC) - suppressions.BACKFILL_WINDOW
 
     try:
         if body.kind in ("article", "story"):
@@ -207,14 +219,16 @@ async def create_dislike(
                         detail="This article has no embedding yet — try again in a few minutes.",
                     )
                 rule.threshold = STORY_THRESHOLD
-                rule.expires_at = datetime.now(timezone.utc) + STORY_TTL
+                rule.expires_at = datetime.now(UTC) + STORY_TTL
                 session.add(rule)
                 await session.flush()
                 # Snapshot copy, deliberately not a live reference: the rule mutes
                 # "this story as the user saw it" even if the article re-embeds.
-                session.add(DislikeRuleEmbedding(
-                    rule_id=rule.id, model=source.model, embedding=source.embedding
-                ))
+                session.add(
+                    DislikeRuleEmbedding(
+                        rule_id=rule.id, model=source.model, embedding=source.embedding
+                    )
+                )
                 await session.flush()
                 await suppressions.apply_vector_rules(session, cutoff=cutoff, rule_id=rule.id)
             else:
@@ -230,29 +244,36 @@ async def create_dislike(
             if entity is None:
                 raise HTTPException(status_code=404, detail="Entity not found")
             rule.entity_id = entity.id
-            rule.label = str(badge_for(entity.kind, entity.data or {}).get("label") or (entity.data or {}).get("name") or entity.canonical_key)[:512]
+            rule.label = str(
+                badge_for(entity.kind, entity.data or {}).get("label")
+                or (entity.data or {}).get("name")
+                or entity.canonical_key
+            )[:512]
             session.add(rule)
             await session.flush()
             await suppressions.apply_entity_rules(session, cutoff=cutoff, rule_id=rule.id)
         else:  # topic
             if not embeddings.is_configured():
                 raise HTTPException(
-                    status_code=422, detail="Topic muting needs embeddings configured on the server."
+                    status_code=422,
+                    detail="Topic muting needs embeddings configured on the server.",
                 )
             phrase = " ".join(body.phrase.split())
             try:
                 [vector] = await embeddings.embed_texts([phrase])
             except Exception as exc:
                 logger.warning("Embedding dislike phrase failed: %s", exc)
-                raise HTTPException(status_code=502, detail="The embedding request failed")
+                raise HTTPException(status_code=502, detail="The embedding request failed") from exc
             rule.phrase = phrase
             rule.label = phrase[:512]
             rule.threshold = TOPIC_THRESHOLD
             session.add(rule)
             await session.flush()
-            session.add(DislikeRuleEmbedding(
-                rule_id=rule.id, model=settings.openai_embedding_model, embedding=vector
-            ))
+            session.add(
+                DislikeRuleEmbedding(
+                    rule_id=rule.id, model=settings.openai_embedding_model, embedding=vector
+                )
+            )
             await session.flush()
             await suppressions.apply_vector_rules(session, cutoff=cutoff, rule_id=rule.id)
         await session.commit()
@@ -262,7 +283,9 @@ async def create_dislike(
         await session.rollback()
         rule = await _existing_rule(session, user_id, body)
         if rule is None:
-            raise HTTPException(status_code=409, detail="Rule creation conflicted — retry")
+            raise HTTPException(
+                status_code=409, detail="Rule creation conflicted — retry"
+            ) from None
     return DislikeRuleCreateOut(
         rule=await _rule_out(session, rule),
         preview=await _preview(session, rule.id, PREVIEW_LIMIT),

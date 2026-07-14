@@ -14,9 +14,15 @@ async def _sharable(users, data):
 
 async def test_create_share(client, users, data):
     sender, r1, r2, feed, art = await _sharable(users, data)
-    resp = await client.post("/api/shares", json={
-        "article_id": art.id, "recipients": ["rin", "@rob"], "note": "  read this  ",
-    }, headers=users.auth(sender))
+    resp = await client.post(
+        "/api/shares",
+        json={
+            "article_id": art.id,
+            "recipients": ["rin", "@rob"],
+            "note": "  read this  ",
+        },
+        headers=users.auth(sender),
+    )
     assert resp.status_code == 201
     body = resp.json()
     assert body["note"] == "read this"
@@ -26,18 +32,29 @@ async def test_create_share(client, users, data):
 
 async def test_create_share_empty_note_becomes_null(client, users, data):
     sender, r1, r2, feed, art = await _sharable(users, data)
-    resp = await client.post("/api/shares", json={
-        "article_id": art.id, "recipients": ["rin"], "note": "   ",
-    }, headers=users.auth(sender))
+    resp = await client.post(
+        "/api/shares",
+        json={
+            "article_id": art.id,
+            "recipients": ["rin"],
+            "note": "   ",
+        },
+        headers=users.auth(sender),
+    )
     assert resp.json()["note"] is None
 
 
 async def test_create_share_article_not_found(client, users, data):
     sender = await users.create(username="s")
     await users.create(username="rin")
-    resp = await client.post("/api/shares", json={
-        "article_id": 99999, "recipients": ["rin"],
-    }, headers=users.auth(sender))
+    resp = await client.post(
+        "/api/shares",
+        json={
+            "article_id": 99999,
+            "recipients": ["rin"],
+        },
+        headers=users.auth(sender),
+    )
     assert resp.status_code == 404
 
 
@@ -46,34 +63,54 @@ async def test_create_share_no_access_to_article(client, users, data):
     await users.create(username="rin")
     feed = await data.feed()  # sender NOT subscribed
     art = await data.article(feed)
-    resp = await client.post("/api/shares", json={
-        "article_id": art.id, "recipients": ["rin"],
-    }, headers=users.auth(sender))
+    resp = await client.post(
+        "/api/shares",
+        json={
+            "article_id": art.id,
+            "recipients": ["rin"],
+        },
+        headers=users.auth(sender),
+    )
     assert resp.status_code == 404
 
 
 async def test_create_share_only_self_recipient(client, users, data):
     sender, r1, r2, feed, art = await _sharable(users, data)
-    resp = await client.post("/api/shares", json={
-        "article_id": art.id, "recipients": ["sender", "@sender"],
-    }, headers=users.auth(sender))
+    resp = await client.post(
+        "/api/shares",
+        json={
+            "article_id": art.id,
+            "recipients": ["sender", "@sender"],
+        },
+        headers=users.auth(sender),
+    )
     assert resp.status_code == 422
 
 
 async def test_create_share_unknown_recipient(client, users, data):
     sender, r1, r2, feed, art = await _sharable(users, data)
-    resp = await client.post("/api/shares", json={
-        "article_id": art.id, "recipients": ["rin", "ghost"],
-    }, headers=users.auth(sender))
+    resp = await client.post(
+        "/api/shares",
+        json={
+            "article_id": art.id,
+            "recipients": ["rin", "ghost"],
+        },
+        headers=users.auth(sender),
+    )
     assert resp.status_code == 404
     assert "ghost" in resp.json()["detail"]
 
 
 async def test_create_share_validation_no_recipients(client, users, data):
     sender, r1, r2, feed, art = await _sharable(users, data)
-    resp = await client.post("/api/shares", json={
-        "article_id": art.id, "recipients": [],
-    }, headers=users.auth(sender))
+    resp = await client.post(
+        "/api/shares",
+        json={
+            "article_id": art.id,
+            "recipients": [],
+        },
+        headers=users.auth(sender),
+    )
     assert resp.status_code == 422
 
 
@@ -185,7 +222,7 @@ async def test_unseen_count_zero(client, users, data):
 
 async def test_create_share_enqueues_push_job(client, users, data, monkeypatch):
     sender = await users.create(username="pusher")
-    recipient = await users.create(username="pushee")
+    await users.create(username="pushee")
     feed = await data.feed()
     await data.subscribe(sender, feed)
     article = await data.article(feed)

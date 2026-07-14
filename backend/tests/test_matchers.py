@@ -11,12 +11,20 @@ MATCHES = [
     ("https://www.github.com/PyTorch/PyTorch.git", "github", "pytorch/pytorch"),
     ("https://github.com/anthropics/claude-code/issues/74066", "github", "anthropics/claude-code"),
     ("https://github.com/foo/bar/blob/main/src/x.py?utm_source=hn#L10", "github", "foo/bar"),
-    ("https://github.com/FossPrime/Steam-Controller-Auto-Charge", "github", "fossprime/steam-controller-auto-charge"),
+    (
+        "https://github.com/FossPrime/Steam-Controller-Auto-Charge",
+        "github",
+        "fossprime/steam-controller-auto-charge",
+    ),
     # hugging face models and datasets
     ("https://huggingface.co/Qwen/Qwen2.5-7B", "hf_model", "Qwen/Qwen2.5-7B"),
     ("https://hf.co/meta-llama/Llama-3.1-8B/tree/main", "hf_model", "meta-llama/Llama-3.1-8B"),
     ("https://huggingface.co/datasets/allenai/c4", "hf_dataset", "allenai/c4"),
-    ("https://huggingface.co/datasets/HuggingFaceFW/fineweb/viewer", "hf_dataset", "HuggingFaceFW/fineweb"),
+    (
+        "https://huggingface.co/datasets/HuggingFaceFW/fineweb/viewer",
+        "hf_dataset",
+        "HuggingFaceFW/fineweb",
+    ),
     # arxiv: abs/pdf/html, versions stripped, old-style ids
     ("https://arxiv.org/abs/1706.03762", "arxiv", "1706.03762"),
     ("https://arxiv.org/abs/1706.03762v7", "arxiv", "1706.03762"),
@@ -40,13 +48,13 @@ MATCHES = [
 ]
 
 NON_MATCHES = [
-    "https://github.com/features",             # reserved section
-    "https://github.com/torvalds",             # user page, 1 segment
-    "https://gist.github.com/user/abc123",     # gists excluded
+    "https://github.com/features",  # reserved section
+    "https://github.com/torvalds",  # user page, 1 segment
+    "https://gist.github.com/user/abc123",  # gists excluded
     "https://raw.githubusercontent.com/a/b/main/x.py",
     "https://huggingface.co/docs/transformers/index",  # reserved
-    "https://huggingface.co/Qwen",             # org page
-    "https://huggingface.co/datasets",         # section root
+    "https://huggingface.co/Qwen",  # org page
+    "https://huggingface.co/datasets",  # section root
     "https://arxiv.org/list/cs.CL/recent",
     "https://pypi.org/user/someone/",
     "https://www.npmjs.com/~sindresorhus",

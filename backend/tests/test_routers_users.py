@@ -1,7 +1,8 @@
 async def test_update_me_sets_default_view(client, users):
     user = await users.create(default_view="list")
-    resp = await client.patch("/api/users/me", json={"default_view": "cards"},
-                              headers=users.auth(user))
+    resp = await client.patch(
+        "/api/users/me", json={"default_view": "cards"}, headers=users.auth(user)
+    )
     assert resp.status_code == 200
     assert resp.json()["default_view"] == "cards"
 
@@ -15,8 +16,9 @@ async def test_update_me_none_leaves_unchanged(client, users):
 
 async def test_update_me_invalid_view(client, users):
     user = await users.create()
-    resp = await client.patch("/api/users/me", json={"default_view": "bogus"},
-                              headers=users.auth(user))
+    resp = await client.patch(
+        "/api/users/me", json={"default_view": "bogus"}, headers=users.auth(user)
+    )
     assert resp.status_code == 422
 
 
@@ -58,21 +60,25 @@ async def test_search_users_requires_query(client, users):
 
 async def test_update_me_sets_image_gen_monthly_limit(client, users):
     user = await users.create()
-    resp = await client.patch("/api/users/me", json={"image_gen_monthly_limit": 50},
-                              headers=users.auth(user))
+    resp = await client.patch(
+        "/api/users/me", json={"image_gen_monthly_limit": 50}, headers=users.auth(user)
+    )
     assert resp.status_code == 200
     assert resp.json()["image_gen_monthly_limit"] == 50
     # Omitting the field leaves it unchanged; explicit null clears to unlimited.
-    resp = await client.patch("/api/users/me", json={"default_view": "list"},
-                              headers=users.auth(user))
+    resp = await client.patch(
+        "/api/users/me", json={"default_view": "list"}, headers=users.auth(user)
+    )
     assert resp.json()["image_gen_monthly_limit"] == 50
-    resp = await client.patch("/api/users/me", json={"image_gen_monthly_limit": None},
-                              headers=users.auth(user))
+    resp = await client.patch(
+        "/api/users/me", json={"image_gen_monthly_limit": None}, headers=users.auth(user)
+    )
     assert resp.json()["image_gen_monthly_limit"] is None
 
 
 async def test_update_me_rejects_negative_image_limit(client, users):
     user = await users.create()
-    resp = await client.patch("/api/users/me", json={"image_gen_monthly_limit": -1},
-                              headers=users.auth(user))
+    resp = await client.patch(
+        "/api/users/me", json={"image_gen_monthly_limit": -1}, headers=users.auth(user)
+    )
     assert resp.status_code == 422

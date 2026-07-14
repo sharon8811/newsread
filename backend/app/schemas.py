@@ -10,6 +10,7 @@ SortOrder = Literal["newest", "oldest"]
 
 # --- Auth ---
 
+
 class RegisterIn(BaseModel):
     email: EmailStr
     username: str = Field(pattern=r"^[a-zA-Z0-9_]{3,30}$")
@@ -58,6 +59,7 @@ class TokenOut(BaseModel):
 
 # --- Devices (mobile push) ---
 
+
 class DeviceIn(BaseModel):
     push_token: str = Field(min_length=1, max_length=512)
     platform: Literal["ios", "android"]
@@ -73,6 +75,7 @@ class DeviceOut(BaseModel):
 
 
 # --- Feeds ---
+
 
 class AddFeedIn(BaseModel):
     url: str = Field(min_length=4, max_length=2048)
@@ -126,6 +129,7 @@ class FeedSettingsIn(BaseModel):
 
 
 # --- Catalog (curated feed directory) ---
+
 
 class CatalogEntryOut(BaseModel):
     id: int
@@ -208,6 +212,7 @@ class CatalogSubmissionOut(BaseModel):
 
 # --- Entities (smart link enrichment) ---
 
+
 class EntityBadge(BaseModel):
     id: int
     kind: str
@@ -232,6 +237,7 @@ class EntityFull(EntityBadge):
 
 
 # --- Articles ---
+
 
 class ArticleListItem(BaseModel):
     id: int
@@ -309,6 +315,7 @@ class RelatedArticleItem(BaseModel):
 
 
 # --- Shares ---
+
 
 class ShareCreateIn(BaseModel):
     article_id: int
@@ -556,6 +563,7 @@ class ShareMessageOut(BaseModel):
 
 # --- AI ---
 
+
 class AiStatusOut(BaseModel):
     configured: bool
     model: str | None
@@ -585,7 +593,7 @@ def _ai_extra_params(value: str) -> str:
     try:
         parsed = json.loads(value)
     except ValueError:
-        raise ValueError('must be a JSON object, e.g. {"aspect_ratio": "16:9"}')
+        raise ValueError('must be a JSON object, e.g. {"aspect_ratio": "16:9"}') from None
     if not isinstance(parsed, dict):
         raise ValueError('must be a JSON object, e.g. {"aspect_ratio": "16:9"}')
     return value
@@ -782,6 +790,7 @@ class ActivitySummaryOut(BaseModel):
 
 
 # --- LLM usage (bring-your-own-key audit trail) ---
+
 
 class UsageDayOut(BaseModel):
     day: date

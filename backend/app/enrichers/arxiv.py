@@ -6,7 +6,7 @@ from datetime import timedelta
 import feedparser
 import httpx
 
-from .base import CleanUrl, EnrichError, Enricher
+from .base import CleanUrl, Enricher, EnrichError
 
 # New-style 2007+ ids (2301.12345) or old-style archive ids (cs/9901002).
 _NEW_ID = re.compile(r"^(\d{4}\.\d{4,5})(v\d+)?$")

@@ -1,7 +1,7 @@
 """Original-page enrichment: Scrapling fetches once, we take prose + og:image."""
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import trafilatura
 from scrapling.fetchers import AsyncFetcher
@@ -74,14 +74,14 @@ async def enrich_article(session: AsyncSession, article: Article) -> None:
     # pending_count treat a NULL stamp as "still pending", so an article that
     # needs nothing (rich feed body, image already set) or whose page yields
     # no image would otherwise stay pending — and be re-fetched — forever.
-    article.full_text_fetched_at = datetime.now(timezone.utc)
+    article.full_text_fetched_at = datetime.now(UTC)
     await session.commit()
 
 
 def _recently_attempted(article: Article) -> bool:
     if article.full_text_fetched_at is None:
         return False
-    return datetime.now(timezone.utc) - article.full_text_fetched_at < REFETCH_COOLDOWN
+    return datetime.now(UTC) - article.full_text_fetched_at < REFETCH_COOLDOWN
 
 
 async def ensure_full_text(

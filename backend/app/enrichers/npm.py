@@ -4,7 +4,7 @@ from urllib.parse import quote
 
 import httpx
 
-from .base import CleanUrl, EnrichError, Enricher
+from .base import CleanUrl, Enricher, EnrichError
 
 logger = logging.getLogger(__name__)
 
