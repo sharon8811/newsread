@@ -58,7 +58,7 @@ docker compose up -d db redis
 
 # Backend (http://localhost:8000, docs at /docs)
 cd backend
-uv venv .venv && uv pip install -p .venv/bin/python -r requirements.txt
+uv sync
 .venv/bin/uvicorn app.main:app --reload
 
 # Feed-polling worker (optional in dev; the API fetches on subscribe)
