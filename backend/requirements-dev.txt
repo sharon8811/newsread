@@ -1,6 +1,0 @@
-# Test tooling (kept separate from the runtime requirements.txt).
-pytest>=8.3
-pytest-asyncio>=0.24
-pytest-cov>=5.0
-pytest-xdist>=3.6
-respx>=0.21
