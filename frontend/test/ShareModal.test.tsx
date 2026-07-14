@@ -46,7 +46,7 @@ describe("<ShareModal>", () => {
     vi.stubGlobal("fetch", makeFetch());
     render(<ShareModal article={makeArticle({ title: "My Story" })} onClose={vi.fn()} />);
     expect(screen.getByText("My Story")).toBeInTheDocument();
-    expect(screen.getByText("Add a reader or pick a channel")).toBeInTheDocument();
+    expect(screen.getByText("Select a reader or channel")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Send/ })).toBeDisabled();
   });
 
@@ -128,7 +128,7 @@ describe("<ShareModal>", () => {
     await userEvent.click(removeBtn);
 
     expect(screen.queryByText("@bob")).not.toBeInTheDocument();
-    expect(screen.getByText("Add a reader or pick a channel")).toBeInTheDocument();
+    expect(screen.getByText("Select a reader or channel")).toBeInTheDocument();
   });
 
   it("clears results when the query is emptied", async () => {
