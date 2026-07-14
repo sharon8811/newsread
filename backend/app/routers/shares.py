@@ -1,16 +1,16 @@
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from ..db import get_session
+from ..access import accessible_article
+from ..deps import CurrentUser, DbSession
 from ..models import Article, Share, ShareRecipient, User, UserArticleState
 from ..queue import enqueue
 from ..schemas import ShareCreateIn, ShareOut, UnseenCountOut, UserPublic
-from ..security import get_current_user
-from .articles import to_list_item, user_can_access
+from .articles import to_list_item
 
 router = APIRouter(prefix="/shares", tags=["shares"])
 
@@ -50,12 +50,10 @@ async def _states_for(session: AsyncSession, user_id: int, article_ids: list[int
 @router.post("", response_model=ShareOut, status_code=201)
 async def create_share(
     body: ShareCreateIn,
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
+    user: CurrentUser,
+    session: DbSession,
 ):
-    article = await session.get(Article, body.article_id)
-    if article is None or not await user_can_access(session, user.id, article):
-        raise HTTPException(status_code=404, detail="Article not found")
+    article = await accessible_article(session, user.id, body.article_id)
 
     usernames = {u.strip().lstrip("@") for u in body.recipients if u.strip().lstrip("@")}
     usernames.discard(user.username)
@@ -90,8 +88,8 @@ async def create_share(
 
 @router.get("/received", response_model=list[ShareOut])
 async def received_shares(
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
+    user: CurrentUser,
+    session: DbSession,
 ):
     shares = (
         await session.scalars(
@@ -114,8 +112,8 @@ async def received_shares(
 
 @router.get("/sent", response_model=list[ShareOut])
 async def sent_shares(
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
+    user: CurrentUser,
+    session: DbSession,
 ):
     shares = (
         await session.scalars(
@@ -136,8 +134,8 @@ async def sent_shares(
 @router.post("/{share_id}/seen", status_code=204)
 async def mark_seen(
     share_id: int,
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
+    user: CurrentUser,
+    session: DbSession,
 ):
     recipient = await session.scalar(
         select(ShareRecipient).where(
@@ -153,8 +151,8 @@ async def mark_seen(
 
 @router.get("/unseen-count", response_model=UnseenCountOut)
 async def unseen_count(
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
+    user: CurrentUser,
+    session: DbSession,
 ):
     count = await session.scalar(
         select(func.count(ShareRecipient.id)).where(

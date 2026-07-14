@@ -3,15 +3,16 @@ import math
 from datetime import UTC, datetime
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from .. import db
+from ..access import accessible_article
 from ..config import settings
-from ..db import get_session
+from ..deps import CurrentUser, DbSession
 from ..models import (
     Article,
     ArticleEmbedding,
@@ -40,8 +41,7 @@ from ..schemas import (
     ProjectUpdateIn,
     UserPublic,
 )
-from ..security import get_current_user
-from .articles import _entities_for_articles, _to_badge, to_list_item, user_can_access
+from .articles import _entities_for_articles, _to_badge, to_list_item
 from .shares import _states_for
 
 logger = logging.getLogger(__name__)
@@ -233,8 +233,8 @@ async def _thread_or_404(
 @router.post("", response_model=ProjectOut, status_code=201)
 async def create_project(
     body: ProjectCreateIn,
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
+    user: CurrentUser,
+    session: DbSession,
 ):
     project = Project(owner_id=user.id, name=body.name, description=body.description.strip())
     project.members = [ProjectMember(user_id=user.id, role="owner")]
@@ -245,8 +245,8 @@ async def create_project(
 
 @router.get("", response_model=list[ProjectOut])
 async def list_projects(
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
+    user: CurrentUser,
+    session: DbSession,
 ):
     rows = (
         await session.execute(
@@ -335,8 +335,8 @@ async def _suggested_project_id(session: AsyncSession, article_id: int, user_id:
 @router.get("/article/{article_id}", response_model=list[ArticleProjectStatus])
 async def article_project_status(
     article_id: int,
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
+    user: CurrentUser,
+    session: DbSession,
 ):
     """Picker state: for each of my projects, my own pin and whether someone
     else already shared this article there."""
@@ -388,8 +388,8 @@ async def article_project_status(
 @router.get("/{project_id}", response_model=ProjectOut)
 async def get_project(
     project_id: int,
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
+    user: CurrentUser,
+    session: DbSession,
 ):
     await _member_or_404(session, project_id, user.id)
     return await _project_response(session, project_id, user.id)
@@ -399,8 +399,8 @@ async def get_project(
 async def update_project(
     project_id: int,
     body: ProjectUpdateIn,
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
+    user: CurrentUser,
+    session: DbSession,
 ):
     membership = await _member_or_404(session, project_id, user.id)
     if membership.role != "owner":
@@ -418,8 +418,8 @@ async def update_project(
 @router.delete("/{project_id}", status_code=204)
 async def delete_project(
     project_id: int,
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
+    user: CurrentUser,
+    session: DbSession,
 ):
     membership = await _member_or_404(session, project_id, user.id)
     if membership.role != "owner":
@@ -432,8 +432,8 @@ async def delete_project(
 async def add_member(
     project_id: int,
     body: ProjectMemberAddIn,
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
+    user: CurrentUser,
+    session: DbSession,
 ):
     membership = await _member_or_404(session, project_id, user.id)
     if membership.role != "owner":
@@ -455,8 +455,8 @@ async def add_member(
 async def remove_member(
     project_id: int,
     member_user_id: int,
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
+    user: CurrentUser,
+    session: DbSession,
 ):
     """Owner removes anyone (but themselves); a member removes only themselves
     (leaving). A departing member's shared pins stay — the group has already
@@ -481,8 +481,8 @@ async def remove_member(
 @router.post("/{project_id}/visit", status_code=204)
 async def visit_project(
     project_id: int,
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
+    user: CurrentUser,
+    session: DbSession,
 ):
     """The project page reports each open; unseen counts measure against it."""
     membership = await _member_or_404(session, project_id, user.id)
@@ -494,8 +494,8 @@ async def visit_project(
 async def update_membership(
     project_id: int,
     body: ProjectMembershipIn,
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
+    user: CurrentUser,
+    session: DbSession,
 ):
     """The viewer's own per-project settings (currently just the push mute)."""
     membership = await _member_or_404(session, project_id, user.id)
@@ -513,10 +513,10 @@ _pin_load_options = (
 @router.get("/{project_id}/articles", response_model=list[ProjectArticleOut])
 async def list_project_articles(
     project_id: int,
+    user: CurrentUser,
+    session: DbSession,
     scope: Literal["all", "shared", "mine"] = "all",
     limit: int = Query(default=200, ge=1, le=500),
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
 ):
     await _member_or_404(session, project_id, user.id)
     stmt = (
@@ -553,13 +553,11 @@ async def list_project_articles(
 async def add_project_article(
     project_id: int,
     body: ProjectArticleAddIn,
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
+    user: CurrentUser,
+    session: DbSession,
 ):
     await _member_or_404(session, project_id, user.id)
-    article = await session.get(Article, body.article_id)
-    if article is None or not await user_can_access(session, user.id, article):
-        raise HTTPException(status_code=404, detail="Article not found")
+    article = await accessible_article(session, user.id, body.article_id)
     note = body.note.strip() if body.note else None
     # Atomic insert: a concurrent duplicate (double-click, second tab) resolves
     # to "already added" instead of a unique-constraint 500.
@@ -622,8 +620,8 @@ async def update_project_article(
     project_id: int,
     pin_id: int,
     body: ProjectArticleUpdateIn,
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
+    user: CurrentUser,
+    session: DbSession,
 ):
     await _member_or_404(session, project_id, user.id)
     pin = await _own_pin_or_error(session, project_id, pin_id, user.id)
@@ -656,8 +654,8 @@ async def update_project_article(
 async def remove_project_article(
     project_id: int,
     pin_id: int,
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
+    user: CurrentUser,
+    session: DbSession,
 ):
     membership = await _member_or_404(session, project_id, user.id)
     pin = await _own_pin_or_error(session, project_id, pin_id, user.id)
@@ -671,8 +669,8 @@ async def remove_project_article(
 async def remove_article_pins(
     project_id: int,
     article_id: int,
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
+    user: CurrentUser,
+    session: DbSession,
 ):
     """Remove every pin of this article the caller may remove, in one
     transaction: their own pin, plus all shared pins when they're the owner.
@@ -709,8 +707,8 @@ async def set_article_status(
     project_id: int,
     article_id: int,
     body: ProjectArticleStatusIn,
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
+    user: CurrentUser,
+    session: DbSession,
 ):
     """Move the article's ticket. Any member can — shared task-list semantics,
     unlike pin edits which stay adder-only. An optional comment (the
@@ -761,8 +759,8 @@ async def set_article_status(
 async def list_article_comments(
     project_id: int,
     article_id: int,
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
+    user: CurrentUser,
+    session: DbSession,
 ):
     await _member_or_404(session, project_id, user.id)
     await _thread_or_404(session, project_id, article_id, user.id)
@@ -789,8 +787,8 @@ async def add_article_comment(
     project_id: int,
     article_id: int,
     body: ProjectCommentIn,
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
+    user: CurrentUser,
+    session: DbSession,
 ):
     await _member_or_404(session, project_id, user.id)
     await _thread_or_404(session, project_id, article_id, user.id)
@@ -811,8 +809,8 @@ async def add_article_comment(
 async def delete_article_comment(
     project_id: int,
     comment_id: int,
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
+    user: CurrentUser,
+    session: DbSession,
 ):
     membership = await _member_or_404(session, project_id, user.id)
     comment = await session.scalar(

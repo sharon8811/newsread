@@ -1,14 +1,12 @@
 """Entity pages: one person / org / product / repo / paper, plus every
 visible article from the user's feeds that links or mentions it."""
 
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import APIRouter, HTTPException
 
-from ..db import get_session
+from ..deps import CurrentUser, DbSession
 from ..enrichers import badge_for
-from ..models import ArticleEntity, Entity, User
+from ..models import ArticleEntity, Entity
 from ..schemas import EntityPageOut
-from ..security import get_current_user
 from .articles import Article, _related_scope, to_list_item
 
 router = APIRouter(prefix="/entities", tags=["entities"])
@@ -19,8 +17,8 @@ ENTITY_PAGE_LIMIT = 100
 @router.get("/{entity_id}", response_model=EntityPageOut)
 async def get_entity(
     entity_id: int,
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
+    user: CurrentUser,
+    session: DbSession,
 ):
     entity = await session.get(Entity, entity_id)
     if entity is None:

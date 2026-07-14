@@ -7,14 +7,14 @@ from datetime import UTC, datetime
 from typing import Literal
 from urllib.parse import parse_qs, quote, quote_plus, urljoin, urlsplit
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import and_, case, func, literal_column, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .. import embeddings
 from ..config import settings
-from ..db import get_session
+from ..deps import CurrentUser, DbSession
 from ..fetcher import FeedParseError, FeedRateLimited, fetch_feed_data, strip_html
 from ..models import (
     CatalogEntry,
@@ -22,7 +22,6 @@ from ..models import (
     CatalogSubmission,
     Feed,
     Subscription,
-    User,
 )
 from ..schemas import (
     CatalogCategoryOut,
@@ -34,7 +33,6 @@ from ..schemas import (
     SmartFeedOut,
     SmartFeedResolveOut,
 )
-from ..security import get_current_user
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/catalog", tags=["catalog"])
@@ -324,11 +322,11 @@ async def _recommended_ids(session: AsyncSession, user_id: int, category: str | 
 
 @router.get("", response_model=list[CatalogEntryOut])
 async def browse_catalog(
+    user: CurrentUser,
+    session: DbSession,
     q: str | None = Query(default=None, max_length=120),
     category: str | None = Query(default=None, max_length=64),
     sort: Literal["name", "popular", "recommended"] = "name",
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
 ):
     normalized_q = (q or "").strip()
     ranked_ids: list[int] | None = None
@@ -421,8 +419,8 @@ async def browse_catalog(
 
 @router.get("/categories", response_model=list[CatalogCategoryOut])
 async def list_categories(
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
+    user: CurrentUser,
+    session: DbSession,
 ):
     rows = await session.execute(
         select(CatalogEntry.category, func.count())
@@ -497,7 +495,7 @@ async def _cached_preview(
 
 
 @router.get("/smart", response_model=list[SmartFeedOut])
-async def list_smart_feeds(user: User = Depends(get_current_user)):
+async def list_smart_feeds(user: CurrentUser):
     return [
         SmartFeedOut(
             key=provider.key,
@@ -523,8 +521,8 @@ def _smart_provider(key: str) -> SmartFeedProvider:
 @router.get("/smart/{key}/resolve", response_model=SmartFeedResolveOut)
 async def resolve_smart_feed(
     key: str,
+    user: CurrentUser,
     topic: str = Query(min_length=1, max_length=2048),
-    user: User = Depends(get_current_user),
 ):
     """Turn a topic (or a pasted topic-page URL) into a concrete feed URL."""
     try:
@@ -536,8 +534,8 @@ async def resolve_smart_feed(
 @router.get("/smart/{key}/preview", response_model=CatalogPreviewOut)
 async def preview_smart_feed(
     key: str,
+    user: CurrentUser,
     topic: str = Query(min_length=1, max_length=2048),
-    user: User = Depends(get_current_user),
 ):
     """Server-side preview fallback for browsers blocked by feed CORS policies."""
     try:
@@ -550,8 +548,8 @@ async def preview_smart_feed(
 @router.get("/{entry_id}/preview", response_model=CatalogPreviewOut)
 async def preview_entry(
     entry_id: int,
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
+    user: CurrentUser,
+    session: DbSession,
 ):
     """Fetch a live snapshot of a catalog feed for the detail view."""
     entry = await session.scalar(
@@ -570,17 +568,14 @@ async def preview_entry(
 @router.post("/submissions", response_model=CatalogSubmissionOut, status_code=201)
 async def submit_feed(
     body: CatalogSubmissionIn,
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
+    user: CurrentUser,
+    session: DbSession,
 ):
     url = body.url.strip()
     try:
         parsed = await fetch_feed_data(url, require_articles=True)
-    except FeedRateLimited as exc:
-        raise HTTPException(
-            status_code=503,
-            detail=f"{exc.host} is rate-limiting our requests right now. Try again in a minute or two.",
-        ) from exc
+    except FeedRateLimited:
+        raise  # the app-level 503 handler owns the message
     except (FeedParseError, ValueError, OSError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:

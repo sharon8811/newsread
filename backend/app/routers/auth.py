@@ -1,17 +1,16 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 from sqlalchemy import func, or_, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..db import get_session
+from ..deps import CurrentUser, DbSession
 from ..models import User
 from ..schemas import LoginIn, RegisterIn, TokenOut, UserOut
-from ..security import create_access_token, get_current_user, hash_password, verify_password
+from ..security import create_access_token, hash_password, verify_password
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 @router.post("/register", response_model=TokenOut, status_code=201)
-async def register(body: RegisterIn, session: AsyncSession = Depends(get_session)):
+async def register(body: RegisterIn, session: DbSession):
     existing = await session.scalar(
         select(User).where(
             or_(
@@ -37,7 +36,7 @@ async def register(body: RegisterIn, session: AsyncSession = Depends(get_session
 
 
 @router.post("/login", response_model=TokenOut)
-async def login(body: LoginIn, session: AsyncSession = Depends(get_session)):
+async def login(body: LoginIn, session: DbSession):
     identifier = body.identifier.strip().lower()
     user = await session.scalar(
         select(User).where(
@@ -53,12 +52,12 @@ async def login(body: LoginIn, session: AsyncSession = Depends(get_session)):
 
 
 @router.get("/me", response_model=UserOut)
-async def me(user: User = Depends(get_current_user)):
+async def me(user: CurrentUser):
     return UserOut.model_validate(user)
 
 
 @router.post("/refresh", response_model=TokenOut)
-async def refresh(user: User = Depends(get_current_user)):
+async def refresh(user: CurrentUser):
     """Sliding session: trade a still-valid token for a fresh one. Mobile
     clients call this on app launch so users never hit the 30-day expiry."""
     return TokenOut(access_token=create_access_token(user.id), user=UserOut.model_validate(user))
