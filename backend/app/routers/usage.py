@@ -7,12 +7,11 @@ history stays visible even after the key is deleted.
 
 from datetime import UTC, datetime, timedelta
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Query
 from sqlalchemy import Date, cast, desc, func, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..db import get_session
-from ..models import LLMUsage, User, UserAISettings
+from ..deps import CurrentUser, DbSession
+from ..models import LLMUsage, UserAISettings
 from ..schemas import (
     ActivityRange,
     UsageDayOut,
@@ -21,7 +20,6 @@ from ..schemas import (
     UsageModelOut,
     UsageSummaryOut,
 )
-from ..security import get_current_user
 
 router = APIRouter(prefix="/usage", tags=["usage"])
 
@@ -37,9 +35,9 @@ _tokens = LLMUsage.prompt_tokens + LLMUsage.completion_tokens
 
 @router.get("/summary", response_model=UsageSummaryOut)
 async def summary(
+    user: CurrentUser,
+    session: DbSession,
     range_: ActivityRange = Query("week", alias="range"),
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
 ):
     # UTC on purpose: the Date cast above buckets in the DB session's UTC, and
     # the window boundary must agree with it.
@@ -115,10 +113,10 @@ async def summary(
 
 @router.get("/events", response_model=list[UsageEventOut])
 async def events(
+    user: CurrentUser,
+    session: DbSession,
     before_id: int | None = Query(None, description="Cursor: return rows older than this id"),
     limit: int = Query(20, ge=1, le=EVENTS_MAX),
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
 ):
     """Newest-first call log; page with the last row's id as before_id."""
     query = (

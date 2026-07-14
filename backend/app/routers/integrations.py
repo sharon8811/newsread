@@ -7,16 +7,17 @@ import logging
 from datetime import UTC, datetime, timedelta
 
 import jwt
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import RedirectResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .. import crypto
+from ..access import accessible_article
 from ..config import settings
-from ..db import get_session
+from ..deps import CurrentUser, DbSession
 from ..messaging import ADAPTERS, MessagingError
-from ..models import Article, ExternalShare, MessagingConnection, ShareTarget, User
+from ..models import ExternalShare, MessagingConnection, ShareTarget
 from ..schemas import (
     AuthorizeUrlOut,
     ExternalShareIn,
@@ -26,8 +27,6 @@ from ..schemas import (
     ShareTargetOut,
     TargetOptionOut,
 )
-from ..security import get_current_user
-from .articles import user_can_access
 
 logger = logging.getLogger(__name__)
 
@@ -117,8 +116,8 @@ async def _fresh_token(session: AsyncSession, connection: MessagingConnection) -
 
 @router.get("/integrations", response_model=list[IntegrationStatusOut])
 async def integration_status(
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
+    user: CurrentUser,
+    session: DbSession,
 ):
     connections = {
         c.platform: c
@@ -145,7 +144,7 @@ async def integration_status(
 @router.get("/integrations/{platform}/authorize", response_model=AuthorizeUrlOut)
 async def authorize(
     platform: str,
-    user: User = Depends(get_current_user),
+    user: CurrentUser,
 ):
     adapter = _adapter_or_404(platform)
     if not adapter.is_configured():
@@ -163,10 +162,10 @@ async def authorize(
 @router.get("/integrations/{platform}/callback", include_in_schema=False)
 async def oauth_callback(
     platform: str,
+    session: DbSession,
     state: str = "",
     code: str = "",
     error: str = "",
-    session: AsyncSession = Depends(get_session),
 ):
     """Unauthenticated by design — the browser lands here from the provider;
     identity comes from the signed state. Always redirects to settings."""
@@ -211,8 +210,8 @@ async def oauth_callback(
 @router.delete("/integrations/{platform}", status_code=204)
 async def disconnect(
     platform: str,
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
+    user: CurrentUser,
+    session: DbSession,
 ):
     _adapter_or_404(platform)
     connection = await _connection_or_409(session, user.id, platform)
@@ -223,9 +222,9 @@ async def disconnect(
 @router.get("/integrations/{platform}/targets", response_model=list[TargetOptionOut])
 async def search_targets(
     platform: str,
+    user: CurrentUser,
+    session: DbSession,
     q: str = "",
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
 ):
     """Live channel/chat list proxied from the platform, with saved ones marked."""
     adapter = _adapter_or_404(platform)
@@ -275,8 +274,8 @@ def _target_out(target: ShareTarget, platform: str) -> ShareTargetOut:
 
 @router.get("/share-targets", response_model=list[ShareTargetOut])
 async def list_share_targets(
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
+    user: CurrentUser,
+    session: DbSession,
 ):
     rows = (
         await session.execute(
@@ -292,8 +291,8 @@ async def list_share_targets(
 @router.post("/share-targets", response_model=ShareTargetOut, status_code=201)
 async def save_share_target(
     body: ShareTargetIn,
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
+    user: CurrentUser,
+    session: DbSession,
 ):
     connection = await _connection_or_409(session, user.id, body.platform)
     existing = await session.scalar(
@@ -330,8 +329,8 @@ async def save_share_target(
 @router.delete("/share-targets/{target_id}", status_code=204)
 async def delete_share_target(
     target_id: int,
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
+    user: CurrentUser,
+    session: DbSession,
 ):
     target = await session.get(ShareTarget, target_id)
     if target is None or target.user_id != user.id:
@@ -346,14 +345,12 @@ async def delete_share_target(
 @router.post("/shares/external", response_model=ExternalShareOut, status_code=201)
 async def send_external_share(
     body: ExternalShareIn,
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
+    user: CurrentUser,
+    session: DbSession,
 ):
     """Send one article to one target, synchronously — the user is waiting in
     the composer and deserves a real success/failure, not a queue ticket."""
-    article = await session.get(Article, body.article_id)
-    if article is None or not await user_can_access(session, user.id, article):
-        raise HTTPException(status_code=404, detail="Article not found")
+    article = await accessible_article(session, user.id, body.article_id)
 
     saved_target: ShareTarget | None = None
     if body.target_id is not None:

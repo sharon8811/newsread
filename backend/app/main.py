@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from . import error_handlers
 from .config import settings
 from .db import init_db
 from .routers import (
@@ -39,6 +40,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="NewsRead API", version=API_VERSION, lifespan=lifespan)
+
+error_handlers.register(app)
 
 app.add_middleware(
     CORSMiddleware,

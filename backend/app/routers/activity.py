@@ -1,12 +1,12 @@
 from datetime import date, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import desc, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..db import get_session
-from ..models import Article, Feed, ReadingActivity, User
+from ..access import accessible_article
+from ..deps import CurrentUser, DbSession
+from ..models import Article, Feed, ReadingActivity
 from ..schemas import (
     ActivityArticleOut,
     ActivityDayOut,
@@ -15,8 +15,6 @@ from ..schemas import (
     ActivitySummaryOut,
     HeartbeatIn,
 )
-from ..security import get_current_user
-from .articles import user_can_access
 
 router = APIRouter(prefix="/activity", tags=["activity"])
 
@@ -31,14 +29,12 @@ TOP_LIMIT = 5
 @router.post("/heartbeat", status_code=204)
 async def heartbeat(
     body: HeartbeatIn,
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
+    user: CurrentUser,
+    session: DbSession,
 ):
     """Add `seconds` of reading time to (user, article, day, source). Clients
     send one every ~30s of active reading plus a final flush on leave."""
-    article = await session.get(Article, body.article_id)
-    if article is None or not await user_can_access(session, user.id, article):
-        raise HTTPException(status_code=404, detail="Article not found")
+    article = await accessible_article(session, user.id, body.article_id)
 
     # A client-local date is at most ~1 day away from the server's; anything
     # further is a broken clock and would spray junk across the chart.
@@ -65,10 +61,10 @@ async def heartbeat(
 
 @router.get("/summary", response_model=ActivitySummaryOut)
 async def summary(
+    user: CurrentUser,
+    session: DbSession,
     range_: ActivityRange = Query("week", alias="range"),
     today: date | None = Query(None, description="Client-local date"),
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
 ):
     if today is None:
         today = date.today()

@@ -1,11 +1,9 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Query
 from sqlalchemy import or_, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..db import get_session
+from ..deps import CurrentUser, DbSession
 from ..models import User
 from ..schemas import UserOut, UserPublic, UserUpdateIn
-from ..security import get_current_user
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -13,8 +11,8 @@ router = APIRouter(prefix="/users", tags=["users"])
 @router.patch("/me", response_model=UserOut)
 async def update_me(
     body: UserUpdateIn,
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
+    user: CurrentUser,
+    session: DbSession,
 ):
     if body.default_view is not None:
         user.default_view = body.default_view
@@ -31,9 +29,9 @@ async def update_me(
 
 @router.get("/search", response_model=list[UserPublic])
 async def search_users(
+    user: CurrentUser,
+    session: DbSession,
     q: str = Query(min_length=1, max_length=60),
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
 ):
     pattern = f"%{q}%"
     rows = await session.scalars(

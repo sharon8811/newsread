@@ -4,14 +4,15 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Literal
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Response
 from sqlalchemy import and_, exists, func, literal_column, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .. import crypto, embeddings, image_gen
+from ..access import accessible_article
 from ..config import settings
-from ..db import get_session
+from ..deps import CurrentUser, DbSession
 from ..enrichers import badge_for
 from ..models import (
     Article,
@@ -22,10 +23,6 @@ from ..models import (
     EntitySnapshot,
     Feed,
     GeneratedImage,
-    ProjectArticle,
-    ProjectMember,
-    Share,
-    ShareRecipient,
     Subscription,
     User,
     UserArticleState,
@@ -43,7 +40,6 @@ from ..schemas import (
     MarkAllReadIn,
     RelatedArticleItem,
 )
-from ..security import get_current_user
 from .feeds import retention_visible
 
 logger = logging.getLogger(__name__)
@@ -239,37 +235,6 @@ def _cursor_filter_at_or_after(published: datetime | None, article_id: int, *, o
         Article.id == article_id,
     )
     return or_(at, _cursor_filter(published, article_id, oldest=oldest))
-
-
-async def user_can_access(session: AsyncSession, user_id: int, article: Article) -> bool:
-    subscribed = await session.scalar(
-        select(Subscription.id).where(
-            Subscription.user_id == user_id, Subscription.feed_id == article.feed_id
-        )
-    )
-    if subscribed:
-        return True
-    shared = await session.scalar(
-        select(ShareRecipient.id)
-        .join(Share, Share.id == ShareRecipient.share_id)
-        .where(ShareRecipient.to_user_id == user_id, Share.article_id == article.id)
-    )
-    if shared is not None:
-        return True
-    # Pinned to a project the user belongs to (their own pin, or a shared one).
-    # Function-level import: projects.py imports from this module at load time.
-    from .projects import visible_pins
-
-    pinned = await session.scalar(
-        select(ProjectArticle.id)
-        .join(ProjectMember, ProjectMember.project_id == ProjectArticle.project_id)
-        .where(
-            ProjectMember.user_id == user_id,
-            ProjectArticle.article_id == article.id,
-            visible_pins(user_id),
-        )
-    )
-    return pinned is not None
 
 
 def not_suppressed(user_id: int):
@@ -519,6 +484,8 @@ async def _hybrid_search_ids(
 async def list_articles(
     response: Response,
     background: BackgroundTasks,
+    user: CurrentUser,
+    session: DbSession,
     feed_id: int | None = None,
     filter: Literal["all", "unread", "saved"] = "all",
     q: str | None = Query(default=None, max_length=200),
@@ -528,8 +495,6 @@ async def list_articles(
     anchor: Literal["resume"] | None = None,
     direction: Literal["after", "before"] = "after",
     reading_window: bool = False,
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
 ):
     """Chronological listings support keyset pagination: pass the previous
     response's `X-Next-Cursor` header as `cursor` (which then overrides
@@ -849,12 +814,10 @@ async def _generate_listed_images(
 @router.get("/{article_id}/related", response_model=list[RelatedArticleItem])
 async def get_related(
     article_id: int,
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
+    user: CurrentUser,
+    session: DbSession,
 ):
-    article = await session.get(Article, article_id)
-    if article is None or not await user_can_access(session, user.id, article):
-        raise HTTPException(status_code=404, detail="Article not found")
+    article = await accessible_article(session, user.id, article_id)
     return [
         RelatedArticleItem(
             id=row.article.id,
@@ -872,12 +835,10 @@ async def get_related(
 async def get_article(
     article_id: int,
     background: BackgroundTasks,
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
+    user: CurrentUser,
+    session: DbSession,
 ):
-    article = await session.get(Article, article_id)
-    if article is None or not await user_can_access(session, user.id, article):
-        raise HTTPException(status_code=404, detail="Article not found")
+    article = await accessible_article(session, user.id, article_id)
     feed = await session.get(Feed, article.feed_id)
     image_pending = await _maybe_generate_image(session, background, user, article, feed)
     state = await session.scalar(
@@ -923,7 +884,7 @@ async def get_article(
 @router.get("/{article_id}/generated-image")
 async def get_generated_image(
     article_id: int,
-    session: AsyncSession = Depends(get_session),
+    session: DbSession,
 ):
     """Serves AI-generated article images. Unauthenticated on purpose: <img>
     tags can't send Authorization headers, and these illustrate public news
@@ -948,8 +909,8 @@ def _read_state_values(is_read: bool, source: str) -> dict:
 @router.post("/state/batch", status_code=204)
 async def set_state_batch(
     body: ArticleStateBatchIn,
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
+    user: CurrentUser,
+    session: DbSession,
 ):
     """Bulk read flips from scroll auto-read. Ids outside the user's
     subscriptions are silently ignored, and rows already in the requested
@@ -1018,12 +979,10 @@ async def set_state_batch(
 async def set_state(
     article_id: int,
     body: ArticleStateIn,
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
+    user: CurrentUser,
+    session: DbSession,
 ):
-    article = await session.get(Article, article_id)
-    if article is None or not await user_can_access(session, user.id, article):
-        raise HTTPException(status_code=404, detail="Article not found")
+    article = await accessible_article(session, user.id, article_id)
 
     values: dict = {}
     if body.is_read is not None:
@@ -1058,8 +1017,8 @@ async def set_state(
 @router.post("/mark-all-read", status_code=204)
 async def mark_all_read(
     body: MarkAllReadIn,
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
+    user: CurrentUser,
+    session: DbSession,
 ):
     stmt = (
         select(Article.id)

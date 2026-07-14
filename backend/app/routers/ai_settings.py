@@ -8,12 +8,11 @@ and surfaced back only as key_hint.
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 from openai import AsyncOpenAI
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from .. import crypto, image_gen, llm
-from ..db import get_session
+from ..deps import CurrentUser, DbSession
 from ..models import User, UserAISettings
 from ..schemas import (
     AIImageSettingsOut,
@@ -22,7 +21,6 @@ from ..schemas import (
     AITestIn,
     AITestOut,
 )
-from ..security import get_current_user
 
 logger = logging.getLogger(__name__)
 
@@ -81,8 +79,8 @@ def _out(row: UserAISettings | None, user: User, generations_this_month: int = 0
 
 @router.get("", response_model=AISettingsOut)
 async def get_ai_settings(
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
+    user: CurrentUser,
+    session: DbSession,
 ):
     return _out(
         await session.get(UserAISettings, user.id),
@@ -94,8 +92,8 @@ async def get_ai_settings(
 @router.put("", response_model=AISettingsOut)
 async def put_ai_settings(
     body: AISettingsIn,
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
+    user: CurrentUser,
+    session: DbSession,
 ):
     _require_crypto()
     row = await session.get(UserAISettings, user.id)
@@ -167,8 +165,8 @@ async def put_ai_settings(
 
 @router.delete("", status_code=204)
 async def delete_ai_settings(
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
+    user: CurrentUser,
+    session: DbSession,
 ):
     """Back to the server-wide default. Idempotent."""
     row = await session.get(UserAISettings, user.id)
@@ -180,8 +178,8 @@ async def delete_ai_settings(
 @router.post("/test", response_model=AITestOut)
 async def test_ai_settings(
     body: AITestIn,
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
+    user: CurrentUser,
+    session: DbSession,
 ):
     """Run one tiny completion so the user learns their key works before
     saving — never persists anything.
@@ -215,13 +213,8 @@ async def test_ai_settings(
             )
         provider, base_url = row.provider, row.base_url
         model = body.model or row.model
-        try:
-            api_key = crypto.decrypt_token(row.api_key_enc)
-        except crypto.TokenCryptoError:
-            raise HTTPException(
-                status_code=503,
-                detail="Your stored API key can't be decrypted — re-enter it.",
-            ) from None
+        # crypto.TokenCryptoError propagates to the app-level 503 handler.
+        api_key = crypto.decrypt_token(row.api_key_enc)
 
     client = AsyncOpenAI(
         api_key=api_key,

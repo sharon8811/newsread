@@ -7,14 +7,15 @@ import logging
 import time
 from datetime import UTC, datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, HTTPException, Response
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .. import crypto, embeddings, llm, suppressions
+from ..access import accessible_article
 from ..config import settings
-from ..db import get_session
+from ..deps import CurrentUser, DbSession
 from ..enrichers import badge_for
 from ..models import (
     Article,
@@ -22,7 +23,6 @@ from ..models import (
     ArticleSuppression,
     DislikeRuleEmbedding,
     Entity,
-    User,
     UserDislikeRule,
 )
 from ..schemas import (
@@ -33,8 +33,7 @@ from ..schemas import (
     DislikeRuleOut,
     DislikeRulePreviewItem,
 )
-from ..security import get_current_user
-from .articles import current_embedding, user_can_access
+from .articles import current_embedding
 
 logger = logging.getLogger(__name__)
 
@@ -51,23 +50,16 @@ STORY_TTL = timedelta(days=14)
 PREVIEW_LIMIT = 5
 
 
-async def _accessible_article(session: AsyncSession, user: User, article_id: int) -> Article:
-    article = await session.get(Article, article_id)
-    if article is None or not await user_can_access(session, user.id, article):
-        raise HTTPException(status_code=404, detail="Article not found")
-    return article
-
-
 @router.get("/dislike-options/{article_id}", response_model=DislikeOptionsOut)
 async def dislike_options(
     article_id: int,
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
+    user: CurrentUser,
+    session: DbSession,
 ):
     """Reason chips for the 'not interested' popover. Every leg degrades to
     less choice, never an error: no LLM -> no topics, no embeddings -> no
     story mute, entities always work."""
-    article = await _accessible_article(session, user, article_id)
+    article = await accessible_article(session, user.id, article_id)
 
     rows = await session.execute(
         select(ArticleEntity, Entity)
@@ -183,8 +175,8 @@ async def _preview(session: AsyncSession, rule_id: int, limit: int) -> list[Disl
 @router.post("/dislikes", response_model=DislikeRuleCreateOut)
 async def create_dislike(
     body: DislikeRuleIn,
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
+    user: CurrentUser,
+    session: DbSession,
 ):
     if body.kind in ("article", "story"):
         if body.article_id is None:
@@ -208,7 +200,7 @@ async def create_dislike(
 
     try:
         if body.kind in ("article", "story"):
-            article = await _accessible_article(session, user, body.article_id)
+            article = await accessible_article(session, user.id, body.article_id)
             rule.article_id = article.id
             rule.label = article.title[:512]
             if body.kind == "story":
@@ -294,8 +286,8 @@ async def create_dislike(
 
 @router.get("/dislikes", response_model=list[DislikeRuleOut])
 async def list_dislikes(
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
+    user: CurrentUser,
+    session: DbSession,
 ):
     counts = (
         select(ArticleSuppression.rule_id, func.count().label("n"))
@@ -327,8 +319,8 @@ async def list_dislikes(
 @router.get("/dislikes/{rule_id}/articles", response_model=list[DislikeRulePreviewItem])
 async def dislike_articles(
     rule_id: int,
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
+    user: CurrentUser,
+    session: DbSession,
 ):
     rule = await session.get(UserDislikeRule, rule_id)
     if rule is None or rule.user_id != user.id:
@@ -339,8 +331,8 @@ async def dislike_articles(
 @router.delete("/dislikes/{rule_id}", status_code=204)
 async def delete_dislike(
     rule_id: int,
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
+    user: CurrentUser,
+    session: DbSession,
 ):
     rule = await session.get(UserDislikeRule, rule_id)
     if rule is None or rule.user_id != user.id:

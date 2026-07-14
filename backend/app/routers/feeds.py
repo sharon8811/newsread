@@ -1,15 +1,14 @@
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 from sqlalchemy import and_, exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..db import get_session
+from ..deps import CurrentUser, DbSession
 from ..fetcher import FeedRateLimited, refresh_feed
 from ..models import Article, Feed, Share, Subscription, User, UserArticleState
 from ..queue import enqueue
 from ..schemas import AddFeedIn, FeedOut, FeedSettingsIn
-from ..security import get_current_user
 
 logger = logging.getLogger(__name__)
 
@@ -111,9 +110,7 @@ def _to_feed_out(
 
 
 @router.get("", response_model=list[FeedOut])
-async def list_feeds(
-    user: User = Depends(get_current_user), session: AsyncSession = Depends(get_session)
-):
+async def list_feeds(user: CurrentUser, session: DbSession):
     rows = await session.execute(_feed_list_stmt(user.id))
     return [_to_feed_out(*row) for row in rows]
 
@@ -121,8 +118,8 @@ async def list_feeds(
 @router.post("", response_model=FeedOut, status_code=201)
 async def add_feed(
     body: AddFeedIn,
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
+    user: CurrentUser,
+    session: DbSession,
 ):
     url = _normalize_url(body.url)
     feed = await session.scalar(select(Feed).where(Feed.url == url))
@@ -188,8 +185,8 @@ async def add_feed(
 @router.post("/{feed_id}/refresh", response_model=FeedOut)
 async def refresh(
     feed_id: int,
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
+    user: CurrentUser,
+    session: DbSession,
 ):
     feed = await _get_subscribed_feed(session, user, feed_id)
     try:
@@ -211,8 +208,8 @@ async def refresh(
 async def update_feed_settings(
     feed_id: int,
     body: FeedSettingsIn,
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
+    user: CurrentUser,
+    session: DbSession,
 ):
     feed = await _get_subscribed_feed(session, user, feed_id)
     subscription = await session.scalar(
@@ -252,8 +249,8 @@ async def update_feed_settings(
 @router.delete("/{feed_id}", status_code=204)
 async def unsubscribe(
     feed_id: int,
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
+    user: CurrentUser,
+    session: DbSession,
 ):
     feed = await _get_subscribed_feed(session, user, feed_id)
     subscription = await session.scalar(

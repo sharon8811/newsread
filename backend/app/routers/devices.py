@@ -1,13 +1,11 @@
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..db import get_session
-from ..models import Device, User
+from ..deps import CurrentUser, DbSession
+from ..models import Device
 from ..schemas import DeviceIn, DeviceOut
-from ..security import get_current_user
 
 router = APIRouter(prefix="/devices", tags=["devices"])
 
@@ -15,8 +13,8 @@ router = APIRouter(prefix="/devices", tags=["devices"])
 @router.post("", response_model=DeviceOut, status_code=201)
 async def register_device(
     body: DeviceIn,
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
+    user: CurrentUser,
+    session: DbSession,
 ):
     """Idempotent: re-registering an existing token refreshes it, and a token
     that logs into another account moves to that account."""
@@ -35,9 +33,9 @@ async def register_device(
 
 @router.delete("", status_code=204)
 async def unregister_device(
+    user: CurrentUser,
+    session: DbSession,
     push_token: str = Query(min_length=1, max_length=512),
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
 ):
     """Called on logout. The token goes in the query string because Expo
     tokens contain characters that are awkward in a path segment."""

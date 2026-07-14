@@ -2,14 +2,15 @@ import json
 import logging
 import time
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from .. import crypto, llm, qa_agent
-from ..db import get_session
+from ..access import accessible_article
+from ..deps import CurrentUser, DbSession
 from ..enrichers import badge_for
 from ..extractor import clip_for_llm, ensure_full_text, is_thin
 from ..fetcher import canonical_hn_comments_url
@@ -37,9 +38,8 @@ from ..schemas import (
     SynthesisSourceOut,
     SynthesisTimelineItem,
 )
-from ..security import get_current_user
 from ..summarizer import ThinContentError, generate_summaries
-from .articles import related_articles, user_can_access
+from .articles import related_articles
 from .projects import _member_or_404, visible_pins
 
 logger = logging.getLogger(__name__)
@@ -47,23 +47,11 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["ai"])
 
 
-async def _accessible_article(session: AsyncSession, user: User, article_id: int) -> Article:
-    article = await session.get(Article, article_id)
-    if article is None or not await user_can_access(session, user.id, article):
-        raise HTTPException(status_code=404, detail="Article not found")
-    return article
-
-
 async def _resolve_llm(session: AsyncSession, user: User) -> llm.LLMConfig:
     """The user's own key when they saved one, else the server default — 503
     when neither is usable."""
-    try:
-        config = await llm.resolve_config(session, user.id)
-    except crypto.TokenCryptoError:
-        raise HTTPException(
-            status_code=503,
-            detail="Your stored API key can't be decrypted — re-enter it in Settings.",
-        ) from None
+    # crypto.TokenCryptoError propagates to the app-level 503 handler.
+    config = await llm.resolve_config(session, user.id)
     if config is None:
         raise HTTPException(
             status_code=503,
@@ -79,8 +67,8 @@ def _ms_since(started: float) -> int:
 
 @router.get("/ai/status", response_model=AiStatusOut)
 async def ai_status(
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
+    user: CurrentUser,
+    session: DbSession,
 ):
     try:
         config = await llm.resolve_config(session, user.id)
@@ -98,11 +86,11 @@ async def ai_status(
 @router.post("/articles/{article_id}/summarize", response_model=SummaryOut)
 async def summarize_article(
     article_id: int,
+    user: CurrentUser,
+    session: DbSession,
     force: bool = False,
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
 ):
-    article = await _accessible_article(session, user, article_id)
+    article = await accessible_article(session, user.id, article_id)
     if article.summary and article.summary_short and not force:
         return _summary_out(article)
     config = await _resolve_llm(session, user)
@@ -160,12 +148,12 @@ def _summary_out(article: Article) -> SummaryOut:
 @router.post("/ai/share-message", response_model=ShareMessageOut)
 async def share_message(
     body: ShareMessageIn,
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
+    user: CurrentUser,
+    session: DbSession,
 ):
     """Generate (or refine a draft of) the note that accompanies an article
     shared to a messaging platform. Uses the stored summary — never fetches."""
-    article = await _accessible_article(session, user, body.article_id)
+    article = await accessible_article(session, user.id, body.article_id)
     config = await _resolve_llm(session, user)
     summary = article.summary_medium or article.summary or article.excerpt or ""
     user_id = user.id
@@ -223,13 +211,13 @@ async def share_message(
 @router.post("/articles/{article_id}/related-synthesis", response_model=SynthesisOut)
 async def synthesize_related_coverage(
     article_id: int,
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
+    user: CurrentUser,
+    session: DbSession,
 ):
     """Lazy 'synthesize coverage' for the related-articles section: one LLM
     call over the stored summaries of the article and its related set —
     nothing is fetched, and nothing runs unless the user clicked."""
-    article = await _accessible_article(session, user, article_id)
+    article = await accessible_article(session, user.id, article_id)
     related = await related_articles(session, user.id, article)
     if not related:
         raise HTTPException(status_code=422, detail="No related coverage to synthesize yet")
@@ -318,10 +306,10 @@ async def _get_or_create_conversation(
 @router.get("/articles/{article_id}/qa", response_model=list[MessageOut])
 async def get_conversation(
     article_id: int,
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
+    user: CurrentUser,
+    session: DbSession,
 ):
-    await _accessible_article(session, user, article_id)
+    await accessible_article(session, user.id, article_id)
     conversation = await session.scalar(
         select(Conversation)
         .where(
@@ -365,14 +353,14 @@ def _sse(payload: dict) -> str:
 async def ask_article_stream(
     article_id: int,
     body: AskIn,
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
+    user: CurrentUser,
+    session: DbSession,
 ):
     """Answer a question about the article, streaming SSE events:
 
     status | tool_call | tool_result | delta | done | error
     """
-    article = await _accessible_article(session, user, article_id)
+    article = await accessible_article(session, user.id, article_id)
     config = await _resolve_llm(session, user)
 
     text = await ensure_full_text(session, article)
@@ -485,10 +473,10 @@ def _article_hn_id(article: Article) -> str | None:
 @router.get("/articles/{article_id}/discussion/qa", response_model=list[MessageOut])
 async def get_discussion_conversation(
     article_id: int,
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
+    user: CurrentUser,
+    session: DbSession,
 ):
-    article = await _accessible_article(session, user, article_id)
+    article = await accessible_article(session, user.id, article_id)
     if _article_hn_id(article) is None:
         raise HTTPException(status_code=404, detail="Discussion not found")
     conversation = await session.scalar(
@@ -509,11 +497,11 @@ async def get_discussion_conversation(
 async def ask_discussion_stream(
     article_id: int,
     body: DiscussionAskIn,
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
+    user: CurrentUser,
+    session: DbSession,
 ):
     """Analyze a client-fetched HN snapshot without fetching HN server-side."""
-    article = await _accessible_article(session, user, article_id)
+    article = await accessible_article(session, user.id, article_id)
     expected_id = _article_hn_id(article)
     if expected_id is None:
         raise HTTPException(status_code=404, detail="Discussion not found")
@@ -694,8 +682,8 @@ async def _get_or_create_project_conversation(
 @router.get("/projects/{project_id}/qa", response_model=list[MessageOut])
 async def get_project_conversation(
     project_id: int,
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
+    user: CurrentUser,
+    session: DbSession,
 ):
     await _member_or_404(session, project_id, user.id)
     conversation = await session.scalar(
@@ -712,8 +700,8 @@ async def get_project_conversation(
 async def ask_project_stream(
     project_id: int,
     body: AskIn,
-    user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
+    user: CurrentUser,
+    session: DbSession,
 ):
     """Answer a question across the project's collection; same SSE event
     stream as the per-article endpoint."""
