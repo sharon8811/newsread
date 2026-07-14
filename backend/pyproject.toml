@@ -44,6 +44,10 @@ dev = [
 package = false
 
 [tool.pytest.ini_options]
+# `app` lives at the repo's backend root and is not an installed package;
+# python -m pytest used to add cwd to sys.path implicitly, `uv run pytest`
+# does not.
+pythonpath = ["."]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "session"
 asyncio_default_test_loop_scope = "session"
