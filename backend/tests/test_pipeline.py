@@ -182,6 +182,30 @@ async def test_link_article_entities_dedupes(session, monkeypatch):
     assert count == 1  # same repo from url + inline deduped
 
 
+async def test_link_article_entities_scans_full_text(session, monkeypatch):
+    feed = await _feed(session)
+    art = await _article(
+        session, feed,
+        url="https://example.com/story",
+        content_html="",
+        full_text="Great write-up. The code lives at https://github.com/a/b, worth a star.",
+    )
+
+    async def fake_refresh(s, enricher, key, client):
+        entity = Entity(kind=enricher.kind, canonical_key=key,
+                        url=enricher.entity_url(key), data={},
+                        fetched_at=datetime.now(timezone.utc))
+        s.add(entity)
+        await s.flush()
+        return entity
+
+    monkeypatch.setattr(pipeline, "_get_or_refresh", fake_refresh)
+    count = await pipeline.link_article_entities(session, art, None, defaultdict(asyncio.Lock))
+    assert count == 1
+    link = await session.scalar(select(ArticleEntity))
+    assert link.source == "inline"
+
+
 async def test_link_article_entities_skips_unresolvable(session, monkeypatch):
     feed = await _feed(session)
     art = await _article(session, feed, url="https://github.com/a/b")
@@ -268,6 +292,32 @@ async def test_extract_entities_processes(session, monkeypatch):
     art = await session.scalar(select(Article))
     await session.refresh(art)
     assert art.entities_extracted_at is not None
+
+
+async def test_extract_entities_rescans_after_late_fulltext(session, monkeypatch):
+    """An article scanned before its full text arrived is scanned again —
+    its body links were invisible the first time — and the fresh stamp
+    stops the loop."""
+    feed = await _feed(session)
+    now = datetime.now(timezone.utc)
+    art = await _article(
+        session, feed,
+        entities_extracted_at=now - timedelta(hours=2),
+        full_text_fetched_at=now - timedelta(hours=1),
+    )
+    _patch_client(monkeypatch)
+
+    seen = []
+
+    async def fake_link(s, article, client, locks):
+        seen.append(article.id)
+        return 0
+
+    monkeypatch.setattr(pipeline, "link_article_entities", fake_link)
+    assert await pipeline.extract_entities() == 1
+    assert seen == [art.id]
+    # Rescan stamped now() > full_text_fetched_at -> converged.
+    assert await pipeline.extract_entities() == 0
 
 
 async def test_extract_entities_stamps_even_on_error(session, monkeypatch):

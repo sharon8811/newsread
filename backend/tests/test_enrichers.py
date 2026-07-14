@@ -10,6 +10,7 @@ from app.enrichers import (
     badge_for,
     clean_url,
     extract_links,
+    extract_text_links,
     match_url,
 )
 from app.enrichers.arxiv import ArxivEnricher, _parse_id
@@ -64,6 +65,24 @@ def test_extract_links_caps_at_50():
 
 def test_extract_links_handles_anchor_without_href():
     assert extract_links('<a name="x">no href</a><a href="/y">y</a>') == ["/y"]
+
+
+# --- extract_text_links ---
+
+def test_extract_text_links_strips_prose_punctuation():
+    text = ("The code is at https://github.com/a/b. See also "
+            "(https://arxiv.org/abs/1706.03762) and https://github.com/a/b again.")
+    assert extract_text_links(text) == [
+        "https://github.com/a/b",
+        "https://arxiv.org/abs/1706.03762",
+    ]
+
+
+def test_extract_text_links_empty_and_caps():
+    assert extract_text_links("") == []
+    assert extract_text_links("no urls here") == []
+    text = " ".join(f"https://x.com/{i}" for i in range(80))
+    assert len(extract_text_links(text)) == 50
 
 
 # --- badge_for ---

@@ -6,7 +6,7 @@ from .github import GitHubEnricher
 from .huggingface import HFDatasetEnricher, HFModelEnricher
 from .npm import NpmEnricher
 from .pypi_pkg import PyPIEnricher
-from .urls import clean_url, extract_links
+from .urls import clean_url, extract_links, extract_text_links
 from .youtube import YouTubeEnricher
 
 __all__ = [
@@ -17,6 +17,7 @@ __all__ = [
     "badge_for",
     "clean_url",
     "extract_links",
+    "extract_text_links",
     "match_url",
 ]
 
