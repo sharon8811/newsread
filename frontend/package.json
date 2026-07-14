@@ -11,6 +11,8 @@
     "test:cov": "vitest run --coverage"
   },
   "dependencies": {
+    "@radix-ui/react-dialog": "^1.1.19",
+    "@radix-ui/react-tabs": "^1.1.17",
     "next": "16.2.10",
     "react": "19.2.4",
     "react-dom": "19.2.4",

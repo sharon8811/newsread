@@ -96,6 +96,7 @@ export default function QAPanel({
   placeholder,
   suggestions,
   initialInput = "",
+  variant = "section",
 }: {
   qaKey: string;
   stream: (content: string, onEvent: (event: QAStreamEvent) => void) => Promise<void>;
@@ -103,6 +104,7 @@ export default function QAPanel({
   placeholder: string;
   suggestions: string[];
   initialInput?: string;
+  variant?: "section" | "embedded";
 }) {
   const { data: status } = useSWR<AiStatus>("/ai/status", fetcher);
   const key = qaKey;
@@ -168,7 +170,10 @@ export default function QAPanel({
   }
 
   return (
-    <section className="mt-10 border-t pt-7" style={{ borderColor: "var(--line-soft)" }}>
+    <section
+      className={variant === "section" ? "mt-10 border-t pt-7" : "min-h-0"}
+      style={{ borderColor: "var(--line-soft)" }}
+    >
       <div className="flex items-center gap-2">
         <CommentIcon size={13} />
         <span className="mono-label">{heading}</span>

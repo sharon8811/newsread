@@ -53,16 +53,15 @@ describe("<ShareModal>", () => {
   it("closes on the X button", async () => {
     vi.stubGlobal("fetch", makeFetch());
     const onClose = vi.fn();
-    const { container } = render(<ShareModal article={makeArticle()} onClose={onClose} />);
-    const xBtn = container.querySelector("button.icon-btn")!;
-    await userEvent.click(xBtn);
+    render(<ShareModal article={makeArticle()} onClose={onClose} />);
+    await userEvent.click(screen.getByRole("button", { name: "Close share dialog" }));
     expect(onClose).toHaveBeenCalled();
   });
 
   it("closes on Escape and clicking the backdrop, but not the panel", async () => {
     vi.stubGlobal("fetch", makeFetch());
     const onClose = vi.fn();
-    const { container } = render(<ShareModal article={makeArticle()} onClose={onClose} />);
+    render(<ShareModal article={makeArticle()} onClose={onClose} />);
 
     // clicking the inner panel does not close
     await userEvent.click(screen.getByText("A Great Article"));
@@ -77,7 +76,7 @@ describe("<ShareModal>", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
 
     // clicking the backdrop closes
-    await userEvent.click(container.firstChild as Element);
+    await userEvent.click(screen.getByTestId("modal-overlay"));
     expect(onClose).toHaveBeenCalledTimes(2);
   });
 
@@ -121,7 +120,7 @@ describe("<ShareModal>", () => {
 
   it("removes a recipient", async () => {
     vi.stubGlobal("fetch", makeFetch());
-    const { container } = render(<ShareModal article={makeArticle()} onClose={vi.fn()} />);
+    render(<ShareModal article={makeArticle()} onClose={vi.fn()} />);
 
     await addBob();
     const chip = screen.getByText("@bob").closest("span")!;
