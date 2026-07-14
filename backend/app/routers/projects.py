@@ -1,5 +1,4 @@
 import logging
-import math
 from datetime import UTC, datetime
 from typing import Literal
 
@@ -9,7 +8,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from .. import db
+from .. import db, queue, ranking
 from ..access import accessible_article
 from ..config import settings
 from ..deps import CurrentUser, DbSession
@@ -23,7 +22,6 @@ from ..models import (
     ProjectMember,
     User,
 )
-from ..queue import enqueue
 from ..schemas import (
     ArticleProjectStatus,
     ProjectArticleAddIn,
@@ -275,13 +273,6 @@ SUGGEST_MIN_SIMILARITY = 0.55
 SUGGEST_PINS_PER_PROJECT = 50
 
 
-def _cosine(a: list[float], b: list[float]) -> float:
-    dot = sum(x * y for x, y in zip(a, b, strict=False))
-    norm_a = math.sqrt(sum(x * x for x in a))
-    norm_b = math.sqrt(sum(x * x for x in b))
-    return dot / (norm_a * norm_b) if norm_a and norm_b else 0.0
-
-
 async def _suggested_project_id(session: AsyncSession, article_id: int, user_id: int) -> int | None:
     """The single project whose recent pins are most similar to this article,
     if any clears the threshold. Purely reads stored vectors — no LLM calls."""
@@ -324,8 +315,7 @@ async def _suggested_project_id(session: AsyncSession, article_id: int, user_id:
     target = [float(x) for x in article_vector]
     best_id, best_similarity = None, SUGGEST_MIN_SIMILARITY
     for project_id, vectors in vectors_by_project.items():
-        centroid = [sum(dim) / len(vectors) for dim in zip(*vectors, strict=False)]
-        similarity = _cosine(target, centroid)
+        similarity = ranking.cosine_similarity(target, ranking.centroid(vectors))
         if similarity >= best_similarity:
             best_id, best_similarity = project_id, similarity
     return best_id
@@ -539,7 +529,7 @@ async def list_project_articles(
     return [
         _pin_out(
             pin,
-            pin.article.feed.title or pin.article.feed.url,
+            pin.article.feed.display_title,
             states.get(pin.article_id),
             [_to_badge(link, entity) for link, entity in entity_map.get(pin.article_id, [])],
             ticket=tickets.get(pin.article_id),
@@ -585,7 +575,7 @@ async def add_project_article(
         )
     await session.commit()
     if body.is_shared:
-        await enqueue("send_project_pin_push", pin_id)
+        await queue.enqueue("send_project_pin_push", pin_id)
     pin = await session.scalar(
         select(ProjectArticle).where(ProjectArticle.id == pin_id).options(*_pin_load_options)
     )
@@ -593,7 +583,7 @@ async def add_project_article(
     tickets, comment_counts = await _ticket_info(session, project_id, [article.id])
     return _pin_out(
         pin,
-        pin.article.feed.title or pin.article.feed.url,
+        pin.article.feed.display_title,
         states.get(article.id),
         ticket=tickets.get(article.id),
         comment_count=comment_counts.get(article.id, 0),
@@ -638,12 +628,12 @@ async def update_project_article(
         pin.is_shared = updates["is_shared"]
     await session.commit()
     if published:
-        await enqueue("send_project_pin_push", pin.id)
+        await queue.enqueue("send_project_pin_push", pin.id)
     states = await _states_for(session, user.id, [pin.article_id])
     tickets, comment_counts = await _ticket_info(session, project_id, [pin.article_id])
     return _pin_out(
         pin,
-        pin.article.feed.title or pin.article.feed.url,
+        pin.article.feed.display_title,
         states.get(pin.article_id),
         ticket=tickets.get(pin.article_id),
         comment_count=comment_counts.get(pin.article_id, 0),

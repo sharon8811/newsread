@@ -13,9 +13,9 @@ from arq.connections import RedisSettings
 from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.orm import selectinload
 
-from . import catalog_embeddings, embeddings, llm, ner, push, suppressions
+from . import catalog_embeddings, db, embeddings, llm, ner, push, suppressions
 from .config import settings
-from .db import SessionLocal, init_db
+from .db import init_db
 from .enrichers.pipeline import extract_entities, refresh_stale_entities
 from .extractor import enrich_article
 from .fetcher import refresh_feed
@@ -42,35 +42,36 @@ SUMMARIZE_CONCURRENCY = 2
 NER_CONCURRENCY = 2
 
 
-async def _enrich_one(article_id: int, semaphore: asyncio.Semaphore) -> None:
-    async with semaphore:
-        async with SessionLocal() as session:
-            article = await session.get(Article, article_id)
-            if article is None:
-                return
-            try:
-                await enrich_article(session, article)
-            except Exception as exc:
-                logger.warning("Enrichment of article %s failed: %s", article_id, exc)
+async def _for_each_article(ids, *, concurrency: int, label: str, fn) -> None:
+    """Run fn(session, article) for each id, each in its own session, at most
+    `concurrency` at a time. Failures are logged per article and never stop
+    the batch; fn owns any transaction discipline beyond that."""
+    semaphore = asyncio.Semaphore(concurrency)
+
+    async def one(article_id: int) -> None:
+        async with semaphore:
+            async with db.SessionLocal() as session:
+                article = await session.get(Article, article_id)
+                if article is None:
+                    return
+                try:
+                    await fn(session, article)
+                except Exception as exc:
+                    logger.warning("%s of article %s failed: %s", label, article_id, exc)
+
+    await asyncio.gather(*(one(article_id) for article_id in ids))
 
 
-async def _summarize_one(article_id: int, semaphore: asyncio.Semaphore) -> None:
-    async with semaphore:
-        async with SessionLocal() as session:
-            article = await session.get(Article, article_id)
-            if article is None:
-                return
-            try:
-                await generate_summaries(session, article, allow_refetch=False)
-            except ThinContentError:
-                pass  # site blocks fetching; the article view explains this
-            except Exception as exc:
-                logger.warning("Auto-summary of article %s failed: %s", article_id, exc)
+async def _summarize_quietly(session, article) -> None:
+    try:
+        await generate_summaries(session, article, allow_refetch=False)
+    except ThinContentError:
+        pass  # site blocks fetching; the article view explains this
 
 
 async def enrich_and_summarize(ctx: dict | None = None, feed_id: int | None = None) -> None:
     """Fill missing full text / images, then summaries, newest articles first."""
-    async with SessionLocal() as session:
+    async with db.SessionLocal() as session:
         enrich_query = (
             select(Article.id)
             .where(or_(Article.full_text == "", Article.image_url.is_(None)))
@@ -82,8 +83,9 @@ async def enrich_and_summarize(ctx: dict | None = None, feed_id: int | None = No
             enrich_query = enrich_query.where(Article.feed_id == feed_id)
         enrich_ids = list(await session.scalars(enrich_query))
 
-    semaphore = asyncio.Semaphore(ENRICH_CONCURRENCY)
-    await asyncio.gather(*(_enrich_one(aid, semaphore) for aid in enrich_ids))
+    await _for_each_article(
+        enrich_ids, concurrency=ENRICH_CONCURRENCY, label="Enrichment", fn=enrich_article
+    )
 
     try:
         extracted = await extract_entities(feed_id=feed_id)
@@ -101,7 +103,7 @@ async def enrich_and_summarize(ctx: dict | None = None, feed_id: int | None = No
             )
         return
 
-    async with SessionLocal() as session:
+    async with db.SessionLocal() as session:
         summarize_query = (
             select(Article.id)
             .join(Feed, Feed.id == Article.feed_id)
@@ -123,8 +125,12 @@ async def enrich_and_summarize(ctx: dict | None = None, feed_id: int | None = No
             summarize_query = summarize_query.where(Article.feed_id == feed_id)
         summarize_ids = list(await session.scalars(summarize_query))
 
-    semaphore = asyncio.Semaphore(SUMMARIZE_CONCURRENCY)
-    await asyncio.gather(*(_summarize_one(aid, semaphore) for aid in summarize_ids))
+    await _for_each_article(
+        summarize_ids,
+        concurrency=SUMMARIZE_CONCURRENCY,
+        label="Auto-summary",
+        fn=_summarize_quietly,
+    )
 
     tagged = await extract_named_entities_batch(feed_id=feed_id)
     embedded = await embed_articles_batch(feed_id=feed_id)
@@ -141,20 +147,15 @@ async def enrich_and_summarize(ctx: dict | None = None, feed_id: int | None = No
         )
 
 
-async def _ner_one(article_id: int, semaphore: asyncio.Semaphore) -> None:
-    async with semaphore:
-        async with SessionLocal() as session:
-            article = await session.get(Article, article_id)
-            if article is None:
-                return
-            try:
-                await ner.extract_named(session, article)
-            except Exception as exc:
-                logger.warning("Entity tagging of article %s failed: %s", article_id, exc)
-                await session.rollback()
-            # Always stamp: never re-tag on failure, never block the cycle.
-            article.ner_extracted_at = datetime.now(UTC)
-            await session.commit()
+async def _ner_one(session, article) -> None:
+    try:
+        await ner.extract_named(session, article)
+    except Exception as exc:
+        logger.warning("Entity tagging of article %s failed: %s", article.id, exc)
+        await session.rollback()
+    # Always stamp: never re-tag on failure, never block the cycle.
+    article.ner_extracted_at = datetime.now(UTC)
+    await session.commit()
 
 
 async def extract_named_entities_batch(feed_id: int | None = None) -> int:
@@ -165,7 +166,7 @@ async def extract_named_entities_batch(feed_id: int | None = None) -> int:
     does. Returns how many were processed."""
     if not llm.is_configured():
         return 0
-    async with SessionLocal() as session:
+    async with db.SessionLocal() as session:
         query = (
             select(Article.id)
             .join(Feed, Feed.id == Article.feed_id)
@@ -193,8 +194,7 @@ async def extract_named_entities_batch(feed_id: int | None = None) -> int:
         ids = list(await session.scalars(query))
     if not ids:
         return 0
-    semaphore = asyncio.Semaphore(NER_CONCURRENCY)
-    await asyncio.gather(*(_ner_one(aid, semaphore) for aid in ids))
+    await _for_each_article(ids, concurrency=NER_CONCURRENCY, label="Entity tagging", fn=_ner_one)
     return len(ids)
 
 
@@ -205,7 +205,7 @@ async def embed_articles_batch(feed_id: int | None = None) -> int:
     after the summarize stage so fresh articles usually embed their summary."""
     if not embeddings.is_configured():
         return 0
-    async with SessionLocal() as session:
+    async with db.SessionLocal() as session:
         embed_query = (
             select(Article)
             .join(Feed, Feed.id == Article.feed_id)
@@ -235,7 +235,7 @@ async def suppress_articles_batch(feed_id: int | None = None) -> int:
     """Materialize dislike rules over recently fetched articles (pure SQL, no
     model calls — the reason suppression can run ahead of every consumer).
     Failures are swallowed: a missed cycle self-heals inside SUPPRESS_WINDOW."""
-    async with SessionLocal() as session:
+    async with db.SessionLocal() as session:
         try:
             # Expired story mutes delete themselves; the FK cascade frees
             # their suppressions, so the muted articles quietly reappear.
@@ -263,7 +263,7 @@ async def enrich_feed(ctx: dict, feed_id: int) -> None:
 async def send_share_push(ctx: dict, share_id: int) -> None:
     """Enqueued by the API when a share is created; notifies each recipient's
     registered mobile devices."""
-    async with SessionLocal() as session:
+    async with db.SessionLocal() as session:
         share = await session.scalar(
             select(Share)
             .where(Share.id == share_id)
@@ -288,7 +288,7 @@ async def send_share_push(ctx: dict, share_id: int) -> None:
 async def send_project_pin_push(ctx: dict, pin_id: int) -> None:
     """Enqueued when a pin is published to a project; notifies every other
     member's devices, except members who muted the project."""
-    async with SessionLocal() as session:
+    async with db.SessionLocal() as session:
         pin = await session.scalar(
             select(ProjectArticle)
             .where(ProjectArticle.id == pin_id)
@@ -346,7 +346,7 @@ async def refresh_catalog_embeddings(ctx: dict) -> None:
         return
     total = 0
     for _ in range(10):
-        async with SessionLocal() as session:
+        async with db.SessionLocal() as session:
             count = await catalog_embeddings.embed_catalog_batch(session)
         total += count
         if count == 0:
@@ -357,7 +357,7 @@ async def refresh_catalog_embeddings(ctx: dict) -> None:
 
 async def poll_feeds(ctx: dict) -> None:
     now = datetime.now(UTC)
-    async with SessionLocal() as session:
+    async with db.SessionLocal() as session:
         feeds = (await session.scalars(select(Feed))).all()
         for feed in feeds:
             interval = timedelta(

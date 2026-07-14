@@ -15,10 +15,9 @@ from ..schemas import (
     ActivitySummaryOut,
     HeartbeatIn,
 )
+from ..timewindow import window_bounds
 
 router = APIRouter(prefix="/activity", tags=["activity"])
-
-RANGE_DAYS: dict[str, int] = {"week": 7, "month": 30, "year": 365}
 
 # How long the streak lookback goes; a streak longer than a year reads as "365+".
 STREAK_LOOKBACK_DAYS = 366
@@ -68,9 +67,7 @@ async def summary(
 ):
     if today is None:
         today = date.today()
-    window = RANGE_DAYS[range_]
-    start = today - timedelta(days=window - 1)
-    prev_start = start - timedelta(days=window)
+    window, start, prev_start = window_bounds(today, range_)
 
     in_window = (
         ReadingActivity.user_id == user.id,

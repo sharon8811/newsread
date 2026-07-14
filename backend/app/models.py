@@ -139,6 +139,11 @@ class Feed(Base):
         back_populates="feed", cascade="all, delete-orphan"
     )
 
+    @property
+    def display_title(self) -> str:
+        # Feeds discovered without a <title> fall back to their URL everywhere.
+        return self.title or self.url
+
 
 class Subscription(Base):
     __tablename__ = "subscriptions"

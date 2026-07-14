@@ -9,7 +9,7 @@ from sqlalchemy import and_, exists, func, literal_column, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .. import crypto, embeddings, image_gen
+from .. import crypto, embeddings, image_gen, ranking
 from ..access import accessible_article
 from ..config import settings
 from ..deps import CurrentUser, DbSession
@@ -52,9 +52,6 @@ SNAPSHOT_CAP = 30
 
 # Hybrid search: candidates per leg (vector / keyword) and the standard
 # reciprocal-rank-fusion constant.
-SEARCH_POOL = 60
-RRF_K = 60
-
 # Related-articles KNN. The distance cutoffs share the calibration documented
 # on interests.STORY_THRESHOLD / TOPIC_THRESHOLD (same-story pairs land well
 # under 0.35, same-topic under ~0.6, unrelated above 0.85). They live here,
@@ -458,7 +455,7 @@ async def _hybrid_search_ids(
         # Model filter keeps dimensions consistent mid re-embed after a model switch.
         .where(ArticleEmbedding.model == settings.openai_embedding_model)
         .order_by(ArticleEmbedding.embedding.cosine_distance(query_vector))
-        .limit(SEARCH_POOL)
+        .limit(ranking.SEARCH_POOL)
     )
     # search_tsv is a generated column owned by the Alembic baseline,
     # intentionally unmapped: the ORM can't express GENERATED ALWAYS AS here.
@@ -468,16 +465,12 @@ async def _hybrid_search_ids(
         _scoped_article_ids(user_id, feed_id, filter)
         .where(tsv.op("@@")(tsquery))
         .order_by(func.ts_rank(tsv, tsquery).desc())
-        .limit(SEARCH_POOL)
+        .limit(ranking.SEARCH_POOL)
     )
     vector_ids = list(await session.scalars(vector_stmt))
     keyword_ids = list(await session.scalars(keyword_stmt))
 
-    scores: dict[int, float] = {}
-    for leg in (vector_ids, keyword_ids):
-        for rank, article_id in enumerate(leg):
-            scores[article_id] = scores.get(article_id, 0.0) + 1.0 / (RRF_K + rank + 1)
-    return sorted(scores, key=lambda article_id: (-scores[article_id], -article_id))
+    return ranking.rrf_fuse(vector_ids, keyword_ids)
 
 
 @router.get("", response_model=list[ArticleListItem])
@@ -871,7 +864,7 @@ async def get_article(
                 )
             )
 
-    item = to_list_item(article, feed.title or feed.url, state)
+    item = to_list_item(article, feed.display_title, state)
     return ArticleDetail(
         **item.model_dump(exclude={"entities", "image_pending"}),
         content_html=article.content_html,
@@ -1011,7 +1004,7 @@ async def set_state(
             UserArticleState.user_id == user.id, UserArticleState.article_id == article.id
         )
     )
-    return to_list_item(article, feed.title or feed.url, state)
+    return to_list_item(article, feed.display_title, state)
 
 
 @router.post("/mark-all-read", status_code=204)

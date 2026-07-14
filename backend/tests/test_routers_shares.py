@@ -232,7 +232,7 @@ async def test_create_share_enqueues_push_job(client, users, data, monkeypatch):
     async def record(job_name, *args):
         jobs.append((job_name, args))
 
-    monkeypatch.setattr("app.routers.shares.enqueue", record)
+    monkeypatch.setattr("app.queue.enqueue", record)
     resp = await client.post(
         "/api/shares",
         json={"article_id": article.id, "recipients": ["pushee"]},

@@ -15,7 +15,7 @@ from sqlalchemy import and_, exists, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..db import SessionLocal
+from .. import db
 from ..fetcher import USER_AGENT
 from ..models import Article, ArticleEntity, Entity, EntitySnapshot
 from . import (
@@ -143,7 +143,7 @@ async def _extract_one(
     locks: dict[tuple[str, str], asyncio.Lock],
 ) -> None:
     async with semaphore:
-        async with SessionLocal() as session:
+        async with db.SessionLocal() as session:
             article = await session.get(Article, article_id)
             if article is None:
                 return
@@ -161,7 +161,7 @@ async def extract_entities(feed_id: int | None = None) -> int:
     before their full text arrived, whose body links were invisible then.
     Rescans converge because the new stamp postdates full_text_fetched_at.
     Returns count."""
-    async with SessionLocal() as session:
+    async with db.SessionLocal() as session:
         query = (
             select(Article.id)
             .where(
@@ -193,7 +193,7 @@ async def refresh_stale_entities() -> int:
     """Refetch entities past their TTL that fresh articles still reference."""
     now = datetime.now(UTC)
     stale: list[tuple[int, str, str]] = []
-    async with SessionLocal() as session:
+    async with db.SessionLocal() as session:
         for enricher in ENRICHERS:
             rows = await session.execute(
                 select(Entity.id, Entity.kind, Entity.canonical_key)
@@ -223,7 +223,7 @@ async def refresh_stale_entities() -> int:
 
     async def _refresh_one(kind: str, key: str) -> None:
         async with semaphore:
-            async with SessionLocal() as session:
+            async with db.SessionLocal() as session:
                 try:
                     await _get_or_refresh(session, BY_KIND[kind], key, client)
                     await session.commit()

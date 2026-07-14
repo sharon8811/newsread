@@ -124,12 +124,7 @@ async def _existing_rule(
     return await session.scalar(stmt.limit(1))
 
 
-async def _rule_out(session: AsyncSession, rule: UserDislikeRule) -> DislikeRuleOut:
-    hidden = await session.scalar(
-        select(func.count())
-        .select_from(ArticleSuppression)
-        .where(ArticleSuppression.rule_id == rule.id)
-    )
+def _rule_fields(rule: UserDislikeRule, hidden: int) -> DislikeRuleOut:
     return DislikeRuleOut(
         id=rule.id,
         kind=rule.kind,
@@ -138,9 +133,18 @@ async def _rule_out(session: AsyncSession, rule: UserDislikeRule) -> DislikeRule
         entity_id=rule.entity_id,
         article_id=rule.article_id,
         expires_at=rule.expires_at,
-        hidden_count=hidden or 0,
+        hidden_count=hidden,
         created_at=rule.created_at,
     )
+
+
+async def _rule_out(session: AsyncSession, rule: UserDislikeRule) -> DislikeRuleOut:
+    hidden = await session.scalar(
+        select(func.count())
+        .select_from(ArticleSuppression)
+        .where(ArticleSuppression.rule_id == rule.id)
+    )
+    return _rule_fields(rule, hidden or 0)
 
 
 async def _preview(session: AsyncSession, rule_id: int, limit: int) -> list[DislikeRulePreviewItem]:
@@ -282,20 +286,7 @@ async def list_dislikes(
         .where(UserDislikeRule.user_id == user.id)
         .order_by(UserDislikeRule.id.desc())
     )
-    return [
-        DislikeRuleOut(
-            id=rule.id,
-            kind=rule.kind,
-            label=rule.label,
-            phrase=rule.phrase,
-            entity_id=rule.entity_id,
-            article_id=rule.article_id,
-            expires_at=rule.expires_at,
-            hidden_count=hidden,
-            created_at=rule.created_at,
-        )
-        for rule, hidden in rows
-    ]
+    return [_rule_fields(rule, hidden) for rule, hidden in rows]
 
 
 @router.get("/dislikes/{rule_id}/articles", response_model=list[DislikeRulePreviewItem])
