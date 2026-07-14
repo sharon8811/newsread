@@ -285,7 +285,10 @@ async def test_embed_articles_batch_error(session, monkeypatch):
 async def test_embed_articles_batch_scoped_and_skips_current_model(session, monkeypatch):
     feed = await _feed(session)
     art = await _article(session, feed, excerpt="body")
-    session.add(ArticleEmbedding(article_id=art.id, model="current", embedding=[0.1, 0.2]))
+    session.add(ArticleEmbedding(
+        article_id=art.id, model="current", embedding=[0.1, 0.2],
+        input_hash=worker.embeddings.input_hash_for(art),
+    ))
     await session.commit()
     monkeypatch.setattr(worker.embeddings, "is_configured", lambda: True)
     monkeypatch.setattr(worker.settings, "openai_embedding_model", "current")
@@ -300,6 +303,36 @@ async def test_embed_articles_batch_scoped_and_skips_current_model(session, monk
     await worker.embed_articles_batch(feed_id=feed.id)
     # Article already embedded with the current model -> nothing to embed.
     assert captured["n"] == 0
+
+
+async def test_embed_articles_batch_reembeds_stale_input(session, monkeypatch):
+    """A current-model vector whose input text has since changed (summary
+    arrived after embedding, or the hash predates tracking) is re-embedded."""
+    feed = await _feed(session)
+    stale = await _article(session, feed, guid="stale", excerpt="body")
+    session.add(ArticleEmbedding(
+        article_id=stale.id, model="current", embedding=[0.1, 0.2],
+        input_hash=worker.embeddings.input_hash_for(stale),
+    ))
+    legacy = await _article(session, feed, guid="legacy", excerpt="body")
+    session.add(ArticleEmbedding(
+        article_id=legacy.id, model="current", embedding=[0.1, 0.2],
+        input_hash=None,
+    ))
+    stale.summary_medium = "a summary arrived later"
+    await session.commit()
+    monkeypatch.setattr(worker.embeddings, "is_configured", lambda: True)
+    monkeypatch.setattr(worker.settings, "openai_embedding_model", "current")
+
+    captured = {}
+
+    async def fake_embed(s, articles):
+        captured["ids"] = {a.id for a in articles}
+        return len(articles)
+
+    monkeypatch.setattr(worker.embeddings, "embed_articles", fake_embed)
+    await worker.embed_articles_batch(feed_id=feed.id)
+    assert captured["ids"] == {stale.id, legacy.id}
 
 
 # --- enrich_feed / refresh_entities ---

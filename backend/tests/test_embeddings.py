@@ -34,6 +34,26 @@ def test_text_for_caps_length():
     assert len(embeddings.text_for(art)) <= embeddings.MAX_CHARS
 
 
+def test_text_for_skips_hn_metadata_excerpt():
+    # The hnrss-derived excerpt is shared boilerplate, not content: it must
+    # never become the embedding body (it made every HN article a "related"
+    # hub). Fall through to full text, or to title-only.
+    art = Article(
+        title="T",
+        summary_medium="",
+        excerpt="5 points · 3 comments · via Hacker News",
+        full_text="real body",
+    )
+    assert embeddings.text_for(art) == "T\n\nreal body"
+    art.full_text = ""
+    assert embeddings.text_for(art) == "T\n\n"
+    art.excerpt = "12 points · via Hacker News"
+    assert embeddings.text_for(art) == "T\n\n"
+    # An excerpt that merely mentions the pattern inside prose is real content.
+    art.excerpt = "It got 5 points · 3 comments · via Hacker News yesterday"
+    assert "5 points" in embeddings.text_for(art)
+
+
 def _fake_client(vectors):
     async def create(**kwargs):
         data = [types.SimpleNamespace(embedding=v) for v in vectors]
@@ -102,6 +122,71 @@ async def test_embed_articles_upserts(session, monkeypatch):
     )
     n2 = await embeddings.embed_articles(session, [art])
     assert n2 == 1
+
+
+async def test_embed_articles_stores_input_hash(session, monkeypatch):
+    art = await _make_article(session)
+    monkeypatch.setattr(embeddings.settings, "openai_embedding_model", "emb-model")
+    monkeypatch.setattr(
+        embeddings, "embed_texts",
+        lambda texts: _returns([[0.5] * 4 for _ in texts]),
+    )
+    await embeddings.embed_articles(session, [art])
+    row = await session.scalar(
+        select(ArticleEmbedding).where(ArticleEmbedding.article_id == art.id)
+    )
+    assert row.input_hash == embeddings.input_hash_for(art)
+
+
+async def test_stale_input_sql_matches_text_for(session, monkeypatch):
+    """stale_input() recomputes input_hash_for() in SQL; any drift between the
+    two would either miss stale vectors or re-embed fresh ones forever. Pin
+    the parity across the fallback branches and truncation/unicode edges."""
+    feed = Feed(url="https://feed/hash-parity")
+    session.add(feed)
+    await session.flush()
+    cases = [
+        dict(summary_medium="the summary", excerpt="ex", full_text="ft"),
+        dict(summary_medium="", excerpt="just an excerpt", full_text="ft"),
+        dict(summary_medium="", excerpt="", full_text="full body text"),
+        dict(summary_medium="", excerpt="", full_text=""),
+        dict(summary_medium="", excerpt="5 points · 3 comments · via Hacker News",
+             full_text="real body"),
+        dict(summary_medium="", excerpt="12 points · via Hacker News", full_text=""),
+        dict(summary_medium="", excerpt="", full_text="y" * 9000),
+        dict(summary_medium="x" * 10000, excerpt="", full_text=""),
+        dict(summary_medium="Sömé ünïcode ✓ · テスト", excerpt="", full_text=""),
+    ]
+    articles = []
+    for i, fields in enumerate(cases):
+        art = Article(feed_id=feed.id, guid=f"hp{i}", url=f"https://x/{i}",
+                      title=f"Title {i}", **fields)
+        session.add(art)
+        articles.append(art)
+    await session.flush()
+    for art in articles:
+        session.add(ArticleEmbedding(
+            article_id=art.id, model="emb", embedding=[0.1, 0.2],
+            input_hash=embeddings.input_hash_for(art),
+        ))
+    await session.commit()
+
+    stale_ids = set(await session.scalars(
+        select(Article.id)
+        .join(ArticleEmbedding, ArticleEmbedding.article_id == Article.id)
+        .where(embeddings.stale_input())
+    ))
+    assert stale_ids == set()
+
+    # Text changes flip exactly the touched article to stale.
+    articles[1].summary_medium = "a summary arrived later"
+    await session.commit()
+    stale_ids = set(await session.scalars(
+        select(Article.id)
+        .join(ArticleEmbedding, ArticleEmbedding.article_id == Article.id)
+        .where(embeddings.stale_input())
+    ))
+    assert stale_ids == {articles[1].id}
 
 
 async def _returns(value):

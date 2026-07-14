@@ -287,6 +287,11 @@ class ArticleEmbedding(Base):
     embedded_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+    # md5 of the exact text_for() input this vector was embedded from. The
+    # worker re-embeds when the article's current text hashes differently
+    # (summary landed after embedding, repair rewrote the excerpt). NULL marks
+    # pre-hash rows, which are always considered stale.
+    input_hash: Mapped[str | None] = mapped_column(String(32))
 
 
 class Entity(Base):

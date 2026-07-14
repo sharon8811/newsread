@@ -136,9 +136,10 @@ async def enrich_and_summarize(ctx: dict | None = None, feed_id: int | None = No
 
 
 async def embed_articles_batch(feed_id: int | None = None) -> int:
-    """Embed articles that have no vector yet (or one from a different model,
-    e.g. after an OPENAI_EMBEDDING_MODEL switch), newest first. Runs after the
-    summarize stage so fresh articles usually embed their summary."""
+    """Embed articles that have no vector yet, one from a different model
+    (e.g. after an OPENAI_EMBEDDING_MODEL switch), or one embedded from text
+    the article no longer has (embeddings.stale_input), newest first. Runs
+    after the summarize stage so fresh articles usually embed their summary."""
     if not embeddings.is_configured():
         return 0
     async with SessionLocal() as session:
@@ -151,6 +152,7 @@ async def embed_articles_batch(feed_id: int | None = None) -> int:
                 or_(
                     ArticleEmbedding.article_id.is_(None),
                     ArticleEmbedding.model != settings.openai_embedding_model,
+                    embeddings.stale_input(),
                 )
             )
             .order_by(Article.id.desc())
