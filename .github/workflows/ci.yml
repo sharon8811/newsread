@@ -51,7 +51,9 @@ jobs:
           VIRTUAL_ENV=.venv uv pip install -r requirements.txt -r requirements-dev.txt
 
       - name: Run tests with coverage (fail under 90%)
-        run: .venv/bin/python -m pytest --cov --cov-report=term-missing --cov-fail-under=90
+        # -n auto: pytest-xdist, one worker per CPU; each worker gets its own
+        # database (see tests/conftest.py), created on demand.
+        run: .venv/bin/python -m pytest -n auto --cov --cov-report=term-missing --cov-fail-under=90
 
   frontend:
     name: Frontend tests (Next.js / React)
