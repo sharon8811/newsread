@@ -299,12 +299,13 @@ class RelatedRow:
     tier: str  # 'same_story' | 'related'
 
 
-def _related_scope(user_id: int, exclude_id: int):
+def _related_scope(user_id: int, exclude_id: int | None = None):
     """Base select with the inbox scope: subscribed, unmuted, retention-
-    visible, not suppressed, not the article itself. retention_visible()
-    references Subscription and UserArticleState, so both joins are load-
-    bearing even where the caller doesn't read them."""
-    return (
+    visible, not suppressed, optionally excluding one article (the one
+    related coverage is computed for). retention_visible() references
+    Subscription and UserArticleState, so both joins are load-bearing even
+    where the caller doesn't read them."""
+    stmt = (
         select(Article, Feed.title, Feed.url, UserArticleState)
         .join(Feed, Article.feed_id == Feed.id)
         .join(
@@ -319,12 +320,14 @@ def _related_scope(user_id: int, exclude_id: int):
             ),
         )
         .where(
-            Article.id != exclude_id,
             Subscription.is_muted.is_(False),
             retention_visible(),
             not_suppressed(user_id),
         )
     )
+    if exclude_id is not None:
+        stmt = stmt.where(Article.id != exclude_id)
+    return stmt
 
 
 async def _entity_related(

@@ -314,3 +314,14 @@ async def test_named_entities_per_category_none_sentinel(monkeypatch):
 
     monkeypatch.setattr(llm, "_complete", fake_complete)
     assert await llm.named_entities("T", "x") == [("org", "OpenAI")]
+
+
+async def test_named_entities_collapses_doubled_marker(monkeypatch):
+    async def fake_complete(messages, max_tokens, **kwargs):
+        return "PERSON: Peter Thiel: Peter Thiel\nORG: Palantir"
+
+    monkeypatch.setattr(llm, "_complete", fake_complete)
+    assert await llm.named_entities("T", "x") == [
+        ("person", "Peter Thiel"),
+        ("org", "Palantir"),
+    ]

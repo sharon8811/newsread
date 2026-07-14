@@ -335,6 +335,17 @@ export type EntityFull = EntityBadge & {
   snapshots: EntitySnapshot[]; // newest-first
 };
 
+// The /entity/[id] page: who/what this is plus coverage from the user's feeds.
+export type EntityPage = {
+  id: number;
+  kind: string;
+  key: string;
+  url: string;
+  name: string;
+  badge: Record<string, string | number | null | undefined>;
+  articles: Article[];
+};
+
 export type Article = {
   id: number;
   feed_id: number;

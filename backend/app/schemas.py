@@ -258,6 +258,18 @@ class ArticleListItem(BaseModel):
     entities: list[EntityBadge] = []
 
 
+class EntityPageOut(BaseModel):
+    """The /entity/[id] page: who/what this is plus the user's coverage."""
+
+    id: int
+    kind: str
+    key: str
+    url: str
+    name: str
+    badge: dict
+    articles: list[ArticleListItem]
+
+
 class ArticleDetail(ArticleListItem):
     content_html: str
     summary_model: str | None = None

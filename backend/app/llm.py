@@ -407,6 +407,11 @@ async def named_entities(
     for match in _ENTITY_LINE_RE.finditer(raw):
         kind = match.group(1).lower()
         name = " ".join(match.group(2).split()).strip(" .\"'*`")[:120]
+        # Models sometimes echo the marker twice ("PERSON: Peter Thiel:
+        # Peter Thiel"); collapse the self-colon duplication.
+        head, _, tail = name.partition(":")
+        if tail and head.strip().casefold() == tail.strip().casefold():
+            name = head.strip()
         key = (kind, name.casefold())
         # Models sometimes echo the no-entities sentinel per category
         # ("PERSON: NONE") instead of bare NONE.
