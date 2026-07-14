@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import useSWR, { mutate } from "swr";
 import AiSummary from "@/components/AiSummary";
@@ -24,6 +24,7 @@ import {
 import { api, fetcher, imageSrc, streamQA, type ArticleDetail } from "@/lib/api";
 import { domainOf, timeAgo } from "@/lib/format";
 import { discussionRefFor } from "@/lib/discussions";
+import { markArticleReadInReadingSessions } from "@/lib/readingSession";
 import { useReadingTimer } from "@/lib/useReadingTimer";
 
 export default function ArticlePage() {
@@ -45,6 +46,14 @@ export default function ArticlePage() {
 
   useReadingTimer(article?.id);
 
+  // The app shell owns the scroll container and persists across routes. Open
+  // article detail at its top; the list restores its semantic row anchor when
+  // the user comes back.
+  useLayoutEffect(() => {
+    const scroller = document.querySelector<HTMLElement>("main");
+    if (scroller) scroller.scrollTop = 0;
+  }, [id]);
+
   // Related-coverage links navigate article→article without remounting this
   // page (useParams, no route key), so the per-article once-guards must
   // re-arm on every id change — declared before the effects that read them.
@@ -60,6 +69,7 @@ export default function ArticlePage() {
         method: "POST",
         body: { is_read: true },
       }).then(() => {
+        markArticleReadInReadingSessions(article.id);
         mutate(key);
         mutateArticleLists();
       });

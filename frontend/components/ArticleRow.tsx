@@ -16,6 +16,7 @@ export default function ArticleRow({
   onShare,
   onAddToProject,
   onNotInterested,
+  onOpen,
 }: {
   article: Article;
   selected?: boolean;
@@ -24,6 +25,7 @@ export default function ArticleRow({
   onShare: (article: Article) => void;
   onAddToProject: (article: Article) => void;
   onNotInterested: (article: Article) => void;
+  onOpen?: (article: Article) => void;
 }) {
   const router = useRouter();
   const [expanded, setExpanded] = useState(false);
@@ -35,7 +37,9 @@ export default function ArticleRow({
   return (
     <div
       data-row-index={index}
-      onClick={() => router.push(`/article/${article.id}`)}
+      onClick={() =>
+        onOpen ? onOpen(article) : router.push(`/article/${article.id}`)
+      }
       className="group flex cursor-pointer items-start gap-3 border-b px-4 py-[18px] transition-colors sm:gap-4 sm:px-6"
       style={{
         borderColor: "var(--line-soft)",

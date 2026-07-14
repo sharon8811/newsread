@@ -4,6 +4,7 @@ import {
   ARTICLES_REFRESH_EVENT,
   useReadingWindow,
 } from "@/lib/useReadingWindow";
+import { clearReadingSessions } from "@/lib/readingSession";
 import { makeArticle } from "./fixtures";
 import type { Article } from "@/lib/api";
 
@@ -45,6 +46,8 @@ const batchRoute = (overrides: Partial<Route> = {}): Route => ({
   ...overrides,
 });
 
+beforeEach(() => clearReadingSessions());
+
 describe("useReadingWindow", () => {
   beforeEach(() => {
     mutateMock.mockClear();
@@ -72,6 +75,36 @@ describe("useReadingWindow", () => {
     expect(result.current.prevCursor).toBe("prev");
     expect(result.current.nextCursor).toBe("next");
     expect(result.current.loading).toBe(false);
+  });
+
+  it("keeps an opened article in the cached window across navigation", async () => {
+    const fetchMock = installFetch([
+      anchorRoute(
+        [makeArticle({ id: 1, title: "Opened" }), makeArticle({ id: 2, title: "Next" })],
+        { "X-Unread-Count": "2" },
+      ),
+    ]);
+    const first = renderHook(() =>
+      useReadingWindow({ filter: "unread", enabled: true }),
+    );
+    await waitFor(() => expect(first.result.current.articles).toHaveLength(2));
+
+    act(() => first.result.current.markOpened(1));
+    expect(first.result.current.articles?.map((article) => article.id)).toEqual([1, 2]);
+    expect(first.result.current.articles?.[0].is_read).toBe(true);
+    expect(first.result.current.unreadCount).toBe(1);
+    first.unmount();
+
+    const second = renderHook(() =>
+      useReadingWindow({ filter: "unread", enabled: true }),
+    );
+    await waitFor(() => expect(second.result.current.articles).toHaveLength(2));
+    expect(second.result.current.articles?.map((article) => article.id)).toEqual([1, 2]);
+    expect(second.result.current.articles?.[0].is_read).toBe(true);
+    expect(second.result.current.unreadCount).toBe(1);
+    expect(
+      fetchMock.mock.calls.filter((call) => String(call[0]).includes("anchor=resume")),
+    ).toHaveLength(1);
   });
 
   it("does nothing when disabled", () => {

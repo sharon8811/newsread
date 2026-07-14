@@ -1318,6 +1318,38 @@ async def test_direction_before_walks_history_in_pages(client, users, data):
     assert "x-prev-cursor" not in back2.headers
 
 
+async def test_unread_reading_window_keeps_read_history_for_back_paging(
+    client, users, data
+):
+    """An unread list can prepend rows read earlier in the same session."""
+    user, feed = await _setup(users, data)
+    arts = await _dated_articles(data, feed, 5)
+    await data.state(user, arts[4], is_read=True)
+    await data.state(user, arts[3], is_read=True)
+
+    anchor = await client.get(
+        "/api/articles",
+        params={"filter": "unread", "anchor": "resume", "reading_window": True},
+        headers=users.auth(user),
+    )
+    assert [article["title"] for article in anchor.json()] == ["A2", "A1", "A0"]
+    assert "x-prev-cursor" in anchor.headers
+
+    history = await client.get(
+        "/api/articles",
+        params={
+            "filter": "unread",
+            "cursor": anchor.headers["x-prev-cursor"],
+            "direction": "before",
+            "reading_window": True,
+            "limit": 2,
+        },
+        headers=users.auth(user),
+    )
+    assert [article["title"] for article in history.json()] == ["A4", "A3"]
+    assert all(article["is_read"] for article in history.json())
+
+
 async def test_direction_before_null_published_tail(client, users, data):
     user, feed = await _setup(users, data)
     await data.article(feed, title="Dated",

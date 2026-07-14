@@ -1,11 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useLayoutEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import Sidebar from "@/components/Sidebar";
 import { MenuIcon } from "@/components/icons";
 import { useAuth } from "@/lib/auth";
+import {
+  clearReadingReturnAnchor,
+  getLatestReadingReturnAnchor,
+} from "@/lib/readingSession";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, ready } = useAuth();
@@ -19,6 +23,41 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   // Close the drawer whenever navigation happens.
   useEffect(() => setNavOpen(false), [pathname]);
+
+  // The app shell owns the persistent scroll container, and Next may preserve
+  // a list route in its client cache rather than remounting it on browser Back.
+  // Restore after the route commit (and again across two frames) so framework
+  // scroll handling cannot overwrite the semantic article-row anchor.
+  useLayoutEffect(() => {
+    if (pathname.startsWith("/article/")) return;
+    const pending = getLatestReadingReturnAnchor();
+    if (!pending) return;
+
+    const restore = () => {
+      const scroller = document.querySelector<HTMLElement>("main");
+      const article = document.querySelector<HTMLElement>(
+        `[data-article-id="${pending.anchor.articleId}"]`,
+      );
+      if (!scroller || !article) return false;
+      const currentOffset =
+        article.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
+      scroller.scrollTop += currentOffset - pending.anchor.offset;
+      return true;
+    };
+
+    restore();
+    let secondFrame = 0;
+    const firstFrame = requestAnimationFrame(() => {
+      restore();
+      secondFrame = requestAnimationFrame(() => {
+        if (restore()) clearReadingReturnAnchor(pending.key);
+      });
+    });
+    return () => {
+      cancelAnimationFrame(firstFrame);
+      cancelAnimationFrame(secondFrame);
+    };
+  }, [pathname]);
 
   if (!ready || !user) {
     return (

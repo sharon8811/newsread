@@ -455,6 +455,7 @@ async def list_articles(
     cursor: str | None = Query(default=None, max_length=200),
     anchor: Literal["resume"] | None = None,
     direction: Literal["after", "before"] = "after",
+    reading_window: bool = False,
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
@@ -469,7 +470,9 @@ async def list_articles(
     first unread anywhere, then to the top of the list. It also reports the
     scope's total unread in `X-Unread-Count` and how many unread sit above
     the resume point in `X-New-Above-Count`. `direction=before` pages
-    backward from `cursor` through read history. Both hand back an
+    backward from `cursor` through read history. `reading_window=true`
+    keeps that backward context available even when `filter=unread`, while
+    forward pages remain unread-only. Both hand back an
     `X-Prev-Cursor` usable for the next backward page whenever earlier rows
     exist."""
     if cursor is not None and q:
@@ -478,7 +481,7 @@ async def list_articles(
         raise HTTPException(status_code=422, detail="anchor cannot be combined with cursor or q")
     if direction == "before" and cursor is None:
         raise HTTPException(status_code=422, detail="direction=before requires a cursor")
-    stmt = (
+    base_stmt = (
         select(Article, Feed.title, Feed.image_gen_enabled, UserArticleState)
         .join(Feed, Article.feed_id == Feed.id)
         .join(
@@ -493,19 +496,21 @@ async def list_articles(
             ),
         )
     )
-    stmt = stmt.where(retention_visible())
+    base_stmt = base_stmt.where(retention_visible())
     if feed_id is not None:
-        stmt = stmt.where(Article.feed_id == feed_id)
+        base_stmt = base_stmt.where(Article.feed_id == feed_id)
     elif filter != "saved":
-        stmt = stmt.where(Subscription.is_muted.is_(False))
+        base_stmt = base_stmt.where(Subscription.is_muted.is_(False))
+    if filter != "saved":
+        base_stmt = base_stmt.where(not_suppressed(user.id))
+
+    stmt = base_stmt
     if filter == "unread":
         stmt = stmt.where(
             or_(UserArticleState.id.is_(None), UserArticleState.is_read.is_(False))
         )
     elif filter == "saved":
         stmt = stmt.where(UserArticleState.is_saved.is_(True))
-    if filter != "saved":
-        stmt = stmt.where(not_suppressed(user.id))
 
     ranked_ids = (
         await _hybrid_search_ids(session, user.id, feed_id, filter, q) if q else None
@@ -540,10 +545,15 @@ async def list_articles(
             reverse_order = (Article.published_at.asc().nulls_first(), Article.id.asc())
         if direction == "before":
             # Backward page: mirror the keyset, query in reverse order, then
-            # flip the block back to list order for the client to prepend.
+            # flip the block back to list order for the client to prepend. A
+            # reading window requests all prior rows as stable context even
+            # when its forward-facing filter is unread-only.
             published, cursor_id = _decode_cursor(cursor)
+            history_stmt = (
+                base_stmt if reading_window and filter == "unread" else stmt
+            )
             stmt = (
-                stmt.where(_cursor_filter_before(published, cursor_id, oldest=oldest))
+                history_stmt.where(_cursor_filter_before(published, cursor_id, oldest=oldest))
                 .order_by(*reverse_order)
                 .limit(limit + 1)
             )
@@ -619,9 +629,12 @@ async def list_articles(
                         anchor_published, anchor_article.id, oldest=oldest
                     )
                 )
+                history_scope_stmt = (
+                    base_stmt if reading_window and filter == "unread" else scope_stmt
+                )
                 earlier_row = (
                     await session.execute(
-                        scope_stmt.where(
+                        history_scope_stmt.where(
                             _cursor_filter_before(
                                 anchor_published, anchor_article.id, oldest=oldest
                             )

@@ -19,7 +19,7 @@ import { api, imageSrc, sendReadBatch } from "@/lib/api";
 import { useArticles, type ArticleFilter } from "@/lib/articles";
 import { useAuth } from "@/lib/auth";
 import { timeAgo } from "@/lib/format";
-import { useReadingList } from "@/lib/readingList";
+import { nextUnreadIndex, useReadingList } from "@/lib/readingList";
 import { usePalette, type Palette } from "@/lib/theme";
 import type { Article, ViewMode } from "@/lib/types";
 
@@ -144,6 +144,7 @@ export default function ArticleListScreen() {
   const appliedDefault = useRef(false);
   const [refreshing, setRefreshing] = useState(false);
   const listRef = useRef<FlatList<Article>>(null);
+  const firstVisibleIndexRef = useRef(0);
 
   // Reading filters (unread/all) get the scroll-auto-read window — resume
   // anchor, viewability marks, unread pill. The saved shelf keeps the plain
@@ -176,7 +177,11 @@ export default function ArticleListScreen() {
           .map((v) => v.index)
           .filter((n): n is number => n !== null);
         // Everything above the first visible row has been scrolled past.
-        if (indexes.length > 0) markPassedUpToRef.current(Math.min(...indexes));
+        if (indexes.length > 0) {
+          const firstVisible = Math.min(...indexes);
+          firstVisibleIndexRef.current = firstVisible;
+          markPassedUpToRef.current(firstVisible);
+        }
       },
     },
   ]);
@@ -230,13 +235,16 @@ export default function ArticleListScreen() {
   };
 
   const openArticle = (article: Article) => {
-    if (readingMode) reading.flush();
+    if (readingMode) {
+      reading.markOpened(article.id);
+      reading.flush();
+    }
     router.push(`/article/${article.id}`);
   };
 
   // The unread pill doubles as "jump to the next unread below".
   const jumpToNextUnread = () => {
-    const index = articles.findIndex((a) => !a.is_read);
+    const index = nextUnreadIndex(articles, firstVisibleIndexRef.current);
     if (index >= 0) {
       listRef.current?.scrollToIndex({ index, viewPosition: 0, animated: true });
     } else if (reading.newAbove > 0) {

@@ -3,6 +3,11 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import ArticleList, { articlesKey, mutateArticleLists } from "@/components/ArticleList";
 import { makeArticle } from "./fixtures";
+import {
+  clearReadingSessions,
+  getReadingReturnAnchor,
+  readingSessionKey,
+} from "@/lib/readingSession";
 
 const { pushMock } = vi.hoisted(() => ({ pushMock: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: pushMock }) }));
@@ -35,6 +40,8 @@ function stub(articles: unknown, isLoading = false) {
 function okFetch() {
   return vi.fn().mockResolvedValue({ status: 200, ok: true, json: async () => ({}) });
 }
+
+beforeEach(() => clearReadingSessions());
 
 describe("<ArticleList>", () => {
   beforeEach(() => {
@@ -341,6 +348,7 @@ describe("<ArticleList> reading mode", () => {
     renderReading(<ArticleList filter="unread" emptyTitle="Empty" />);
     expect(await screen.findByText("Resume Here")).toBeInTheDocument();
     expect(String(fetchMock.mock.calls[0][0])).toContain("anchor=resume");
+    expect(String(fetchMock.mock.calls[0][0])).toContain("reading_window=true");
     expect(screen.getByText("7 unread ↓")).toBeInTheDocument();
     expect(screen.queryByText(/new ↑/)).not.toBeInTheDocument();
   });
@@ -640,6 +648,43 @@ describe("<ArticleList> reading mode interactions", () => {
     await screen.findByText("Openable");
     fireEvent.keyDown(window, { key: "Enter" });
     expect(pushMock).toHaveBeenCalledWith("/article/77");
+    expect(screen.getByText("All caught up ✓")).toBeInTheDocument();
+  });
+
+  it("keeps a clicked unread row in place when the list remounts", async () => {
+    const fetchMock = routedFetch([
+      {
+        match: (u) => u.includes("anchor=resume"),
+        articles: [
+          makeArticle({ id: 81, title: "Return Here" }),
+          makeArticle({ id: 82, title: "Still Below" }),
+        ],
+        headers: { "X-Unread-Count": "2" },
+      },
+    ]);
+    const first = renderReading(<ArticleList filter="unread" emptyTitle="Empty" />);
+    await screen.findByText("Return Here");
+    fireEvent.click(screen.getByText("Return Here"));
+    expect(pushMock).toHaveBeenCalledWith("/article/81");
+    await screen.findByText("1 unread ↓");
+    expect(getReadingReturnAnchor(readingSessionKey("unread"))).toEqual({
+      articleId: 81,
+      offset: 0,
+    });
+    first.unmount();
+
+    const second = renderReading(<ArticleList filter="unread" emptyTitle="Empty" />);
+    expect(await screen.findByText("Return Here")).toBeInTheDocument();
+    expect(screen.getByText("Still Below")).toBeInTheDocument();
+    expect(screen.getByText("1 unread ↓")).toBeInTheDocument();
+    expect(getReadingReturnAnchor(readingSessionKey("unread"))).toEqual({
+      articleId: 81,
+      offset: 0,
+    });
+    expect(
+      fetchMock.mock.calls.filter((call) => String(call[0]).includes("anchor=resume")),
+    ).toHaveLength(1);
+    second.unmount();
   });
 });
 

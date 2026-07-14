@@ -20,6 +20,7 @@ function listPath(filter: ReadingFilter, extra: Record<string, string> = {}) {
   const params = new URLSearchParams({
     filter,
     limit: String(PAGE_SIZE),
+    reading_window: "true",
     ...extra,
   });
   return `/articles?${params.toString()}`;
@@ -36,6 +37,25 @@ export function passedArticleIds(
     if (!articles[i].is_read) passed.push(articles[i].id);
   }
   return passed;
+}
+
+/** Preserve the reading window when a detail screen opens. */
+export function markArticleOpened(articles: Article[], articleId: number): Article[] {
+  const target = articles.find((article) => article.id === articleId);
+  if (!target || target.is_read) return articles;
+  return articles.map((article) =>
+    article.id === articleId ? { ...article, is_read: true } : article,
+  );
+}
+
+/** The unread jump is always forward from the current viewport. */
+export function nextUnreadIndex(
+  articles: Article[],
+  firstVisibleIndex: number,
+): number {
+  return articles.findIndex(
+    (article, index) => index > firstVisibleIndex && !article.is_read,
+  );
 }
 
 export function useReadingList(filter: ReadingFilter, enabled: boolean) {
@@ -176,6 +196,17 @@ export function useReadingList(filter: ReadingFilter, enabled: boolean) {
     [enabled, flush],
   );
 
+  // Opening a detail screen is also a read, but the row stays in the current
+  // reading window so back navigation preserves the user's place.
+  const markOpened = useCallback((articleId: number) => {
+    const article = articlesRef.current?.find((item) => item.id === articleId);
+    if (!article || article.is_read) return;
+    setArticles((list) => (list ? markArticleOpened(list, articleId) : list));
+    setUnreadCount((count) =>
+      count === null ? count : Math.max(0, count - 1),
+    );
+  }, []);
+
   // Pull-to-refresh / stories exit: flush what we know, then re-anchor.
   const refresh = useCallback(async () => {
     flush();
@@ -226,6 +257,7 @@ export function useReadingList(filter: ReadingFilter, enabled: boolean) {
     newAbove,
     loadMore,
     markPassedUpTo,
+    markOpened,
     refresh,
     resetToTop,
     flush,
