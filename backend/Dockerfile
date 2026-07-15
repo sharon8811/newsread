@@ -22,6 +22,10 @@ COPY --from=builder /app/.venv /app/.venv
 # articles); --with-deps pulls the system libraries slim lacks.
 RUN python -m playwright install --with-deps chromium
 
+# init_db migrates to head at boot, so the runtime image needs the Alembic
+# config and revision scripts alongside the code.
+COPY alembic.ini ./
+COPY alembic ./alembic
 COPY app ./app
 
 EXPOSE 8000
