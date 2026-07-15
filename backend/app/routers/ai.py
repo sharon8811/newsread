@@ -406,6 +406,7 @@ async def ask_article_stream(
             title=article.title,
             url=article.url,
             text=clip_for_llm(text),
+            author=article.author,
             published_at=article.published_at,
             entities=entities,
             history=history,
