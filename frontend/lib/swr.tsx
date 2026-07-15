@@ -3,6 +3,7 @@
 import { useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { SWRConfig } from "swr";
+import { toast } from "sonner";
 import { ApiError, fetcher, getToken } from "./api";
 import { useAuth } from "./auth";
 
@@ -17,6 +18,7 @@ export function SWRProvider({ children }: { children: React.ReactNode }) {
     (err: unknown) => {
       if (err instanceof ApiError && err.status === 401 && getToken()) {
         logout();
+        toast.error("Your session expired — sign in again.");
         router.replace("/login");
       }
     },

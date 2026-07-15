@@ -1,8 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import useSWR, { mutate } from "swr";
+import { mutate } from "swr";
+import useSWR from "swr";
 import { api, fetcher, type DislikeRule } from "@/lib/api";
+import { keys } from "@/lib/keys";
+import { useDislikeRules } from "@/lib/queries";
 import { mutateArticleLists } from "./ArticleList";
 import { TrashIcon } from "./icons";
 import Badge from "./ui/Badge";
@@ -23,17 +26,16 @@ function expiresIn(iso: string): string {
  * undo story: its suppressions cascade away server-side and the hidden
  * articles reappear. */
 export default function NotInterestedSection() {
-  const { data: rules } = useSWR<DislikeRule[]>("/interests/dislikes", fetcher);
+  const { data: rules } = useDislikeRules();
   const [expanded, setExpanded] = useState<number | null>(null);
   const { data: hits } = useSWR<{ id: number; title: string }[]>(
     expanded !== null ? `/interests/dislikes/${expanded}/articles` : null,
-    fetcher,
   );
 
   async function remove(rule: DislikeRule) {
     await api(`/interests/dislikes/${rule.id}`, { method: "DELETE" });
     if (expanded === rule.id) setExpanded(null);
-    mutate("/interests/dislikes");
+    mutate(keys.dislikeRules);
     mutateArticleLists();
   }
 

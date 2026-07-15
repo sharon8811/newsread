@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import useSWR from "swr";
 import ActivityChart from "@/components/ActivityChart";
-import { fetcher, type ActivityRange, type ActivitySummary } from "@/lib/api";
+import type { ActivityRange } from "@/lib/api";
+import { useActivitySummary } from "@/lib/queries";
 import { formatDuration } from "@/lib/format";
 import { localDay } from "@/lib/useReadingTimer";
 
@@ -107,10 +107,7 @@ function TimeList({
 
 export default function ActivityPage() {
   const [range, setRange] = useState<ActivityRange>("week");
-  const { data } = useSWR<ActivitySummary>(
-    `/activity/summary?range=${range}&today=${localDay()}`,
-    fetcher,
-  );
+  const { data } = useActivitySummary(range, localDay());
   const meta = RANGE_META[range];
 
   return (

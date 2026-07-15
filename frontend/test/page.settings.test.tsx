@@ -34,10 +34,28 @@ function mockSWRData({
     makeIntegration({ platform: "teams" }),
   ],
   targets = [makeShareTarget({ id: 5, display_name: "#ai-news" })],
+  pickerOptions = undefined as unknown[] | Error | undefined,
 } = {}) {
+  // The picker's bound mutate writes back into the holder; the re-render
+  // caused by the component's own setState picks the new value up.
+  const holder = { options: pickerOptions };
   swrMock.mockImplementation((key: string) => {
     if (key === "/integrations") return { data: integrations };
     if (key === "/share-targets") return { data: targets };
+    if (typeof key === "string" && key.includes("/targets?q=")) {
+      if (holder.options instanceof Error) return { error: holder.options };
+      return {
+        data: holder.options,
+        isLoading: false,
+        mutate: (updater: unknown) => {
+          if (typeof updater === "function") {
+            holder.options = (updater as (o: unknown) => unknown[])(holder.options);
+          } else {
+            holder.options = updater as unknown[];
+          }
+        },
+      };
+    }
     return { data: undefined };
   });
 }
@@ -202,14 +220,12 @@ describe("SettingsPage", () => {
   });
 
   it("browses a platform, saves and unsaves targets", async () => {
-    mockSWRData();
     const options = [
       { external_id: "C1", display_name: "#general", target_type: "channel", meta: {}, saved_id: null },
       { external_id: "C2", display_name: "#random", target_type: "channel", meta: {}, saved_id: 9 },
     ];
+    mockSWRData({ pickerOptions: options });
     const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
-      if (url.includes("/integrations/slack/targets"))
-        return Promise.resolve({ status: 200, ok: true, json: async () => options });
       if (init?.method === "POST")
         return Promise.resolve({ status: 201, ok: true, json: async () => ({ id: 31 }) });
       return Promise.resolve({ status: 204, ok: true, json: async () => ({}) });
@@ -245,10 +261,8 @@ describe("SettingsPage", () => {
     vi.unstubAllGlobals();
   });
 
-  it("searches targets with the typed query", async () => {
-    mockSWRData();
-    const fetchMock = vi.fn().mockResolvedValue({ status: 200, ok: true, json: async () => [] });
-    vi.stubGlobal("fetch", fetchMock);
+  it("searches targets with the debounced typed query", async () => {
+    mockSWRData({ pickerOptions: [] });
     render(<SettingsPage />);
 
     await userEvent.click(screen.getByRole("button", { name: "Browse Slack" }));
@@ -256,26 +270,16 @@ describe("SettingsPage", () => {
     await userEvent.type(screen.getByPlaceholderText(/Search Slack/), "ai");
     await waitFor(() =>
       expect(
-        fetchMock.mock.calls.some((c) => String(c[0]).includes("targets?q=ai")),
+        swrMock.mock.calls.some((c) => String(c[0]).includes("targets?q=ai")),
       ).toBe(true),
     );
-    vi.unstubAllGlobals();
   });
 
   it("shows a picker error when the platform listing fails", async () => {
-    mockSWRData();
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue({
-        status: 502,
-        ok: false,
-        json: async () => ({ detail: { message: "token revoked", reconnect: true } }),
-      }),
-    );
+    mockSWRData({ pickerOptions: new Error("token revoked") });
     render(<SettingsPage />);
     await userEvent.click(screen.getByRole("button", { name: "Browse Slack" }));
     expect(await screen.findByText("token revoked")).toBeInTheDocument();
-    vi.unstubAllGlobals();
   });
 
   it("prompts to connect before saving targets when nothing is connected", () => {

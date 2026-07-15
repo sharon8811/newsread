@@ -2,18 +2,16 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import useSWR from "swr";
 import UsageChart from "@/components/UsageChart";
 import {
   api,
-  fetcher,
   USAGE_FEATURE_LABELS,
   type ActivityRange,
   type UsageEvent,
   type UsageFeatureKey,
-  type UsageSummary,
 } from "@/lib/api";
 import { humanCount, timeAgo } from "@/lib/format";
+import { useUsageEvents, useUsageSummary } from "@/lib/queries";
 
 const RANGES: Array<{ value: ActivityRange; label: string }> = [
   { value: "week", label: "Week" },
@@ -116,10 +114,7 @@ function TokenList({
 }
 
 function EventLog() {
-  const { data: firstPage } = useSWR<UsageEvent[]>(
-    `/usage/events?limit=${EVENTS_PAGE}`,
-    fetcher,
-  );
+  const { data: firstPage } = useUsageEvents(EVENTS_PAGE);
   const [older, setOlder] = useState<UsageEvent[]>([]);
   const [loadingMore, setLoadingMore] = useState(false);
   const [exhausted, setExhausted] = useState(false);
@@ -192,7 +187,7 @@ function EventLog() {
 
 export default function UsagePage() {
   const [range, setRange] = useState<ActivityRange>("week");
-  const { data } = useSWR<UsageSummary>(`/usage/summary?range=${range}`, fetcher);
+  const { data } = useUsageSummary(range);
   const meta = RANGE_META[range];
 
   return (

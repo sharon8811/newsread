@@ -16,6 +16,7 @@ import {
 } from "@/lib/readingSession";
 import { ARTICLES_REFRESH_EVENT, useReadingWindow } from "@/lib/useReadingWindow";
 import ArticleCard from "./ArticleCard";
+import EmptyState from "./ui/EmptyState";
 import ArticleRow from "./ArticleRow";
 import NotInterestedModal from "./NotInterestedModal";
 import ProjectPickerModal from "./ProjectPickerModal";
@@ -95,21 +96,6 @@ function LoadingSkeleton({ variant }: { variant: "cards" | "list" }) {
           }}
         />
       ))}
-    </div>
-  );
-}
-
-function EmptyState({ title, subtitle }: { title: string; subtitle?: string }) {
-  return (
-    <div className="flex flex-col items-center justify-center px-8 py-28 text-center">
-      <p className="text-[17px] font-medium" style={{ color: "var(--ink-dim)" }}>
-        {title}
-      </p>
-      {subtitle && (
-        <p className="mt-2 max-w-sm text-[13.5px]" style={{ color: "var(--ink-faint)" }}>
-          {subtitle}
-        </p>
-      )}
     </div>
   );
 }

@@ -1,11 +1,11 @@
 "use client";
 
-import useSWR from "swr";
 import ShareCard from "@/components/ShareCard";
-import { fetcher, type Share } from "@/lib/api";
+import EmptyState from "@/components/ui/EmptyState";
+import { useSharesSent } from "@/lib/queries";
 
 export default function SentPage() {
-  const { data: shares, isLoading } = useSWR<Share[]>("/shares/sent", fetcher);
+  const { data: shares, isLoading } = useSharesSent();
 
   return (
     <>
@@ -21,14 +21,10 @@ export default function SentPage() {
       </header>
 
       {!isLoading && (!shares || shares.length === 0) && (
-        <div className="flex flex-col items-center px-8 py-28 text-center">
-          <p className="text-[17px] font-medium" style={{ color: "var(--ink-dim)" }}>
-            You have not shared anything yet.
-          </p>
-          <p className="mt-2 max-w-md text-[13.5px]" style={{ color: "var(--ink-faint)" }}>
-            Find a great article and share it with a note — that is the whole point.
-          </p>
-        </div>
+        <EmptyState
+          title="You have not shared anything yet."
+          subtitle="Find a great article and share it with a note — that is the whole point."
+        />
       )}
 
       <div className="fade-up">

@@ -12,6 +12,7 @@ import SubscribeQuickSettings, {
 } from "./SubscribeQuickSettings";
 import { CheckIcon, ExternalIcon, PlusIcon } from "./icons";
 import Modal, { ModalHeader } from "./Modal";
+import Skeleton from "./ui/Skeleton";
 import ErrorText from "./ui/ErrorText";
 
 /** A preview story row; titles without a resolvable link render as plain text
@@ -126,11 +127,7 @@ export default function CatalogFeedModal({
           {isLoading && (
             <div className="mt-2 space-y-2" aria-label="Loading stories">
               {Array.from({ length: 3 }).map((_, index) => (
-                <div
-                  key={index}
-                  className="h-12 animate-pulse rounded-md"
-                  style={{ background: "var(--bg-inset)" }}
-                />
+                <Skeleton key={index} className="h-12 bg-inset" />
               ))}
             </div>
           )}

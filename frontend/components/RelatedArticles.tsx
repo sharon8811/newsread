@@ -2,17 +2,14 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import useSWR from "swr";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
   api,
-  fetcher,
-  type AiStatus,
   type ArticleDetail,
   type CoverageSynthesis,
-  type RelatedArticle,
 } from "@/lib/api";
+import { useAiStatus, useRelatedArticles } from "@/lib/queries";
 import { timeAgo } from "@/lib/format";
 import { SparkleIcon } from "./icons";
 import Badge from "./ui/Badge";
@@ -25,11 +22,8 @@ import ErrorText from "./ui/ErrorText";
  * only ever on click. The whole section hides when there is nothing related. */
 export default function RelatedArticles({ article }: { article: ArticleDetail }) {
   const router = useRouter();
-  const { data: related } = useSWR<RelatedArticle[]>(
-    `/articles/${article.id}/related`,
-    fetcher,
-  );
-  const { data: status } = useSWR<AiStatus>("/ai/status", fetcher);
+  const { data: related } = useRelatedArticles(article.id);
+  const { data: status } = useAiStatus();
   const [synthesis, setSynthesis] = useState<CoverageSynthesis | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);

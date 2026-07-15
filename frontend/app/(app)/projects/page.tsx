@@ -2,38 +2,41 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import useSWR, { mutate } from "swr";
-import { api, fetcher, type Project } from "@/lib/api";
+import { mutate } from "swr";
+import { api, type Project } from "@/lib/api";
+import { keys } from "@/lib/keys";
+import { useProjects } from "@/lib/queries";
+import { useMutation } from "@/lib/useMutation";
 import { FolderIcon, PlusIcon, XIcon } from "@/components/icons";
+import EmptyState from "@/components/ui/EmptyState";
 import ErrorText from "@/components/ui/ErrorText";
 
 export default function ProjectsPage() {
-  const { data: projects, isLoading } = useSWR<Project[]>("/projects", fetcher);
+  const { data: projects, isLoading } = useProjects();
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
 
-  async function create(e: React.FormEvent) {
-    e.preventDefault();
-    if (!name.trim() || busy) return;
-    setBusy(true);
-    setError(null);
-    try {
-      await api<Project>("/projects", {
+  const { run: createProject, busy, error, setError } = useMutation(
+    () =>
+      api<Project>("/projects", {
         method: "POST",
         body: { name: name.trim(), description: description.trim() },
-      });
-      setName("");
-      setDescription("");
-      setCreating(false);
-      mutate("/projects");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not create project");
-    } finally {
-      setBusy(false);
-    }
+      }),
+    {
+      fallbackError: "Could not create project",
+      onSuccess() {
+        setName("");
+        setDescription("");
+        setCreating(false);
+        mutate(keys.projects);
+      },
+    },
+  );
+
+  function create(e: React.FormEvent) {
+    e.preventDefault();
+    if (name.trim()) createProject();
   }
 
   return (
@@ -74,11 +77,7 @@ export default function ProjectsPage() {
             value={description}
             onChange={(e) => setDescription(e.target.value)}
           />
-          {error && (
-            <ErrorText className="mt-2">
-              {error}
-            </ErrorText>
-          )}
+          <ErrorText className="mt-2">{error}</ErrorText>
           <button className="btn btn-accent mt-3" disabled={busy || !name.trim()} type="submit">
             {busy ? "Creating…" : "Create project"}
           </button>
@@ -86,15 +85,10 @@ export default function ProjectsPage() {
       )}
 
       {!isLoading && projects?.length === 0 && !creating && (
-        <div className="flex flex-col items-center px-8 py-28 text-center">
-          <p className="text-[17px] font-medium" style={{ color: "var(--ink-dim)" }}>
-            No projects yet.
-          </p>
-          <p className="mt-2 max-w-md text-[13.5px]" style={{ color: "var(--ink-faint)" }}>
-            A project collects articles around one effort — keep it to yourself or
-            invite the people working on it with you.
-          </p>
-        </div>
+        <EmptyState
+          title="No projects yet."
+          subtitle="A project collects articles around one effort — keep it to yourself or invite the people working on it with you."
+        />
       )}
 
       <div className="fade-up">

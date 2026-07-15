@@ -2,7 +2,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import useSWR, { mutate } from "swr";
+import { mutate } from "swr";
 import AiSummary from "@/components/AiSummary";
 import ArticleAssistantDrawer, {
   type AssistantScope,
@@ -27,7 +27,8 @@ import {
   ShareIcon,
   SparkleIcon,
 } from "@/components/icons";
-import { api, fetcher, imageSrc, type ArticleDetail } from "@/lib/api";
+import { api, imageSrc } from "@/lib/api";
+import { useArticleDetail } from "@/lib/queries";
 import { domainOf, timeAgo } from "@/lib/format";
 import { discussionRefFor } from "@/lib/discussions";
 import { markArticleReadInReadingSessions } from "@/lib/readingSession";
@@ -41,7 +42,7 @@ export default function ArticlePage() {
   // appears the moment it lands (and the "generating" state clears if it
   // fails). Server-side pending stops reporting after ~3 min, which halts
   // the poll on its own.
-  const { data: article, error } = useSWR<ArticleDetail>(key, fetcher, {
+  const { data: article, error } = useArticleDetail(id ?? null, {
     refreshInterval: (data) =>
       data?.image_pending && !data.image_url ? 3000 : 0,
   });

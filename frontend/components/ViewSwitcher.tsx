@@ -2,6 +2,7 @@
 
 import { mutate } from "swr";
 import { api, type Feed, type User, type ViewMode } from "@/lib/api";
+import { keys } from "@/lib/keys";
 import { useAuth } from "@/lib/auth";
 import { CardsIcon, ListIcon, StoriesIcon } from "./icons";
 
@@ -12,17 +13,21 @@ const MODES: { mode: ViewMode; label: string; Icon: typeof ListIcon }[] = [
 ];
 
 function setFeedOverride(feedId: number, override: ViewMode | null) {
-  // Optimistic cache update, then persist and revalidate.
-  mutate(
-    "/feeds",
-    (feeds?: Feed[]) =>
-      feeds?.map((f) => (f.id === feedId ? { ...f, view_override: override } : f)),
-    { revalidate: false },
+  // Optimistic cache update; SWR rolls it back if the PATCH fails, then
+  // revalidates either way.
+  const apply = (feeds?: Feed[]) =>
+    feeds?.map((f) => (f.id === feedId ? { ...f, view_override: override } : f));
+  return mutate(
+    keys.feeds,
+    async (feeds?: Feed[]) => {
+      await api<Feed>(`/feeds/${feedId}/settings`, {
+        method: "PATCH",
+        body: { view_override: override },
+      });
+      return apply(feeds) ?? [];
+    },
+    { optimisticData: (feeds?: Feed[]) => apply(feeds) ?? [], rollbackOnError: true },
   );
-  return api<Feed>(`/feeds/${feedId}/settings`, {
-    method: "PATCH",
-    body: { view_override: override },
-  }).finally(() => mutate("/feeds"));
 }
 
 export default function ViewSwitcher({

@@ -2,34 +2,30 @@
 
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
-import useSWR, { mutate } from "swr";
+import { mutate } from "swr";
 import {
   api,
-  fetcher,
   type CatalogCategory,
   type CatalogEntry,
   type Feed,
-  type SmartFeed,
   type SubscribeOptions,
 } from "@/lib/api";
 import { formatFeedType, freshness } from "@/lib/format";
+import { keys } from "@/lib/keys";
+import {
+  useCatalogCategories,
+  useCatalogEntries,
+  useSmartFeeds,
+} from "@/lib/queries";
 import CatalogFeedModal from "@/components/CatalogFeedModal";
 import SmartFeedModal from "@/components/SmartFeedModal";
 import { CheckIcon, PlusIcon, SearchIcon, SparkleIcon } from "@/components/icons";
 import Badge from "@/components/ui/Badge";
 import Chip from "@/components/ui/Chip";
+import Skeleton from "@/components/ui/Skeleton";
 import ErrorText from "@/components/ui/ErrorText";
 
 type CatalogSort = "name" | "popular" | "recommended";
-
-function catalogKey(q: string, category: string | null, sort: CatalogSort): string {
-  const params = new URLSearchParams();
-  if (q) params.set("q", q);
-  if (category) params.set("category", category);
-  if (sort !== "name") params.set("sort", sort);
-  const qs = params.toString();
-  return qs ? `/catalog?${qs}` : "/catalog";
-}
 
 export default function CatalogPage() {
   const [search, setSearch] = useState("");
@@ -57,10 +53,10 @@ export default function CatalogPage() {
     return () => clearTimeout(t);
   }, [search, q]);
 
-  const key = catalogKey(q, category, sort);
-  const { data: entries, error: loadError, isLoading } = useSWR<CatalogEntry[]>(key, fetcher);
-  const { data: categories } = useSWR<CatalogCategory[]>("/catalog/categories", fetcher);
-  const { data: smartFeeds } = useSWR<SmartFeed[]>("/catalog/smart", fetcher);
+  const key = keys.catalog(q, category, sort);
+  const { data: entries, error: loadError, isLoading } = useCatalogEntries(q, category, sort);
+  const { data: categories } = useCatalogCategories();
+  const { data: smartFeeds } = useSmartFeeds();
   const visibleCategories = showAllTopics ? categories : categories?.slice(0, 12);
   // Derived from the SWR cache so a subscribe flips the open modal in place.
   const detailEntry = entries?.find((entry) => entry.id === detailId) ?? null;
@@ -79,7 +75,7 @@ export default function CatalogPage() {
         ),
         { revalidate: false },
       );
-      mutate("/feeds");
+      mutate(keys.feeds);
     } catch (err) {
       setError(err instanceof Error ? `Could not subscribe to ${entry.title}: ${err.message}` : `Could not subscribe to ${entry.title}`);
     } finally {
@@ -267,4 +263,4 @@ function SortButton({ label, active, onClick }: { label: string; active: boolean
 
 function CategoryChip({ label, count, active, onClick }: { label: string; count?: number; active: boolean; onClick: () => void }) { return <Chip active={active} onClick={onClick}>{label}{count !== undefined && <span className="ml-1 font-mono-nr text-[10.5px]" style={{ color: "var(--ink-faint)" }}>{count}</span>}</Chip>; }
 
-function CatalogSkeleton() { return <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3" aria-label="Loading catalog">{Array.from({ length: 6 }).map((_, index) => <div key={index} className="h-[230px] animate-pulse rounded-lg border" style={{ borderColor: "var(--line-soft)", background: "var(--bg-inset)" }} />)}</div>; }
+function CatalogSkeleton() { return <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3" aria-label="Loading catalog">{Array.from({ length: 6 }).map((_, index) => <Skeleton key={index} className="h-[230px] rounded-lg border border-line-soft bg-inset" />)}</div>; }

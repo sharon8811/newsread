@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono, Source_Serif_4 } from "next/font/google";
 import { AuthProvider } from "@/lib/auth";
 import { SWRProvider } from "@/lib/swr";
+import Toaster from "@/components/ui/Toaster";
 import "./globals.css";
 
 const sourceSerif = Source_Serif_4({
@@ -38,6 +39,7 @@ export default function RootLayout({
         <AuthProvider>
           <SWRProvider>{children}</SWRProvider>
         </AuthProvider>
+        <Toaster />
       </body>
     </html>
   );

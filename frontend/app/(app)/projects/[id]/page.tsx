@@ -2,41 +2,48 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import useSWR, { mutate } from "swr";
+import { mutate } from "swr";
 import ProjectPinCard, { groupPins } from "@/components/ProjectPinCard";
 import QAPanel from "@/components/QAPanel";
 import { LockIcon, MuteIcon, PlusIcon, TrashIcon, XIcon } from "@/components/icons";
+import { api, streamProjectQA } from "@/lib/api";
+import { keys } from "@/lib/keys";
 import {
-  api,
-  fetcher,
-  streamProjectQA,
-  type Project,
-  type ProjectArticle,
-  type UserPublic,
-} from "@/lib/api";
+  mutateProject,
+  useProject,
+  useProjectArticles,
+  useUserSearch,
+} from "@/lib/queries";
+import { useDebouncedValue } from "@/lib/useDebouncedValue";
+import { useMutation } from "@/lib/useMutation";
 import { useAuth } from "@/lib/auth";
 import Avatar from "@/components/ui/Avatar";
 import Button from "@/components/ui/Button";
 import ErrorText from "@/components/ui/ErrorText";
+import Skeleton from "@/components/ui/Skeleton";
 
 export default function ProjectPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const { user } = useAuth();
-  const projectKey = `/projects/${id}`;
-  const { data: project, error } = useSWR<Project>(projectKey, fetcher);
-  const listKey = `/projects/${id}/articles`;
-  const { data: pins, isLoading } = useSWR<ProjectArticle[]>(listKey, fetcher);
+  const { data: project, error } = useProject(id);
+  const { data: pins, isLoading } = useProjectArticles(id);
 
   const [tab, setTab] = useState<"shared" | "mine" | "ask">("shared");
   // The working view: done tickets step aside until you flip the switch.
   const [statusFilter, setStatusFilter] = useState<"active" | "done">("active");
   const [inviting, setInviting] = useState(false);
   const [invitee, setInvitee] = useState("");
-  const [results, setResults] = useState<UserPublic[]>([]);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
-  const [actionError, setActionError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+
+  // One mutation slot for every header action: same shared busy flag and
+  // error line the hand-rolled handlers kept, without four copies of the
+  // try/catch/finally machinery.
+  const {
+    run: runAction,
+    busy,
+    error: actionError,
+  } = useMutation((action: () => Promise<unknown>) => action());
 
   const isOwner = project?.my_role === "owner";
   const filtered = (pins ?? []).filter(
@@ -55,105 +62,57 @@ export default function ProjectPage() {
   useEffect(() => {
     if (project && !visitedRef.current) {
       visitedRef.current = true;
+      // Background bookkeeping: a lost visit ping only delays the unseen
+      // badge reset, so failures are deliberately not surfaced.
       api(`/projects/${id}/visit`, { method: "POST" })
-        .then(() => mutate("/projects"))
+        .then(() => mutate(keys.projects))
         .catch(() => {});
     }
   }, [project, id]);
 
-  // Debounced like ShareModal's search; the cleanup also cancels the pending
-  // request's effect, so a slow early response can't overwrite newer results.
-  useEffect(() => {
-    const q = invitee.trim().replace(/^@/, "");
-    if (!q) {
-      setResults([]);
-      return;
-    }
-    let stale = false;
-    const t = setTimeout(() => {
-      api<UserPublic[]>(`/users/search?q=${encodeURIComponent(q)}`)
-        .then((users) => {
-          if (stale) return;
-          setResults(users.filter((u) => !project?.members.some((m) => m.user.id === u.id)));
-        })
-        .catch(() => {
-          if (!stale) setResults([]);
-        });
-    }, 200);
-    return () => {
-      stale = true;
-      clearTimeout(t);
-    };
-  }, [invitee, project]);
+  // SWR keyed on the debounced query replaces the hand-rolled stale-guard
+  // effect; member filtering happens at render time.
+  const inviteQuery = useDebouncedValue(invitee.trim().replace(/^@/, ""), 200);
+  const { data: userMatches } = useUserSearch(inviting ? inviteQuery : "");
+  const results = (userMatches ?? []).filter(
+    (u) => !project?.members.some((m) => m.user.id === u.id),
+  );
 
-  async function invite(username: string) {
-    if (busy) return;
-    setBusy(true);
-    setActionError(null);
-    try {
+  const invite = (username: string) =>
+    runAction(async () => {
       await api(`/projects/${id}/members`, { method: "POST", body: { username } });
       setInvitee("");
-      setResults([]);
       setInviting(false);
-      mutate(projectKey);
-      mutate("/projects");
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : "Could not invite");
-    } finally {
-      setBusy(false);
-    }
-  }
+      mutateProject(id);
+    });
 
-  async function removeMember(userId: number) {
-    if (busy) return;
-    setBusy(true);
-    setActionError(null);
-    try {
+  const removeMember = (userId: number) =>
+    runAction(async () => {
       await api(`/projects/${id}/members/${userId}`, { method: "DELETE" });
       if (userId === user?.id) {
         router.push("/projects");
-        mutate("/projects");
+        mutate(keys.projects);
         return;
       }
-      mutate(projectKey);
-      mutate("/projects");
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : "Could not remove member");
-    } finally {
-      setBusy(false);
-    }
-  }
+      mutateProject(id);
+    });
 
-  async function toggleMute() {
-    if (busy || !project) return;
-    setBusy(true);
-    setActionError(null);
-    try {
+  const toggleMute = () =>
+    runAction(async () => {
+      if (!project) return;
       await api(`/projects/${id}/membership`, {
         method: "PATCH",
         body: { is_muted: !project.is_muted },
       });
-      mutate(projectKey);
-      mutate("/projects");
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : "Could not update notifications");
-    } finally {
-      setBusy(false);
-    }
-  }
+      mutateProject(id);
+    });
 
-  async function deleteProject() {
-    if (busy) return;
-    setBusy(true);
-    try {
+  const deleteProject = () =>
+    runAction(async () => {
       await api(`/projects/${id}`, { method: "DELETE" });
-      mutate("/projects");
+      mutate(keys.projects);
       router.push("/projects");
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : "Could not delete project");
-      setBusy(false);
-    }
-  }
+    });
 
   if (error) {
     return (
@@ -171,7 +130,7 @@ export default function ProjectPage() {
   if (!project) {
     return (
       <div className="px-6 py-10">
-        <div className="h-8 w-1/3 rounded-md" style={{ background: "var(--bg-hover)" }} />
+        <Skeleton className="h-8 w-1/3" />
       </div>
     );
   }

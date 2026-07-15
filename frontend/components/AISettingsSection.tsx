@@ -1,16 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import useSWR, { mutate } from "swr";
 import {
   api,
-  fetcher,
   AI_PROVIDER_LABELS,
   type AIProvider,
   type AISettings,
   type AISettingsSave,
   type AITestResult,
 } from "@/lib/api";
+import { mutateAiConfig, useAiSettings } from "@/lib/queries";
 import Toggle from "./ui/Toggle";
 import ErrorText from "./ui/ErrorText";
 
@@ -50,7 +49,7 @@ function Field({
 }
 
 export default function AISettingsSection() {
-  const { data: settings } = useSWR<AISettings>("/ai/settings", fetcher);
+  const { data: settings } = useAiSettings();
   // The form initializes its state from the stored settings, so it only
   // mounts once they're known; afterwards the user's edits win until save.
   if (!settings) return null;
@@ -158,8 +157,7 @@ function AISettingsForm({ settings }: { settings: AISettings }) {
       if (Object.keys(userPatch).length > 0) {
         await api("/users/me", { method: "PATCH", body: userPatch });
       }
-      mutate("/ai/settings");
-      mutate("/ai/status");
+      mutateAiConfig();
     } catch (err) {
       setNote({
         kind: "error",

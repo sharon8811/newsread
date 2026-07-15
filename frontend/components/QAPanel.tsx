@@ -6,11 +6,11 @@ import remarkGfm from "remark-gfm";
 import useSWR, { mutate } from "swr";
 import {
   fetcher,
-  type AiStatus,
   type ChatMessage,
   type QAStreamEvent,
   type ToolEvent,
 } from "@/lib/api";
+import { useAiStatus } from "@/lib/queries";
 import { CheckIcon, CommentIcon, ExternalIcon, RefreshIcon, SearchIcon, ShareIcon } from "./icons";
 import ErrorText from "./ui/ErrorText";
 
@@ -107,7 +107,7 @@ export default function QAPanel({
   initialInput?: string;
   variant?: "section" | "embedded";
 }) {
-  const { data: status } = useSWR<AiStatus>("/ai/status", fetcher);
+  const { data: status } = useAiStatus();
   const key = qaKey;
   const { data: messages } = useSWR<ChatMessage[]>(
     status?.configured ? key : null,
