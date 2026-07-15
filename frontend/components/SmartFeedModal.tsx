@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import useSWR, { mutate } from "swr";
 import {
   api,
@@ -11,6 +11,7 @@ import {
   type SmartFeedResolve,
 } from "@/lib/api";
 import { fetchPreview, previewErrorMessage, type LoadedPreview } from "@/lib/feedPreview";
+import { useDebouncedValue } from "@/lib/useDebouncedValue";
 import SubscribeQuickSettings, {
   DEFAULT_SUBSCRIBE_SETTINGS,
   toSubscribeOptions,
@@ -18,6 +19,7 @@ import SubscribeQuickSettings, {
 import { StoryRow } from "./CatalogFeedModal";
 import { CheckIcon, ExternalIcon, PlusIcon } from "./icons";
 import Modal, { ModalHeader } from "./Modal";
+import Skeleton from "./ui/Skeleton";
 import Chip from "./ui/Chip";
 import ErrorText from "./ui/ErrorText";
 
@@ -31,17 +33,13 @@ export default function SmartFeedModal({
   onClose: () => void;
 }) {
   const [topic, setTopic] = useState("");
-  const [debounced, setDebounced] = useState("");
+  const debounced = useDebouncedValue(topic.trim(), 450);
   const [settings, setSettings] = useState(DEFAULT_SUBSCRIBE_SETTINGS);
   const [busy, setBusy] = useState(false);
   // Keyed by feed URL so switching topics naturally clears both (derived below).
   const [lastError, setLastError] = useState<{ url: string; message: string } | null>(null);
   const [subscribed, setSubscribed] = useState<{ url: string; feed: Feed } | null>(null);
 
-  useEffect(() => {
-    const t = setTimeout(() => setDebounced(topic.trim()), 450);
-    return () => clearTimeout(t);
-  }, [topic]);
 
   const encoded = encodeURIComponent(debounced);
   // Resolve/preview are one-shot lookups: on failure show the error state
@@ -149,11 +147,7 @@ export default function SmartFeedModal({
               {previewLoading && (
                 <div className="mt-2 space-y-2" aria-label="Loading stories">
                   {Array.from({ length: 3 }).map((_, index) => (
-                    <div
-                      key={index}
-                      className="h-12 animate-pulse rounded-md"
-                      style={{ background: "var(--bg-inset)" }}
-                    />
+                    <Skeleton key={index} className="h-12 bg-inset" />
                   ))}
                 </div>
               )}

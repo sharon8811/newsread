@@ -4,27 +4,34 @@ import userEvent from "@testing-library/user-event";
 import ShareModal from "@/components/ShareModal";
 import { makeArticle, makePublic } from "./fixtures";
 
-const { mutateMock, swrMock } = vi.hoisted(() => ({
+const { mutateMock, swrMock, searchState } = vi.hoisted(() => ({
   mutateMock: vi.fn(),
-  // ShareModal reads saved quick-share targets + AI status via useSWR; the
-  // base suite exercises the internal-share path, so both stay undefined.
-  swrMock: vi.fn(() => ({ data: undefined })),
+  swrMock: vi.fn(),
+  // Users the mocked /users/search key returns; null = the search errors.
+  searchState: { users: [] as unknown[] | null },
 }));
 vi.mock("swr", () => ({ default: swrMock, mutate: mutateMock }));
 
 const bob = makePublic({ id: 2, username: "bob", name: "Bob" });
 const cara = makePublic({ id: 3, username: "cara", name: "Cara" });
 
-// fetch that routes user-search vs. /shares POST
+// ShareModal reads quick-share targets + AI status via useSWR too; the base
+// suite exercises the internal-share path, so those keys stay undefined.
+swrMock.mockImplementation((key: unknown) => {
+  if (typeof key === "string" && key.startsWith("/users/search")) {
+    if (searchState.users === null) return { error: new Error("network") };
+    return { data: searchState.users };
+  }
+  return { data: undefined };
+});
+
+// fetch for the write paths; user search is served by the swr mock.
 function makeFetch(opts: {
   users?: unknown[];
   shares?: () => Promise<{ status: number; ok: boolean; json: () => Promise<unknown> }>;
 } = {}) {
-  const users = opts.users ?? [bob, cara];
-  return vi.fn().mockImplementation((url: string) => {
-    if (url.includes("/users/search")) {
-      return Promise.resolve({ status: 200, ok: true, json: async () => users });
-    }
+  searchState.users = opts.users ?? [bob, cara];
+  return vi.fn().mockImplementation(() => {
     if (opts.shares) return opts.shares();
     return Promise.resolve({ status: 200, ok: true, json: async () => ({ id: 1 }) });
   });
@@ -40,6 +47,7 @@ async function addBob() {
 describe("<ShareModal>", () => {
   beforeEach(() => {
     mutateMock.mockClear();
+    searchState.users = [bob, cara];
   });
 
   it("renders the article title and an empty initial state", () => {
@@ -89,8 +97,8 @@ describe("<ShareModal>", () => {
     await userEvent.type(input, "@bo");
     await screen.findByText("Bob");
 
-    // the @ was stripped before hitting the API
-    expect(fetchMock.mock.calls.some(([u]) => String(u).includes("/users/search?q=bo"))).toBe(true);
+    // the @ was stripped before the search key was built
+    expect(swrMock.mock.calls.some(([k]) => String(k).includes("/users/search?q=bo"))).toBe(true);
 
     await userEvent.click(screen.getByText("Bob"));
 
@@ -142,17 +150,19 @@ describe("<ShareModal>", () => {
     await waitFor(() => expect(screen.queryByText("Bob")).not.toBeInTheDocument());
   });
 
-  it("clears results when a search request fails", async () => {
-    const fetchMock = vi.fn().mockImplementation((url: string) => {
-      if (url.includes("/users/search")) return Promise.reject(new Error("network"));
-      return Promise.resolve({ status: 200, ok: true, json: async () => ({}) });
-    });
-    vi.stubGlobal("fetch", fetchMock);
+  it("renders no results when the search request fails", async () => {
+    searchState.users = null;
+    vi.stubGlobal("fetch", makeFetch());
+    searchState.users = null;
     render(<ShareModal article={makeArticle()} onClose={vi.fn()} />);
 
     const input = screen.getByPlaceholderText(/who should read this/);
     await userEvent.type(input, "bo");
-    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(
+        swrMock.mock.calls.some(([k]) => String(k).includes("/users/search")),
+      ).toBe(true),
+    );
     // no results ever render
     expect(screen.queryByText("Bob")).not.toBeInTheDocument();
   });

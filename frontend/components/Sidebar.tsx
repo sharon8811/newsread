@@ -3,8 +3,15 @@
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
-import useSWR, { mutate } from "swr";
-import { api, fetcher, type AISettings, type Feed, type Project } from "@/lib/api";
+import { api, type Feed } from "@/lib/api";
+import {
+  mutateFeeds,
+  useAiSettings,
+  useFeeds,
+  useProjects,
+  useUnseenShareCount,
+} from "@/lib/queries";
+import { useMutation } from "@/lib/useMutation";
 import { useAuth } from "@/lib/auth";
 import FeedSettingsModal from "./FeedSettingsModal";
 import Avatar from "./ui/Avatar";
@@ -77,48 +84,42 @@ export default function Sidebar() {
   const searchParams = useSearchParams();
   const activeFeed = pathname === "/" ? searchParams.get("feed") : null;
 
-  const { data: feeds } = useSWR<Feed[]>("/feeds", fetcher);
-  const { data: unseen } = useSWR<{ count: number }>(
-    "/shares/unseen-count",
-    fetcher,
-    { refreshInterval: 30_000 },
-  );
-  const { data: projects } = useSWR<Project[]>("/projects", fetcher, {
-    refreshInterval: 30_000,
-  });
+  const { data: feeds } = useFeeds();
+  const { data: unseen } = useUnseenShareCount({ refreshInterval: 30_000 });
+  const { data: projects } = useProjects({ refreshInterval: 30_000 });
   const projectUnseen = projects?.reduce((sum, p) => sum + p.unseen_count, 0) ?? 0;
   // AI usage is only tracked for calls on the user's own key, so the page is
   // only offered once they've saved one.
-  const { data: aiSettings } = useSWR<AISettings>("/ai/settings", fetcher);
+  const { data: aiSettings } = useAiSettings();
 
   const [adding, setAdding] = useState(false);
   const [newUrl, setNewUrl] = useState("");
-  const [addError, setAddError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
   const [settingsFeed, setSettingsFeed] = useState<Feed | null>(null);
 
   const totalUnread =
     feeds?.reduce((sum, f) => (f.is_muted ? sum : sum + f.unread_count), 0) ?? 0;
 
-  async function addFeed(e: React.FormEvent) {
+  const {
+    run: addFeed,
+    busy,
+    error: addError,
+    setError: setAddError,
+  } = useMutation(
+    (url: string) => api<Feed>("/feeds", { method: "POST", body: { url } }),
+    {
+      fallbackError: "Could not add feed",
+      onSuccess(feed) {
+        setNewUrl("");
+        setAdding(false);
+        mutateFeeds();
+        router.push(`/?feed=${feed.id}`);
+      },
+    },
+  );
+
+  function submitFeed(e: React.FormEvent) {
     e.preventDefault();
-    if (!newUrl.trim() || busy) return;
-    setBusy(true);
-    setAddError(null);
-    try {
-      const feed = await api<Feed>("/feeds", {
-        method: "POST",
-        body: { url: newUrl.trim() },
-      });
-      setNewUrl("");
-      setAdding(false);
-      mutate("/feeds");
-      router.push(`/?feed=${feed.id}`);
-    } catch (err) {
-      setAddError(err instanceof Error ? err.message : "Could not add feed");
-    } finally {
-      setBusy(false);
-    }
+    if (newUrl.trim()) addFeed(newUrl.trim());
   }
 
 
@@ -207,7 +208,7 @@ export default function Sidebar() {
       </div>
 
       {adding && (
-        <form onSubmit={addFeed} className="fade-up mt-2 px-4">
+        <form onSubmit={submitFeed} className="fade-up mt-2 px-4">
           <input
             className="input"
             style={{ fontSize: 13, padding: "7px 10px" }}
@@ -216,11 +217,7 @@ export default function Sidebar() {
             onChange={(e) => setNewUrl(e.target.value)}
             autoFocus
           />
-          {addError && (
-            <ErrorText className="mt-1.5">
-              {addError}
-            </ErrorText>
-          )}
+          <ErrorText className="mt-1.5">{addError}</ErrorText>
           <button className="btn btn-accent mt-2 w-full" disabled={busy} type="submit">
             {busy ? "Fetching…" : "Subscribe"}
           </button>

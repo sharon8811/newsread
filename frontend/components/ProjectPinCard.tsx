@@ -13,6 +13,7 @@ import {
 } from "@/lib/api";
 import { describeLink, domainOf, timeAgo } from "@/lib/format";
 import { CheckIcon, CommentIcon, ExternalIcon, LockIcon, TrashIcon, UsersIcon, XIcon } from "./icons";
+import { mutateProjectContent } from "@/lib/queries";
 import Avatar from "./ui/Avatar";
 import Badge from "./ui/Badge";
 import ErrorText from "./ui/ErrorText";
@@ -81,7 +82,6 @@ export default function ProjectPinCard({
   const commentCount = pins.reduce((max, p) => Math.max(max, p.comment_count), 0);
   const myPin = pins.find((p) => p.added_by.id === myId);
   const isPrivate = pins.every((p) => !p.is_shared);
-  const listKey = `/projects/${projectId}/articles`;
   const threadKey = `/projects/${projectId}/articles/by-article/${article.id}/comments`;
 
   // Moving the ticket asks for an optional closing note before it applies.
@@ -96,9 +96,7 @@ export default function ProjectPinCard({
   const [linking, setLinking] = useState(false);
 
   function refresh() {
-    mutate(listKey);
-    mutate("/projects");
-    mutate(`/projects/${projectId}`);
+    mutateProjectContent(projectId);
   }
 
   async function run(fn: () => Promise<unknown>) {

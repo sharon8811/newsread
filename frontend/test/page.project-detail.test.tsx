@@ -54,14 +54,18 @@ function setSwr({
   project,
   pins,
   error,
+  searchResults,
 }: {
   project?: unknown;
   pins?: unknown;
   error?: unknown;
+  searchResults?: unknown[];
 } = {}) {
   swrMock.mockImplementation((key: string) => {
     if (key === "/projects/1") return { data: project, error };
     if (key === "/projects/1/articles") return { data: pins, isLoading: pins === undefined };
+    if (typeof key === "string" && key.startsWith("/users/search"))
+      return { data: searchResults };
     return { data: undefined };
   });
 }
@@ -166,14 +170,9 @@ describe("ProjectPage", () => {
 
   it("owner invites a user found via search", async () => {
     const carol = makePublic({ id: 3, username: "carol", name: "Carol" });
-    const fetchMock = vi.fn().mockImplementation((url: string) => {
-      if (String(url).includes("/users/search")) {
-        return Promise.resolve({ status: 200, ok: true, json: async () => [carol] });
-      }
-      return Promise.resolve({ status: 201, ok: true, json: async () => ({}) });
-    });
+    const fetchMock = vi.fn().mockResolvedValue({ status: 201, ok: true, json: async () => ({}) });
     vi.stubGlobal("fetch", fetchMock);
-    setSwr({ project: ownedProject, pins: [] });
+    setSwr({ project: ownedProject, pins: [], searchResults: [carol] });
     render(<ProjectPage />);
 
     await userEvent.click(screen.getByTitle("Invite someone"));
@@ -219,10 +218,7 @@ describe("ProjectPage", () => {
 
   it("shows the API error when inviting fails", async () => {
     const carol = makePublic({ id: 3, username: "carol", name: "Carol" });
-    const fetchMock = vi.fn().mockImplementation((url: string, opts?: { method?: string }) => {
-      if (String(url).includes("/users/search")) {
-        return Promise.resolve({ status: 200, ok: true, json: async () => [carol] });
-      }
+    const fetchMock = vi.fn().mockImplementation((_url: string, opts?: { method?: string }) => {
       if (opts?.method === "POST") {
         return Promise.resolve({
           status: 409,
@@ -233,7 +229,7 @@ describe("ProjectPage", () => {
       return Promise.resolve({ status: 200, ok: true, json: async () => ({}) });
     });
     vi.stubGlobal("fetch", fetchMock);
-    setSwr({ project: ownedProject, pins: [] });
+    setSwr({ project: ownedProject, pins: [], searchResults: [carol] });
     render(<ProjectPage />);
     await userEvent.click(screen.getByTitle("Invite someone"));
     await userEvent.type(screen.getByPlaceholderText(/@username to invite/), "car");
@@ -284,7 +280,7 @@ describe("ProjectPage", () => {
     render(<ProjectPage />);
     await userEvent.click(screen.getByTitle("Delete project"));
     await userEvent.click(screen.getByRole("button", { name: "Delete" }));
-    expect(await screen.findByText("Could not delete project")).toBeInTheDocument();
+    expect(await screen.findByText("Something went wrong")).toBeInTheDocument();
     expect(routerMock.push).not.toHaveBeenCalled();
   });
 

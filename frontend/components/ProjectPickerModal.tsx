@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import useSWR, { mutate } from "swr";
 import {
   api,
   fetcher,
@@ -10,6 +9,9 @@ import {
   type Project,
   type ProjectArticle,
 } from "@/lib/api";
+import useSWR, { mutate } from "swr";
+import { keys } from "@/lib/keys";
+import { useProjects } from "@/lib/queries";
 import {
   CheckIcon,
   FolderIcon,
@@ -40,7 +42,7 @@ export default function ProjectPickerModal({
   article: Article;
   onClose: () => void;
 }) {
-  const { data: projects } = useSWR<Project[]>("/projects", fetcher);
+  const { data: projects } = useProjects();
   const statusKey = `/projects/article/${article.id}`;
   const { data: statuses } = useSWR<ArticleProjectStatus[]>(statusKey, fetcher);
 
@@ -84,7 +86,7 @@ export default function ProjectPickerModal({
         },
       });
       mutate(statusKey);
-      mutate("/projects");
+      mutate(keys.projects);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not add");
     } finally {
@@ -99,7 +101,7 @@ export default function ProjectPickerModal({
     try {
       await api(`/projects/${projectId}/articles/${pinId}`, { method: "DELETE" });
       mutate(statusKey);
-      mutate("/projects");
+      mutate(keys.projects);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not remove");
     } finally {
@@ -137,7 +139,7 @@ export default function ProjectPickerModal({
       );
     } finally {
       // Revalidate even on failure: a half-completed create must show up.
-      if (project) mutate("/projects");
+      if (project) mutate(keys.projects);
       setBusy(false);
     }
   }

@@ -1,16 +1,16 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import useSWR, { mutate } from "swr";
+import { useRef, useState } from "react";
+import { mutate } from "swr";
 import {
   api,
-  fetcher,
-  type AiStatus,
   type Article,
   type Share,
-  type ShareTarget,
   type UserPublic,
 } from "@/lib/api";
+import { keys } from "@/lib/keys";
+import { useAiStatus, useShareTargets, useUserSearch } from "@/lib/queries";
+import { useDebouncedValue } from "@/lib/useDebouncedValue";
 import {
   CheckIcon,
   ExternalIcon,
@@ -35,7 +35,6 @@ export default function ShareModal({
   onClose: () => void;
 }) {
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<UserPublic[]>([]);
   const [recipients, setRecipients] = useState<UserPublic[]>([]);
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -51,26 +50,21 @@ export default function ShareModal({
   const [internalSent, setInternalSent] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
 
-  const { data: targets } = useSWR<ShareTarget[]>("/share-targets", fetcher);
-  const { data: aiStatus } = useSWR<AiStatus>("/ai/status", fetcher);
+  const { data: targets } = useShareTargets();
+  const { data: aiStatus } = useAiStatus();
 
-  useEffect(() => {
-    const q = query.trim().replace(/^@/, "");
-    if (!q) return;
-    const t = setTimeout(() => {
-      api<UserPublic[]>(`/users/search?q=${encodeURIComponent(q)}`)
-        .then((users) =>
-          setResults(users.filter((u) => !recipients.some((r) => r.id === u.id))),
-        )
-        .catch(() => setResults([]));
-    }, 200);
-    return () => clearTimeout(t);
-  }, [query, recipients]);
+  // SWR keyed on the debounced query replaces the debounce+cancel effect;
+  // recipient filtering happens at render time.
+  const liveQuery = query.trim().replace(/^@/, "");
+  const searchQuery = useDebouncedValue(liveQuery, 200);
+  const { data: userMatches } = useUserSearch(liveQuery ? searchQuery : "");
+  const results = liveQuery
+    ? (userMatches ?? []).filter((u) => !recipients.some((r) => r.id === u.id))
+    : [];
 
   function addRecipient(user: UserPublic) {
     setRecipients((r) => [...r, user]);
     setQuery("");
-    setResults([]);
     searchRef.current?.focus();
   }
 
@@ -161,7 +155,7 @@ export default function ShareModal({
           },
         });
         setInternalSent(true);
-        mutate("/shares/sent");
+        mutate(keys.sharesSent);
       } catch (err) {
         failures.push(err instanceof Error ? err.message : "Could not share");
       }
@@ -261,10 +255,7 @@ export default function ShareModal({
                 className="input"
                 placeholder="@username: who should read this?"
                 value={query}
-                onChange={(e) => {
-                  setQuery(e.target.value);
-                  if (!e.target.value.trim().replace(/^@/, "")) setResults([]);
-                }}
+                onChange={(e) => setQuery(e.target.value)}
                 autoFocus
               />
               {results.length > 0 && (

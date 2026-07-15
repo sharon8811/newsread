@@ -2,14 +2,14 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import useSWR from "swr";
 import ArticleList, { mutateArticleLists } from "@/components/ArticleList";
 import FeedSettingsModal from "@/components/FeedSettingsModal";
 import StoriesView from "@/components/StoriesView";
 import ViewSwitcher from "@/components/ViewSwitcher";
 import { CheckAllIcon, GearIcon, RefreshIcon, SearchIcon } from "@/components/icons";
 import { useAuth } from "@/lib/auth";
-import { api, fetcher, type Feed, type ViewMode } from "@/lib/api";
+import { api, type Feed, type ViewMode } from "@/lib/api";
+import { useFeeds } from "@/lib/queries";
 
 const VIEW_MODES = ["cards", "list", "stories"] as const;
 
@@ -27,7 +27,7 @@ function Inbox() {
   // Poll while any visible feed still has articles awaiting enrichment
   // (images/full text backfilled by the worker), so updates flow in smoothly
   // instead of landing in a burst on the next focus revalidation.
-  const { data: feeds } = useSWR<Feed[]>("/feeds", fetcher, {
+  const { data: feeds } = useFeeds({
     refreshInterval: (data) => (pendingCountOf(data, feedId) > 0 ? 5000 : 0),
   });
   const feed = feedId ? feeds?.find((f) => String(f.id) === feedId) : null;

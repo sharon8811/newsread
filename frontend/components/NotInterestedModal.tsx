@@ -1,15 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import useSWR from "swr";
 import {
   api,
-  fetcher,
   type Article,
-  type DislikeOptions,
   type DislikeRuleCreate,
   type DislikeRuleCreated,
 } from "@/lib/api";
+import { useDislikeOptions } from "@/lib/queries";
 import { mutateArticleLists } from "./ArticleList";
 import { CheckIcon, EyeOffIcon } from "./icons";
 import Modal, { ModalHeader } from "./Modal";
@@ -34,10 +32,7 @@ export default function NotInterestedModal({
   const [busyChip, setBusyChip] = useState<string | null>(null);
   const [createdIds, setCreatedIds] = useState<number[]>([]);
 
-  const { data: options } = useSWR<DislikeOptions>(
-    `/interests/dislike-options/${article.id}`,
-    fetcher,
-  );
+  const { data: options } = useDislikeOptions(article.id);
 
   useEffect(() => {
     // Hide the article immediately — the chips are optional refinement.

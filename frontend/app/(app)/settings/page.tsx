@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import useSWR, { mutate } from "swr";
+import { toast } from "sonner";
 import ConfirmButton from "@/components/ui/ConfirmButton";
 import ErrorText from "@/components/ui/ErrorText";
 import {
@@ -14,6 +15,15 @@ import {
   type ShareTarget,
   type TargetOption,
 } from "@/lib/api";
+import { keys } from "@/lib/keys";
+import {
+  mutateIntegrations,
+  mutateShareTargets,
+  useIntegrations,
+  useShareTargets,
+} from "@/lib/queries";
+import { useDebouncedValue } from "@/lib/useDebouncedValue";
+import { useMutation } from "@/lib/useMutation";
 import {
   CheckIcon,
   PlusIcon,
@@ -37,37 +47,31 @@ function ConnectionCard({
   integration: IntegrationStatus;
   onChanged: () => void;
 }) {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const label = PLATFORM_LABELS[integration.platform];
 
-  async function connect() {
-    setBusy(true);
-    setError(null);
-    try {
-      const { url } = await api<{ url: string }>(
-        `/integrations/${integration.platform}/authorize`,
-      );
-      window.location.href = url; // provider consent screen; comes back to /settings
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not start the connection");
-      setBusy(false);
-    }
-  }
-
-  async function disconnect() {
-    setBusy(true);
-    setError(null);
-    try {
-      await api(`/integrations/${integration.platform}`, { method: "DELETE" });
-      onChanged();
-      mutate("/share-targets");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not disconnect");
-    } finally {
-      setBusy(false);
-    }
-  }
+  const connectMutation = useMutation(
+    () => api<{ url: string }>(`/integrations/${integration.platform}/authorize`),
+    {
+      fallbackError: "Could not start the connection",
+      onSuccess({ url }) {
+        window.location.href = url; // provider consent screen; comes back to /settings
+      },
+    },
+  );
+  const disconnectMutation = useMutation(
+    () => api(`/integrations/${integration.platform}`, { method: "DELETE" }),
+    {
+      fallbackError: "Could not disconnect",
+      onSuccess() {
+        onChanged();
+        mutate(keys.shareTargets);
+      },
+    },
+  );
+  const connect = connectMutation.run;
+  const disconnect = disconnectMutation.run;
+  const busy = connectMutation.busy || disconnectMutation.busy;
+  const error = connectMutation.error ?? disconnectMutation.error;
 
   return (
     <div
@@ -91,11 +95,7 @@ function ConnectionCard({
                 ? `Connected${integration.workspace_name ? ` to ${integration.workspace_name}` : ""}${integration.account_name ? ` as ${integration.account_name}` : ""}`
                 : "Share articles to your channels, as you"}
         </p>
-        {error && (
-          <ErrorText className="mt-1">
-            {error}
-          </ErrorText>
-        )}
+        <ErrorText className="mt-1">{error}</ErrorText>
       </div>
       {integration.configured && (
         <div className="flex shrink-0 items-center gap-2">
@@ -128,47 +128,39 @@ function ConnectionCard({
 
 function TargetPicker({ platform }: { platform: MessagingPlatform }) {
   const [query, setQuery] = useState("");
-  const [options, setOptions] = useState<TargetOption[] | null>(null);
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-    const t = setTimeout(() => {
-      api<TargetOption[]>(
-        `/integrations/${platform}/targets?q=${encodeURIComponent(query.trim())}`,
-      )
-        .then((opts) => {
-          if (!cancelled) setOptions(opts);
-        })
-        .catch((err) => {
-          if (!cancelled)
-            setError(err instanceof Error ? err.message : "Could not load channels");
-        })
-        .finally(() => {
-          if (!cancelled) setLoading(false);
-        });
-    }, 300);
-    return () => {
-      cancelled = true;
-      clearTimeout(t);
-    };
-  }, [platform, query]);
+  // SWR keyed on the debounced query replaces the debounce+cancel effect:
+  // stale responses drop out because their key is no longer rendered.
+  const q = useDebouncedValue(query.trim(), 300);
+  const {
+    data: options,
+    error: loadError,
+    isLoading: loading,
+    mutate: mutateOptions,
+  } = useSWR<TargetOption[]>(
+    `/integrations/${platform}/targets?q=${encodeURIComponent(q)}`,
+    fetcher,
+  );
+
+  function flipSaved(externalId: string, savedId: number | null) {
+    mutateOptions(
+      (opts) =>
+        opts?.map((o) =>
+          o.external_id === externalId ? { ...o, saved_id: savedId } : o,
+        ),
+      { revalidate: false },
+    );
+  }
 
   async function toggle(option: TargetOption) {
     setSavingId(option.external_id);
+    setError(null);
     try {
       if (option.saved_id) {
         await api(`/share-targets/${option.saved_id}`, { method: "DELETE" });
-        setOptions(
-          (opts) =>
-            opts?.map((o) =>
-              o.external_id === option.external_id ? { ...o, saved_id: null } : o,
-            ) ?? null,
-        );
+        flipSaved(option.external_id, null);
       } else {
         const saved = await api<ShareTarget>("/share-targets", {
           method: "POST",
@@ -180,14 +172,9 @@ function TargetPicker({ platform }: { platform: MessagingPlatform }) {
             meta: option.meta,
           },
         });
-        setOptions(
-          (opts) =>
-            opts?.map((o) =>
-              o.external_id === option.external_id ? { ...o, saved_id: saved.id } : o,
-            ) ?? null,
-        );
+        flipSaved(option.external_id, saved.id);
       }
-      mutate("/share-targets");
+      mutate(keys.shareTargets);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not update the quick-share list");
     } finally {
@@ -212,12 +199,11 @@ function TargetPicker({ platform }: { platform: MessagingPlatform }) {
           onChange={(e) => setQuery(e.target.value)}
         />
       </div>
-      {error && (
-        <ErrorText className="mt-2">
-          {error}
-        </ErrorText>
-      )}
-      {loading && options === null && (
+      <ErrorText className="mt-2">
+        {error ??
+          (loadError instanceof Error ? loadError.message : loadError ? "Could not load channels" : null)}
+      </ErrorText>
+      {loading && options === undefined && (
         <p className="mt-2 text-[12.5px]" style={{ color: "var(--ink-faint)" }}>
           Loading channels…
         </p>
@@ -273,8 +259,8 @@ function SettingsContent() {
   const [banner, setBanner] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
   const [pickerPlatform, setPickerPlatform] = useState<MessagingPlatform | null>(null);
 
-  const { data: integrations } = useSWR<IntegrationStatus[]>("/integrations", fetcher);
-  const { data: targets } = useSWR<ShareTarget[]>("/share-targets", fetcher);
+  const { data: integrations } = useIntegrations();
+  const { data: targets } = useShareTargets();
 
   // The OAuth callback redirects back here with ?connected= or ?error=.
   useEffect(() => {
@@ -289,7 +275,7 @@ function SettingsContent() {
           }
         : { kind: "error", text: `Connection failed (${error}). Please try again.` },
     );
-    mutate("/integrations");
+    mutateIntegrations();
     router.replace("/settings"); // drop the query so refresh doesn't re-banner
   }, [searchParams, router]);
 
@@ -297,8 +283,12 @@ function SettingsContent() {
     integrations?.filter((i) => i.connected && i.status === "active") ?? [];
 
   async function removeTarget(target: ShareTarget) {
-    await api(`/share-targets/${target.id}`, { method: "DELETE" }).catch(() => undefined);
-    mutate("/share-targets");
+    try {
+      await api(`/share-targets/${target.id}`, { method: "DELETE" });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not remove the target");
+    }
+    mutateShareTargets();
   }
 
   return (

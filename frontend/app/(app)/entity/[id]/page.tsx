@@ -1,8 +1,7 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import useSWR from "swr";
-import { fetcher, type EntityPage as EntityPageData } from "@/lib/api";
+import { useEntityPage } from "@/lib/queries";
 import { timeAgo } from "@/lib/format";
 import { ExternalIcon } from "@/components/icons";
 
@@ -22,10 +21,7 @@ const KIND_LABELS: Record<string, string> = {
 export default function EntityPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
-  const { data: entity, error } = useSWR<EntityPageData>(
-    params?.id ? `/entities/${params.id}` : null,
-    fetcher,
-  );
+  const { data: entity, error } = useEntityPage(params?.id);
 
   if (error) {
     return (
