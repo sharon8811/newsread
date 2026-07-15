@@ -22,10 +22,10 @@ export default function ErrorPage({
   return (
     <div className="flex min-h-dvh flex-col items-center justify-center gap-4 px-6 text-center">
       <p className="mono-label">Something went wrong</p>
-      <h1 className="font-serif-nr text-[22px] font-medium">
+      <h1 className="font-serif-nr text-display font-medium">
         This page hit an unexpected error.
       </h1>
-      <p className="text-[13px] text-ink-faint">
+      <p className="text-body text-ink-faint">
         {error.digest
           ? `Reference: ${error.digest}`
           : "Try again — it may have been temporary."}

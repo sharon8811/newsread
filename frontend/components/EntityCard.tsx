@@ -160,7 +160,7 @@ function description(entity: EntityFull): string | null {
 }
 
 const chipClass =
-  "font-mono-nr inline-flex max-w-full items-center gap-2 rounded-md border px-2.5 py-1 text-[11px] transition-colors";
+  "font-mono-nr inline-flex max-w-full items-center gap-2 rounded-md border px-2.5 py-1 text-label transition-colors";
 const chipStyle = {
   borderColor: "var(--line)",
   color: "var(--ink-dim)",
@@ -236,7 +236,7 @@ export default function EntityCard({ entities }: { entities: EntityFull[] }) {
               href={primary.url}
               target="_blank"
               rel="noreferrer"
-              className="mt-1 flex max-w-full items-center gap-1.5 text-[16px] font-medium hover:underline"
+              className="mt-1 flex max-w-full items-center gap-1.5 text-lead font-medium hover:underline"
               style={{ color: "var(--ink)" }}
             >
               <span className="truncate">{title(primary)}</span>
@@ -244,7 +244,7 @@ export default function EntityCard({ entities }: { entities: EntityFull[] }) {
             </a>
             {desc && (
               <p
-                className="mt-1.5 line-clamp-2 text-[13px] leading-relaxed"
+                className="mt-1.5 line-clamp-2 text-body leading-relaxed"
                 style={{ color: "var(--ink-dim)" }}
               >
                 {desc}
@@ -256,12 +256,12 @@ export default function EntityCard({ entities }: { entities: EntityFull[] }) {
           </span>
         </div>
         {stats.length > 0 && (
-          <p className="font-mono-nr mt-3 text-[12px]" style={{ color: "var(--ink)" }}>
+          <p className="font-mono-nr mt-3 text-body-sm" style={{ color: "var(--ink)" }}>
             {stats.join("  ·  ")}
           </p>
         )}
         {footer.length > 0 && (
-          <p className="font-mono-nr mt-1.5 text-[11px]" style={{ color: "var(--ink-faint)" }}>
+          <p className="font-mono-nr mt-1.5 text-label" style={{ color: "var(--ink-faint)" }}>
             {footer.join(" · ")}
           </p>
         )}

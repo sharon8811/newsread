@@ -8,7 +8,7 @@ export default function GeneratingIndicator({ compact = false }: { compact?: boo
     <span
       role="status"
       aria-label="Generating illustration"
-      className="font-mono-nr absolute inset-0 flex items-center justify-center gap-2 text-[11px]"
+      className="font-mono-nr absolute inset-0 flex items-center justify-center gap-2 text-label"
       style={{ color: "var(--ink-faint)" }}
     >
       <span aria-hidden="true" style={{ color: "var(--accent)" }}>

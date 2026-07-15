@@ -74,7 +74,7 @@ export function ModalHeader({
       <div className="min-w-0">
         {eyebrow && <p className="mono-label flex items-center gap-1.5">{eyebrow}</p>}
         <ModalTitle asChild>
-          <h2 className={cn("font-serif-nr mt-1.5 text-[19px] leading-snug", titleClassName)}>
+          <h2 className={cn("font-serif-nr mt-1.5 text-title leading-snug", titleClassName)}>
             {title}
           </h2>
         </ModalTitle>

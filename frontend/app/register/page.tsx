@@ -48,7 +48,7 @@ export default function RegisterPage() {
         <h1 className="wordmark text-[40px]">
           NewsRead<span className="dot">.</span>
         </h1>
-        <p className="font-serif-nr mt-1 text-[17px] italic" style={{ color: "var(--ink-dim)" }}>
+        <p className="font-serif-nr mt-1 text-lead italic" style={{ color: "var(--ink-dim)" }}>
           Share what you read, with your take attached.
         </p>
 
@@ -95,7 +95,7 @@ export default function RegisterPage() {
           </Button>
         </form>
 
-        <p className="mt-6 text-[13.5px]" style={{ color: "var(--ink-faint)" }}>
+        <p className="mt-6 text-body" style={{ color: "var(--ink-faint)" }}>
           Already reading?{" "}
           <Link href="/login" style={{ color: "var(--accent-bright)" }}>
             Sign in

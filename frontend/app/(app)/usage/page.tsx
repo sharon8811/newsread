@@ -36,7 +36,7 @@ function Delta({ current, previous, vs }: { current: number; previous: number; v
   const pct = Math.round(((current - previous) / previous) * 100);
   const up = pct >= 0;
   return (
-    <p className="font-mono-nr mt-1.5 text-[11px]" style={{ color: "var(--ink-faint)" }}>
+    <p className="font-mono-nr mt-1.5 text-label" style={{ color: "var(--ink-faint)" }}>
       <span style={{ color: up ? "var(--accent)" : "var(--ink-dim)" }}>
         {up ? "▲" : "▼"} {Math.abs(pct)}%
       </span>{" "}
@@ -60,7 +60,7 @@ function StatTile({
       style={{ borderColor: "var(--line-soft)", background: "var(--bg-raised)" }}
     >
       <p className="mono-label">{label}</p>
-      <p className="mt-1.5 text-[26px] font-semibold leading-none tracking-tight">{value}</p>
+      <p className="mt-1.5 text-display-lg font-semibold leading-none tracking-tight">{value}</p>
       {children}
     </div>
   );
@@ -84,16 +84,16 @@ function TokenList({
         {rows.map((row) => (
           <li key={row.key}>
             <div className="flex items-baseline gap-3">
-              <div className="min-w-0 flex-1 truncate text-[13.5px]">{row.primary}</div>
+              <div className="min-w-0 flex-1 truncate text-body">{row.primary}</div>
               <span
-                className="font-mono-nr shrink-0 text-[11.5px]"
+                className="font-mono-nr shrink-0 text-label"
                 style={{ color: "var(--ink-dim)" }}
               >
                 {humanCount(row.tokens)} tok · {row.calls} {row.calls === 1 ? "call" : "calls"}
               </span>
             </div>
             {row.sub && (
-              <p className="font-mono-nr truncate text-[10.5px]" style={{ color: "var(--ink-faint)" }}>
+              <p className="font-mono-nr truncate text-caption" style={{ color: "var(--ink-faint)" }}>
                 {row.sub}
               </p>
             )}
@@ -143,17 +143,17 @@ function EventLog() {
       <p className="mono-label">Recent calls</p>
       <ul className="mt-3 flex flex-col divide-y divide-[color:var(--line-soft)]">
         {events.map((event) => (
-          <li key={event.id} className="flex items-baseline gap-3 py-2 text-[13px]">
+          <li key={event.id} className="flex items-baseline gap-3 py-2 text-body">
             <span className="w-[110px] shrink-0 truncate">{featureLabel(event.feature)}</span>
             <span
-              className="font-mono-nr min-w-0 flex-1 truncate text-[11.5px]"
+              className="font-mono-nr min-w-0 flex-1 truncate text-label"
               style={{ color: "var(--ink-faint)" }}
             >
               {event.model}
             </span>
             {event.status === "error" ? (
               <span
-                className="font-mono-nr shrink-0 text-[11px]"
+                className="font-mono-nr shrink-0 text-label"
                 style={{ color: "var(--danger)" }}
                 title={event.error ?? undefined}
               >
@@ -161,14 +161,14 @@ function EventLog() {
               </span>
             ) : (
               <span
-                className="font-mono-nr shrink-0 text-[11.5px]"
+                className="font-mono-nr shrink-0 text-label"
                 style={{ color: "var(--ink-dim)" }}
               >
                 {humanCount(event.prompt_tokens + event.completion_tokens)} tok
               </span>
             )}
             <span
-              className="font-mono-nr w-[64px] shrink-0 text-right text-[11px]"
+              className="font-mono-nr w-[64px] shrink-0 text-right text-label"
               style={{ color: "var(--ink-faint)" }}
             >
               {timeAgo(event.created_at)}
@@ -201,7 +201,7 @@ export default function UsagePage() {
         }}
       >
         <div className="flex items-center gap-3">
-          <h1 className="text-[20px] font-semibold leading-none tracking-tight">AI usage</h1>
+          <h1 className="text-title font-semibold leading-none tracking-tight">AI usage</h1>
           <div
             className="ml-auto flex rounded-md border p-0.5"
             style={{ borderColor: "var(--line)", background: "var(--bg-raised)" }}
@@ -209,7 +209,7 @@ export default function UsagePage() {
             {RANGES.map((r) => (
               <button
                 key={r.value}
-                className="rounded px-3 py-1 text-[12.5px] font-medium transition-colors"
+                className="rounded px-3 py-1 text-body-sm font-medium transition-colors"
                 style={{
                   background: range === r.value ? "var(--bg-hover)" : "transparent",
                   color: range === r.value ? "var(--ink)" : "var(--ink-faint)",
@@ -234,10 +234,10 @@ export default function UsagePage() {
         </div>
       ) : !data.configured && data.total_calls === 0 && data.prev_total_tokens === 0 ? (
         <div className="flex flex-col items-center px-8 py-20 text-center">
-          <p className="text-[17px] font-medium" style={{ color: "var(--ink-dim)" }}>
+          <p className="text-lead font-medium" style={{ color: "var(--ink-dim)" }}>
             No AI usage on your own key yet.
           </p>
-          <p className="mt-1.5 text-[13.5px]" style={{ color: "var(--ink-faint)" }}>
+          <p className="mt-1.5 text-body" style={{ color: "var(--ink-faint)" }}>
             Add your API key in{" "}
             <Link href="/settings" className="hover:underline" style={{ color: "var(--accent)" }}>
               Settings
@@ -264,10 +264,10 @@ export default function UsagePage() {
 
           {data.total_calls === 0 ? (
             <div className="flex flex-col items-center px-8 py-20 text-center">
-              <p className="text-[17px] font-medium" style={{ color: "var(--ink-dim)" }}>
+              <p className="text-lead font-medium" style={{ color: "var(--ink-dim)" }}>
                 Nothing in this window.
               </p>
-              <p className="mt-1.5 text-[13.5px]" style={{ color: "var(--ink-faint)" }}>
+              <p className="mt-1.5 text-body" style={{ color: "var(--ink-faint)" }}>
                 Calls on your key will show up here as you use summaries, Q&amp;A and sharing.
               </p>
             </div>

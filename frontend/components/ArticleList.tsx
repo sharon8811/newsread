@@ -446,7 +446,7 @@ function ReadingList({
         {prevCursor && (
           <div ref={topSentinel} className="px-5 py-4 text-center">
             <span
-              className="font-mono-nr text-[11px]"
+              className="font-mono-nr text-label"
               style={{ color: "var(--ink-faint)" }}
             >
               loading earlier articles…
@@ -463,7 +463,7 @@ function ReadingList({
         {nextCursor ? (
           <div ref={bottomSentinel} className="px-5 py-6 text-center">
             <span
-              className="font-mono-nr text-[11px]"
+              className="font-mono-nr text-label"
               style={{ color: "var(--ink-faint)" }}
             >
               loading more…
@@ -471,7 +471,7 @@ function ReadingList({
           </div>
         ) : (
           <p
-            className="font-mono-nr px-5 py-6 text-center text-[11px]"
+            className="font-mono-nr px-5 py-6 text-center text-label"
             style={{ color: "var(--ink-faint)" }}
           >
             {KEYS_HINT}
@@ -482,7 +482,7 @@ function ReadingList({
       {newAbove > 0 && (
         <button
           onClick={jumpToNew}
-          className="fixed left-1/2 top-[120px] z-30 -translate-x-1/2 rounded-full border px-3.5 py-1.5 text-[12px] font-medium shadow-md transition-colors"
+          className="fixed left-1/2 top-[120px] z-30 -translate-x-1/2 rounded-full border px-3.5 py-1.5 text-body-sm font-medium shadow-md transition-colors"
           style={{
             background: "var(--accent)",
             borderColor: "var(--accent)",
@@ -496,7 +496,7 @@ function ReadingList({
         <button
           onClick={jumpToNextUnread}
           title={unreadCount > 0 ? "Jump to the next unread article" : undefined}
-          className="font-mono-nr fixed bottom-5 left-1/2 z-30 -translate-x-1/2 rounded-full border px-3.5 py-1.5 text-[11.5px] shadow-md transition-colors"
+          className="font-mono-nr fixed bottom-5 left-1/2 z-30 -translate-x-1/2 rounded-full border px-3.5 py-1.5 text-label shadow-md transition-colors"
           style={{
             background: "var(--bg-raised)",
             borderColor: "var(--line)",
@@ -619,7 +619,7 @@ function QueryList({
           ))
         )}
         <p
-          className="font-mono-nr px-5 py-6 text-center text-[11px]"
+          className="font-mono-nr px-5 py-6 text-center text-label"
           style={{ color: "var(--ink-faint)" }}
         >
           {KEYS_HINT}

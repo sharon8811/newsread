@@ -94,7 +94,7 @@ export default function NotInterestedModal({
         {label}
         {created && <CheckIcon size={11} />}
         {created && alsoHid > 0 && (
-          <span className="font-mono-nr text-[10.5px]" style={{ color: "var(--ink-faint)" }}>
+          <span className="font-mono-nr text-caption" style={{ color: "var(--ink-faint)" }}>
             +{alsoHid} recent
           </span>
         )}
@@ -114,7 +114,7 @@ export default function NotInterestedModal({
           title={article.title}
         />
 
-        <p className="mt-4 text-[13.5px]" style={{ color: "var(--ink-dim)" }}>
+        <p className="mt-4 text-body" style={{ color: "var(--ink-dim)" }}>
           Hide similar articles too?
         </p>
 
@@ -140,7 +140,7 @@ export default function NotInterestedModal({
           )}
           {!options && (
             <span
-              className="font-mono-nr px-1 py-1 text-[11.5px]"
+              className="font-mono-nr px-1 py-1 text-label"
               style={{ color: "var(--ink-faint)" }}
             >
               Suggesting topics…
@@ -149,7 +149,7 @@ export default function NotInterestedModal({
           {options && !options.story_available && options.entities.length === 0 &&
             options.topics.length === 0 && (
               <span
-                className="font-mono-nr px-1 py-1 text-[11.5px]"
+                className="font-mono-nr px-1 py-1 text-label"
                 style={{ color: "var(--ink-faint)" }}
               >
                 No broader suggestions for this one.
@@ -164,7 +164,7 @@ export default function NotInterestedModal({
         )}
 
         <div className="mt-5 flex items-center justify-between">
-          <p className="font-mono-nr text-[11px]" style={{ color: "var(--ink-faint)" }}>
+          <p className="font-mono-nr text-label" style={{ color: "var(--ink-faint)" }}>
             Manage rules anytime in Settings
           </p>
           <div className="flex items-center gap-2">

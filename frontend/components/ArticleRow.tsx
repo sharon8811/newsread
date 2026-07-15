@@ -56,7 +56,7 @@ export default function ArticleRow({
       />
       <div className="min-w-0 flex-1">
         <h3
-          className="font-serif-nr text-[18px] leading-snug sm:text-[19px]"
+          className="font-serif-nr text-lead leading-snug sm:text-title"
           style={{
             color: article.is_read ? "var(--ink-dim)" : "var(--ink)",
             fontWeight: article.is_read ? 400 : 500,
@@ -65,7 +65,7 @@ export default function ArticleRow({
           {article.title}
         </h3>
         <p
-          className="font-mono-nr mt-1.5 truncate text-[11.5px]"
+          className="font-mono-nr mt-1.5 truncate text-label"
           style={{ color: "var(--ink-faint)" }}
         >
           {domainOf(article.url)}
@@ -81,12 +81,12 @@ export default function ArticleRow({
 
         {oneLiner && (
           <p
-            className="mt-2 line-clamp-2 text-[14px] leading-relaxed"
+            className="mt-2 line-clamp-2 text-body-lg leading-relaxed"
             style={{ color: "var(--ink-dim)" }}
           >
             {article.summary_short && (
               <span
-                className="font-mono-nr mr-1.5 text-[10px]"
+                className="font-mono-nr mr-1.5 text-caption"
                 style={{ color: "var(--accent)" }}
               >
                 ✦
@@ -98,7 +98,7 @@ export default function ArticleRow({
 
         {readMore && (
           <button
-            className="font-mono-nr mt-2 text-[11.5px] transition-colors"
+            className="font-mono-nr mt-2 text-label transition-colors"
             style={{ color: expanded ? "var(--ink-faint)" : "var(--accent)" }}
             onClick={(e) => {
               e.stopPropagation();
@@ -111,7 +111,7 @@ export default function ArticleRow({
 
         {expanded && readMore && (
           <p
-            className="fade-up mt-2 border-l pl-3 text-[14.5px] leading-relaxed"
+            className="fade-up mt-2 border-l pl-3 text-body-lg leading-relaxed"
             style={{ color: "var(--ink)", borderColor: "var(--accent-border)" }}
           >
             {readMore}

@@ -117,7 +117,7 @@ export default function ArticlePage() {
   if (error) {
     return (
       <div className="flex flex-col items-center px-8 py-28 text-center">
-        <p className="text-[17px] font-medium" style={{ color: "var(--ink-dim)" }}>
+        <p className="text-lead font-medium" style={{ color: "var(--ink-dim)" }}>
           This article is out of reach.
         </p>
         <button className="btn mt-5" onClick={() => router.push("/")}>
@@ -141,7 +141,7 @@ export default function ArticlePage() {
       {(discussion) => (
         <article className="fade-up mx-auto max-w-[680px] px-5 pb-24 pt-6 sm:px-8 sm:pt-10">
       <button
-        className="font-mono-nr text-[11.5px] transition-colors"
+        className="font-mono-nr text-label transition-colors"
         style={{ color: "var(--ink-faint)" }}
         onMouseEnter={(e) => (e.currentTarget.style.color = "var(--ink)")}
         onMouseLeave={(e) => (e.currentTarget.style.color = "var(--ink-faint)")}
@@ -154,7 +154,7 @@ export default function ArticlePage() {
       <h1 className="font-serif-nr mt-2.5 text-[27px] font-medium leading-[1.18] sm:text-[34px]">
         {article.title}
       </h1>
-      <p className="font-mono-nr mt-3 text-[12px]" style={{ color: "var(--ink-faint)" }}>
+      <p className="font-mono-nr mt-3 text-body-sm" style={{ color: "var(--ink-faint)" }}>
         {domainOf(article.url)}
         {article.author ? ` · ${article.author}` : ""}
         {article.published_at ? ` · ${timeAgo(article.published_at)}` : ""}

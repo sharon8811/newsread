@@ -97,12 +97,12 @@ function Inbox() {
         }}
       >
         <div className="flex items-center gap-3">
-          <h1 className="min-w-0 truncate text-[20px] font-semibold leading-none tracking-tight">
+          <h1 className="min-w-0 truncate text-title font-semibold leading-none tracking-tight">
             {feed ? feed.title : "Inbox"}
           </h1>
           {feed && (
             <span
-              className="font-mono-nr whitespace-nowrap text-[11px]"
+              className="font-mono-nr whitespace-nowrap text-label"
               style={{ color: "var(--ink-faint)" }}
             >
               {feed.unread_count} unread
@@ -110,7 +110,7 @@ function Inbox() {
           )}
           {pendingCount > 0 && (
             <span
-              className="font-mono-nr flex items-center gap-1.5 whitespace-nowrap text-[11px]"
+              className="font-mono-nr flex items-center gap-1.5 whitespace-nowrap text-label"
               style={{ color: "var(--accent)" }}
               title="Images and summaries are being fetched in the background"
             >
@@ -152,7 +152,7 @@ function Inbox() {
                 <button
                   key={t}
                   onClick={() => setTab(t)}
-                  className="rounded px-3.5 py-1 text-[12.5px] font-medium capitalize transition-colors"
+                  className="rounded px-3.5 py-1 text-body-sm font-medium capitalize transition-colors"
                   style={{
                     background: tab === t ? "var(--bg-raised)" : "transparent",
                     color: tab === t ? "var(--ink)" : "var(--ink-faint)",

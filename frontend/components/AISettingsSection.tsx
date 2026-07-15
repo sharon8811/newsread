@@ -35,7 +35,7 @@ function Field({
 }) {
   return (
     <label className="block">
-      <span className="text-[12px] font-medium" style={{ color: "var(--ink-dim)" }}>
+      <span className="text-body-sm font-medium" style={{ color: "var(--ink-dim)" }}>
         {label}
         {hint && (
           <span className="ml-1.5 font-normal" style={{ color: "var(--ink-faint)" }}>
@@ -208,7 +208,7 @@ function AISettingsForm({ settings }: { settings: AISettings }) {
   return (
     <section className="mt-9">
       <p className="mono-label">AI model</p>
-      <p className="mt-1.5 text-[13px]" style={{ color: "var(--ink-faint)" }}>
+      <p className="mt-1.5 text-body" style={{ color: "var(--ink-faint)" }}>
         Summaries, article Q&amp;A and share messages run on the system default model for now —
         it will become a paid tier. Bring your own API key to keep AI usage on your account.
       </p>
@@ -287,7 +287,7 @@ function AISettingsForm({ settings }: { settings: AISettings }) {
               />
             </Field>
 
-            <div className="flex items-center gap-2 text-[13px]">
+            <div className="flex items-center gap-2 text-body">
               <Toggle
                 checked={supportsVision}
                 onChange={setSupportsVision}
@@ -302,7 +302,7 @@ function AISettingsForm({ settings }: { settings: AISettings }) {
             </div>
 
             <div className="border-t pt-3.5" style={{ borderColor: "var(--line-soft)" }}>
-              <div className="flex items-center gap-2 text-[13px]">
+              <div className="flex items-center gap-2 text-body">
                 <Toggle
                   checked={imageEnabled}
                   onChange={setImageEnabled}
@@ -430,7 +430,7 @@ function AISettingsForm({ settings }: { settings: AISettings }) {
                   onChange={(e) => setImageBudget(e.target.value.replace(/[^\d]/g, ""))}
                 />
               </Field>
-              <p className="mt-1.5 text-[12px]" style={{ color: "var(--ink-faint)" }}>
+              <p className="mt-1.5 text-body-sm" style={{ color: "var(--ink-faint)" }}>
                 {settings.image_generations_this_month} image
                 {settings.image_generations_this_month === 1 ? "" : "s"} generated this month
                 {settings.image_gen_monthly_limit != null
@@ -443,7 +443,7 @@ function AISettingsForm({ settings }: { settings: AISettings }) {
 
         {note && (
           <p
-            className="text-[12.5px]"
+            className="text-body-sm"
             style={{ color: note.kind === "ok" ? "var(--accent-bright)" : "var(--danger)" }}
           >
             {note.text}

@@ -1,9 +1,9 @@
 import { cn } from "@/lib/cn";
 
 const SIZE_CLASS = {
-  sm: "h-6 w-6 text-[11px]",
-  md: "h-7 w-7 text-[12px]",
-  lg: "h-8 w-8 text-[13px]",
+  sm: "h-6 w-6 text-label",
+  md: "h-7 w-7 text-body-sm",
+  lg: "h-8 w-8 text-body",
 } as const;
 
 // Initials circle. `children` lets call sites layer overlays (e.g. the

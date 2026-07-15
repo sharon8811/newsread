@@ -71,7 +71,7 @@ export default function EntityBadges({
   if (shown.length === 0) return null;
 
   return (
-    <span className="font-mono-nr inline-flex flex-wrap items-center gap-x-3 text-[11px]">
+    <span className="font-mono-nr inline-flex flex-wrap items-center gap-x-3 text-label">
       {shown.map(({ entity, parts }) => (
         <span key={entity.id} className="inline-flex items-center gap-1.5">
           <span style={{ color: "var(--accent)" }}>{parts[0]}</span>

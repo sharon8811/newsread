@@ -4,6 +4,11 @@ Goal: align the web frontend to a production-ready state — a real design-syste
 layer, less duplication/boilerplate, and resilient app-level plumbing — without a rewrite.
 Based on a full audit of `frontend/` (July 2026).
 
+**Status: all six phases shipped** — PRs #55 (foundations), #56 (primitives),
+#57 (modals + ConfirmButton), #58 (generated API types), #59 (query/mutation
+layer, toasts, empty states), and the type scale (this PR). Remaining
+follow-ups live in "Out of scope" below.
+
 ## Where we are
 
 The token layer is already solid and should be kept as-is:
@@ -54,16 +59,16 @@ Each phase is one PR, in dependency order. Merge gate per PR: FE unit tests + co
 
 Unblocks everything else; no visual changes intended.
 
-- [ ] Add an `@theme` block to `globals.css` mapping existing vars to Tailwind v4 theme keys
+- [x] Add an `@theme` block to `globals.css` mapping existing vars to Tailwind v4 theme keys
       so `text-ink`, `text-ink-faint`, `bg-raised`, `border-line`, `bg-accent-soft`, etc.
       become utilities. Purely additive; existing `var()` references keep working.
-- [ ] Wrap the custom component classes (`.btn`, `.icon-btn`, `.input`, `.dot-unread`,
+- [x] Wrap the custom component classes (`.btn`, `.icon-btn`, `.input`, `.dot-unread`,
       `.typing-dot`, …) in `@layer components` so Tailwind display/spacing utilities always
       win. Visual pass afterward — no live collisions exist today, but verify.
-- [ ] Add `lib/cn.ts` (`clsx` + `tailwind-merge`).
-- [ ] Add root `app/error.tsx`, `app/not-found.tsx`, and `app/(app)/loading.tsx`
+- [x] Add `lib/cn.ts` (`clsx` + `tailwind-merge`).
+- [x] Add root `app/error.tsx`, `app/not-found.tsx`, and `app/(app)/loading.tsx`
       (check modified-Next docs first).
-- [ ] Add a global `SWRConfig` provider in the root layout: default `fetcher`, and an
+- [x] Add a global `SWRConfig` provider in the root layout: default `fetcher`, and an
       `onError` that on `ApiError.status === 401` logs out and redirects to `/login`.
       Audit call sites for expected 401s first so optional resources don't force logout.
 
@@ -72,69 +77,69 @@ Unblocks everything else; no visual changes intended.
 New `components/ui/` directory. Build each primitive on the existing CSS classes/tokens,
 then do a mechanical adoption sweep.
 
-- [ ] `Button` — `variant: primary | secondary | ghost | danger`, `size`, `loading`,
+- [x] `Button` — `variant: primary | secondary | ghost | danger`, `size`, `loading`,
       optional icon. Add `.btn-danger` to globals.css (destructive actions currently look
       like normal buttons). Folds in the `{busy ? "…" : "Label"}` pattern and the inline
       `min-h-11` touch-target overrides.
-- [ ] `Badge` (static) + `Chip` (toggleable, `active`/`onClick`) — replaces ~15 hand-rolled
+- [x] `Badge` (static) + `Chip` (toggleable, `active`/`onClick`) — replaces ~15 hand-rolled
       pill sites with 10/10.5/11/11.5/12px drift.
-- [ ] `Avatar` — initials + size `sm|md|lg`, deterministic bg color; replaces 6 copies.
-- [ ] `ErrorText` — always sets `role="alert"`, fixed size; replaces ~26 danger `<p>`s
+- [x] `Avatar` — initials + size `sm|md|lg`, deterministic bg color; replaces 6 copies.
+- [x] `ErrorText` — always sets `role="alert"`, fixed size; replaces ~26 danger `<p>`s
       (half currently miss `role="alert"` — this closes an a11y gap).
-- [ ] `Field` — label (`mono-label`) + `.input` + `ErrorText` scaffolding used by
+- [x] `Field` — label (`mono-label`) + `.input` + `ErrorText` scaffolding used by
       login/register/projects/AISettings/ProjectPinCard.
-- [ ] Promote the `Toggle` trapped in `FeedSettingsModal.tsx` to `components/ui/Toggle.tsx`;
+- [x] Promote the `Toggle` trapped in `FeedSettingsModal.tsx` to `components/ui/Toggle.tsx`;
       adopt in `AISettingsSection` and `SubscribeQuickSettings` (replacing raw checkboxes).
 
 ### Phase 3 — Modal consolidation (M)
 
-- [ ] Migrate the 4 hand-rolled modals onto the shared Radix `Modal`:
+- [x] Migrate the 4 hand-rolled modals onto the shared Radix `Modal`:
       `NotInterestedModal`, `SmartFeedModal`, `CatalogFeedModal`, `FeedSettingsModal`.
       Deletes 4 duplicated overlay shells + 4 identical Escape-key effects, and gains focus
       trap + focus restoration for free.
-- [ ] Add `ModalHeader` (mono-label eyebrow + serif title + `icon-btn` close with
+- [x] Add `ModalHeader` (mono-label eyebrow + serif title + `icon-btn` close with
       consistent `aria-label="Close"`).
-- [ ] Leave the `StoriesView` lightbox as a special case.
-- [ ] Standardize destructive confirms: a `ConfirmButton`/`useConfirm` primitive replacing
+- [x] Leave the `StoriesView` lightbox as a special case.
+- [x] Standardize destructive confirms: a `ConfirmButton`/`useConfirm` primitive replacing
       the 3 bespoke confirm-in-place implementations and the one `window.confirm`
       (`settings/page.tsx`).
 
 ### Phase 4 — Generated backend types (M)
 
-- [ ] Generate types from FastAPI's `/openapi.json` via `openapi-typescript` (checked-in
+- [x] Generate types from FastAPI's `/openapi.json` via `openapi-typescript` (checked-in
       output + an npm script; CI check that regeneration is clean).
-- [ ] Replace the 73 hand-maintained types in `lib/api.ts` with generated ones (aliases
+- [x] Replace the 73 hand-maintained types in `lib/api.ts` with generated ones (aliases
       where FE names diverge: `Article`, `Feed`, `ProjectArticle`, …). Kills the
       "keep in sync" comments (e.g. `PROJECT_STATUSES`).
-- [ ] Consolidate the 4 fetch wrappers (`api`, `apiWithHeaders`, `sendReadBatch`,
+- [x] Consolidate the 4 fetch wrappers (`api`, `apiWithHeaders`, `sendReadBatch`,
       `streamSSE`) so auth-header injection and the `data?.detail` error unwrap exist once.
 
 ### Phase 5 — Query/mutation layer (M–L)
 
-- [ ] `lib/keys.ts` — central SWR key registry, generalizing the existing
+- [x] `lib/keys.ts` — central SWR key registry, generalizing the existing
       `articlesKey()`/`mutateArticleLists()` pattern to feeds/projects/AI/shares.
-- [ ] Resource hooks (`useFeeds`, `useProject(id)`, `useAiStatus`, …) replacing the 59
+- [x] Resource hooks (`useFeeds`, `useProject(id)`, `useAiStatus`, …) replacing the 59
       inline `useSWR` calls; related-mutate helpers replacing hand-paired `mutate()` calls.
-- [ ] `useMutation`-style helper collapsing the `setBusy/setError/try/catch/finally`
+- [x] `useMutation`-style helper collapsing the `setBusy/setError/try/catch/finally`
       boilerplate (32 copies of the `err instanceof Error` fallback, ~25 error useStates).
       Use SWR `optimisticData`/`rollbackOnError` where we currently optimistic-write with
       no rollback (`ViewSwitcher`, catalog).
-- [ ] `useDebouncedSearch` hook replacing 4 copy-pasted debounce effects.
-- [ ] Toast system (`sonner`): route mutation errors/success through it; eliminate silent
+- [x] `useDebouncedSearch` hook replacing 4 copy-pasted debounce effects.
+- [x] Toast system (`sonner`): route mutation errors/success through it; eliminate silent
       `.catch(() => {})` swallows; keep inline `ErrorText` for form validation.
-- [ ] Shared `EmptyState` + `Skeleton` promoted out of `ArticleList`; adopt on
+- [x] Shared `EmptyState` + `Skeleton` promoted out of `ArticleList`; adopt on
       activity/entity/projects/shares/usage pages.
-- [ ] Test cleanup ride-along: where files are touched, mock hooks/client instead of
+- [x] Test cleanup ride-along: where files are touched, mock hooks/client instead of
       `vi.stubGlobal("fetch")` (25 files) + local `okFetch` helpers (18 files).
 
 ### Phase 6 — Type scale (M, visually risky — do last)
 
-- [ ] Define ~6 semantic text steps as `@theme` font-size tokens
+- [x] Define ~6 semantic text steps as `@theme` font-size tokens
       (caption ≈10.5, label ≈11.5, body ≈12.5, body-lg ≈13.5, title ≈17, display ≈22+ —
       exact buckets decided by screenshotting the dense clusters).
-- [ ] Sweep the 24 arbitrary `text-[NNpx]` values into the buckets. Half-pixel neighbors
+- [x] Sweep the 24 arbitrary `text-[NNpx]` values into the buckets. Half-pixel neighbors
       (12/12.5, 13/13.5, 11/11.5) merge — small intentional visual shifts expected.
-- [ ] Verify with before/after screenshots of inbox, article, settings, catalog, projects.
+- [x] Verify with before/after screenshots of inbox, article, settings, catalog, projects.
 
 ### Also in scope, opportunistic (any phase)
 

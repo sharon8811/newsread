@@ -46,9 +46,9 @@ function Row({
   return (
     <div className="flex items-center justify-between gap-4 py-2.5">
       <div className="min-w-0">
-        <p className="text-[13.5px]">{label}</p>
+        <p className="text-body">{label}</p>
         {hint && (
-          <p className="mt-0.5 text-[11.5px]" style={{ color: "var(--ink-faint)" }}>
+          <p className="mt-0.5 text-label" style={{ color: "var(--ink-faint)" }}>
             {hint}
           </p>
         )}
@@ -147,7 +147,7 @@ export default function FeedSettingsModal({
 
         <div className="mt-4">
           <label
-            className="text-[12px] font-medium"
+            className="text-body-sm font-medium"
             style={{ color: "var(--ink-dim)" }}
             htmlFor="feed-title-input"
           >

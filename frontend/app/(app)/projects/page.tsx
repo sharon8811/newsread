@@ -49,7 +49,7 @@ export default function ProjectsPage() {
           borderColor: "var(--line-soft)",
         }}
       >
-        <h1 className="text-[20px] font-semibold leading-none tracking-tight">Projects</h1>
+        <h1 className="text-title font-semibold leading-none tracking-tight">Projects</h1>
         <button
           className="btn"
           onClick={() => {
@@ -106,11 +106,11 @@ export default function ProjectsPage() {
               <FolderIcon size={17} />
             </span>
             <div className="min-w-0 flex-1">
-              <p className="flex items-center gap-2 truncate text-[15px] font-medium">
+              <p className="flex items-center gap-2 truncate text-body-lg font-medium">
                 {project.name}
                 {project.unseen_count > 0 && (
                   <span
-                    className="font-mono-nr rounded-full px-1.5 text-[10.5px] leading-[18px]"
+                    className="font-mono-nr rounded-full px-1.5 text-caption leading-[18px]"
                     style={{
                       background: "var(--accent)",
                       color: "var(--accent-ink)",
@@ -122,13 +122,13 @@ export default function ProjectsPage() {
                 )}
               </p>
               {project.description && (
-                <p className="mt-0.5 truncate text-[13px]" style={{ color: "var(--ink-dim)" }}>
+                <p className="mt-0.5 truncate text-body" style={{ color: "var(--ink-dim)" }}>
                   {project.description}
                 </p>
               )}
             </div>
             <p
-              className="font-mono-nr shrink-0 text-right text-[11px] leading-relaxed"
+              className="font-mono-nr shrink-0 text-right text-label leading-relaxed"
               style={{ color: "var(--ink-faint)" }}
             >
               {project.article_count} {project.article_count === 1 ? "article" : "articles"}

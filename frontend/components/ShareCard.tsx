@@ -39,12 +39,12 @@ export default function ShareCard({
             direction === "received" ? share.from_user.name : share.to_users[0]?.name
           }
         />
-        <p className="text-[13px]" style={{ color: "var(--ink-dim)" }}>
+        <p className="text-body" style={{ color: "var(--ink-dim)" }}>
           {direction === "received" ? (
             <>
               <span style={{ color: "var(--ink)" }}>{share.from_user.name}</span>
               <span
-                className="font-mono-nr text-[11.5px]"
+                className="font-mono-nr text-label"
                 style={{ color: "var(--ink-faint)" }}
               >
                 {" "}
@@ -58,7 +58,7 @@ export default function ShareCard({
               {share.to_users.map((u, i) => (
                 <span key={u.id}>
                   {i > 0 && ", "}
-                  <span className="font-mono-nr text-[12px]" style={{ color: "var(--accent-bright)" }}>
+                  <span className="font-mono-nr text-body-sm" style={{ color: "var(--accent-bright)" }}>
                     @{u.username}
                   </span>
                 </span>
@@ -67,7 +67,7 @@ export default function ShareCard({
           )}
         </p>
         <span
-          className="font-mono-nr ml-auto text-[11px]"
+          className="font-mono-nr ml-auto text-label"
           style={{ color: "var(--ink-faint)" }}
         >
           {timeAgo(share.created_at)}
@@ -78,9 +78,9 @@ export default function ShareCard({
       {share.note && <blockquote className="note-quote mt-3.5">{share.note}</blockquote>}
 
       <div className="mt-3.5 rounded-md border p-3.5" style={{ borderColor: "var(--line)" }}>
-        <h3 className="font-serif-nr text-[16px] leading-snug">{share.article.title}</h3>
+        <h3 className="font-serif-nr text-lead leading-snug">{share.article.title}</h3>
         <p
-          className="font-mono-nr mt-1 text-[11px]"
+          className="font-mono-nr mt-1 text-label"
           style={{ color: "var(--ink-faint)" }}
         >
           {domainOf(share.article.url)}
