@@ -62,7 +62,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   if (!ready || !user) {
     return (
       <div className="flex min-h-dvh items-center justify-center">
-        <span className="wordmark fade-up text-[26px]">
+        <span className="wordmark fade-up text-display-lg">
           NewsRead<span className="dot">.</span>
         </span>
       </div>
@@ -119,7 +119,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           >
             <MenuIcon size={18} />
           </button>
-          <Link href="/" className="wordmark text-[17px]">
+          <Link href="/" className="wordmark text-lead">
             NewsRead<span className="dot">.</span>
           </Link>
         </header>

@@ -45,7 +45,7 @@ function LinkChip({ url }: { url: string }) {
       href={url}
       target="_blank"
       rel="noreferrer"
-      className="font-mono-nr inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10.5px] transition-colors hover:bg-[var(--bg-hover)]"
+      className="font-mono-nr inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-caption transition-colors hover:bg-[var(--bg-hover)]"
       style={{ borderColor: "var(--line)", color: "var(--accent)" }}
       onClick={(e) => e.stopPropagation()}
     >
@@ -185,7 +185,7 @@ export default function ProjectPinCard({
         {pins.map((pin) => (
           <Avatar key={pin.id} name={pin.added_by.name} title={`@${pin.added_by.username}`} />
         ))}
-        <p className="min-w-0 truncate text-[13px]" style={{ color: "var(--ink-dim)" }}>
+        <p className="min-w-0 truncate text-body" style={{ color: "var(--ink-dim)" }}>
           {pins.map((pin, i) => (
             <span key={pin.id}>
               {i > 0 && ", "}
@@ -208,7 +208,7 @@ export default function ProjectPinCard({
             Done
           </Badge>
         )}
-        <span className="font-mono-nr ml-auto shrink-0 text-[11px]" style={{ color: "var(--ink-faint)" }}>
+        <span className="font-mono-nr ml-auto shrink-0 text-label" style={{ color: "var(--ink-faint)" }}>
           {timeAgo(pins[0].shared_at ?? pins[0].created_at)}
         </span>
       </div>
@@ -221,8 +221,8 @@ export default function ProjectPinCard({
         }}
         onClick={() => router.push(`/article/${article.id}`)}
       >
-        <h3 className="font-serif-nr text-[16px] leading-snug">{article.title}</h3>
-        <p className="font-mono-nr mt-1 text-[11px]" style={{ color: "var(--ink-faint)" }}>
+        <h3 className="font-serif-nr text-lead leading-snug">{article.title}</h3>
+        <p className="font-mono-nr mt-1 text-label" style={{ color: "var(--ink-faint)" }}>
           {domainOf(article.url)}
           {article.published_at ? ` · ${timeAgo(article.published_at)}` : ""}
         </p>
@@ -267,7 +267,7 @@ export default function ProjectPinCard({
         )}
         {confirming && (
           <>
-            <span className="text-[12.5px]" style={{ color: "var(--ink-dim)" }}>
+            <span className="text-body-sm" style={{ color: "var(--ink-dim)" }}>
               Members of {projectName} will see this.
             </span>
             <button className="btn btn-accent" style={{ fontSize: 12 }} disabled={busy} onClick={publish}>
@@ -351,14 +351,14 @@ export default function ProjectPinCard({
                 title={`@${comment.author.username}`}
               />
               <div className="min-w-0 flex-1">
-                <p className="text-[11.5px]" style={{ color: "var(--ink-faint)" }}>
+                <p className="text-label" style={{ color: "var(--ink-faint)" }}>
                   <span style={{ color: "var(--ink-dim)" }}>
                     {comment.author.id === myId ? "You" : comment.author.name}
                   </span>{" "}
                   · {timeAgo(comment.created_at)}
                 </p>
                 {comment.body && (
-                  <p className="mt-0.5 text-[13.5px] leading-normal">{comment.body}</p>
+                  <p className="mt-0.5 text-body leading-normal">{comment.body}</p>
                 )}
                 {comment.link_url && (
                   <div className="mt-1">
@@ -379,7 +379,7 @@ export default function ProjectPinCard({
             </div>
           ))}
           {comments?.length === 0 && (
-            <p className="mb-2.5 text-[12.5px]" style={{ color: "var(--ink-faint)" }}>
+            <p className="mb-2.5 text-body-sm" style={{ color: "var(--ink-faint)" }}>
               No comments yet — start the thread.
             </p>
           )}

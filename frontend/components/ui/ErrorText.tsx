@@ -12,7 +12,7 @@ export default function ErrorText({
 }) {
   if (!children) return null;
   return (
-    <p role="alert" className={cn("text-[12.5px] text-danger", className)}>
+    <p role="alert" className={cn("text-body-sm text-danger", className)}>
       {children}
     </p>
   );

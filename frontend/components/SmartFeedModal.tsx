@@ -94,17 +94,17 @@ export default function SmartFeedModal({
               href={provider.site_url}
               target="_blank"
               rel="noreferrer"
-              className="mt-1 inline-flex max-w-full items-center gap-1 font-mono-nr text-[11.5px] hover:underline"
+              className="mt-1 inline-flex max-w-full items-center gap-1 font-mono-nr text-label hover:underline"
               style={{ color: "var(--ink-faint)" }}
             >
               <span className="truncate">{provider.site_url.replace(/^https?:\/\//, "")}</span>
               <ExternalIcon size={11} />
             </a>
           </ModalHeader>
-          <p className="mt-3 text-[13px] leading-relaxed" style={{ color: "var(--ink-dim)" }}>
+          <p className="mt-3 text-body leading-relaxed" style={{ color: "var(--ink-dim)" }}>
             {provider.description}
           </p>
-          <label className="mt-3 block text-[12px] font-medium">
+          <label className="mt-3 block text-body-sm font-medium">
             {provider.topic_label}
             <input
               className="input mt-1"
@@ -116,11 +116,11 @@ export default function SmartFeedModal({
           </label>
           {provider.example_topics.length > 0 && (
             <div className="mt-2 flex flex-wrap items-center gap-1.5">
-              <span className="text-[11px]" style={{ color: "var(--ink-faint)" }}>Try:</span>
+              <span className="text-label" style={{ color: "var(--ink-faint)" }}>Try:</span>
               {provider.example_topics.map((example) => (
                 <Chip
                   key={example}
-                  className="px-2 py-0.5 text-[11.5px]"
+                  className="px-2 py-0.5 text-label"
                   onClick={() => setTopic(example)}
                 >
                   {example}
@@ -132,7 +132,7 @@ export default function SmartFeedModal({
 
         <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
           {!debounced && (
-            <p className="text-[12.5px]" style={{ color: "var(--ink-faint)" }}>
+            <p className="text-body-sm" style={{ color: "var(--ink-faint)" }}>
               Enter a {provider.topic_label.toLowerCase()} to preview its latest stories.
             </p>
           )}
@@ -152,7 +152,7 @@ export default function SmartFeedModal({
                 </div>
               )}
               {preview && preview.items.length === 0 && (
-                <p className="mt-2 text-[12.5px]" style={{ color: "var(--ink-faint)" }}>
+                <p className="mt-2 text-body-sm" style={{ color: "var(--ink-faint)" }}>
                   No stories for this topic right now — you can still subscribe.
                 </p>
               )}
@@ -186,7 +186,7 @@ export default function SmartFeedModal({
           )}
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
-              <p className="truncate font-mono-nr text-[10.5px]" style={{ color: "var(--ink-faint)" }}>
+              <p className="truncate font-mono-nr text-caption" style={{ color: "var(--ink-faint)" }}>
                 {resolved?.url ?? provider.topic_hint}
               </p>
               {subscribeError && (
@@ -195,7 +195,7 @@ export default function SmartFeedModal({
                 </ErrorText>
               )}
               {feed && feed.article_count === 0 && (
-                <p className="mt-1 text-[12px]" style={{ color: "var(--ink-faint)" }}>
+                <p className="mt-1 text-body-sm" style={{ color: "var(--ink-faint)" }}>
                   Subscribed — first stories will appear within a few minutes.
                 </p>
               )}

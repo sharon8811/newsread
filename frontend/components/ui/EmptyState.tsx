@@ -20,9 +20,9 @@ export default function EmptyState({
         className,
       )}
     >
-      <p className="text-[17px] font-medium text-ink-dim">{title}</p>
+      <p className="text-lead font-medium text-ink-dim">{title}</p>
       {subtitle && (
-        <p className="mt-2 max-w-sm text-[13.5px] text-ink-faint">{subtitle}</p>
+        <p className="mt-2 max-w-sm text-body text-ink-faint">{subtitle}</p>
       )}
       {action && <div className="mt-5">{action}</div>}
     </div>

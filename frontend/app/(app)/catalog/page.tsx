@@ -91,8 +91,8 @@ export default function CatalogPage() {
       >
         <div className="flex flex-wrap items-center gap-3">
           <div>
-            <h1 className="text-[20px] font-semibold leading-none tracking-tight">Catalog</h1>
-            <p className="mt-1 text-[11.5px]" style={{ color: "var(--ink-faint)" }}>
+            <h1 className="text-title font-semibold leading-none tracking-tight">Catalog</h1>
+            <p className="mt-1 text-label" style={{ color: "var(--ink-faint)" }}>
               Healthy, hand-curated feeds with semantic discovery
             </p>
           </div>
@@ -147,11 +147,11 @@ export default function CatalogPage() {
                   style={{ borderColor: "var(--line-soft)", background: "var(--bg-inset)" }}
                   onClick={() => setSmartKey(provider.key)}
                 >
-                  <span className="block text-[13px] font-semibold leading-snug">{provider.name}</span>
-                  <span className="mt-0.5 block text-[11.5px] leading-relaxed" style={{ color: "var(--ink-dim)" }}>
+                  <span className="block text-body font-semibold leading-snug">{provider.name}</span>
+                  <span className="mt-0.5 block text-label leading-relaxed" style={{ color: "var(--ink-dim)" }}>
                     {provider.description}
                   </span>
-                  <span className="mt-1.5 inline-block font-mono-nr text-[10.5px]" style={{ color: "var(--accent)" }}>
+                  <span className="mt-1.5 inline-block font-mono-nr text-caption" style={{ color: "var(--accent)" }}>
                     Any {provider.topic_label.toLowerCase()} →
                   </span>
                 </button>
@@ -160,7 +160,7 @@ export default function CatalogPage() {
           </section>
         )}
         <div className="mb-3 flex flex-wrap items-center gap-2">
-          <p className="mr-auto text-[12.5px]" style={{ color: "var(--ink-faint)" }}>
+          <p className="mr-auto text-body-sm" style={{ color: "var(--ink-faint)" }}>
             {entries ? `${entries.length} feeds` : "Loading feeds"}{q ? ` matching “${q}”` : ""}
           </p>
           <SortButton label="For you" active={sort === "recommended"} onClick={() => { setSort("recommended"); setVisibleCount(60); }} />
@@ -168,12 +168,12 @@ export default function CatalogPage() {
           <SortButton label="A-Z" active={sort === "name"} onClick={() => { setSort("name"); setVisibleCount(60); }} />
         </div>
         {error && <ErrorText className="mb-3">{error}</ErrorText>}
-        {loadError && <p className="rounded-lg border p-4 text-[13px]" role="alert" style={{ borderColor: "var(--line-soft)", color: "var(--danger)" }}>Could not load the catalog. Please try again.</p>}
+        {loadError && <p className="rounded-lg border p-4 text-body" role="alert" style={{ borderColor: "var(--line-soft)", color: "var(--danger)" }}>Could not load the catalog. Please try again.</p>}
         {isLoading && <CatalogSkeleton />}
         {entries?.length === 0 && (
           <div className="py-14 text-center">
-            <p className="text-[14px] font-medium">No feeds match your filters</p>
-            <p className="mt-1 text-[12.5px]" style={{ color: "var(--ink-faint)" }}>Try a broader phrase or clear the topic filter.</p>
+            <p className="text-body-lg font-medium">No feeds match your filters</p>
+            <p className="mt-1 text-body-sm" style={{ color: "var(--ink-faint)" }}>Try a broader phrase or clear the topic filter.</p>
           </div>
         )}
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -208,15 +208,15 @@ function FeedCard({ entry, busy, disabled, onSubscribe, onOpen }: { entry: Catal
     <article className="flex min-h-[230px] cursor-pointer flex-col rounded-lg border bg-[var(--bg-inset)] p-4 transition-colors hover:bg-[var(--bg-hover)]" style={{ borderColor: "var(--line-soft)" }} onClick={onOpen}>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <h2 className="truncate text-[14px] font-semibold leading-snug">
+          <h2 className="truncate text-body-lg font-semibold leading-snug">
             <button className="block max-w-full truncate text-left" onClick={onOpen}>{entry.title}</button>
           </h2>
-          <p className="mt-0.5 truncate font-mono-nr text-[10.5px]" style={{ color: "var(--ink-faint)" }}>{entry.source_host} · {formatFeedType(entry.content_type)}</p>
+          <p className="mt-0.5 truncate font-mono-nr text-caption" style={{ color: "var(--ink-faint)" }}>{entry.source_host} · {formatFeedType(entry.content_type)}</p>
         </div>
-        <Badge className="border-line-soft text-[10px] uppercase tracking-[0.12em]">{entry.category}</Badge>
+        <Badge className="border-line-soft text-caption uppercase tracking-[0.12em]">{entry.category}</Badge>
       </div>
-      <p className="mt-2 line-clamp-3 text-[12.5px] leading-relaxed" style={{ color: "var(--ink-dim)" }}>{entry.description}</p>
-      <div className="mt-auto flex flex-wrap items-center gap-x-2 pt-3 text-[10.5px]" style={{ color: "var(--ink-faint)" }}>
+      <p className="mt-2 line-clamp-3 text-body-sm leading-relaxed" style={{ color: "var(--ink-dim)" }}>{entry.description}</p>
+      <div className="mt-auto flex flex-wrap items-center gap-x-2 pt-3 text-caption" style={{ color: "var(--ink-faint)" }}>
         {updated && <span>{updated}</span>}
         {entry.item_count !== null && <span>{entry.item_count} recent {entry.item_count === 1 ? "item" : "items"}</span>}
         {entry.subscriber_count > 0 && <span>{entry.subscriber_count} {entry.subscriber_count === 1 ? "reader" : "readers"}</span>}
@@ -248,19 +248,19 @@ function SubmissionForm({ categories, onDone }: { categories: CatalogCategory[];
       setError(err instanceof Error ? err.message : "Could not submit this feed"); setState("idle");
     }
   }
-  if (state === "done") return <div className="mb-4 rounded-lg border p-4 text-[13px]" style={{ borderColor: "var(--accent-border)", background: "var(--accent-soft)" }}>Thanks. The feed passed validation and is queued for review. <button className="underline" onClick={onDone}>Close</button></div>;
+  if (state === "done") return <div className="mb-4 rounded-lg border p-4 text-body" style={{ borderColor: "var(--accent-border)", background: "var(--accent-soft)" }}>Thanks. The feed passed validation and is queued for review. <button className="underline" onClick={onDone}>Close</button></div>;
   return (
     <form onSubmit={submit} className="mb-4 grid gap-3 rounded-lg border p-4 sm:grid-cols-[1fr_180px_auto]" style={{ borderColor: "var(--line-soft)", background: "var(--bg-raised)" }}>
-      <label className="text-[12px] font-medium">Feed URL<input className="input mt-1" type="url" required value={url} onChange={(event) => setUrl(event.target.value)} placeholder="https://example.com/feed.xml" /></label>
-      <label className="text-[12px] font-medium">Topic<select className="input mt-1" value={category} onChange={(event) => setCategory(event.target.value)}><option value="">Choose later</option>{categories.map((item) => <option key={item.name}>{item.name}</option>)}</select></label>
+      <label className="text-body-sm font-medium">Feed URL<input className="input mt-1" type="url" required value={url} onChange={(event) => setUrl(event.target.value)} placeholder="https://example.com/feed.xml" /></label>
+      <label className="text-body-sm font-medium">Topic<select className="input mt-1" value={category} onChange={(event) => setCategory(event.target.value)}><option value="">Choose later</option>{categories.map((item) => <option key={item.name}>{item.name}</option>)}</select></label>
       <button className="btn btn-accent self-end" disabled={state === "busy"}>{state === "busy" ? "Validating…" : "Submit"}</button>
       {error && <ErrorText className="sm:col-span-3">{error}</ErrorText>}
     </form>
   );
 }
 
-function SortButton({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) { return <button className="rounded-md px-2 py-1 text-[11.5px]" style={{ background: active ? "var(--accent-soft)" : "transparent", color: active ? "var(--accent)" : "var(--ink-faint)" }} onClick={onClick}>{label}</button>; }
+function SortButton({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) { return <button className="rounded-md px-2 py-1 text-label" style={{ background: active ? "var(--accent-soft)" : "transparent", color: active ? "var(--accent)" : "var(--ink-faint)" }} onClick={onClick}>{label}</button>; }
 
-function CategoryChip({ label, count, active, onClick }: { label: string; count?: number; active: boolean; onClick: () => void }) { return <Chip active={active} onClick={onClick}>{label}{count !== undefined && <span className="ml-1 font-mono-nr text-[10.5px]" style={{ color: "var(--ink-faint)" }}>{count}</span>}</Chip>; }
+function CategoryChip({ label, count, active, onClick }: { label: string; count?: number; active: boolean; onClick: () => void }) { return <Chip active={active} onClick={onClick}>{label}{count !== undefined && <span className="ml-1 font-mono-nr text-caption" style={{ color: "var(--ink-faint)" }}>{count}</span>}</Chip>; }
 
 function CatalogSkeleton() { return <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3" aria-label="Loading catalog">{Array.from({ length: 6 }).map((_, index) => <Skeleton key={index} className="h-[230px] rounded-lg border border-line-soft bg-inset" />)}</div>; }

@@ -59,7 +59,7 @@ function ToolChip({
   const Icon = name === "web_extract" ? ExternalIcon : SearchIcon;
   return (
     <div
-      className="flex items-center gap-2 text-[12.5px]"
+      className="flex items-center gap-2 text-body-sm"
       style={{ color: "var(--ink-faint)" }}
     >
       {done ? (
@@ -205,7 +205,7 @@ export default function QAPanel({
           m.role === "user" ? (
             <div key={m.id} className="flex justify-end">
               <p
-                className="max-w-[85%] rounded-lg rounded-br-sm px-4 py-2.5 text-[13.5px]"
+                className="max-w-[85%] rounded-lg rounded-br-sm px-4 py-2.5 text-body"
                 style={{ background: "var(--accent-soft)", color: "var(--ink)" }}
               >
                 {m.content}
@@ -230,7 +230,7 @@ export default function QAPanel({
           <>
             <div className="flex justify-end">
               <p
-                className="max-w-[85%] rounded-lg rounded-br-sm px-4 py-2.5 text-[13.5px]"
+                className="max-w-[85%] rounded-lg rounded-br-sm px-4 py-2.5 text-body"
                 style={{ background: "var(--accent-soft)", color: "var(--ink)" }}
               >
                 {pending}

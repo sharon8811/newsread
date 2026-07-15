@@ -150,7 +150,7 @@ export default function ProjectPickerModal({
           <div>
             <p className="mono-label">Add to project</p>
             <ModalTitle asChild>
-              <h2 className="font-serif-nr mt-1.5 text-[19px] leading-snug">
+              <h2 className="font-serif-nr mt-1.5 text-title leading-snug">
                 {article.title}
               </h2>
             </ModalTitle>
@@ -167,7 +167,7 @@ export default function ProjectPickerModal({
 
         <div className="mt-5 flex max-h-[320px] flex-col gap-1 overflow-y-auto">
           {projects?.length === 0 && !creating && (
-            <p className="py-4 text-center text-[13px]" style={{ color: "var(--ink-faint)" }}>
+            <p className="py-4 text-center text-body" style={{ color: "var(--ink-faint)" }}>
               No projects yet. Create your first below.
             </p>
           )}
@@ -187,11 +187,11 @@ export default function ProjectPickerModal({
                   <FolderIcon size={15} />
                 </span>
                 <div className="min-w-0 flex-1 leading-tight">
-                  <p className="flex items-center gap-1.5 truncate text-[13.5px]">
+                  <p className="flex items-center gap-1.5 truncate text-body">
                     {project.name}
                     {status?.suggested && (
                       <span
-                        className="font-mono-nr flex items-center gap-1 text-[10px]"
+                        className="font-mono-nr flex items-center gap-1 text-caption"
                         style={{ color: "var(--accent)" }}
                         title="This article looks like it belongs here"
                       >
@@ -200,7 +200,7 @@ export default function ProjectPickerModal({
                       </span>
                     )}
                   </p>
-                  <p className="font-mono-nr text-[10.5px]" style={{ color: "var(--ink-faint)" }}>
+                  <p className="font-mono-nr text-caption" style={{ color: "var(--ink-faint)" }}>
                     {project.members.length}{" "}
                     {project.members.length === 1 ? "member" : "members"}
                     {status?.shared_by_others ? " · already shared here" : ""}

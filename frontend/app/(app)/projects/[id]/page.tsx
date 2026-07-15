@@ -117,7 +117,7 @@ export default function ProjectPage() {
   if (error) {
     return (
       <div className="flex flex-col items-center px-8 py-28 text-center">
-        <p className="text-[17px] font-medium" style={{ color: "var(--ink-dim)" }}>
+        <p className="text-lead font-medium" style={{ color: "var(--ink-dim)" }}>
           This project is out of reach.
         </p>
         <button className="btn mt-5" onClick={() => router.push("/projects")}>
@@ -146,7 +146,7 @@ export default function ProjectPage() {
         }}
       >
         <div className="flex items-center gap-3">
-          <h1 className="text-[20px] font-semibold leading-none tracking-tight">
+          <h1 className="text-title font-semibold leading-none tracking-tight">
             {project.name}
           </h1>
           <div className="ml-auto flex items-center gap-1">
@@ -192,7 +192,7 @@ export default function ProjectPage() {
             {isOwner ? (
               confirmingDelete ? (
                 <span className="fade-up flex items-center gap-1.5">
-                  <span className="text-[12px]" style={{ color: "var(--ink-dim)" }}>
+                  <span className="text-body-sm" style={{ color: "var(--ink-dim)" }}>
                     Delete for every member?
                   </span>
                   <Button
@@ -230,7 +230,7 @@ export default function ProjectPage() {
         </div>
 
         {project.description && (
-          <p className="mt-1.5 text-[13px]" style={{ color: "var(--ink-dim)" }}>
+          <p className="mt-1.5 text-body" style={{ color: "var(--ink-dim)" }}>
             {project.description}
           </p>
         )}
@@ -256,8 +256,8 @@ export default function ProjectPage() {
                     className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left transition-colors hover:bg-[var(--bg-hover)]"
                     onClick={() => invite(u.username)}
                   >
-                    <span className="text-[13.5px]">{u.name}</span>
-                    <span className="font-mono-nr text-[11.5px]" style={{ color: "var(--ink-faint)" }}>
+                    <span className="text-body">{u.name}</span>
+                    <span className="font-mono-nr text-label" style={{ color: "var(--ink-faint)" }}>
                       @{u.username}
                     </span>
                   </button>
@@ -277,7 +277,7 @@ export default function ProjectPage() {
           {(["shared", "mine", "ask"] as const).map((t) => (
             <button
               key={t}
-              className="flex items-center gap-1.5 border-b-2 pb-2.5 text-[13px] transition-colors"
+              className="flex items-center gap-1.5 border-b-2 pb-2.5 text-body transition-colors"
               style={{
                 borderColor: tab === t ? "var(--accent)" : "transparent",
                 color: tab === t ? "var(--ink)" : "var(--ink-dim)",
@@ -287,7 +287,7 @@ export default function ProjectPage() {
               {t === "mine" && <LockIcon size={12} />}
               {t === "shared" ? "Shared" : t === "mine" ? "Only you" : "Ask"}
               {t !== "ask" && (
-                <span className="font-mono-nr text-[11px]" style={{ color: "var(--ink-faint)" }}>
+                <span className="font-mono-nr text-label" style={{ color: "var(--ink-faint)" }}>
                   {t === "shared" ? sharedGroups.length : privatePins.length}
                 </span>
               )}
@@ -301,7 +301,7 @@ export default function ProjectPage() {
               {(["active", "done"] as const).map((f) => (
                 <button
                   key={f}
-                  className="px-2.5 py-1 text-[11.5px] transition-colors"
+                  className="px-2.5 py-1 text-label transition-colors"
                   style={{
                     background: statusFilter === f ? "var(--accent-soft)" : "transparent",
                     color: statusFilter === f ? "var(--accent)" : "var(--ink-dim)",
@@ -319,10 +319,10 @@ export default function ProjectPage() {
       {!isLoading && statusFilter === "done" &&
         (tab === "shared" ? sharedGroups : privatePins).length === 0 && tab !== "ask" && (
         <div className="flex flex-col items-center px-8 py-24 text-center">
-          <p className="text-[17px] font-medium" style={{ color: "var(--ink-dim)" }}>
+          <p className="text-lead font-medium" style={{ color: "var(--ink-dim)" }}>
             Nothing marked done yet.
           </p>
-          <p className="mt-2 max-w-md text-[13.5px]" style={{ color: "var(--ink-faint)" }}>
+          <p className="mt-2 max-w-md text-body" style={{ color: "var(--ink-faint)" }}>
             When an article is handled, mark it done — it moves here with its
             closing note.
           </p>
@@ -330,10 +330,10 @@ export default function ProjectPage() {
       )}
       {!isLoading && statusFilter === "active" && tab === "shared" && sharedGroups.length === 0 && (
         <div className="flex flex-col items-center px-8 py-24 text-center">
-          <p className="text-[17px] font-medium" style={{ color: "var(--ink-dim)" }}>
+          <p className="text-lead font-medium" style={{ color: "var(--ink-dim)" }}>
             Nothing shared yet.
           </p>
-          <p className="mt-2 max-w-md text-[13.5px]" style={{ color: "var(--ink-faint)" }}>
+          <p className="mt-2 max-w-md text-body" style={{ color: "var(--ink-faint)" }}>
             Pin an article from your reading and share it — it lands here for
             everyone in the project.
           </p>
@@ -341,10 +341,10 @@ export default function ProjectPage() {
       )}
       {!isLoading && statusFilter === "active" && tab === "mine" && privatePins.length === 0 && (
         <div className="flex flex-col items-center px-8 py-24 text-center">
-          <p className="text-[17px] font-medium" style={{ color: "var(--ink-dim)" }}>
+          <p className="text-lead font-medium" style={{ color: "var(--ink-dim)" }}>
             Your private pile is empty.
           </p>
-          <p className="mt-2 max-w-md text-[13.5px]" style={{ color: "var(--ink-faint)" }}>
+          <p className="mt-2 max-w-md text-body" style={{ color: "var(--ink-faint)" }}>
             Articles you add privately are visible only to you until you share them.
           </p>
         </div>

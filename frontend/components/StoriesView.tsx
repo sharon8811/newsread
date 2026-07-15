@@ -154,10 +154,10 @@ export default function StoriesView({
         className="stories-scope fixed inset-0 z-50 flex flex-col items-center justify-center gap-2 text-center"
         style={{ background: "var(--bg)" }}
       >
-        <p className="text-[19px] font-semibold tracking-tight" style={{ color: "var(--ink-dim)" }}>
+        <p className="text-title font-semibold tracking-tight" style={{ color: "var(--ink-dim)" }}>
           {queue.length === 0 ? "All caught up." : "You're up to date."}
         </p>
-        <p className="font-mono-nr text-[11px]" style={{ color: "var(--ink-faint)" }}>
+        <p className="font-mono-nr text-label" style={{ color: "var(--ink-faint)" }}>
           {queue.length === 0
             ? filter === "saved"
               ? "Nothing saved to flip through."
@@ -225,7 +225,7 @@ export default function StoriesView({
               />
             </div>
             <span
-              className="font-mono-nr pl-2 text-[10.5px]"
+              className="font-mono-nr pl-2 text-caption"
               style={{ color: "var(--ink-dim)" }}
             >
               {index + 1} / {queue.length} · {queue.length - index - 1} left
@@ -270,7 +270,7 @@ export default function StoriesView({
       <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 px-6 pb-16 sm:px-12 md:px-20">
         <div key={a.id} className="fade-up mx-auto max-w-2xl">
           <p
-            className="font-mono-nr mb-2 text-[11px]"
+            className="font-mono-nr mb-2 text-label"
             style={{ color: "var(--ink-dim)" }}
           >
             {a.feed_title}
@@ -290,12 +290,12 @@ export default function StoriesView({
           )}
           {summaryText && (
             <p
-              className="mt-3 line-clamp-6 text-[15px] leading-relaxed"
+              className="mt-3 line-clamp-6 text-body-lg leading-relaxed"
               style={{ color: "var(--ink-dim)" }}
             >
               {isAiSummary && (
                 <span
-                  className="font-mono-nr mr-1.5 text-[10px]"
+                  className="font-mono-nr mr-1.5 text-caption"
                   style={{ color: "var(--accent)" }}
                 >
                   ✦
@@ -306,7 +306,7 @@ export default function StoriesView({
           )}
         </div>
         <button
-          className="font-mono-nr pointer-events-auto absolute inset-x-0 bottom-0 z-20 mx-auto flex w-fit flex-col items-center pb-3 text-[10.5px] transition-colors"
+          className="font-mono-nr pointer-events-auto absolute inset-x-0 bottom-0 z-20 mx-auto flex w-fit flex-col items-center pb-3 text-caption transition-colors"
           style={{ color: "var(--ink-faint)" }}
           onClick={openArticle}
         >

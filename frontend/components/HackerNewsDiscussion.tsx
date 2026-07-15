@@ -54,7 +54,7 @@ function CommentBranch({
       className={depth > 0 ? "mt-4 border-l pl-4" : "py-5"}
       style={{ borderColor: "var(--line-soft)" }}
     >
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 font-mono-nr text-[11.5px]">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 font-mono-nr text-label">
         <a
           href={`https://news.ycombinator.com/item?id=${comment.id}`}
           target="_blank"
@@ -68,7 +68,7 @@ function CommentBranch({
           <span style={{ color: "var(--ink-faint)" }}>{timeAgo(comment.created_at)}</span>
         )}
         <button
-          className="ml-auto text-[11.5px] hover:underline"
+          className="ml-auto text-label hover:underline"
           style={{ color: "var(--accent)" }}
           onClick={() => onDraft(comment)}
         >
@@ -76,7 +76,7 @@ function CommentBranch({
         </button>
       </div>
       <p
-        className="mt-2 whitespace-pre-wrap text-[14px] leading-[1.55]"
+        className="mt-2 whitespace-pre-wrap text-body-lg leading-[1.55]"
         style={{ color: comment.dead ? "var(--ink-faint)" : "var(--ink)" }}
       >
         {comment.text || (comment.deleted ? "[deleted]" : "[no visible text]")}
@@ -217,8 +217,8 @@ export function HackerNewsDiscussionView({
     >
       <div className="flex flex-wrap items-center gap-3">
         <div>
-          <h2 className="font-serif-nr text-[22px] font-medium">Hacker News discussion</h2>
-          <p className="mt-1 font-mono-nr text-[11.5px]" style={{ color: "var(--ink-faint)" }}>
+          <h2 className="font-serif-nr text-display font-medium">Hacker News discussion</h2>
+          <p className="mt-1 font-mono-nr text-label" style={{ color: "var(--ink-faint)" }}>
             {story
               ? `${story.score ?? 0} points, ${count} comments`
               : storyLoading
@@ -267,7 +267,7 @@ export function HackerNewsDiscussionView({
             <>
               <div className="border-y" style={{ borderColor: "var(--line-soft)" }}>
                 {topLevel.length === 0 && (
-                  <p className="py-6 text-[13px]" style={{ color: "var(--ink-faint)" }}>
+                  <p className="py-6 text-body" style={{ color: "var(--ink-faint)" }}>
                     No visible comments yet.
                   </p>
                 )}
@@ -287,7 +287,7 @@ export function HackerNewsDiscussionView({
                 ))}
               </div>
               <div className="mt-4 flex flex-wrap items-center gap-3">
-                <span className="text-[12px]" style={{ color: "var(--ink-faint)" }}>
+                <span className="text-body-sm" style={{ color: "var(--ink-faint)" }}>
                   Loaded {snapshot.included_total} of {snapshot.reported_total} comments
                 </span>
                 {snapshot.included_total < Math.min(snapshot.reported_total, 300) && (

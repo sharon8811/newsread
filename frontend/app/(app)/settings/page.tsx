@@ -85,8 +85,8 @@ function ConnectionCard({
         <PlatformIcon platform={integration.platform} size={20} />
       </span>
       <div className="min-w-0 flex-1 leading-tight">
-        <p className="text-[14px] font-medium">{label}</p>
-        <p className="mt-0.5 truncate text-[12.5px]" style={{ color: "var(--ink-faint)" }}>
+        <p className="text-body-lg font-medium">{label}</p>
+        <p className="mt-0.5 truncate text-body-sm" style={{ color: "var(--ink-faint)" }}>
           {!integration.configured
             ? "Not configured on the server"
             : integration.connected && integration.status === "error"
@@ -204,12 +204,12 @@ function TargetPicker({ platform }: { platform: MessagingPlatform }) {
           (loadError instanceof Error ? loadError.message : loadError ? "Could not load channels" : null)}
       </ErrorText>
       {loading && options === undefined && (
-        <p className="mt-2 text-[12.5px]" style={{ color: "var(--ink-faint)" }}>
+        <p className="mt-2 text-body-sm" style={{ color: "var(--ink-faint)" }}>
           Loading channels…
         </p>
       )}
       {options && options.length === 0 && !loading && (
-        <p className="mt-2 text-[12.5px]" style={{ color: "var(--ink-faint)" }}>
+        <p className="mt-2 text-body-sm" style={{ color: "var(--ink-faint)" }}>
           Nothing matched.
         </p>
       )}
@@ -221,11 +221,11 @@ function TargetPicker({ platform }: { platform: MessagingPlatform }) {
           {options.map((option) => (
             <div
               key={option.external_id}
-              className="flex items-center gap-2.5 px-3.5 py-2 text-[13.5px]"
+              className="flex items-center gap-2.5 px-3.5 py-2 text-body"
             >
               <span className="min-w-0 flex-1 truncate">{option.display_name}</span>
               <span
-                className="font-mono-nr shrink-0 text-[10.5px] uppercase"
+                className="font-mono-nr shrink-0 text-caption uppercase"
                 style={{ color: "var(--ink-faint)" }}
               >
                 {option.target_type}
@@ -301,13 +301,13 @@ function SettingsContent() {
           borderColor: "var(--line-soft)",
         }}
       >
-        <h1 className="text-[20px] font-semibold leading-none tracking-tight">Settings</h1>
+        <h1 className="text-title font-semibold leading-none tracking-tight">Settings</h1>
       </header>
 
       <div className="fade-up mx-auto w-full max-w-[720px] px-4 py-6 sm:px-6">
         {banner && (
           <div
-            className="mb-5 flex items-center gap-2.5 rounded-md border px-3.5 py-2.5 text-[13px]"
+            className="mb-5 flex items-center gap-2.5 rounded-md border px-3.5 py-2.5 text-body"
             style={
               banner.kind === "ok"
                 ? {
@@ -327,7 +327,7 @@ function SettingsContent() {
 
         <section>
           <p className="mono-label">Connections</p>
-          <p className="mt-1.5 text-[13px]" style={{ color: "var(--ink-faint)" }}>
+          <p className="mt-1.5 text-body" style={{ color: "var(--ink-faint)" }}>
             Link a messaging platform to share articles straight into your channels — messages
             are sent as you, from your account.
           </p>
@@ -344,7 +344,7 @@ function SettingsContent() {
 
         <section className="mt-9">
           <p className="mono-label">Quick share</p>
-          <p className="mt-1.5 text-[13px]" style={{ color: "var(--ink-faint)" }}>
+          <p className="mt-1.5 text-body" style={{ color: "var(--ink-faint)" }}>
             Channels and chats saved here show up as one-tap targets in the share dialog.
           </p>
 
@@ -353,7 +353,7 @@ function SettingsContent() {
               {targets.map((target) => (
                 <div
                   key={target.id}
-                  className="group flex items-center gap-2.5 rounded-md border px-3.5 py-2 text-[13.5px]"
+                  className="group flex items-center gap-2.5 rounded-md border px-3.5 py-2 text-body"
                   style={{ background: "var(--bg-raised)", borderColor: "var(--line)" }}
                 >
                   <span style={{ color: "var(--ink-faint)" }}>
@@ -374,7 +374,7 @@ function SettingsContent() {
           )}
 
           {connectedPlatforms.length === 0 ? (
-            <p className="mt-3 text-[13px]" style={{ color: "var(--ink-faint)" }}>
+            <p className="mt-3 text-body" style={{ color: "var(--ink-faint)" }}>
               Connect a platform above to start saving quick-share targets.
             </p>
           ) : (

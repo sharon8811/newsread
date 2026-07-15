@@ -44,13 +44,13 @@ export default function NotInterestedSection() {
   return (
     <section className="mt-9">
       <p className="mono-label">Not interested</p>
-      <p className="mt-1.5 text-[13px]" style={{ color: "var(--ink-faint)" }}>
+      <p className="mt-1.5 text-body" style={{ color: "var(--ink-faint)" }}>
         Articles matching these rules are hidden from your feed. Remove a rule to bring
         its articles back.
       </p>
 
       {rules.length === 0 ? (
-        <p className="mt-3 text-[13px]" style={{ color: "var(--ink-faint)" }}>
+        <p className="mt-3 text-body" style={{ color: "var(--ink-faint)" }}>
           Nothing muted. Use “Not interested” on an article to start.
         </p>
       ) : (
@@ -58,13 +58,13 @@ export default function NotInterestedSection() {
           {rules.map((rule) => (
             <div key={rule.id}>
               <div
-                className="group flex items-center gap-2.5 rounded-md border px-3.5 py-2 text-[13.5px]"
+                className="group flex items-center gap-2.5 rounded-md border px-3.5 py-2 text-body"
                 style={{ background: "var(--bg-raised)", borderColor: "var(--line)" }}
               >
                 <Badge>{KIND_LABELS[rule.kind]}</Badge>
                 <span className="min-w-0 flex-1 truncate">{rule.label}</span>
                 <button
-                  className="font-mono-nr shrink-0 text-[11px]"
+                  className="font-mono-nr shrink-0 text-label"
                   style={{ color: "var(--ink-faint)" }}
                   title="Show recently hidden articles"
                   onClick={() => setExpanded((e) => (e === rule.id ? null : rule.id))}
@@ -86,14 +86,14 @@ export default function NotInterestedSection() {
                   {(hits ?? []).map((hit) => (
                     <p
                       key={hit.id}
-                      className="truncate py-0.5 text-[12.5px]"
+                      className="truncate py-0.5 text-body-sm"
                       style={{ color: "var(--ink-dim)" }}
                     >
                       {hit.title}
                     </p>
                   ))}
                   {hits && hits.length === 0 && (
-                    <p className="py-0.5 text-[12.5px]" style={{ color: "var(--ink-faint)" }}>
+                    <p className="py-0.5 text-body-sm" style={{ color: "var(--ink-faint)" }}>
                       Nothing hidden recently.
                     </p>
                   )}

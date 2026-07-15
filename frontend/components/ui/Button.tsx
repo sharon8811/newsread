@@ -30,7 +30,7 @@ export default function Button({
   return (
     <button
       type={type}
-      className={cn(VARIANT_CLASS[variant], size === "sm" && "text-[12px]", className)}
+      className={cn(VARIANT_CLASS[variant], size === "sm" && "text-body-sm", className)}
       disabled={disabled || loading}
       aria-busy={loading || undefined}
       {...rest}

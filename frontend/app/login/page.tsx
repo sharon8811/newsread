@@ -40,7 +40,7 @@ export default function LoginPage() {
         <h1 className="wordmark text-[40px]">
           NewsRead<span className="dot">.</span>
         </h1>
-        <p className="font-serif-nr mt-1 text-[17px] italic" style={{ color: "var(--ink-dim)" }}>
+        <p className="font-serif-nr mt-1 text-lead italic" style={{ color: "var(--ink-dim)" }}>
           Read together.
         </p>
 
@@ -70,7 +70,7 @@ export default function LoginPage() {
           </Button>
         </form>
 
-        <p className="mt-6 text-[13.5px]" style={{ color: "var(--ink-faint)" }}>
+        <p className="mt-6 text-body" style={{ color: "var(--ink-faint)" }}>
           New here?{" "}
           <Link href="/register" style={{ color: "var(--accent-bright)" }}>
             Create an account

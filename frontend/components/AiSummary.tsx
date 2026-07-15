@@ -55,7 +55,7 @@ export default function AiSummary({ article }: { article: ArticleDetail }) {
           AI Summary
         </span>
         {article.summary_model && !generating && (
-          <span className="font-mono-nr text-[10px]" style={{ color: "var(--ink-faint)" }}>
+          <span className="font-mono-nr text-caption" style={{ color: "var(--ink-faint)" }}>
             {article.summary_model}
           </span>
         )}
@@ -84,7 +84,7 @@ export default function AiSummary({ article }: { article: ArticleDetail }) {
               }}
             />
           ))}
-          <p className="font-mono-nr mt-1 text-[11px]" style={{ color: "var(--ink-faint)" }}>
+          <p className="font-mono-nr mt-1 text-label" style={{ color: "var(--ink-faint)" }}>
             Reading the full article…
           </p>
         </div>

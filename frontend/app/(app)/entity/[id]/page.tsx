@@ -26,7 +26,7 @@ export default function EntityPage() {
   if (error) {
     return (
       <div className="px-4 py-10 text-center sm:px-6">
-        <p className="text-[14px]" style={{ color: "var(--ink-dim)" }}>
+        <p className="text-body-lg" style={{ color: "var(--ink-dim)" }}>
           This entity could not be loaded.
         </p>
       </div>
@@ -41,7 +41,7 @@ export default function EntityPage() {
         style={{ borderColor: "var(--line-soft)" }}
       >
         <button
-          className="font-mono-nr mb-4 block text-[11.5px] transition-colors"
+          className="font-mono-nr mb-4 block text-label transition-colors"
           style={{ color: "var(--ink-faint)" }}
           onMouseEnter={(e) => (e.currentTarget.style.color = "var(--ink)")}
           onMouseLeave={(e) => (e.currentTarget.style.color = "var(--ink-faint)")}
@@ -51,7 +51,7 @@ export default function EntityPage() {
         </button>
         <p className="mono-label">{KIND_LABELS[entity.kind] ?? entity.kind}</p>
         <div className="mt-1 flex items-center gap-2">
-          <h1 className="text-[22px] font-semibold leading-tight tracking-tight">
+          <h1 className="text-display font-semibold leading-tight tracking-tight">
             {entity.name}
           </h1>
           {entity.url && (
@@ -65,7 +65,7 @@ export default function EntityPage() {
       <div className="px-4 py-5 sm:px-6">
         <p className="mono-label">From your feeds</p>
         {entity.articles.length === 0 ? (
-          <p className="mt-3 text-[14px]" style={{ color: "var(--ink-dim)" }}>
+          <p className="mt-3 text-body-lg" style={{ color: "var(--ink-dim)" }}>
             No articles from your feeds mention this yet.
           </p>
         ) : (
@@ -79,11 +79,11 @@ export default function EntityPage() {
               >
                 <div className="flex items-center gap-2">
                   {!item.is_read && <span className="dot-unread shrink-0" />}
-                  <p className="font-serif-nr min-w-0 flex-1 truncate text-[16px]">
+                  <p className="font-serif-nr min-w-0 flex-1 truncate text-lead">
                     {item.title}
                   </p>
                 </div>
-                <p className="font-mono-nr mt-1 text-[11px]" style={{ color: "var(--ink-faint)" }}>
+                <p className="font-mono-nr mt-1 text-label" style={{ color: "var(--ink-faint)" }}>
                   {item.feed_title}
                   {item.published_at ? ` · ${timeAgo(item.published_at)}` : ""}
                 </p>

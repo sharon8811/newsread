@@ -31,7 +31,7 @@ describe("Button", () => {
         Go
       </Button>,
     );
-    expect(screen.getByRole("button")).toHaveClass("text-[12px]", "w-full");
+    expect(screen.getByRole("button")).toHaveClass("text-body-sm", "w-full");
   });
 
   it("disables itself and reports busy while loading", async () => {

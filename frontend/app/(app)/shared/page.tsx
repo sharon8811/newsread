@@ -17,7 +17,7 @@ export default function SharedPage() {
           borderColor: "var(--line-soft)",
         }}
       >
-        <h1 className="text-[20px] font-semibold leading-none tracking-tight">Shared with me</h1>
+        <h1 className="text-title font-semibold leading-none tracking-tight">Shared with me</h1>
       </header>
 
       {!isLoading && (!shares || shares.length === 0) && (

@@ -205,7 +205,7 @@ export default function ShareModal({
             >
               <CheckIcon size={22} />
             </span>
-            <p className="text-[16px] font-semibold tracking-tight">Shared.</p>
+            <p className="text-lead font-semibold tracking-tight">Shared.</p>
           </div>
         ) : (
           <>
@@ -213,7 +213,7 @@ export default function ShareModal({
               <div>
                 <p className="mono-label">Share with context</p>
                 <ModalTitle asChild>
-                  <h2 className="font-serif-nr mt-1.5 text-[19px] leading-snug">
+                  <h2 className="font-serif-nr mt-1.5 text-title leading-snug">
                     {article.title}
                   </h2>
                 </ModalTitle>
@@ -235,7 +235,7 @@ export default function ShareModal({
                     <Badge
                       key={r.id}
                       tone="accent-strong"
-                      className="gap-1.5 px-2.5 py-1 text-[12px]"
+                      className="gap-1.5 px-2.5 py-1 text-body-sm"
                     >
                       @{r.username}
                       <button
@@ -270,9 +270,9 @@ export default function ShareModal({
                       onClick={() => addRecipient(u)}
                     >
                       <Avatar name={u.name} />
-                      <span className="text-[13.5px]">{u.name}</span>
+                      <span className="text-body">{u.name}</span>
                       <span
-                        className="font-mono-nr text-[11.5px]"
+                        className="font-mono-nr text-label"
                         style={{ color: "var(--ink-faint)" }}
                       >
                         @{u.username}
@@ -339,7 +339,7 @@ export default function ShareModal({
 
             {appShareStatus && (
               <p
-                className="mt-2 text-right text-[12px]"
+                className="mt-2 text-right text-body-sm"
                 role="status"
                 style={{ color: "var(--ink-faint)" }}
               >
@@ -354,7 +354,7 @@ export default function ShareModal({
             )}
 
             <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <p className="font-mono-nr text-[11px]" style={{ color: "var(--ink-faint)" }}>
+              <p className="font-mono-nr text-label" style={{ color: "var(--ink-faint)" }}>
                 {nothingChosen
                   ? "Select a reader or channel"
                   : [

@@ -48,7 +48,7 @@ function UsageTip({
   const point = payload[0].payload;
   return (
     <div
-      className="rounded-md border px-3 py-2 text-[12px]"
+      className="rounded-md border px-3 py-2 text-body-sm"
       style={{
         background: "var(--bg-raised)",
         borderColor: "var(--line)",

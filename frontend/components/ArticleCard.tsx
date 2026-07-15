@@ -81,7 +81,7 @@ export default function ArticleCard({
 
       <div className="flex flex-1 flex-col px-5 pb-4 pt-4 sm:px-7 sm:pt-5">
         <p
-          className="font-mono-nr flex items-center gap-2 truncate text-[11px]"
+          className="font-mono-nr flex items-center gap-2 truncate text-label"
           style={{ color: "var(--ink-faint)" }}
         >
           <span className="dot-unread" style={{ opacity: article.is_read ? 0 : 1 }} />
@@ -92,7 +92,7 @@ export default function ArticleCard({
         </p>
 
         <h3
-          className="font-serif-nr mt-2 text-[19px] leading-snug sm:text-[21px]"
+          className="font-serif-nr mt-2 text-title leading-snug sm:text-title"
           style={{
             color: article.is_read ? "var(--ink-dim)" : "var(--ink)",
             fontWeight: article.is_read ? 400 : 500,
@@ -103,12 +103,12 @@ export default function ArticleCard({
 
         {summary && (
           <p
-            className="mt-2 line-clamp-3 text-[14px] leading-relaxed"
+            className="mt-2 line-clamp-3 text-body-lg leading-relaxed"
             style={{ color: "var(--ink-dim)" }}
           >
             {article.summary_short && (
               <span
-                className="font-mono-nr mr-1.5 text-[10px]"
+                className="font-mono-nr mr-1.5 text-caption"
                 style={{ color: "var(--accent)" }}
               >
                 ✦
@@ -126,7 +126,7 @@ export default function ArticleCard({
 
         <div className="mt-auto flex items-center gap-2 pt-3">
           <span
-            className="font-mono-nr min-w-0 truncate text-[11px]"
+            className="font-mono-nr min-w-0 truncate text-label"
             style={{ color: "var(--ink-faint)" }}
           >
             {article.author ?? article.feed_title}

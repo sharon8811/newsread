@@ -28,7 +28,7 @@ function Delta({ current, previous, vs }: { current: number; previous: number; v
   const pct = Math.round(((current - previous) / previous) * 100);
   const up = pct >= 0;
   return (
-    <p className="font-mono-nr mt-1.5 text-[11px]" style={{ color: "var(--ink-faint)" }}>
+    <p className="font-mono-nr mt-1.5 text-label" style={{ color: "var(--ink-faint)" }}>
       <span style={{ color: up ? "var(--accent)" : "var(--ink-dim)" }}>
         {up ? "▲" : "▼"} {Math.abs(pct)}%
       </span>{" "}
@@ -52,7 +52,7 @@ function StatTile({
       style={{ borderColor: "var(--line-soft)", background: "var(--bg-raised)" }}
     >
       <p className="mono-label">{label}</p>
-      <p className="mt-1.5 text-[26px] font-semibold leading-none tracking-tight">{value}</p>
+      <p className="mt-1.5 text-display-lg font-semibold leading-none tracking-tight">{value}</p>
       {children}
     </div>
   );
@@ -76,16 +76,16 @@ function TimeList({
         {rows.map((row) => (
           <li key={row.key}>
             <div className="flex items-baseline gap-3">
-              <div className="min-w-0 flex-1 truncate text-[13.5px]">{row.primary}</div>
+              <div className="min-w-0 flex-1 truncate text-body">{row.primary}</div>
               <span
-                className="font-mono-nr shrink-0 text-[11.5px]"
+                className="font-mono-nr shrink-0 text-label"
                 style={{ color: "var(--ink-dim)" }}
               >
                 {formatDuration(row.seconds)}
               </span>
             </div>
             {row.sub && (
-              <p className="font-mono-nr truncate text-[10.5px]" style={{ color: "var(--ink-faint)" }}>
+              <p className="font-mono-nr truncate text-caption" style={{ color: "var(--ink-faint)" }}>
                 {row.sub}
               </p>
             )}
@@ -121,7 +121,7 @@ export default function ActivityPage() {
         }}
       >
         <div className="flex items-center gap-3">
-          <h1 className="text-[20px] font-semibold leading-none tracking-tight">Activity</h1>
+          <h1 className="text-title font-semibold leading-none tracking-tight">Activity</h1>
           <div
             className="ml-auto flex rounded-md border p-0.5"
             style={{ borderColor: "var(--line)", background: "var(--bg-raised)" }}
@@ -129,7 +129,7 @@ export default function ActivityPage() {
             {RANGES.map((r) => (
               <button
                 key={r.value}
-                className="rounded px-3 py-1 text-[12.5px] font-medium transition-colors"
+                className="rounded px-3 py-1 text-body-sm font-medium transition-colors"
                 style={{
                   background: range === r.value ? "var(--bg-hover)" : "transparent",
                   color: range === r.value ? "var(--ink)" : "var(--ink-faint)",
@@ -174,10 +174,10 @@ export default function ActivityPage() {
 
           {data.total_seconds === 0 && data.prev_total_seconds === 0 ? (
             <div className="flex flex-col items-center px-8 py-20 text-center">
-              <p className="text-[17px] font-medium" style={{ color: "var(--ink-dim)" }}>
+              <p className="text-lead font-medium" style={{ color: "var(--ink-dim)" }}>
                 Nothing on the clock yet.
               </p>
-              <p className="mt-1.5 text-[13.5px]" style={{ color: "var(--ink-faint)" }}>
+              <p className="mt-1.5 text-body" style={{ color: "var(--ink-faint)" }}>
                 Open any article and your reading time will show up here.
               </p>
             </div>

@@ -73,6 +73,22 @@
   --line-soft: #212329;
 }
 
+/* The type scale: 9 semantic steps replacing two dozen hand-tuned px values.
+   The half-step ladder (10.5/11.5/…) matches the component classes below,
+   which reference the same tokens. Hero sizes (article title, wordmarks)
+   stay as intentional arbitrary values at their call sites. */
+@theme {
+  --text-caption: 10.5px; /* mono metadata, badges */
+  --text-label: 11.5px; /* secondary metadata, hints */
+  --text-body-sm: 12.5px; /* dense body copy, error lines */
+  --text-body: 13.5px; /* default UI copy, buttons */
+  --text-body-lg: 14.5px; /* emphasized copy, inputs, summaries */
+  --text-lead: 17px; /* list titles, section leads */
+  --text-title: 19px; /* modal and page titles */
+  --text-display: 22px; /* sidebar wordmark, large headings */
+  --text-display-lg: 26px; /* stat tiles, boot wordmark */
+}
+
 /* Expose the semantic tokens as Tailwind utilities (text-ink, bg-raised,
    border-line, …). `inline` makes utilities reference the var() directly so
    scoped overrides (.stories-scope, dark mode) keep working per-element. */
@@ -152,7 +168,7 @@ body {
 
 .mono-label {
   font-family: var(--mono);
-  font-size: 10.5px;
+  font-size: var(--text-caption);
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--ink-faint);
@@ -176,7 +192,7 @@ body {
   border: 1px solid var(--line);
   border-radius: 6px;
   padding: 9px 12px;
-  font-size: 14px;
+  font-size: var(--text-body-lg);
   color: var(--ink);
   outline: none;
   transition: border-color 0.15s, box-shadow 0.15s;
@@ -196,7 +212,7 @@ body {
   gap: 7px;
   border-radius: 6px;
   padding: 8px 14px;
-  font-size: 13.5px;
+  font-size: var(--text-body);
   font-weight: 500;
   border: 1px solid var(--line);
   background: var(--bg-raised);
@@ -276,7 +292,7 @@ body {
 
 .reader {
   font-family: var(--serif);
-  font-size: 17px;
+  font-size: var(--text-lead);
   line-height: 1.75;
   color: var(--ink);
   /* Feed HTML is untrusted layout: never let it force horizontal scroll. */
@@ -365,7 +381,7 @@ body {
 
 .summary-md {
   font-family: var(--sans);
-  font-size: 14.5px;
+  font-size: var(--text-body-lg);
   line-height: 1.7;
   color: var(--ink);
   overflow-wrap: break-word;
@@ -400,7 +416,7 @@ body {
   overflow-x: auto;
   border-collapse: collapse;
   margin: 0.4em 0 0.95em;
-  font-size: 13.5px;
+  font-size: var(--text-body);
   line-height: 1.5;
 }
 .summary-md th,
@@ -412,7 +428,7 @@ body {
 }
 .summary-md th {
   font-weight: 600;
-  font-size: 12.5px;
+  font-size: var(--text-body-sm);
   letter-spacing: 0.02em;
   color: var(--ink-dim);
   background: color-mix(in srgb, var(--accent) 7%, transparent);
@@ -433,7 +449,7 @@ body {
 .note-quote {
   font-family: var(--serif);
   font-style: italic;
-  font-size: 16px;
+  font-size: var(--text-lead);
   line-height: 1.6;
   color: var(--ink);
   border-left: 2px solid var(--accent);

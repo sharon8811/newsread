@@ -52,7 +52,7 @@ export default function RelatedArticles({ article }: { article: ArticleDetail })
       <div className="flex flex-wrap items-center gap-3">
         <div>
           <p className="mono-label">From your feeds</p>
-          <h2 className="font-serif-nr mt-1 text-[22px] font-medium">Related coverage</h2>
+          <h2 className="font-serif-nr mt-1 text-display font-medium">Related coverage</h2>
         </div>
         {status?.configured && !synthesis && !busy && (
           <button className="btn ml-auto" onClick={synthesize}>
@@ -72,14 +72,14 @@ export default function RelatedArticles({ article }: { article: ArticleDetail })
           >
             <div className="flex items-center gap-2">
               {!item.is_read && <span className="dot-unread shrink-0" />}
-              <p className="font-serif-nr min-w-0 flex-1 truncate text-[16px]">
+              <p className="font-serif-nr min-w-0 flex-1 truncate text-lead">
                 {item.title}
               </p>
               {item.tier === "same_story" && (
-                <Badge tone="accent-strong" className="text-[10px]">SAME STORY</Badge>
+                <Badge tone="accent-strong" className="text-caption">SAME STORY</Badge>
               )}
             </div>
-            <p className="font-mono-nr mt-1 text-[11px]" style={{ color: "var(--ink-faint)" }}>
+            <p className="font-mono-nr mt-1 text-label" style={{ color: "var(--ink-faint)" }}>
               {item.feed_title}
               {item.published_at ? ` · ${timeAgo(item.published_at)}` : ""}
             </p>
@@ -111,7 +111,7 @@ export default function RelatedArticles({ article }: { article: ArticleDetail })
               />
             ))}
           </div>
-          <p className="font-mono-nr mt-3 text-[11px]" style={{ color: "var(--ink-faint)" }}>
+          <p className="font-mono-nr mt-3 text-label" style={{ color: "var(--ink-faint)" }}>
             Reading the coverage…
           </p>
         </div>
@@ -156,12 +156,12 @@ export default function RelatedArticles({ article }: { article: ArticleDetail })
                 {synthesis.timeline.map((item, i) => (
                   <div key={i} className="flex items-baseline gap-2.5">
                     <span
-                      className="font-mono-nr shrink-0 text-[11px]"
+                      className="font-mono-nr shrink-0 text-label"
                       style={{ color: "var(--accent-bright)" }}
                     >
                       {item.when}
                     </span>
-                    <span className="text-[14px] leading-relaxed">{item.what}</span>
+                    <span className="text-body-lg leading-relaxed">{item.what}</span>
                   </div>
                 ))}
               </div>
@@ -189,7 +189,7 @@ export default function RelatedArticles({ article }: { article: ArticleDetail })
             </div>
           )}
 
-          <p className="font-mono-nr mt-3.5 text-[10.5px]" style={{ color: "var(--ink-faint)" }}>
+          <p className="font-mono-nr mt-3.5 text-caption" style={{ color: "var(--ink-faint)" }}>
             {synthesis.sources.map((source) => `[${source.n}] ${source.title}`).join("  ·  ")}
           </p>
         </div>

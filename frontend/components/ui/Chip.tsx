@@ -13,7 +13,7 @@ export default function Chip({ active = false, className, children, ...rest }: C
       type="button"
       aria-pressed={active}
       className={cn(
-        "flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[12px] transition-colors",
+        "flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-body-sm transition-colors",
         active
           ? "border-accent-border bg-accent-soft text-accent-bright"
           : "border-line text-ink-dim",

@@ -38,7 +38,7 @@ export default function ArticleAssistantDrawer({
         <div>
           <p className="mono-label">Reading assistant</p>
           <ModalTitle asChild>
-            <h2 className="font-serif-nr mt-1 text-[20px] font-medium">Ask this story</h2>
+            <h2 className="font-serif-nr mt-1 text-title font-medium">Ask this story</h2>
           </ModalTitle>
         </div>
         <ModalClose asChild>
@@ -60,14 +60,14 @@ export default function ArticleAssistantDrawer({
         >
           <Tabs.Trigger
             value="article"
-            className="rounded px-3 py-2 text-[12.5px] font-medium text-[var(--ink-dim)] data-[state=active]:bg-[var(--bg-raised)] data-[state=active]:text-[var(--ink)]"
+            className="rounded px-3 py-2 text-body-sm font-medium text-[var(--ink-dim)] data-[state=active]:bg-[var(--bg-raised)] data-[state=active]:text-[var(--ink)]"
           >
             Article
           </Tabs.Trigger>
           <Tabs.Trigger
             value="discussion"
             disabled={!canAskDiscussion}
-            className="rounded px-3 py-2 text-[12.5px] font-medium text-[var(--ink-dim)] data-[state=active]:bg-[var(--bg-raised)] data-[state=active]:text-[var(--ink)] disabled:opacity-40"
+            className="rounded px-3 py-2 text-body-sm font-medium text-[var(--ink-dim)] data-[state=active]:bg-[var(--bg-raised)] data-[state=active]:text-[var(--ink)] disabled:opacity-40"
           >
             HN discussion
           </Tabs.Trigger>

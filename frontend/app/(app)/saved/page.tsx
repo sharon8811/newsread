@@ -44,7 +44,7 @@ function Saved() {
         }}
       >
         <div className="flex items-center gap-3">
-          <h1 className="text-[20px] font-semibold leading-none tracking-tight">Saved</h1>
+          <h1 className="text-title font-semibold leading-none tracking-tight">Saved</h1>
           <div className="ml-auto">
             <ViewSwitcher view={view} feed={null} onSwitch={setLocalView} />
           </div>

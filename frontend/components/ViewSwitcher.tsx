@@ -99,7 +99,7 @@ export default function ViewSwitcher({
         ))}
       </div>
       {overridden && (
-        <span className="font-mono-nr text-[11px]" style={{ color: "var(--ink-faint)" }}>
+        <span className="font-mono-nr text-label" style={{ color: "var(--ink-faint)" }}>
           feed view ·{" "}
           <button
             className="underline decoration-dotted underline-offset-2"

@@ -33,7 +33,7 @@ export default function Field({
       </label>
       <input id={inputId} className={cn("input", inputClassName)} {...inputProps} />
       {hint && !error && (
-        <p className="mt-1 text-[11.5px] text-ink-faint">{hint}</p>
+        <p className="mt-1 text-label text-ink-faint">{hint}</p>
       )}
       <ErrorText className="mt-1">{error}</ErrorText>
     </div>

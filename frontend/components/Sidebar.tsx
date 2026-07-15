@@ -51,7 +51,7 @@ function NavLink({
   return (
     <Link
       href={href}
-      className="flex items-center gap-2.5 rounded-md px-3 py-[7px] text-[13.5px] transition-colors"
+      className="flex items-center gap-2.5 rounded-md px-3 py-[7px] text-body transition-colors"
       style={{
         background: active ? "var(--bg-hover)" : "transparent",
         color: active ? "var(--ink)" : "var(--ink-dim)",
@@ -63,7 +63,7 @@ function NavLink({
       <span className="flex-1">{label}</span>
       {badge !== undefined && badge > 0 && (
         <span
-          className="font-mono-nr rounded-full px-1.5 text-[10.5px] leading-[18px]"
+          className="font-mono-nr rounded-full px-1.5 text-caption leading-[18px]"
           style={
             badgeAccent
               ? { background: "var(--accent)", color: "var(--accent-ink)", fontWeight: 600 }
@@ -129,7 +129,7 @@ export default function Sidebar() {
       style={{ borderColor: "var(--line-soft)", background: "var(--bg-inset)" }}
     >
       <div className="px-5 pb-4 pt-6">
-        <Link href="/" className="wordmark text-[22px]">
+        <Link href="/" className="wordmark text-display">
           NewsRead<span className="dot">.</span>
         </Link>
       </div>
@@ -227,7 +227,7 @@ export default function Sidebar() {
       <div className="mt-2 flex-1 overflow-y-auto px-2.5 pb-3">
         {feeds?.length === 0 && !adding && (
           <p
-            className="px-3 pt-2 text-[12.5px] leading-relaxed"
+            className="px-3 pt-2 text-body-sm leading-relaxed"
             style={{ color: "var(--ink-faint)" }}
           >
             No feeds yet. Add one with the + above, or browse the{" "}
@@ -243,7 +243,7 @@ export default function Sidebar() {
             <div key={feed.id} className="group relative">
               <Link
                 href={`/?feed=${feed.id}`}
-                className="flex items-center gap-2.5 rounded-md px-3 py-[7px] text-[13px] transition-colors"
+                className="flex items-center gap-2.5 rounded-md px-3 py-[7px] text-body transition-colors"
                 style={{
                   background: active ? "var(--bg-hover)" : "transparent",
                   color: active ? "var(--ink)" : "var(--ink-dim)",
@@ -269,7 +269,7 @@ export default function Sidebar() {
                 ) : (
                   feed.unread_count > 0 && (
                     <span
-                      className="font-mono-nr text-[10.5px] group-hover:opacity-0"
+                      className="font-mono-nr text-caption group-hover:opacity-0"
                       style={{ color: "var(--ink-faint)" }}
                     >
                       {feed.unread_count}
@@ -308,8 +308,8 @@ export default function Sidebar() {
       >
         <Avatar name={user?.name} size="lg" />
         <div className="min-w-0 flex-1 leading-tight">
-          <p className="truncate text-[13px]">{user?.name}</p>
-          <p className="font-mono-nr truncate text-[11px]" style={{ color: "var(--ink-faint)" }}>
+          <p className="truncate text-body">{user?.name}</p>
+          <p className="font-mono-nr truncate text-label" style={{ color: "var(--ink-faint)" }}>
             @{user?.username}
           </p>
         </div>

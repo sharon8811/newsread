@@ -21,17 +21,17 @@ export function StoryRow({ item }: { item: CatalogPreviewItem }) {
   const body = (
     <>
       <span className="flex items-baseline justify-between gap-3">
-        <span className={`text-[13.5px] font-medium leading-snug${item.url ? " group-hover:underline" : ""}`}>
+        <span className={`text-body font-medium leading-snug${item.url ? " group-hover:underline" : ""}`}>
           {item.title}
         </span>
         {item.published_at && (
-          <span className="shrink-0 font-mono-nr text-[10.5px]" style={{ color: "var(--ink-faint)" }}>
+          <span className="shrink-0 font-mono-nr text-caption" style={{ color: "var(--ink-faint)" }}>
             {timeAgo(item.published_at)}
           </span>
         )}
       </span>
       {item.summary && (
-        <span className="mt-0.5 block line-clamp-2 text-[12px] leading-relaxed" style={{ color: "var(--ink-dim)" }}>
+        <span className="mt-0.5 block line-clamp-2 text-body-sm leading-relaxed" style={{ color: "var(--ink-dim)" }}>
           {item.summary}
         </span>
       )}
@@ -90,20 +90,20 @@ export default function CatalogFeedModal({
                 href={entry.site_url}
                 target="_blank"
                 rel="noreferrer"
-                className="mt-1 inline-flex max-w-full items-center gap-1 font-mono-nr text-[11.5px] hover:underline"
+                className="mt-1 inline-flex max-w-full items-center gap-1 font-mono-nr text-label hover:underline"
                 style={{ color: "var(--ink-faint)" }}
               >
                 <span className="truncate">{entry.source_host}</span>
                 <ExternalIcon size={11} />
               </a>
             ) : (
-              <p className="mt-1 truncate font-mono-nr text-[11.5px]" style={{ color: "var(--ink-faint)" }}>
+              <p className="mt-1 truncate font-mono-nr text-label" style={{ color: "var(--ink-faint)" }}>
                 {entry.source_host}
               </p>
             )}
           </ModalHeader>
           <div
-            className="mt-3 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px]"
+            className="mt-3 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-label"
             style={{ color: "var(--ink-faint)" }}
           >
             {updated && <span>{updated}</span>}
@@ -119,7 +119,7 @@ export default function CatalogFeedModal({
 
         <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
           {entry.description && (
-            <p className="mb-4 text-[13px] leading-relaxed" style={{ color: "var(--ink-dim)" }}>
+            <p className="mb-4 text-body leading-relaxed" style={{ color: "var(--ink-dim)" }}>
               {entry.description}
             </p>
           )}
@@ -132,7 +132,7 @@ export default function CatalogFeedModal({
             </div>
           )}
           {preview && preview.items.length === 0 && (
-            <p className="mt-2 text-[12.5px]" style={{ color: "var(--ink-faint)" }}>
+            <p className="mt-2 text-body-sm" style={{ color: "var(--ink-faint)" }}>
               This feed has no stories right now.
             </p>
           )}
@@ -151,7 +151,7 @@ export default function CatalogFeedModal({
           )}
           {previewError && cachedStories.length > 0 && (
             <>
-              <p className="mt-2 text-[11.5px]" style={{ color: "var(--ink-faint)" }}>
+              <p className="mt-2 text-label" style={{ color: "var(--ink-faint)" }}>
                 Live preview is unavailable; showing a recent snapshot.
               </p>
               <ul className="mt-1">
@@ -161,9 +161,9 @@ export default function CatalogFeedModal({
                     className="flex items-baseline justify-between gap-3 border-b py-2.5 last:border-b-0"
                     style={{ borderColor: "var(--line-soft)" }}
                   >
-                    <span className="text-[13px] leading-snug">{item.title}</span>
+                    <span className="text-body leading-snug">{item.title}</span>
                     {item.published_at && (
-                      <span className="shrink-0 font-mono-nr text-[10.5px]" style={{ color: "var(--ink-faint)" }}>
+                      <span className="shrink-0 font-mono-nr text-caption" style={{ color: "var(--ink-faint)" }}>
                         {timeAgo(item.published_at)}
                       </span>
                     )}
@@ -187,7 +187,7 @@ export default function CatalogFeedModal({
           )}
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
-              <p className="truncate font-mono-nr text-[10.5px]" style={{ color: "var(--ink-faint)" }}>
+              <p className="truncate font-mono-nr text-caption" style={{ color: "var(--ink-faint)" }}>
                 {entry.url}
               </p>
               {error && (
