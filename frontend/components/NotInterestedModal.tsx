@@ -15,15 +15,19 @@ import Button from "./ui/Button";
 import Chip from "./ui/Chip";
 import ErrorText from "./ui/ErrorText";
 
-/** Opens right after "Not interested": the article itself is hidden on mount
- * (one rule of kind 'article'), then each chip adds a broader rule — an
- * entity, an LLM-suggested topic, or a two-week mute of this story. Undo
- * deletes every rule created in this popover session. */
+/** Opens right after "Not interested": the article-hide rule was already
+ * POSTed by the click handler that opened the modal (`hide` is that in-flight
+ * request — mutations belong in event handlers, not mount effects), then each
+ * chip adds a broader rule — an entity, an LLM-suggested topic, or a two-week
+ * mute of this story. Undo deletes every rule created in this popover
+ * session. */
 export default function NotInterestedModal({
   article,
+  hide,
   onClose,
 }: {
   article: Article;
+  hide: Promise<DislikeRuleCreated>;
   onClose: () => void;
 }) {
   const [error, setError] = useState<string | null>(null);
@@ -35,19 +39,19 @@ export default function NotInterestedModal({
   const { data: options } = useDislikeOptions(article.id);
 
   useEffect(() => {
-    // Hide the article immediately — the chips are optional refinement.
-    api<DislikeRuleCreated>("/interests/dislikes", {
-      method: "POST",
-      body: { kind: "article", article_id: article.id },
-    })
+    let cancelled = false;
+    hide
       .then((created) => {
-        setCreatedIds((ids) => [...ids, created.rule.id]);
-        mutateArticleLists();
+        if (!cancelled) setCreatedIds((ids) => [...ids, created.rule.id]);
       })
-      .catch((err) =>
-        setError(err instanceof Error ? err.message : "Could not hide the article"),
-      );
-  }, [article.id]);
+      .catch((err) => {
+        if (!cancelled)
+          setError(err instanceof Error ? err.message : "Could not hide the article");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [hide]);
 
   async function addRule(chipKey: string, body: DislikeRuleCreate) {
     if (busyChip || applied[chipKey]) return;

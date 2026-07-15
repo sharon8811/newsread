@@ -1385,6 +1385,69 @@
         "title": "CatalogSubmissionOut",
         "type": "object"
       },
+      "ClientErrorIn": {
+        "properties": {
+          "context": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Context"
+          },
+          "digest": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Digest"
+          },
+          "message": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Message",
+            "type": "string"
+          },
+          "stack": {
+            "anyOf": [
+              {
+                "maxLength": 8000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stack"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "title": "ClientErrorIn",
+        "type": "object"
+      },
       "DeviceIn": {
         "properties": {
           "platform": {
@@ -5573,6 +5636,41 @@
         "summary": "Preview Entry",
         "tags": [
           "catalog"
+        ]
+      }
+    },
+    "/api/client-errors": {
+      "post": {
+        "description": "Log sink for browser-side errors \u2014 the web app's only production error\nchannel. Unauthenticated (errors happen before login too); the client\ndedupes and caps volume, and the schema bounds every field.",
+        "operationId": "report_client_error_api_client_errors_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClientErrorIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Report Client Error",
+        "tags": [
+          "client-errors"
         ]
       }
     },

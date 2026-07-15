@@ -12,14 +12,14 @@ import {
 } from "@/lib/readingSession";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
-  const { user, ready } = useAuth();
+  const { authed, ready } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
   const [navOpen, setNavOpen] = useState(false);
 
   useEffect(() => {
-    if (ready && !user) router.replace("/login");
-  }, [ready, user, router]);
+    if (ready && !authed) router.replace("/login");
+  }, [ready, authed, router]);
 
   // Close the drawer whenever navigation happens.
   useEffect(() => setNavOpen(false), [pathname]);
@@ -59,7 +59,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     };
   }, [pathname]);
 
-  if (!ready || !user) {
+  if (!ready || !authed) {
     return (
       <div className="flex min-h-dvh items-center justify-center">
         <span className="wordmark fade-up text-display-lg">

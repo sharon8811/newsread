@@ -9,8 +9,15 @@ import {
 } from "react";
 import { useRouter } from "next/navigation";
 import useSWR, { mutate } from "swr";
-import { api, fetcher, type Article } from "@/lib/api";
 import {
+  api,
+  fetcher,
+  type Article,
+  type DislikeRuleCreated,
+} from "@/lib/api";
+import { keys } from "@/lib/keys";
+import {
+  markArticleReadInReadingSessions,
   readingSessionKey,
   setReadingReturnAnchor,
 } from "@/lib/readingSession";
@@ -37,11 +44,30 @@ export function articlesKey(opts: {
 
 export function mutateArticleLists() {
   mutate((key) => typeof key === "string" && key.startsWith("/articles?"));
-  mutate("/feeds");
+  mutate(keys.feeds);
   // Reading windows manage their own pages outside SWR; poke them too.
   if (typeof window !== "undefined") {
     window.dispatchEvent(new Event(ARTICLES_REFRESH_EVENT));
   }
+}
+
+// Surgical alternative to mutateArticleLists for single-article field flips
+// (read/save state): patch every cached list and the detail view in place —
+// no re-downloads — and only revalidate /feeds for its server-computed unread
+// counts. Reading windows keep their own in-place state and snapshots.
+export function patchArticleCaches(articleId: number, patch: Partial<Article>) {
+  mutate(
+    (key) => typeof key === "string" && key.startsWith("/articles?"),
+    (articles?: Article[]) =>
+      articles?.map((a) => (a.id === articleId ? { ...a, ...patch } : a)),
+    { revalidate: false },
+  );
+  mutate(
+    keys.article(articleId),
+    (article?: Article) => (article ? { ...article, ...patch } : article),
+    { revalidate: false },
+  );
+  mutate(keys.feeds);
 }
 
 type ListProps = {
@@ -163,6 +189,24 @@ function useListKeyboard(opts: {
   }, [selected]);
 }
 
+// "Not interested" hides the article the moment it's clicked — the POST
+// belongs to the event, not to the modal's mount (a mount effect re-fires on
+// StrictMode double-render and any remount). The modal receives the in-flight
+// request for its Undo bookkeeping and error display.
+type PendingDismiss = { article: Article; hide: Promise<DislikeRuleCreated> };
+
+function startDismiss(article: Article): PendingDismiss {
+  const hide = api<DislikeRuleCreated>("/interests/dislikes", {
+    method: "POST",
+    body: { kind: "article", article_id: article.id },
+  });
+  hide.then(
+    () => mutateArticleLists(),
+    () => {}, // surfaced by the modal
+  );
+  return { article, hide };
+}
+
 function ItemModals({
   sharing,
   setSharing,
@@ -175,14 +219,18 @@ function ItemModals({
   setSharing: (a: Article | null) => void;
   pickingProject: Article | null;
   setPickingProject: (a: Article | null) => void;
-  dismissing: Article | null;
-  setDismissing: (a: Article | null) => void;
+  dismissing: PendingDismiss | null;
+  setDismissing: (d: PendingDismiss | null) => void;
 }) {
   return (
     <>
       {sharing && <ShareModal article={sharing} onClose={() => setSharing(null)} />}
       {dismissing && (
-        <NotInterestedModal article={dismissing} onClose={() => setDismissing(null)} />
+        <NotInterestedModal
+          article={dismissing.article}
+          hide={dismissing.hide}
+          onClose={() => setDismissing(null)}
+        />
       )}
       {pickingProject && (
         <ProjectPickerModal
@@ -195,6 +243,42 @@ function ItemModals({
 }
 
 const KEYS_HINT = "j / k to navigate · enter to open · s to save · m to toggle read";
+
+// Row wrapper for reading mode. Owning the ref callback here keeps its
+// identity stable per row (a fresh closure per parent render would make React
+// detach/re-attach every row's ref and churn the scroll-past observer), and
+// content-visibility skips rendering work for far-offscreen rows — the window
+// is unbounded in both directions. The intrinsic size is only the pre-render
+// estimate; the browser remembers real heights once painted.
+function ReadingListItem({
+  articleId,
+  variant,
+  onElement,
+  children,
+}: {
+  articleId: number;
+  variant: "cards" | "list";
+  onElement: (id: number, el: HTMLElement | null) => void;
+  children: React.ReactNode;
+}) {
+  const refCallback = useCallback(
+    (el: HTMLElement | null) => onElement(articleId, el),
+    [articleId, onElement],
+  );
+  return (
+    <div
+      ref={refCallback}
+      data-article-id={articleId}
+      className={
+        variant === "cards"
+          ? "[content-visibility:auto] [contain-intrinsic-size:auto_380px]"
+          : "[content-visibility:auto] [contain-intrinsic-size:auto_120px]"
+      }
+    >
+      {children}
+    </div>
+  );
+}
 
 // ——— reading mode: resume anchor + endless both ways + scroll-past reads ———
 
@@ -225,7 +309,8 @@ function ReadingList({
   const [selected, setSelected] = useState(0);
   const [sharing, setSharing] = useState<Article | null>(null);
   const [pickingProject, setPickingProject] = useState<Article | null>(null);
-  const [dismissing, setDismissing] = useState<Article | null>(null);
+  const [dismissing, setDismissing] = useState<PendingDismiss | null>(null);
+  const openDismiss = useCallback((a: Article) => setDismissing(startDismiss(a)), []);
 
   const listRef = useRef<HTMLDivElement | null>(null);
   const scrollerRef = useRef<HTMLElement | null>(null);
@@ -273,20 +358,17 @@ function ReadingList({
     };
   }, [markPassed]);
 
-  const itemRef = useCallback(
-    (id: number) => (el: HTMLElement | null) => {
-      const map = itemEls.current;
-      const existing = map.get(id);
-      if (existing && existing !== el) passObserver.current?.unobserve(existing);
-      if (el) {
-        map.set(id, el);
-        passObserver.current?.observe(el);
-      } else {
-        map.delete(id);
-      }
-    },
-    [],
-  );
+  const onItemElement = useCallback((id: number, el: HTMLElement | null) => {
+    const map = itemEls.current;
+    const existing = map.get(id);
+    if (existing && existing !== el) passObserver.current?.unobserve(existing);
+    if (el) {
+      map.set(id, el);
+      passObserver.current?.observe(el);
+    } else {
+      map.delete(id);
+    }
+  }, []);
 
   // Prepending history shifts content; keep the viewport pinned to what the
   // user was looking at. overflow-anchor is disabled on the list so the
@@ -430,13 +512,18 @@ function ReadingList({
       onToggleSaved: toggleSaved,
       onShare: setSharing,
       onAddToProject: setPickingProject,
-      onNotInterested: setDismissing,
+      onNotInterested: openDismiss,
       onOpen: openArticle,
     };
     return (
-      <div key={article.id} ref={itemRef(article.id)} data-article-id={article.id}>
+      <ReadingListItem
+        key={article.id}
+        articleId={article.id}
+        variant={variant}
+        onElement={onItemElement}
+      >
         {variant === "cards" ? <ArticleCard {...shared} /> : <ArticleRow {...shared} />}
-      </div>
+      </ReadingListItem>
     );
   });
 
@@ -543,7 +630,8 @@ function QueryList({
   const [selected, setSelected] = useState(0);
   const [sharing, setSharing] = useState<Article | null>(null);
   const [pickingProject, setPickingProject] = useState<Article | null>(null);
-  const [dismissing, setDismissing] = useState<Article | null>(null);
+  const [dismissing, setDismissing] = useState<PendingDismiss | null>(null);
+  const openDismiss = useCallback((a: Article) => setDismissing(startDismiss(a)), []);
 
   useEffect(() => {
     setSelected(0);
@@ -558,11 +646,13 @@ function QueryList({
   }, []);
 
   const toggleRead = useCallback(async (article: Article) => {
+    const next = !article.is_read;
     await api(`/articles/${article.id}/state`, {
       method: "POST",
-      body: { is_read: !article.is_read },
+      body: { is_read: next },
     });
-    mutateArticleLists();
+    if (next) markArticleReadInReadingSessions(article.id);
+    patchArticleCaches(article.id, { is_read: next });
   }, []);
 
   const openArticle = useCallback(
@@ -600,7 +690,7 @@ function QueryList({
                 onToggleSaved={toggleSaved}
                 onShare={setSharing}
                 onAddToProject={setPickingProject}
-                onNotInterested={setDismissing}
+                onNotInterested={openDismiss}
               />
             ))}
           </div>
@@ -614,7 +704,7 @@ function QueryList({
               onToggleSaved={toggleSaved}
               onShare={setSharing}
               onAddToProject={setPickingProject}
-              onNotInterested={setDismissing}
+              onNotInterested={openDismiss}
             />
           ))
         )}

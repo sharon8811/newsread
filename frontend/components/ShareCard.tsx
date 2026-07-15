@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { mutate } from "swr";
 import { api, type Share } from "@/lib/api";
+import { keys } from "@/lib/keys";
 import { domainOf, timeAgo } from "@/lib/format";
 import Avatar from "./ui/Avatar";
 
@@ -19,8 +20,8 @@ export default function ShareCard({
   async function open() {
     if (isNew) {
       await api(`/shares/${share.id}/seen`, { method: "POST" }).catch(() => {});
-      mutate("/shares/received");
-      mutate("/shares/unseen-count");
+      mutate(keys.sharesReceived);
+      mutate(keys.sharesUnseenCount);
     }
     router.push(`/article/${share.article.id}`);
   }

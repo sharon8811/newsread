@@ -5,14 +5,24 @@ export const API_URL =
 
 const TOKEN_KEY = "newsread_token";
 
+// localStorage can throw (Safari/Firefox private browsing, storage disabled);
+// degrade to logged-out instead of breaking every API call.
 export function getToken(): string | null {
   if (typeof window === "undefined") return null;
-  return localStorage.getItem(TOKEN_KEY);
+  try {
+    return localStorage.getItem(TOKEN_KEY);
+  } catch {
+    return null;
+  }
 }
 
 export function setToken(token: string | null) {
-  if (token === null) localStorage.removeItem(TOKEN_KEY);
-  else localStorage.setItem(TOKEN_KEY, token);
+  try {
+    if (token === null) localStorage.removeItem(TOKEN_KEY);
+    else localStorage.setItem(TOKEN_KEY, token);
+  } catch {
+    // Session just won't persist across reloads.
+  }
 }
 
 export class ApiError extends Error {

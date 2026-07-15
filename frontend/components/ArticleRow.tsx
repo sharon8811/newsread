@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { memo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { imageSrc, type Article } from "@/lib/api";
 import { domainOf, timeAgo } from "@/lib/format";
@@ -8,7 +8,10 @@ import EntityBadges from "./EntityBadges";
 import GeneratingIndicator from "./GeneratingIndicator";
 import { BookmarkIcon, ExternalIcon, EyeOffIcon, FolderIcon, ShareIcon } from "./icons";
 
-export default function ArticleRow({
+// Memoized: the reading list re-renders on every selection move and
+// scroll-past mark, and handler props are stable — only the touched row
+// should re-render.
+function ArticleRow({
   article,
   selected,
   index,
@@ -203,3 +206,5 @@ export default function ArticleRow({
     </div>
   );
 }
+
+export default memo(ArticleRow);

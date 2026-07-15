@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { mutate } from "swr";
 import { api, apiWithHeaders, sendReadBatch, type Article } from "./api";
+import { keys } from "./keys";
 import {
   getReadingSession,
   markArticleReadInReadingSessions,
@@ -116,7 +117,7 @@ export function useReadingWindow(opts: WindowOpts) {
       },
       { keepalive },
     )
-      .then(() => mutate("/feeds"))
+      .then(() => mutate(keys.feeds))
       .catch(() => {
         // Re-queue so the next flush retries; reads are idempotent upserts.
         ids.forEach((id) => pendingRef.current.add(id));
@@ -312,7 +313,7 @@ export function useReadingWindow(opts: WindowOpts) {
       method: "POST",
       body: { is_read: next },
     });
-    mutate("/feeds");
+    mutate(keys.feeds);
   }, []);
 
   const markOpened = useCallback((articleId: number) => {

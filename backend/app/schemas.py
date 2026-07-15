@@ -57,6 +57,17 @@ class TokenOut(BaseModel):
     user: UserOut
 
 
+# --- Client error telemetry (web) ---
+
+
+class ClientErrorIn(BaseModel):
+    message: str = Field(min_length=1, max_length=2000)
+    stack: str | None = Field(default=None, max_length=8000)
+    url: str | None = Field(default=None, max_length=1000)
+    digest: str | None = Field(default=None, max_length=200)
+    context: str | None = Field(default=None, max_length=200)
+
+
 # --- Devices (mobile push) ---
 
 

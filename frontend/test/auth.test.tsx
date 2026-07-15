@@ -32,23 +32,44 @@ describe("useAuth", () => {
     const { result } = renderHook(() => useAuth(), { wrapper });
     await waitFor(() => expect(result.current.ready).toBe(true));
     expect(result.current.user).toBeNull();
+    expect(result.current.authed).toBe(false);
   });
 
-  it("loads the current user when a token exists", async () => {
+  it("is authed from the stored token before /auth/me resolves, then loads the user", async () => {
     setToken("tok");
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(okResponse(USER)));
+    let resolveMe: (r: Response) => void = () => {};
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockReturnValue(new Promise<Response>((r) => (resolveMe = r))),
+    );
     const { result } = renderHook(() => useAuth(), { wrapper });
+    // Pages render (and fetch) in parallel with /auth/me — authed immediately.
     await waitFor(() => expect(result.current.ready).toBe(true));
-    expect(result.current.user?.username).toBe("alice");
+    expect(result.current.authed).toBe(true);
+    expect(result.current.user).toBeNull();
+    resolveMe(okResponse(USER));
+    await waitFor(() => expect(result.current.user?.username).toBe("alice"));
   });
 
-  it("clears the token when /auth/me fails", async () => {
+  it("clears the token when /auth/me rejects it", async () => {
     setToken("bad");
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(okResponse({ detail: "nope" }, 401)));
     const { result } = renderHook(() => useAuth(), { wrapper });
-    await waitFor(() => expect(result.current.ready).toBe(true));
+    await waitFor(() => expect(result.current.authed).toBe(false));
     expect(result.current.user).toBeNull();
     expect(getToken()).toBeNull();
+  });
+
+  it("keeps the session when /auth/me fails transiently", async () => {
+    setToken("tok");
+    const fetchMock = vi.fn().mockResolvedValue(okResponse({ detail: "flaky" }, 500));
+    vi.stubGlobal("fetch", fetchMock);
+    const { result } = renderHook(() => useAuth(), { wrapper });
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    await act(async () => {});
+    expect(result.current.authed).toBe(true);
+    expect(getToken()).toBe("tok");
+    expect(result.current.user).toBeNull();
   });
 
   it("logs in and stores token + user", async () => {

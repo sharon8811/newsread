@@ -80,6 +80,35 @@ describe("discussion adapters", () => {
     expect(snapshot.comments[2].deleted).toBe(true);
   });
 
+  it("preserves HN sibling order even when fetches resolve out of order", async () => {
+    // Fresh ids — earlier tests populate the module-level HN item cache.
+    const items: Record<number, object> = {
+      102: { id: 102, by: "a", text: "slow first sibling", kids: [105] },
+      103: { id: 103, by: "b", text: "fast second sibling" },
+      105: { id: 105, by: "c", text: "child of the slow one" },
+    };
+    vi.mocked(fetch).mockImplementation(async (input) => {
+      const id = Number(String(input).match(/(\d+)\.json$/)?.[1]);
+      // First sibling resolves last; the pool must not let completion order
+      // leak into display order.
+      if (id === 102) await new Promise((resolve) => setTimeout(resolve, 15));
+      return { ok: true, json: async () => items[id] } as Response;
+    });
+    const snapshot = await fetchHNThread({ id: 101, descendants: 3, kids: [102, 103] }, 10);
+    expect(snapshot.comments.map((comment) => comment.id)).toEqual([102, 105, 103]);
+  });
+
+  it("propagates an abort instead of returning a partial thread", async () => {
+    const controller = new AbortController();
+    vi.mocked(fetch).mockImplementation(async () => {
+      controller.abort();
+      throw new DOMException("aborted", "AbortError");
+    });
+    await expect(
+      fetchHNThread({ id: 201, descendants: 1, kids: [202] }, 5, controller.signal),
+    ).rejects.toThrow("aborted");
+  });
+
   it("converts HN markup to safe plain text", () => {
     expect(hnHtmlToText("hello<p><b>world</b> &amp; friends")).toContain("world & friends");
   });

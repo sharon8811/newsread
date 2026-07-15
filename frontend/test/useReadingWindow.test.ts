@@ -534,7 +534,7 @@ describe("useReadingWindow last edges", () => {
     const { result, rerender } = renderHook(
       ({ filter }: { filter: "all" | "unread" }) =>
         useReadingWindow({ filter, enabled: true }),
-      { initialProps: { filter: "all" as const } },
+      { initialProps: { filter: "all" as "all" | "unread" } },
     );
     rerender({ filter: "unread" }); // supersedes the in-flight "all" anchor
     await act(async () => {

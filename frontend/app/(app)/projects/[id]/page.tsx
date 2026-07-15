@@ -1,10 +1,16 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import { useParams, useRouter } from "next/navigation";
 import { mutate } from "swr";
 import ProjectPinCard, { groupPins } from "@/components/ProjectPinCard";
-import QAPanel from "@/components/QAPanel";
+
+// QAPanel drags react-markdown + remark-gfm (~47 KB gz) into the route chunk,
+// but only renders on the Ask tab — split it out of the default-tab payload.
+const QAPanel = dynamic(() => import("@/components/QAPanel"), {
+  loading: () => <Skeleton className="mt-6 h-24" />,
+});
 import { LockIcon, MuteIcon, PlusIcon, TrashIcon, XIcon } from "@/components/icons";
 import { api, streamProjectQA } from "@/lib/api";
 import { keys } from "@/lib/keys";

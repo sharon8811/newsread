@@ -134,7 +134,16 @@ export function hnHtmlToText(value: string | undefined): string {
     .trim();
 }
 
-type PendingComment = { id: number; parentId: number; depth: number };
+type PendingComment = {
+  id: number;
+  parentId: number;
+  depth: number;
+  // Index within the parent's kids list — HN display order among siblings,
+  // reapplied when the tree is rebuilt (fetch completion order is arbitrary).
+  rank: number;
+};
+
+const HN_FETCH_CONCURRENCY = 8;
 
 export async function fetchHNThread(
   story: HNItem,
@@ -142,60 +151,73 @@ export async function fetchHNThread(
   signal?: AbortSignal,
 ): Promise<DiscussionSnapshot> {
   const cap = Math.max(0, Math.min(limit, 300));
-  let frontier: PendingComment[] = (story.kids ?? []).map((id) => ({
+  const queue: PendingComment[] = (story.kids ?? []).map((id, rank) => ({
     id,
     parentId: story.id,
     depth: 0,
+    rank,
   }));
   const comments: DiscussionComment[] = [];
+  const rankOf = new Map<number, number>();
+  let abortError: unknown = null;
 
-  // Small batches bound browser concurrency while preserving HN display order
-  // within each level of the reply tree.
-  while (frontier.length > 0 && comments.length < cap) {
-    const batch = frontier.slice(0, Math.min(8, cap - comments.length));
-    frontier = frontier.slice(batch.length);
-    const items = await Promise.all(
-      batch.map(async (pending) => {
-        try {
-          return { pending, item: await fetchHNItem(pending.id, { signal }) };
-        } catch (error) {
-          if (signal?.aborted) throw error;
-          return { pending, item: null };
-        }
-      }),
-    );
-    const next: PendingComment[] = [];
-    for (const { pending, item } of items) {
-      if (!item) continue;
-      comments.push({
-        id: item.id,
-        parent_id: pending.parentId,
-        author: item.by ?? null,
-        text: hnHtmlToText(item.text),
-        created_at: item.time ? new Date(item.time * 1000).toISOString() : null,
-        depth: Math.min(pending.depth, 64),
-        position: comments.length,
-        deleted: Boolean(item.deleted),
-        dead: Boolean(item.dead),
-      });
-      next.push(
-        ...(item.kids ?? []).map((id) => ({
-          id,
-          parentId: item.id,
-          depth: Math.min(pending.depth + 1, 64),
-        })),
-      );
+  const fetchOne = async (pending: PendingComment) => {
+    let item: HNItem | null = null;
+    try {
+      item = await fetchHNItem(pending.id, { signal });
+    } catch (error) {
+      if (signal?.aborted) abortError = error;
+      return;
     }
-    frontier = [...frontier, ...next];
+    if (!item || comments.length >= cap) return;
+    rankOf.set(item.id, pending.rank);
+    comments.push({
+      id: item.id,
+      parent_id: pending.parentId,
+      author: item.by ?? null,
+      text: hnHtmlToText(item.text),
+      created_at: item.time ? new Date(item.time * 1000).toISOString() : null,
+      depth: Math.min(pending.depth, 64),
+      position: comments.length,
+      deleted: Boolean(item.deleted),
+      dead: Boolean(item.dead),
+    });
+    queue.push(
+      ...(item.kids ?? []).map((id, rank) => ({
+        id,
+        parentId: item.id,
+        depth: Math.min(pending.depth + 1, 64),
+        rank,
+      })),
+    );
+  };
+
+  // Rolling pool rather than synchronized batches: up to 8 fetches stay
+  // continuously in flight, so one slow item never stalls the other seven.
+  const inFlight = new Set<Promise<void>>();
+  while (
+    (queue.length > 0 || inFlight.size > 0) &&
+    comments.length < cap &&
+    !abortError
+  ) {
+    while (queue.length > 0 && inFlight.size < HN_FETCH_CONCURRENCY) {
+      const pending = queue.shift()!;
+      const task = fetchOne(pending).finally(() => inFlight.delete(task));
+      inFlight.add(task);
+    }
+    if (inFlight.size > 0) await Promise.race(inFlight);
   }
+  if (abortError) throw abortError;
 
   const childrenByParent = new Map<number, DiscussionComment[]>();
   for (const comment of comments) {
     if (comment.parent_id === null) continue;
-    childrenByParent.set(
-      comment.parent_id,
-      [...(childrenByParent.get(comment.parent_id) ?? []), comment],
-    );
+    let siblings = childrenByParent.get(comment.parent_id);
+    if (!siblings) childrenByParent.set(comment.parent_id, (siblings = []));
+    siblings.push(comment);
+  }
+  for (const siblings of childrenByParent.values()) {
+    siblings.sort((a, b) => (rankOf.get(a.id) ?? 0) - (rankOf.get(b.id) ?? 0));
   }
   const ordered: DiscussionComment[] = [];
   const visit = (parentId: number) => {

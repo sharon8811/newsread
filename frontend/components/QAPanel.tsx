@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { memo, useDeferredValue, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import useSWR, { mutate } from "swr";
@@ -74,6 +74,17 @@ function ToolChip({
   );
 }
 
+// GFM parsing is the expensive part of rendering an answer — memoized so a
+// streamed answer only re-parses when the deferred text actually advances,
+// and finished messages never re-parse at all.
+const MarkdownAnswer = memo(function MarkdownAnswer({ text }: { text: string }) {
+  return (
+    <div className="reader" style={{ fontSize: 15.5 }}>
+      <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
+    </div>
+  );
+});
+
 function ToolTrace({ calls }: { calls: (ToolEvent & { done: boolean })[] }) {
   if (calls.length === 0) return null;
   return (
@@ -117,6 +128,9 @@ export default function QAPanel({
   const [pending, setPending] = useState<string | null>(null);
   const [toolCalls, setToolCalls] = useState<LiveToolCall[]>([]);
   const [liveText, setLiveText] = useState("");
+  // Deltas arrive faster than GFM can re-parse the whole accumulated answer;
+  // rendering the deferred value keeps input and scrolling responsive.
+  const deferredLiveText = useDeferredValue(liveText);
   const [error, setError] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -124,7 +138,7 @@ export default function QAPanel({
     if ((messages && messages.length > 0) || pending) {
       bottomRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
     }
-  }, [messages, pending, toolCalls.length, liveText]);
+  }, [messages, pending, toolCalls.length, deferredLiveText]);
 
   if (!status?.configured) return null;
 
@@ -220,9 +234,7 @@ export default function QAPanel({
               <ToolTrace
                 calls={(m.tool_events ?? []).map((t) => ({ ...t, done: true }))}
               />
-              <div className="reader" style={{ fontSize: 15.5 }}>
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.content}</ReactMarkdown>
-              </div>
+              <MarkdownAnswer text={m.content} />
             </div>
           ),
         )}
@@ -238,10 +250,8 @@ export default function QAPanel({
             </div>
             <div className="max-w-[95%] border-l pl-4" style={{ borderColor: "var(--line)" }}>
               <ToolTrace calls={toolCalls} />
-              {liveText ? (
-                <div className="reader" style={{ fontSize: 15.5 }}>
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{liveText}</ReactMarkdown>
-                </div>
+              {deferredLiveText ? (
+                <MarkdownAnswer text={deferredLiveText} />
               ) : (
                 <TypingDots />
               )}

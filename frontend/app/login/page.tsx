@@ -9,7 +9,7 @@ import ErrorText from "@/components/ui/ErrorText";
 import Field from "@/components/ui/Field";
 
 export default function LoginPage() {
-  const { user, ready, login } = useAuth();
+  const { authed, ready, login } = useAuth();
   const router = useRouter();
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
@@ -17,8 +17,8 @@ export default function LoginPage() {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    if (ready && user) router.replace("/");
-  }, [ready, user, router]);
+    if (ready && authed) router.replace("/");
+  }, [ready, authed, router]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();

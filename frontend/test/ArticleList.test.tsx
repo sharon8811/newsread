@@ -1,7 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import ArticleList, { articlesKey, mutateArticleLists } from "@/components/ArticleList";
+import ArticleList, {
+  articlesKey,
+  mutateArticleLists,
+  patchArticleCaches,
+} from "@/components/ArticleList";
 import { makeArticle } from "./fixtures";
 import {
   clearReadingSessions,
@@ -68,6 +72,34 @@ describe("<ArticleList>", () => {
     expect(predicate("/feeds")).toBe(false);
     expect(predicate(123)).toBe(false);
     expect(mutateMock).toHaveBeenCalledWith("/feeds");
+  });
+
+  it("patchArticleCaches patches lists and the detail in place, revalidating only feeds", () => {
+    patchArticleCaches(7, { is_read: true });
+    expect(mutateMock).toHaveBeenCalledTimes(3);
+
+    const [predicate, listUpdater, listOpts] = mutateMock.mock.calls[0];
+    expect((predicate as (k: unknown) => boolean)("/articles?filter=all")).toBe(true);
+    expect((predicate as (k: unknown) => boolean)("/feeds")).toBe(false);
+    expect(
+      listUpdater([
+        { id: 7, is_read: false },
+        { id: 8, is_read: false },
+      ]),
+    ).toEqual([
+      { id: 7, is_read: true },
+      { id: 8, is_read: false },
+    ]);
+    expect(listUpdater(undefined)).toBeUndefined();
+    expect(listOpts).toEqual({ revalidate: false });
+
+    const [detailKey, detailUpdater, detailOpts] = mutateMock.mock.calls[1];
+    expect(detailKey).toBe("/articles/7");
+    expect(detailUpdater({ id: 7, is_read: false })).toEqual({ id: 7, is_read: true });
+    expect(detailUpdater(undefined)).toBeUndefined();
+    expect(detailOpts).toEqual({ revalidate: false });
+
+    expect(mutateMock.mock.calls[2]).toEqual(["/feeds"]);
   });
 
   it("renders loading skeletons while loading", () => {
@@ -222,10 +254,17 @@ describe("<ArticleList>", () => {
   });
 
   it("opens the not-interested modal and suspends keyboard nav while open", async () => {
+    const fetchMock = okFetch();
+    vi.stubGlobal("fetch", fetchMock);
     stub([makeArticle({ id: 1, title: "Dismissible" })]);
     render(<ArticleList filter="saved" emptyTitle="Empty" />);
     await userEvent.click(screen.getByTitle("Not interested"));
     expect(screen.getByTestId("not-interested-modal")).toBeInTheDocument();
+    // The hide rule POSTs from the click itself — exactly once, not per mount.
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toContain("/interests/dislikes");
+    expect(JSON.parse(String(init?.body))).toEqual({ kind: "article", article_id: 1 });
     fireEvent.keyDown(window, { key: "Enter" });
     expect(pushMock).not.toHaveBeenCalled();
     await userEvent.click(screen.getByTestId("not-interested-modal"));
@@ -527,7 +566,7 @@ describe("<ArticleList> reading mode interactions", () => {
 
     const sentinel = screen.getByText(/loading more/).parentElement!;
     const io = await ioFor(sentinel);
-    io.callback([{ isIntersecting: true, target: sentinel } as IntersectionObserverEntry]);
+    io.callback([{ isIntersecting: true, target: sentinel } as unknown as IntersectionObserverEntry]);
 
     await screen.findByText("Second");
     expect(fetchMock.mock.calls.some((c) => String(c[0]).includes("cursor=n1"))).toBe(true);
@@ -552,7 +591,7 @@ describe("<ArticleList> reading mode interactions", () => {
     await screen.findByText("Anchor");
     const sentinel = screen.getByText(/loading earlier/).parentElement!;
     const io = await ioFor(sentinel);
-    io.callback([{ isIntersecting: true, target: sentinel } as IntersectionObserverEntry]);
+    io.callback([{ isIntersecting: true, target: sentinel } as unknown as IntersectionObserverEntry]);
     await screen.findByText("History");
     expect(
       fetchMock.mock.calls.some((c) => String(c[0]).includes("direction=before")),
