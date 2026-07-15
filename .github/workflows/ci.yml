@@ -58,6 +58,14 @@ jobs:
           uv run ruff check .
           uv run ruff format --check .
 
+      - name: Check the exported OpenAPI schema is current
+        env:
+          PYTHONPATH: .
+        run: |
+          uv run --no-sync python scripts/export_openapi.py
+          git diff --exit-code -- openapi.json \
+            || { echo "::error::backend/openapi.json is stale — run scripts/export_openapi.py and commit"; exit 1; }
+
       - name: Run tests with coverage (fail under 90%)
         # -n auto: pytest-xdist, one worker per CPU; each worker gets its own
         # database (see tests/conftest.py), created on demand. Don't raise the
@@ -85,6 +93,12 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Check generated API types are current
+        run: |
+          npm run types:gen
+          git diff --exit-code -- lib/api-schema.gen.ts \
+            || { echo "::error::lib/api-schema.gen.ts is stale — run 'npm run types:gen' and commit"; exit 1; }
 
       - name: Run tests with coverage (thresholds enforced in vitest.config.ts)
         run: npm run test:cov

@@ -21,7 +21,7 @@ export default defineConfig({
       provider: "v8",
       reporter: ["text", "text-summary"],
       include: ["lib/**/*.{ts,tsx}", "components/**/*.{ts,tsx}", "app/**/*.{ts,tsx}"],
-      exclude: ["**/*.d.ts", "app/**/layout.tsx", "app/favicon.ico"],
+      exclude: ["**/*.d.ts", "**/*.gen.ts", "app/**/layout.tsx", "app/favicon.ico"],
       thresholds: {
         lines: 90,
         functions: 90,
