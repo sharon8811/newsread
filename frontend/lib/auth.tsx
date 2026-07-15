@@ -7,12 +7,13 @@ import {
   useEffect,
   useState,
 } from "react";
-import { api, setToken, getToken, type User } from "./api";
+import { api, ApiError, setToken, getToken, type User } from "./api";
 import { clearReadingSessions } from "./readingSession";
 
 type AuthState = {
   user: User | null;
   ready: boolean;
+  authed: boolean;
   login: (identifier: string, password: string) => Promise<void>;
   register: (data: {
     email: string;
@@ -28,19 +29,30 @@ const AuthContext = createContext<AuthState | null>(null);
 
 type TokenResponse = { access_token: string; user: User };
 
+type AuthStatus = "checking" | "authed" | "anon";
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [ready, setReady] = useState(false);
+  const [status, setStatus] = useState<AuthStatus>("checking");
 
   useEffect(() => {
     if (!getToken()) {
-      setReady(true);
+      setStatus("anon");
       return;
     }
+    // A stored token means authed for rendering purposes — pages mount and
+    // their data fetches start in parallel with /auth/me instead of behind it.
+    // Only a 401 demotes to anon; transient failures keep the session alive
+    // (user stays null and the global SWR 401 handler covers a revoked token).
+    setStatus("authed");
     api<User>("/auth/me")
       .then(setUser)
-      .catch(() => setToken(null))
-      .finally(() => setReady(true));
+      .catch((err) => {
+        if (err instanceof ApiError && err.status === 401) {
+          setToken(null);
+          setStatus("anon");
+        }
+      });
   }, []);
 
   const login = useCallback(async (identifier: string, password: string) => {
@@ -51,6 +63,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
     setToken(res.access_token);
     setUser(res.user);
+    setStatus("authed");
   }, []);
 
   const register = useCallback(
@@ -67,6 +80,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
       setToken(res.access_token);
       setUser(res.user);
+      setStatus("authed");
     },
     [],
   );
@@ -75,11 +89,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     clearReadingSessions();
     setToken(null);
     setUser(null);
+    setStatus("anon");
   }, []);
 
   return (
     <AuthContext.Provider
-      value={{ user, ready, login, register, logout, updateUser: setUser }}
+      value={{
+        user,
+        ready: status !== "checking",
+        authed: status === "authed",
+        login,
+        register,
+        logout,
+        updateUser: setUser,
+      }}
     >
       {children}
     </AuthContext.Provider>

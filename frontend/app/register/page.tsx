@@ -9,15 +9,15 @@ import ErrorText from "@/components/ui/ErrorText";
 import Field from "@/components/ui/Field";
 
 export default function RegisterPage() {
-  const { user, ready, register } = useAuth();
+  const { authed, ready, register } = useAuth();
   const router = useRouter();
   const [form, setForm] = useState({ name: "", username: "", email: "", password: "" });
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    if (ready && user) router.replace("/");
-  }, [ready, user, router]);
+    if (ready && authed) router.replace("/");
+  }, [ready, authed, router]);
 
   function set<K extends keyof typeof form>(key: K, value: string) {
     setForm((f) => ({ ...f, [key]: value }));

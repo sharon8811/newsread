@@ -336,7 +336,7 @@ function SettingsContent() {
               <ConnectionCard
                 key={integration.platform}
                 integration={integration}
-                onChanged={() => mutate("/integrations")}
+                onChanged={() => mutate(keys.integrations)}
               />
             ))}
           </div>

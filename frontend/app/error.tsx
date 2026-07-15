@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { reportClientError } from "@/lib/reportError";
 
 // Route-segment error boundary. This Next version passes unstable_retry
 // (re-fetches and re-renders the segment); reset is the legacy prop.
@@ -15,6 +16,8 @@ export default function ErrorPage({
 }) {
   useEffect(() => {
     console.error(error);
+    // Boundary-caught errors never reach the window listeners; report here.
+    reportClientError(error, "error-boundary", error.digest);
   }, [error]);
 
   const retry = unstable_retry ?? reset;

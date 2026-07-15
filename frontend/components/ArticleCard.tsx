@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import { useRouter } from "next/navigation";
 import { imageSrc, type Article } from "@/lib/api";
 import { domainOf, timeAgo } from "@/lib/format";
@@ -7,7 +8,10 @@ import EntityBadges from "./EntityBadges";
 import GeneratingIndicator from "./GeneratingIndicator";
 import { BookmarkIcon, ExternalIcon, EyeOffIcon, FolderIcon, ShareIcon } from "./icons";
 
-export default function ArticleCard({
+// Memoized: the reading list re-renders on every selection move and
+// scroll-past mark, and handler props are stable — only the touched card
+// should re-render.
+function ArticleCard({
   article,
   selected,
   index,
@@ -188,3 +192,5 @@ export default function ArticleCard({
     </article>
   );
 }
+
+export default memo(ArticleCard);

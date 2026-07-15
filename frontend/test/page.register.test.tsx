@@ -7,7 +7,7 @@ import { makeUser } from "./fixtures";
 const { pushMock, replaceMock, authState } = vi.hoisted(() => ({
   pushMock: vi.fn(),
   replaceMock: vi.fn(),
-  authState: { user: null as unknown, ready: true, register: vi.fn() },
+  authState: { user: null as unknown, ready: true, authed: false, register: vi.fn() },
 }));
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: pushMock, replace: replaceMock }),
@@ -25,6 +25,7 @@ describe("RegisterPage", () => {
     replaceMock.mockClear();
     authState.user = null;
     authState.ready = true;
+    authState.authed = false;
     authState.register = vi.fn().mockResolvedValue(undefined);
   });
 
@@ -88,6 +89,7 @@ describe("RegisterPage", () => {
 
   it("redirects when already authenticated", async () => {
     authState.user = makeUser();
+    authState.authed = true;
     render(<RegisterPage />);
     await waitFor(() => expect(replaceMock).toHaveBeenCalledWith("/"));
   });

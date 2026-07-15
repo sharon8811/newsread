@@ -11,6 +11,7 @@ import {
   type SmartFeedResolve,
 } from "@/lib/api";
 import { fetchPreview, previewErrorMessage, type LoadedPreview } from "@/lib/feedPreview";
+import { keys } from "@/lib/keys";
 import { useDebouncedValue } from "@/lib/useDebouncedValue";
 import SubscribeQuickSettings, {
   DEFAULT_SUBSCRIBE_SETTINGS,
@@ -74,7 +75,7 @@ export default function SmartFeedModal({
         body: { url: resolved.url, ...toSubscribeOptions(settings) },
       });
       setSubscribed({ url: resolved.url, feed: created });
-      mutate("/feeds");
+      mutate(keys.feeds);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Something went wrong";
       setLastError({ url: resolved.url, message: `Could not subscribe to ${resolved.title}: ${message}` });

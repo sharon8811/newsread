@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono, Source_Serif_4 } from "next/font/google";
 import { AuthProvider } from "@/lib/auth";
 import { SWRProvider } from "@/lib/swr";
+import ErrorReporting from "@/components/ErrorReporting";
 import Toaster from "@/components/ui/Toaster";
 import "./globals.css";
 
@@ -39,6 +40,7 @@ export default function RootLayout({
         <AuthProvider>
           <SWRProvider>{children}</SWRProvider>
         </AuthProvider>
+        <ErrorReporting />
         <Toaster />
       </body>
     </html>

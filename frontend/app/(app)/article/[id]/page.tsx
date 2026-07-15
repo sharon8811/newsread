@@ -1,13 +1,18 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import { useParams, useRouter } from "next/navigation";
 import { mutate } from "swr";
 import AiSummary from "@/components/AiSummary";
-import ArticleAssistantDrawer, {
-  type AssistantScope,
-} from "@/components/ArticleAssistantDrawer";
-import { mutateArticleLists } from "@/components/ArticleList";
+import type { AssistantScope } from "@/components/ArticleAssistantDrawer";
+
+// Only renders once the user opens the assistant — keep the drawer (Radix
+// tabs + QAPanel) out of the route's initial chunk.
+const ArticleAssistantDrawer = dynamic(
+  () => import("@/components/ArticleAssistantDrawer"),
+);
+import { mutateArticleLists, patchArticleCaches } from "@/components/ArticleList";
 import EntityCard from "@/components/EntityCard";
 import GeneratingIndicator from "@/components/GeneratingIndicator";
 import {
@@ -86,12 +91,13 @@ export default function ArticlePage() {
         method: "POST",
         body: { is_read: true },
       }).then(() => {
+        // One boolean flipped: patch caches in place instead of re-downloading
+        // the detail (just fetched) and every cached list.
         markArticleReadInReadingSessions(article.id);
-        mutate(key);
-        mutateArticleLists();
+        patchArticleCaches(article.id, { is_read: true });
       });
     }
-  }, [article, key]);
+  }, [article]);
 
   // When a background-generated illustration lands (image_url goes from
   // absent to present for this article), propagate it to the card/row lists
@@ -106,11 +112,14 @@ export default function ArticlePage() {
 
   async function toggleSaved() {
     if (!article) return;
+    const next = !article.is_saved;
     await api(`/articles/${article.id}/state`, {
       method: "POST",
-      body: { is_saved: !article.is_saved },
+      body: { is_saved: next },
     });
-    mutate(key);
+    // Saved-shelf membership changes, so lists still revalidate; only the
+    // open detail view is patched in place.
+    mutate(key, { ...article, is_saved: next }, { revalidate: false });
     mutateArticleLists();
   }
 
@@ -176,6 +185,8 @@ export default function ArticlePage() {
             <img
               src={imageSrc(article.image_url)}
               alt=""
+              // Likely the LCP element — hint the browser to fetch it first.
+              fetchPriority="high"
               className="fade-in h-full w-full object-cover"
               onError={(e) => {
                 e.currentTarget.style.display = "none";

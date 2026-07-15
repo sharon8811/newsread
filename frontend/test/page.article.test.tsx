@@ -4,20 +4,25 @@ import userEvent from "@testing-library/user-event";
 import ArticlePage from "@/app/(app)/article/[id]/page";
 import { makeArticleDetail } from "./fixtures";
 
-const { swrMock, mutateMock, routerMock, mutateListsMock, paramsState } = vi.hoisted(() => ({
-  swrMock: vi.fn(),
-  mutateMock: vi.fn(),
-  routerMock: { push: vi.fn(), back: vi.fn() },
-  mutateListsMock: vi.fn(),
-  paramsState: { id: "1" },
-}));
+const { swrMock, mutateMock, routerMock, mutateListsMock, patchCachesMock, paramsState } =
+  vi.hoisted(() => ({
+    swrMock: vi.fn(),
+    mutateMock: vi.fn(),
+    routerMock: { push: vi.fn(), back: vi.fn() },
+    mutateListsMock: vi.fn(),
+    patchCachesMock: vi.fn(),
+    paramsState: { id: "1" },
+  }));
 
 vi.mock("swr", () => ({ default: swrMock, mutate: mutateMock }));
 vi.mock("next/navigation", () => ({
   useParams: () => ({ id: paramsState.id }),
   useRouter: () => routerMock,
 }));
-vi.mock("@/components/ArticleList", () => ({ mutateArticleLists: mutateListsMock }));
+vi.mock("@/components/ArticleList", () => ({
+  mutateArticleLists: mutateListsMock,
+  patchArticleCaches: patchCachesMock,
+}));
 vi.mock("@/components/AiSummary", () => ({ default: () => <div data-testid="ai-summary" /> }));
 vi.mock("@/components/EntityCard", () => ({ default: () => <div data-testid="entity-card" /> }));
 vi.mock("@/components/QAPanel", () => ({ default: () => <div data-testid="qa-panel" /> }));
@@ -67,6 +72,7 @@ describe("ArticlePage", () => {
     routerMock.push.mockClear();
     routerMock.back.mockClear();
     mutateListsMock.mockClear();
+    patchCachesMock.mockClear();
     paramsState.id = "1";
     vi.stubGlobal("fetch", okFetch());
   });
@@ -113,7 +119,11 @@ describe("ArticlePage", () => {
     expect(screen.getByText("A Great Article")).toBeInTheDocument();
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     expect(fetchMock.mock.calls[0][0]).toContain("/articles/1/state");
-    await waitFor(() => expect(mutateListsMock).toHaveBeenCalled());
+    // One boolean flip: caches patch in place instead of a list-wide refetch.
+    await waitFor(() =>
+      expect(patchCachesMock).toHaveBeenCalledWith(1, { is_read: true }),
+    );
+    expect(mutateListsMock).not.toHaveBeenCalled();
   });
 
   it("renders the related-articles section stub", () => {

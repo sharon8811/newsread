@@ -18,7 +18,7 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ replace: replaceMock }),
 }));
 vi.mock("@/lib/auth", () => ({
-  useAuth: () => ({ user: { id: 1, username: "reader" }, ready: true }),
+  useAuth: () => ({ user: { id: 1, username: "reader" }, ready: true, authed: true }),
 }));
 vi.mock("@/components/Sidebar", () => ({ default: () => <aside>Sidebar</aside> }));
 

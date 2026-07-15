@@ -14,6 +14,7 @@ from .routers import (
     articles,
     auth,
     catalog,
+    client_errors,
     devices,
     entities,
     feeds,
@@ -67,6 +68,7 @@ app.include_router(integrations.router, prefix="/api")
 app.include_router(activity.router, prefix="/api")
 app.include_router(usage.router, prefix="/api")
 app.include_router(interests.router, prefix="/api")
+app.include_router(client_errors.router, prefix="/api")
 
 
 @app.get("/api/health")

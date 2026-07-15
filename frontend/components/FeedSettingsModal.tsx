@@ -10,6 +10,7 @@ import {
   type SortOrder,
   type ViewMode,
 } from "@/lib/api";
+import { keys } from "@/lib/keys";
 import { TrashIcon } from "./icons";
 import Modal, { ModalHeader } from "./Modal";
 import Button from "./ui/Button";
@@ -122,7 +123,7 @@ export default function FeedSettingsModal({
     setError(null);
     try {
       await api(`/feeds/${feed.id}`, { method: "DELETE" });
-      mutate("/feeds");
+      mutate(keys.feeds);
       onUnsubscribed?.();
       onClose();
     } catch (err) {
