@@ -11,6 +11,8 @@ import re
 import time
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from urllib.parse import urlparse
 
 from openai import AsyncOpenAI
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -281,13 +283,9 @@ Output EXACTLY this structure:
 ONELINER: one sentence of at most 20 words with the gist (plain text, no markdown)
 PARAGRAPH: two to four sentences with the essential information (plain text, no markdown)
 FULL:
-One or two sentences with the core takeaway.
+One or two short paragraphs, at most 120 words total. Give the reader the key facts and why they matter — enough to decide whether the article is worth opening. This is a preview, not a replacement: never try to cover everything, and leave the depth, quotes and finer details to the original article. GitHub-flavored markdown is available — including a table when one genuinely fits the material — but no headings, no code blocks, no links.
 
-Three to five key points as a markdown bullet list ("- " items). Bold the key term or figure of each point with **double asterisks**.
-
-The FULL section is GitHub-flavored markdown. When the article compares several things (laws, products, versions, numbers), put that comparison in a small markdown table instead of bullets. Only lists, bold, and tables — no headings, no code blocks, no links.
-
-Be concrete and specific. Never pad, never editorialize, never mention that you are summarizing."""
+Be concrete and specific. State the content directly instead of narrating the article — no "the author notes", "the article discusses"; name the specific person, company or site when attribution matters. Never pad, never editorialize, never mention that you are summarizing."""
 
 _ONELINER_RE = re.compile(r"ONELINER:\s*(.+)")
 _PARAGRAPH_RE = re.compile(r"PARAGRAPH:\s*(.+?)(?=\n\s*FULL:|\Z)", re.DOTALL)
@@ -307,18 +305,42 @@ def _parse_levels(raw: str) -> tuple[str, str, str]:
     return short, medium, full
 
 
+def _article_context(
+    title: str,
+    *,
+    url: str | None = None,
+    author: str | None = None,
+    published_at: datetime | None = None,
+) -> str:
+    """Metadata header for summary prompts. The source site comes from the
+    URL's domain; dates let the model resolve relative time ("Tuesday")."""
+    lines = [f"Article title: {title}"]
+    if url:
+        lines.append(f"Source: {urlparse(url).netloc or url}")
+    if author:
+        lines.append(f"Author: {author}")
+    if published_at:
+        lines.append(f"Published: {published_at:%Y-%m-%d}")
+    lines.append(f"Today's date: {datetime.now(UTC):%Y-%m-%d}")
+    return "\n".join(lines)
+
+
 async def summarize(
     title: str,
     text: str,
     *,
+    url: str | None = None,
+    author: str | None = None,
+    published_at: datetime | None = None,
     config: LLMConfig | None = None,
     usage: TokenUsage | None = None,
 ) -> tuple[str, str, str]:
     """Return (one-liner, paragraph, full) summaries from a single completion."""
+    context = _article_context(title, url=url, author=author, published_at=published_at)
     raw = await _complete(
         [
             {"role": "system", "content": SUMMARY_SYSTEM},
-            {"role": "user", "content": f"Article title: {title}\n\nArticle text:\n{text}"},
+            {"role": "user", "content": f"{context}\n\nArticle text:\n{text}"},
         ],
         max_tokens=1500,
         config=config,
@@ -338,19 +360,23 @@ async def summarize_screenshot(
     title: str,
     image_jpeg: bytes,
     *,
+    url: str | None = None,
+    author: str | None = None,
+    published_at: datetime | None = None,
     config: LLMConfig | None = None,
     usage: TokenUsage | None = None,
 ) -> tuple[str, str, str]:
     """Same three-level summary, grounded on a screenshot of the rendered page
     instead of prose. Only called for vision-capable configs."""
     image_b64 = base64.b64encode(image_jpeg).decode()
+    context = _article_context(title, url=url, author=author, published_at=published_at)
     raw = await _complete(
         [
             {"role": "system", "content": SUMMARY_SYSTEM},
             {
                 "role": "user",
                 "content": [
-                    {"type": "text", "text": f"Article title: {title}\n\n{_SCREENSHOT_NOTE}"},
+                    {"type": "text", "text": f"{context}\n\n{_SCREENSHOT_NOTE}"},
                     {
                         "type": "image_url",
                         "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"},

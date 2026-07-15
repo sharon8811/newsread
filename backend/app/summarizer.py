@@ -42,7 +42,13 @@ async def generate_summaries(
         )
     else:
         short, medium, full = await llm.summarize(
-            article.title, clip_for_llm(text), config=config, usage=usage
+            article.title,
+            clip_for_llm(text),
+            url=article.url,
+            author=article.author,
+            published_at=article.published_at,
+            config=config,
+            usage=usage,
         )
     if not full:
         raise RuntimeError("LLM returned an empty summary")
@@ -71,4 +77,12 @@ async def _summarize_from_screenshot(
     if shot is None:
         raise ThinContentError()
     logger.info("Summarizing article %s from a page screenshot", article.id)
-    return await llm.summarize_screenshot(article.title, shot, config=config, usage=usage)
+    return await llm.summarize_screenshot(
+        article.title,
+        shot,
+        url=article.url,
+        author=article.author,
+        published_at=article.published_at,
+        config=config,
+        usage=usage,
+    )

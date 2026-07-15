@@ -274,15 +274,17 @@ def test_entities_block_no_facts():
 
 def test_instructions_with_published():
     text = qa_agent._instructions(
-        "Title", "https://u", "body", datetime(2024, 1, 1, tzinfo=UTC), []
+        "Title", "https://u", "body", "Jane Doe", datetime(2024, 1, 1, tzinfo=UTC), []
     )
     assert "Article published: 2024-01-01" in text
+    assert "Article author: Jane Doe" in text
     assert "Title" in text
 
 
 def test_instructions_without_published():
-    text = qa_agent._instructions("Title", "https://u", "body", None, [])
+    text = qa_agent._instructions("Title", "https://u", "body", None, None, [])
     assert "Article published" not in text
+    assert "Article author" not in text
 
 
 def test_discussion_instructions_include_coverage_links_and_safety():

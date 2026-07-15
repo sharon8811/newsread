@@ -75,11 +75,13 @@ Today's date: {today}.
 
 Ground your answers in the article text. If web tools are available, use web_search only when the question needs information the article does not contain — product or model details, follow-up developments, background on people, companies or technologies. Use web_extract when a specific page (a search result, a link from the article) likely holds the answer but you only have a snippet. When you use information from the web, cite the source inline as a markdown link. If neither the article nor the web yields the answer, say so plainly.
 
-Be concise. Answer in markdown.
+Only answer questions related to this article and its subject. If asked about something unrelated, say you can only help with questions about the article.
+
+Open with the direct answer, then stop — no preamble, no closing recap, no background the user did not ask for. Default to a few sentences; go beyond one short paragraph only when the user explicitly asks for depth. Write plain conversational prose: no bullet points, numbered lists, headings or bolded sentences unless the user asks for a list or comparison. The phrases "the author", "the article" and "the user" are banned — name the person (the author's name is in the metadata below when known), the company, or the site instead, or just state the fact directly. Answer in markdown.
 
 Article title: {title}
 Article URL: {url}
-{published}
+{author}{published}
 Article text:
 {text}{entities}"""
 
@@ -90,7 +92,9 @@ Today's date: {today}.
 
 Ground your answers in the collected articles below — titles, summaries, each article's ticket status ("done" means the project considers it handled; no status means still open), and the members' discussion threads. When you draw on an article, cite it inline as a markdown link to its URL. If web tools are available, use web_extract to read an article's full text when its summary is not enough, and web_search only for information none of the articles contain. If neither yields the answer, say so plainly.
 
-Be concise. Answer in markdown.
+Only answer questions related to this project and its collected articles. If asked about something unrelated, say you can only help with questions about the project.
+
+Open with the direct answer, then stop — no preamble, no closing recap, no background the user did not ask for. Default to a few sentences; go beyond one short paragraph only when the user explicitly asks for depth. Write plain conversational prose: no bullet points, numbered lists, headings or bolded sentences unless the user asks for a list or comparison. The phrases "the author", "the article" and "the user" are banned — name the person (the author's name is in the metadata below when known), the company, or the site instead, or just state the fact directly. Answer in markdown.
 {description}
 Collected articles (newest first):
 
@@ -107,7 +111,11 @@ Answer from the article and discussion. For summaries, explain the overall react
 
 When drafting a comment or reply, produce an editable draft in the user's requested tone. Do not claim it was posted. Avoid repeating points already made and do not invent facts or personal experiences for the user.
 
-If web tools are available, use them only when the user's question needs outside information. Cite outside sources inline. Be concise and answer in markdown.
+If web tools are available, use them only when the user's question needs outside information. Cite outside sources inline.
+
+Only answer questions related to this article and its discussion. If asked about something unrelated, say you can only help with the article and its discussion.
+
+Open with the direct answer, then stop — no preamble, no closing recap, no background the user did not ask for. Default to a few sentences; go beyond one short paragraph only when the user explicitly asks for depth. Write plain conversational prose: no bullet points, numbered lists, headings or bolded sentences unless the user asks for a list or comparison. The phrases "the author", "the article" and "the user" are banned — name the person or Hacker News username instead, or just state the fact directly. A requested discussion summary may run longer, but stay tight. Answer in markdown.
 
 Article title: {title}
 Article URL: {url}
@@ -255,6 +263,7 @@ def _instructions(
     title: str,
     url: str,
     text: str,
+    author: str | None,
     published_at: datetime | None,
     entities: list[dict],
 ) -> str:
@@ -263,6 +272,7 @@ def _instructions(
         today=datetime.now(UTC).date().isoformat(),
         title=title,
         url=url,
+        author=f"Article author: {author}\n" if author else "",
         published=published,
         text=text,
         entities=_entities_block(entities),
@@ -322,6 +332,7 @@ async def stream_answer(
     title: str,
     url: str,
     text: str,
+    author: str | None = None,
     published_at: datetime | None,
     entities: list[dict],
     history: list[tuple[str, str]],
@@ -335,7 +346,7 @@ async def stream_answer(
     "usage"}.
     """
     async for event in _stream_agent(
-        _instructions(title, url, text, published_at, entities), history, question, config
+        _instructions(title, url, text, author, published_at, entities), history, question, config
     ):
         yield event
 
