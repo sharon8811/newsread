@@ -73,6 +73,32 @@
   --line-soft: #212329;
 }
 
+/* Expose the semantic tokens as Tailwind utilities (text-ink, bg-raised,
+   border-line, …). `inline` makes utilities reference the var() directly so
+   scoped overrides (.stories-scope, dark mode) keep working per-element. */
+@theme inline {
+  --color-page: var(--bg);
+  --color-raised: var(--bg-raised);
+  --color-hover: var(--bg-hover);
+  --color-inset: var(--bg-inset);
+  --color-header: var(--bg-header);
+  --color-scrim: var(--bg-scrim);
+  --color-ink: var(--ink);
+  --color-ink-dim: var(--ink-dim);
+  --color-ink-faint: var(--ink-faint);
+  --color-accent: var(--accent);
+  --color-accent-bright: var(--accent-bright);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-border: var(--accent-border);
+  --color-danger: var(--danger);
+  --color-line: var(--line);
+  --color-line-soft: var(--line-soft);
+  --shadow-modal: var(--shadow-modal);
+}
+
+@layer base {
+
 * {
   box-sizing: border-box;
 }
@@ -108,6 +134,12 @@ body {
   background: var(--line);
   border-radius: 4px;
 }
+
+} /* @layer base */
+
+/* Component classes live in the components layer so Tailwind utilities on the
+   same element always win (utilities layer comes after components). */
+@layer components {
 
 /* ——— type helpers ——— */
 
@@ -491,6 +523,9 @@ body {
   animation: blinkDot 1.2s ease-in-out infinite;
 }
 
+} /* @layer components */
+
+/* Unlayered on purpose: must override any animation, including from utilities. */
 @media (prefers-reduced-motion: reduce) {
   .fade-up,
   .fade-in,
