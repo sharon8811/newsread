@@ -1,4 +1,4 @@
-export function timeAgo(iso: string | null): string {
+export function timeAgo(iso: string | null | undefined): string {
   if (!iso) return "";
   const seconds = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
   if (seconds < 60) return "just now";
@@ -13,7 +13,7 @@ export function timeAgo(iso: string | null): string {
 }
 
 /** Coarse catalog freshness: "Updated today" … "Updated 2 years ago". */
-export function freshness(value: string | null): string | null {
+export function freshness(value: string | null | undefined): string | null {
   if (!value) return null;
   const days = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 86_400_000));
   if (days === 0) return "Updated today";
@@ -27,7 +27,7 @@ export function freshness(value: string | null): string | null {
   return `Updated ${years} ${years === 1 ? "year" : "years"} ago`;
 }
 
-export function formatFeedType(value: string | null): string {
+export function formatFeedType(value: string | null | undefined): string {
   if (!value) return "RSS";
   if (value.includes("atom")) return "Atom";
   if (value.includes("json")) return "JSON Feed";
