@@ -183,10 +183,10 @@ describe("<FeedSettingsModal>", () => {
 
   it("closes on Escape and on backdrop click, not on inner clicks", async () => {
     const onClose = vi.fn();
-    const { container } = render(<FeedSettingsModal feed={makeFeed()} onClose={onClose} />);
+    render(<FeedSettingsModal feed={makeFeed()} onClose={onClose} />);
     await userEvent.click(screen.getByText("Feed settings"));
     expect(onClose).not.toHaveBeenCalled();
-    await userEvent.click(container.firstChild as HTMLElement);
+    await userEvent.click(screen.getByTestId("modal-overlay"));
     expect(onClose).toHaveBeenCalledTimes(1);
     await userEvent.keyboard("{Escape}");
     expect(onClose).toHaveBeenCalledTimes(2);

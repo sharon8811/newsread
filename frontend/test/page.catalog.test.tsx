@@ -289,7 +289,7 @@ describe("catalog detail modal", () => {
     const entry = makeCatalogEntry();
     setSwr([entry], CATEGORIES, {}, { data: makeCatalogPreview() });
     apiMock.mockResolvedValue(makeFeed({ id: 42 }));
-    render(<CatalogPage />);
+    const { rerender } = render(<CatalogPage />);
     const dialog = await openModal();
 
     await userEvent.click(within(dialog).getByRole("button", { name: /Subscribe/ }));
@@ -302,7 +302,7 @@ describe("catalog detail modal", () => {
 
     // Once the SWR cache reflects the subscription, the open modal follows.
     setSwr([{ ...entry, subscribed: true, feed_id: 42 }], CATEGORIES, {}, { data: makeCatalogPreview() });
-    await userEvent.click(screen.getByRole("button", { name: "Popular" })); // trigger re-render
+    rerender(<CatalogPage />);
     expect(within(screen.getByRole("dialog")).getByRole("link", { name: /View feed/ })).toHaveAttribute(
       "href",
       "/?feed=42",
@@ -330,8 +330,9 @@ describe("catalog detail modal", () => {
     await userEvent.keyboard("{Escape}");
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 
-    dialog = await openModal();
-    fireEvent.click(dialog.parentElement!);
+    await openModal();
+    fireEvent.pointerDown(screen.getByTestId("modal-overlay"));
+    fireEvent.click(screen.getByTestId("modal-overlay"));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 

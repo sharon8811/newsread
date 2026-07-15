@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import useSWR from "swr";
 import { type CatalogEntry, type CatalogPreviewItem, type SubscribeOptions } from "@/lib/api";
 import { fetchPreview, previewErrorMessage, type LoadedPreview } from "@/lib/feedPreview";
@@ -10,7 +10,8 @@ import SubscribeQuickSettings, {
   DEFAULT_SUBSCRIBE_SETTINGS,
   toSubscribeOptions,
 } from "./SubscribeQuickSettings";
-import { CheckIcon, ExternalIcon, PlusIcon, XIcon } from "./icons";
+import { CheckIcon, ExternalIcon, PlusIcon } from "./icons";
+import Modal, { ModalHeader } from "./Modal";
 import ErrorText from "./ui/ErrorText";
 
 /** A preview story row; titles without a resolvable link render as plain text
@@ -70,63 +71,36 @@ export default function CatalogFeedModal({
   );
   const [settings, setSettings] = useState(DEFAULT_SUBSCRIBE_SETTINGS);
 
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
   const updated = freshness(entry.latest_item_at);
   const cachedStories = entry.preview_items;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6"
-      style={{ background: "var(--bg-scrim)", backdropFilter: "blur(4px)" }}
-      onClick={onClose}
+    <Modal
+      onClose={onClose}
+      contentClassName="flex max-h-[min(680px,90vh)] max-w-[560px] flex-col"
     >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={entry.title}
-        className="fade-up flex max-h-[min(680px,90vh)] w-full max-w-[560px] flex-col rounded-lg border"
-        style={{
-          background: "var(--bg-raised)",
-          borderColor: "var(--line)",
-          boxShadow: "var(--shadow-modal)",
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
         <header className="border-b p-6 pb-4" style={{ borderColor: "var(--line-soft)" }}>
-          <div className="flex items-start justify-between gap-4">
-            <div className="min-w-0">
-              <p className="mono-label">
-                {entry.category} · {formatFeedType(entry.content_type)}
+          <ModalHeader
+            eyebrow={`${entry.category} · ${formatFeedType(entry.content_type)}`}
+            title={entry.title}
+          >
+            {entry.site_url ? (
+              <a
+                href={entry.site_url}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-1 inline-flex max-w-full items-center gap-1 font-mono-nr text-[11.5px] hover:underline"
+                style={{ color: "var(--ink-faint)" }}
+              >
+                <span className="truncate">{entry.source_host}</span>
+                <ExternalIcon size={11} />
+              </a>
+            ) : (
+              <p className="mt-1 truncate font-mono-nr text-[11.5px]" style={{ color: "var(--ink-faint)" }}>
+                {entry.source_host}
               </p>
-              <h2 className="font-serif-nr mt-1.5 text-[20px] leading-snug">{entry.title}</h2>
-              {entry.site_url ? (
-                <a
-                  href={entry.site_url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="mt-1 inline-flex max-w-full items-center gap-1 font-mono-nr text-[11.5px] hover:underline"
-                  style={{ color: "var(--ink-faint)" }}
-                >
-                  <span className="truncate">{entry.source_host}</span>
-                  <ExternalIcon size={11} />
-                </a>
-              ) : (
-                <p className="mt-1 truncate font-mono-nr text-[11.5px]" style={{ color: "var(--ink-faint)" }}>
-                  {entry.source_host}
-                </p>
-              )}
-            </div>
-            <button className="icon-btn shrink-0" aria-label="Close" onClick={onClose}>
-              <XIcon size={16} />
-            </button>
-          </div>
+            )}
+          </ModalHeader>
           <div
             className="mt-3 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px]"
             style={{ color: "var(--ink-faint)" }}
@@ -240,7 +214,6 @@ export default function CatalogFeedModal({
             )}
           </div>
         </footer>
-      </div>
-    </div>
+    </Modal>
   );
 }

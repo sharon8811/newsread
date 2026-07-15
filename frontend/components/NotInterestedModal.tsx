@@ -11,7 +11,9 @@ import {
   type DislikeRuleCreated,
 } from "@/lib/api";
 import { mutateArticleLists } from "./ArticleList";
-import { CheckIcon, EyeOffIcon, XIcon } from "./icons";
+import { CheckIcon, EyeOffIcon } from "./icons";
+import Modal, { ModalHeader } from "./Modal";
+import Button from "./ui/Button";
 import Chip from "./ui/Chip";
 import ErrorText from "./ui/ErrorText";
 
@@ -51,14 +53,6 @@ export default function NotInterestedModal({
         setError(err instanceof Error ? err.message : "Could not hide the article"),
       );
   }, [article.id]);
-
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
 
   async function addRule(chipKey: string, body: DislikeRuleCreate) {
     if (busyChip || applied[chipKey]) return;
@@ -114,34 +108,16 @@ export default function NotInterestedModal({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-6"
-      style={{ background: "var(--bg-scrim)", backdropFilter: "blur(4px)" }}
-      onClick={onClose}
-    >
-      <div
-        className="fade-up w-full max-w-[480px] rounded-lg border p-6"
-        style={{
-          background: "var(--bg-raised)",
-          borderColor: "var(--line)",
-          boxShadow: "var(--shadow-modal)",
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <p className="mono-label flex items-center gap-1.5">
+    <Modal onClose={onClose} contentClassName="p-6">
+        <ModalHeader
+          eyebrow={
+            <>
               <EyeOffIcon size={12} />
               Hidden from your feed
-            </p>
-            <h2 className="font-serif-nr mt-1.5 text-[19px] leading-snug">
-              {article.title}
-            </h2>
-          </div>
-          <button className="icon-btn shrink-0" title="Done" onClick={onClose}>
-            <XIcon size={16} />
-          </button>
-        </div>
+            </>
+          }
+          title={article.title}
+        />
 
         <p className="mt-4 text-[13.5px]" style={{ color: "var(--ink-dim)" }}>
           Hide similar articles too?
@@ -197,15 +173,12 @@ export default function NotInterestedModal({
             Manage rules anytime in Settings
           </p>
           <div className="flex items-center gap-2">
-            <button className="btn" onClick={undo}>
-              Undo
-            </button>
-            <button className="btn btn-accent" onClick={onClose}>
+            <Button onClick={undo}>Undo</Button>
+            <Button variant="primary" onClick={onClose}>
               Done
-            </button>
+            </Button>
           </div>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import useSWR, { mutate } from "swr";
+import ConfirmButton from "@/components/ui/ConfirmButton";
 import ErrorText from "@/components/ui/ErrorText";
 import {
   api,
@@ -55,8 +56,6 @@ function ConnectionCard({
   }
 
   async function disconnect() {
-    if (!window.confirm(`Disconnect ${label}? Your saved channels for it will be removed.`))
-      return;
     setBusy(true);
     setError(null);
     try {
@@ -107,9 +106,14 @@ function ConnectionCard({
                   Reconnect
                 </button>
               )}
-              <button className="btn" disabled={busy} onClick={disconnect}>
+              <ConfirmButton
+                onConfirm={disconnect}
+                confirmLabel="Really disconnect?"
+                title={`Your saved ${label} channels will be removed`}
+                disabled={busy}
+              >
                 Disconnect
-              </button>
+              </ConfirmButton>
             </>
           ) : (
             <button className="btn btn-accent" disabled={busy} onClick={connect}>

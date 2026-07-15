@@ -2,6 +2,8 @@
 
 import * as Dialog from "@radix-ui/react-dialog";
 import type { ReactNode } from "react";
+import { cn } from "@/lib/cn";
+import { XIcon } from "./icons";
 
 type ModalProps = {
   children: ReactNode;
@@ -32,7 +34,11 @@ export default function Modal({
           data-testid="modal-overlay"
         />
         <Dialog.Content
-          className={`fade-up fixed z-50 border ${placement === "drawer" ? drawer : centered} ${contentClassName}`}
+          className={cn(
+            "fade-up fixed z-50 border",
+            placement === "drawer" ? drawer : centered,
+            contentClassName,
+          )}
           style={{
             background: "var(--bg-raised)",
             borderColor: "var(--line)",
@@ -49,3 +55,36 @@ export default function Modal({
 
 export const ModalTitle = Dialog.Title;
 export const ModalClose = Dialog.Close;
+
+/** Standard modal header: mono eyebrow, serif title, close button. Extra
+ * header content (site links, meta rows) goes in `children`, under the title. */
+export function ModalHeader({
+  eyebrow,
+  title,
+  titleClassName,
+  children,
+}: {
+  eyebrow?: ReactNode;
+  title: ReactNode;
+  titleClassName?: string;
+  children?: ReactNode;
+}) {
+  return (
+    <div className="flex items-start justify-between gap-4">
+      <div className="min-w-0">
+        {eyebrow && <p className="mono-label flex items-center gap-1.5">{eyebrow}</p>}
+        <ModalTitle asChild>
+          <h2 className={cn("font-serif-nr mt-1.5 text-[19px] leading-snug", titleClassName)}>
+            {title}
+          </h2>
+        </ModalTitle>
+        {children}
+      </div>
+      <ModalClose asChild>
+        <button className="icon-btn shrink-0" aria-label="Close">
+          <XIcon size={16} />
+        </button>
+      </ModalClose>
+    </div>
+  );
+}

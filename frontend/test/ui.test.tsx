@@ -1,10 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import Avatar from "@/components/ui/Avatar";
 import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import Chip from "@/components/ui/Chip";
+import ConfirmButton from "@/components/ui/ConfirmButton";
 import ErrorText from "@/components/ui/ErrorText";
 import Field from "@/components/ui/Field";
 import Toggle from "@/components/ui/Toggle";
@@ -167,5 +168,49 @@ describe("Toggle", () => {
     expect(toggle).toBeDisabled();
     await userEvent.click(toggle).catch(() => undefined);
     expect(onChange).not.toHaveBeenCalled();
+  });
+});
+
+describe("ConfirmButton", () => {
+  it("arms on first click, confirms on second", async () => {
+    const onConfirm = vi.fn();
+    render(
+      <ConfirmButton onConfirm={onConfirm} confirmLabel="Really?">
+        Unsubscribe
+      </ConfirmButton>,
+    );
+    const btn = screen.getByRole("button", { name: "Unsubscribe" });
+    expect(btn).toHaveClass("btn-danger");
+
+    await userEvent.click(btn);
+    expect(onConfirm).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Really?" })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Really?" }));
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+    // Disarms after confirming.
+    expect(screen.getByRole("button", { name: "Unsubscribe" })).toBeInTheDocument();
+  });
+
+  it("disarms after the timeout if never confirmed", async () => {
+    vi.useFakeTimers();
+    try {
+      const onConfirm = vi.fn();
+      render(
+        <ConfirmButton onConfirm={onConfirm} confirmLabel="Really?" resetAfterMs={1000}>
+          Delete
+        </ConfirmButton>,
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+      expect(screen.getByRole("button", { name: "Really?" })).toBeInTheDocument();
+
+      act(() => {
+        vi.advanceTimersByTime(1100);
+      });
+      expect(screen.getByRole("button", { name: "Delete" })).toBeInTheDocument();
+      expect(onConfirm).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

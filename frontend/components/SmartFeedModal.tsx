@@ -16,7 +16,8 @@ import SubscribeQuickSettings, {
   toSubscribeOptions,
 } from "./SubscribeQuickSettings";
 import { StoryRow } from "./CatalogFeedModal";
-import { CheckIcon, ExternalIcon, PlusIcon, XIcon } from "./icons";
+import { CheckIcon, ExternalIcon, PlusIcon } from "./icons";
+import Modal, { ModalHeader } from "./Modal";
 import Chip from "./ui/Chip";
 import ErrorText from "./ui/ErrorText";
 
@@ -41,14 +42,6 @@ export default function SmartFeedModal({
     const t = setTimeout(() => setDebounced(topic.trim()), 450);
     return () => clearTimeout(t);
   }, [topic]);
-
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
 
   const encoded = encodeURIComponent(debounced);
   // Resolve/preview are one-shot lookups: on failure show the error state
@@ -93,43 +86,23 @@ export default function SmartFeedModal({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6"
-      style={{ background: "var(--bg-scrim)", backdropFilter: "blur(4px)" }}
-      onClick={onClose}
+    <Modal
+      onClose={onClose}
+      contentClassName="flex max-h-[min(680px,90vh)] max-w-[560px] flex-col"
     >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={provider.name}
-        className="fade-up flex max-h-[min(680px,90vh)] w-full max-w-[560px] flex-col rounded-lg border"
-        style={{
-          background: "var(--bg-raised)",
-          borderColor: "var(--line)",
-          boxShadow: "var(--shadow-modal)",
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
         <header className="border-b p-6 pb-4" style={{ borderColor: "var(--line-soft)" }}>
-          <div className="flex items-start justify-between gap-4">
-            <div className="min-w-0">
-              <p className="mono-label">{provider.category} · Smart feed</p>
-              <h2 className="font-serif-nr mt-1.5 text-[20px] leading-snug">{provider.name}</h2>
-              <a
-                href={provider.site_url}
-                target="_blank"
-                rel="noreferrer"
-                className="mt-1 inline-flex max-w-full items-center gap-1 font-mono-nr text-[11.5px] hover:underline"
-                style={{ color: "var(--ink-faint)" }}
-              >
-                <span className="truncate">{provider.site_url.replace(/^https?:\/\//, "")}</span>
-                <ExternalIcon size={11} />
-              </a>
-            </div>
-            <button className="icon-btn shrink-0" aria-label="Close" onClick={onClose}>
-              <XIcon size={16} />
-            </button>
-          </div>
+          <ModalHeader eyebrow={`${provider.category} · Smart feed`} title={provider.name}>
+            <a
+              href={provider.site_url}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-1 inline-flex max-w-full items-center gap-1 font-mono-nr text-[11.5px] hover:underline"
+              style={{ color: "var(--ink-faint)" }}
+            >
+              <span className="truncate">{provider.site_url.replace(/^https?:\/\//, "")}</span>
+              <ExternalIcon size={11} />
+            </a>
+          </ModalHeader>
           <p className="mt-3 text-[13px] leading-relaxed" style={{ color: "var(--ink-dim)" }}>
             {provider.description}
           </p>
@@ -248,7 +221,6 @@ export default function SmartFeedModal({
             )}
           </div>
         </footer>
-      </div>
-    </div>
+    </Modal>
   );
 }
