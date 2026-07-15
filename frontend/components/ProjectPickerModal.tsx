@@ -20,6 +20,8 @@ import {
   XIcon,
 } from "./icons";
 import Modal, { ModalClose, ModalTitle } from "./Modal";
+import Badge from "./ui/Badge";
+import ErrorText from "./ui/ErrorText";
 
 const VIS_KEY = "newsread_project_vis";
 
@@ -204,17 +206,10 @@ export default function ProjectPickerModal({
                 </div>
                 {added ? (
                   <>
-                    <span
-                      className="font-mono-nr flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10.5px]"
-                      style={{
-                        borderColor: "var(--accent-border)",
-                        background: "var(--accent-soft)",
-                        color: "var(--accent-bright)",
-                      }}
-                    >
+                    <Badge tone="accent-strong">
                       <CheckIcon size={11} />
                       {status?.is_shared ? "Shared" : "Only you"}
-                    </span>
+                    </Badge>
                     <button
                       className="icon-btn"
                       title="Remove from project"
@@ -287,9 +282,9 @@ export default function ProjectPickerModal({
         />
 
         {error && (
-          <p className="mt-2 text-[12.5px]" style={{ color: "var(--danger)" }}>
+          <ErrorText className="mt-2">
             {error}
-          </p>
+          </ErrorText>
         )}
     </Modal>
   );

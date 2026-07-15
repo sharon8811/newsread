@@ -15,6 +15,9 @@ import {
   type UserPublic,
 } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import Avatar from "@/components/ui/Avatar";
+import Button from "@/components/ui/Button";
+import ErrorText from "@/components/ui/ErrorText";
 
 export default function ProjectPage() {
   const { id } = useParams<{ id: string }>();
@@ -189,24 +192,22 @@ export default function ProjectPage() {
           </h1>
           <div className="ml-auto flex items-center gap-1">
             {project.members.map((m) => (
-              <span
+              <Avatar
                 key={m.user.id}
-                className="group/member relative flex h-7 w-7 items-center justify-center rounded-full text-[12px] font-semibold"
-                style={{ background: "var(--accent-soft)", color: "var(--accent)" }}
+                name={m.user.name}
+                className="group/member relative"
                 title={`${m.user.name} (@${m.user.username})${m.role === "owner" ? " · owner" : ""}`}
               >
-                {m.user.name[0]?.toUpperCase()}
                 {isOwner && m.role !== "owner" && (
                   <button
-                    className="icon-btn absolute -right-1 -top-1 h-4 w-4 opacity-0 group-hover/member:opacity-100"
-                    style={{ width: 16, height: 16, background: "var(--bg-raised)" }}
+                    className="icon-btn absolute -right-1 -top-1 h-4 w-4 bg-raised opacity-0 group-hover/member:opacity-100"
                     title={`Remove ${m.user.name}`}
                     onClick={() => removeMember(m.user.id)}
                   >
                     <XIcon size={9} />
                   </button>
                 )}
-              </span>
+              </Avatar>
             ))}
             <button
               className={`icon-btn ${project.is_muted ? "active" : ""}`}
@@ -235,21 +236,18 @@ export default function ProjectPage() {
                   <span className="text-[12px]" style={{ color: "var(--ink-dim)" }}>
                     Delete for every member?
                   </span>
-                  <button
-                    className="btn"
-                    style={{ fontSize: 12, color: "var(--danger)" }}
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    className="border-line"
                     disabled={busy}
                     onClick={deleteProject}
                   >
                     Delete
-                  </button>
-                  <button
-                    className="btn"
-                    style={{ fontSize: 12 }}
-                    onClick={() => setConfirmingDelete(false)}
-                  >
+                  </Button>
+                  <Button size="sm" onClick={() => setConfirmingDelete(false)}>
                     Cancel
-                  </button>
+                  </Button>
                 </span>
               ) : (
                 <button
@@ -311,9 +309,9 @@ export default function ProjectPage() {
         )}
 
         {actionError && (
-          <p className="mt-2 text-[12.5px]" style={{ color: "var(--danger)" }}>
+          <ErrorText className="mt-2">
             {actionError}
-          </p>
+          </ErrorText>
         )}
 
         <div className="mt-3 flex items-center gap-5">

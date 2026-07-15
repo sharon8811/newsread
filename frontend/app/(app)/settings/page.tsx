@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import useSWR, { mutate } from "swr";
+import ErrorText from "@/components/ui/ErrorText";
 import {
   api,
   fetcher,
@@ -92,9 +93,9 @@ function ConnectionCard({
                 : "Share articles to your channels, as you"}
         </p>
         {error && (
-          <p className="mt-1 text-[12px]" style={{ color: "var(--danger)" }}>
+          <ErrorText className="mt-1">
             {error}
-          </p>
+          </ErrorText>
         )}
       </div>
       {integration.configured && (
@@ -208,9 +209,9 @@ function TargetPicker({ platform }: { platform: MessagingPlatform }) {
         />
       </div>
       {error && (
-        <p className="mt-2 text-[12.5px]" style={{ color: "var(--danger)" }}>
+        <ErrorText className="mt-2">
           {error}
-        </p>
+        </ErrorText>
       )}
       {loading && options === null && (
         <p className="mt-2 text-[12.5px]" style={{ color: "var(--ink-faint)" }}>

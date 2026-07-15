@@ -4,6 +4,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth";
+import Button from "@/components/ui/Button";
+import ErrorText from "@/components/ui/ErrorText";
+import Field from "@/components/ui/Field";
 
 export default function LoginPage() {
   const { user, ready, login } = useAuth();
@@ -42,34 +45,29 @@ export default function LoginPage() {
         </p>
 
         <form onSubmit={submit} className="mt-10 flex flex-col gap-4">
-          <div>
-            <label className="mono-label mb-1.5 block">Email or username</label>
-            <input
-              className="input"
-              value={identifier}
-              onChange={(e) => setIdentifier(e.target.value)}
-              autoFocus
-              required
-            />
-          </div>
-          <div>
-            <label className="mono-label mb-1.5 block">Password</label>
-            <input
-              className="input"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
-          </div>
-          {error && (
-            <p className="text-[13px]" style={{ color: "var(--danger)" }}>
-              {error}
-            </p>
-          )}
-          <button className="btn btn-accent mt-1 w-full py-2.5" disabled={busy} type="submit">
+          <Field
+            label="Email or username"
+            value={identifier}
+            onChange={(e) => setIdentifier(e.target.value)}
+            autoFocus
+            required
+          />
+          <Field
+            label="Password"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+          />
+          <ErrorText>{error}</ErrorText>
+          <Button
+            variant="primary"
+            type="submit"
+            loading={busy}
+            className="mt-1 w-full py-2.5"
+          >
             {busy ? "Signing in…" : "Sign in"}
-          </button>
+          </Button>
         </form>
 
         <p className="mt-6 text-[13.5px]" style={{ color: "var(--ink-faint)" }}>

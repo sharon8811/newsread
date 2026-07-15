@@ -12,6 +12,7 @@ import {
   type ToolEvent,
 } from "@/lib/api";
 import { CheckIcon, CommentIcon, ExternalIcon, RefreshIcon, SearchIcon, ShareIcon } from "./icons";
+import ErrorText from "./ui/ErrorText";
 
 type LiveToolCall = ToolEvent & { id: string; done: boolean };
 
@@ -251,9 +252,9 @@ export default function QAPanel({
       </div>
 
       {error && (
-        <p className="mt-3 text-[13px]" style={{ color: "var(--danger)" }}>
+        <ErrorText className="mt-3">
           {error}
-        </p>
+        </ErrorText>
       )}
 
       <form

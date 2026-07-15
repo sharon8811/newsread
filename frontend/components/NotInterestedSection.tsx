@@ -5,6 +5,7 @@ import useSWR, { mutate } from "swr";
 import { api, fetcher, type DislikeRule } from "@/lib/api";
 import { mutateArticleLists } from "./ArticleList";
 import { TrashIcon } from "./icons";
+import Badge from "./ui/Badge";
 
 const KIND_LABELS: Record<DislikeRule["kind"], string> = {
   article: "article",
@@ -58,12 +59,7 @@ export default function NotInterestedSection() {
                 className="group flex items-center gap-2.5 rounded-md border px-3.5 py-2 text-[13.5px]"
                 style={{ background: "var(--bg-raised)", borderColor: "var(--line)" }}
               >
-                <span
-                  className="font-mono-nr shrink-0 rounded-full border px-2 py-0.5 text-[10.5px]"
-                  style={{ borderColor: "var(--line)", color: "var(--ink-faint)" }}
-                >
-                  {KIND_LABELS[rule.kind]}
-                </span>
+                <Badge>{KIND_LABELS[rule.kind]}</Badge>
                 <span className="min-w-0 flex-1 truncate">{rule.label}</span>
                 <button
                   className="font-mono-nr shrink-0 text-[11px]"

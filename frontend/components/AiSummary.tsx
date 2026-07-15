@@ -6,6 +6,7 @@ import remarkGfm from "remark-gfm";
 import useSWR, { mutate } from "swr";
 import { api, fetcher, type AiStatus, type ArticleDetail } from "@/lib/api";
 import { RefreshIcon, SparkleIcon } from "./icons";
+import ErrorText from "./ui/ErrorText";
 
 /** Summaries generated before the markdown prompt use "• " bullet lines —
  * rewrite them into list items so they render the same as new ones. */
@@ -89,9 +90,9 @@ export default function AiSummary({ article }: { article: ArticleDetail }) {
         </div>
       ) : error ? (
         <div className="mt-3">
-          <p className="text-[13px]" style={{ color: "var(--danger)" }}>
+          <ErrorText>
             {error}
-          </p>
+          </ErrorText>
           <button className="btn mt-2.5" onClick={() => generate(false)}>
             Try again
           </button>

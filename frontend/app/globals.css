@@ -239,6 +239,18 @@ body {
   border-color: transparent;
 }
 
+/* Destructive actions: quiet like a ghost button, but unmistakably danger. */
+.btn-danger {
+  border-color: transparent;
+  background: transparent;
+  color: var(--danger);
+}
+.btn-danger:hover {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 9%, transparent);
+  border-color: transparent;
+}
+
 .icon-btn {
   display: inline-flex;
   align-items: center;

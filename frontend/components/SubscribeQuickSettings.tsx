@@ -1,6 +1,7 @@
 "use client";
 
 import type { SubscribeOptions } from "@/lib/api";
+import Chip from "./ui/Chip";
 
 // Quick settings offered at subscribe time; everything else lives in the full
 // feed settings modal after subscribing.
@@ -45,22 +46,16 @@ export default function SubscribeQuickSettings({
   return (
     <fieldset className="min-w-0" disabled={disabled}>
       <legend className="mono-label">Quick settings</legend>
-      <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1.5">
+      <div className="mt-1.5 flex flex-wrap gap-1.5">
         {FIELDS.map(({ key, label, hint }) => (
-          <label
+          <Chip
             key={key}
-            className="flex cursor-pointer items-center gap-1.5 text-[12px]"
-            style={{ color: "var(--ink-dim)" }}
+            active={value[key]}
             title={hint}
+            onClick={() => onChange({ ...value, [key]: !value[key] })}
           >
-            <input
-              type="checkbox"
-              className="accent-[var(--accent)]"
-              checked={value[key]}
-              onChange={(event) => onChange({ ...value, [key]: event.target.checked })}
-            />
             {label}
-          </label>
+          </Chip>
         ))}
       </div>
     </fieldset>

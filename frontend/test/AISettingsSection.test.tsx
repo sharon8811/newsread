@@ -162,7 +162,7 @@ describe("<AISettingsSection>", () => {
     const fetchMock = okFetch(CONFIGURED);
     render(<AISettingsSection />);
 
-    await userEvent.click(screen.getByRole("checkbox", { name: /Model can read images/ }));
+    await userEvent.click(screen.getByRole("switch", { name: /Model can read images/ }));
     await userEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
@@ -172,7 +172,7 @@ describe("<AISettingsSection>", () => {
   it("prefills the vision toggle from the stored settings", () => {
     withSettings({ ...CONFIGURED, supports_vision: true });
     render(<AISettingsSection />);
-    expect(screen.getByRole("checkbox", { name: /Model can read images/ })).toBeChecked();
+    expect(screen.getByRole("switch", { name: /Model can read images/ })).toBeChecked();
   });
 
   it("switching provider demands a fresh key", async () => {
@@ -250,7 +250,7 @@ describe("<AISettingsSection>", () => {
     await userEvent.selectOptions(screen.getByLabelText("Model provider"), "openai");
     await userEvent.type(screen.getByLabelText("API key"), "sk-test-12345678");
     await userEvent.type(screen.getByLabelText("Model"), "gpt-5");
-    await userEvent.click(screen.getByRole("checkbox", { name: /Image generation/ }));
+    await userEvent.click(screen.getByRole("switch", { name: /Image generation/ }));
     expect(screen.getByText("optional — uses your main key")).toBeInTheDocument();
     await userEvent.type(screen.getByLabelText("Image model"), "gpt-image-1");
     await userEvent.click(screen.getByRole("button", { name: "Save" }));
@@ -271,7 +271,7 @@ describe("<AISettingsSection>", () => {
     await userEvent.selectOptions(screen.getByLabelText("Model provider"), "openai");
     await userEvent.type(screen.getByLabelText("API key"), "sk-test-12345678");
     await userEvent.type(screen.getByLabelText("Model"), "gpt-5");
-    await userEvent.click(screen.getByRole("checkbox", { name: /Image generation/ }));
+    await userEvent.click(screen.getByRole("switch", { name: /Image generation/ }));
     await userEvent.type(screen.getByLabelText("Image model"), "gpt-image-1");
     // userEvent treats "{" as a key descriptor; "{{" types a literal brace.
     await userEvent.type(
@@ -292,7 +292,7 @@ describe("<AISettingsSection>", () => {
     await userEvent.selectOptions(screen.getByLabelText("Model provider"), "openai");
     await userEvent.type(screen.getByLabelText("API key"), "sk-test-12345678");
     await userEvent.type(screen.getByLabelText("Model"), "gpt-5");
-    await userEvent.click(screen.getByRole("checkbox", { name: /Image generation/ }));
+    await userEvent.click(screen.getByRole("switch", { name: /Image generation/ }));
     await userEvent.type(screen.getByLabelText("Image model"), "gpt-image-1");
     await userEvent.type(screen.getByLabelText("Image extra parameters"), "not json");
     await userEvent.click(screen.getByRole("button", { name: "Save" }));

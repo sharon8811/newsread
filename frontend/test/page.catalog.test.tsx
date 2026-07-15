@@ -354,8 +354,8 @@ describe("catalog detail modal", () => {
     render(<CatalogPage />);
     const dialog = await openModal();
 
-    await userEvent.click(within(dialog).getByRole("checkbox", { name: "AI images" }));
-    await userEvent.click(within(dialog).getByRole("checkbox", { name: "Mute" }));
+    await userEvent.click(within(dialog).getByRole("button", { name: "AI images" }));
+    await userEvent.click(within(dialog).getByRole("button", { name: "Mute" }));
     await userEvent.click(within(dialog).getByRole("button", { name: /Subscribe/ }));
 
     await waitFor(() =>
@@ -500,7 +500,7 @@ describe("smart feeds", () => {
       () => expect(within(dialog).getByRole("button", { name: /Subscribe/ })).toBeEnabled(),
       { timeout: 1000 },
     );
-    await userEvent.click(within(dialog).getByRole("checkbox", { name: "AI summaries" }));
+    await userEvent.click(within(dialog).getByRole("button", { name: "AI summaries" }));
     await userEvent.click(within(dialog).getByRole("button", { name: /Subscribe/ }));
     await waitFor(() =>
       expect(apiMock).toHaveBeenCalledWith("/feeds", {

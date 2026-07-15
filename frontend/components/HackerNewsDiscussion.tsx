@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import useSWR from "swr";
 
 import { CommentIcon, ExternalIcon, RefreshIcon } from "@/components/icons";
+import ErrorText from "./ui/ErrorText";
 import type { ArticleDetail } from "@/lib/api";
 import {
   discussionRefFor,
@@ -244,9 +245,9 @@ export function HackerNewsDiscussionView({
       </div>
 
       {storyError && (
-        <p className="mt-4 text-[13px]" style={{ color: "var(--danger)" }}>
+        <ErrorText className="mt-4">
           Could not refresh Hacker News. The original discussion link still works.
-        </p>
+        </ErrorText>
       )}
 
       {open && (
@@ -258,9 +259,9 @@ export function HackerNewsDiscussionView({
             </div>
           )}
           {threadError && (
-            <p className="text-[13px]" style={{ color: "var(--danger)" }}>
+            <ErrorText>
               {threadError}
-            </p>
+            </ErrorText>
           )}
           {snapshot && (
             <>

@@ -13,6 +13,9 @@ import {
 } from "@/lib/api";
 import { describeLink, domainOf, timeAgo } from "@/lib/format";
 import { CheckIcon, CommentIcon, ExternalIcon, LockIcon, TrashIcon, UsersIcon, XIcon } from "./icons";
+import Avatar from "./ui/Avatar";
+import Badge from "./ui/Badge";
+import ErrorText from "./ui/ErrorText";
 
 /** Shared pins of the same article collapse into one card; private pins stay
  * separate (they're the viewer's own — there is at most one per article). */
@@ -182,14 +185,7 @@ export default function ProjectPinCard({
     >
       <div className="flex items-center gap-2.5">
         {pins.map((pin) => (
-          <span
-            key={pin.id}
-            className="flex h-7 w-7 items-center justify-center rounded-full text-[12px] font-semibold"
-            style={{ background: "var(--accent-soft)", color: "var(--accent)" }}
-            title={`@${pin.added_by.username}`}
-          >
-            {pin.added_by.name[0]?.toUpperCase()}
-          </span>
+          <Avatar key={pin.id} name={pin.added_by.name} title={`@${pin.added_by.username}`} />
         ))}
         <p className="min-w-0 truncate text-[13px]" style={{ color: "var(--ink-dim)" }}>
           {pins.map((pin, i) => (
@@ -203,23 +199,16 @@ export default function ProjectPinCard({
           added this
         </p>
         {isPrivate && (
-          <span
-            className="font-mono-nr flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10.5px]"
-            style={{ borderColor: "var(--line)", color: "var(--ink-faint)" }}
-          >
+          <Badge>
             <LockIcon size={10} />
             Only you
-          </span>
+          </Badge>
         )}
         {status === "done" && (
-          <span
-            className="font-mono-nr flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10.5px]"
-            style={{ borderColor: "var(--line)", color: "var(--accent)" }}
-            title={statusBy ? `Marked done by @${statusBy.username}` : "Done"}
-          >
+          <Badge tone="accent" title={statusBy ? `Marked done by @${statusBy.username}` : "Done"}>
             <CheckIcon size={10} />
             Done
-          </span>
+          </Badge>
         )}
         <span className="font-mono-nr ml-auto shrink-0 text-[11px]" style={{ color: "var(--ink-faint)" }}>
           {timeAgo(pins[0].shared_at ?? pins[0].created_at)}
@@ -357,13 +346,12 @@ export default function ProjectPinCard({
         <div className="mt-3.5 border-t pt-3" style={{ borderColor: "var(--line-soft)" }}>
           {(comments ?? []).map((comment) => (
             <div key={comment.id} className="group/comment mb-2.5 flex items-start gap-2.5">
-              <span
-                className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold"
-                style={{ background: "var(--accent-soft)", color: "var(--accent)" }}
+              <Avatar
+                name={comment.author.name}
+                size="sm"
+                className="mt-0.5"
                 title={`@${comment.author.username}`}
-              >
-                {comment.author.name[0]?.toUpperCase()}
-              </span>
+              />
               <div className="min-w-0 flex-1">
                 <p className="text-[11.5px]" style={{ color: "var(--ink-faint)" }}>
                   <span style={{ color: "var(--ink-dim)" }}>
@@ -437,9 +425,9 @@ export default function ProjectPinCard({
       )}
 
       {error && (
-        <p className="mt-2 text-[12.5px]" style={{ color: "var(--danger)" }}>
+        <ErrorText className="mt-2">
           {error}
-        </p>
+        </ErrorText>
       )}
     </div>
   );

@@ -16,6 +16,9 @@ import { formatFeedType, freshness } from "@/lib/format";
 import CatalogFeedModal from "@/components/CatalogFeedModal";
 import SmartFeedModal from "@/components/SmartFeedModal";
 import { CheckIcon, PlusIcon, SearchIcon, SparkleIcon } from "@/components/icons";
+import Badge from "@/components/ui/Badge";
+import Chip from "@/components/ui/Chip";
+import ErrorText from "@/components/ui/ErrorText";
 
 type CatalogSort = "name" | "popular" | "recommended";
 
@@ -125,9 +128,9 @@ export default function CatalogPage() {
               />
             ))}
             {(categories?.length ?? 0) > 12 && (
-              <button className="rounded-full border px-2.5 py-1 text-[12px]" style={{ borderColor: "var(--line-soft)", color: "var(--ink-dim)" }} onClick={() => setShowAllTopics((value) => !value)}>
+              <Chip onClick={() => setShowAllTopics((value) => !value)}>
                 {showAllTopics ? "Fewer topics" : `More topics (${(categories?.length ?? 12) - 12})`}
-              </button>
+              </Chip>
             )}
           </div>
         </div>
@@ -168,7 +171,7 @@ export default function CatalogPage() {
           <SortButton label="Popular" active={sort === "popular"} onClick={() => { setSort("popular"); setVisibleCount(60); }} />
           <SortButton label="A-Z" active={sort === "name"} onClick={() => { setSort("name"); setVisibleCount(60); }} />
         </div>
-        {error && <p className="mb-3 text-[13px]" role="alert" style={{ color: "var(--danger)" }}>{error}</p>}
+        {error && <ErrorText className="mb-3">{error}</ErrorText>}
         {loadError && <p className="rounded-lg border p-4 text-[13px]" role="alert" style={{ borderColor: "var(--line-soft)", color: "var(--danger)" }}>Could not load the catalog. Please try again.</p>}
         {isLoading && <CatalogSkeleton />}
         {entries?.length === 0 && (
@@ -214,7 +217,7 @@ function FeedCard({ entry, busy, disabled, onSubscribe, onOpen }: { entry: Catal
           </h2>
           <p className="mt-0.5 truncate font-mono-nr text-[10.5px]" style={{ color: "var(--ink-faint)" }}>{entry.source_host} · {formatFeedType(entry.content_type)}</p>
         </div>
-        <span className="mono-label shrink-0 rounded-full border px-2 py-0.5 text-[10px]" style={{ borderColor: "var(--line-soft)", color: "var(--ink-faint)" }}>{entry.category}</span>
+        <Badge className="border-line-soft text-[10px] uppercase tracking-[0.12em]">{entry.category}</Badge>
       </div>
       <p className="mt-2 line-clamp-3 text-[12.5px] leading-relaxed" style={{ color: "var(--ink-dim)" }}>{entry.description}</p>
       <div className="mt-auto flex flex-wrap items-center gap-x-2 pt-3 text-[10.5px]" style={{ color: "var(--ink-faint)" }}>
@@ -255,13 +258,13 @@ function SubmissionForm({ categories, onDone }: { categories: CatalogCategory[];
       <label className="text-[12px] font-medium">Feed URL<input className="input mt-1" type="url" required value={url} onChange={(event) => setUrl(event.target.value)} placeholder="https://example.com/feed.xml" /></label>
       <label className="text-[12px] font-medium">Topic<select className="input mt-1" value={category} onChange={(event) => setCategory(event.target.value)}><option value="">Choose later</option>{categories.map((item) => <option key={item.name}>{item.name}</option>)}</select></label>
       <button className="btn btn-accent self-end" disabled={state === "busy"}>{state === "busy" ? "Validating…" : "Submit"}</button>
-      {error && <p className="text-[12px] sm:col-span-3" role="alert" style={{ color: "var(--danger)" }}>{error}</p>}
+      {error && <ErrorText className="sm:col-span-3">{error}</ErrorText>}
     </form>
   );
 }
 
 function SortButton({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) { return <button className="rounded-md px-2 py-1 text-[11.5px]" style={{ background: active ? "var(--accent-soft)" : "transparent", color: active ? "var(--accent)" : "var(--ink-faint)" }} onClick={onClick}>{label}</button>; }
 
-function CategoryChip({ label, count, active, onClick }: { label: string; count?: number; active: boolean; onClick: () => void }) { return <button className="rounded-full border px-2.5 py-1 text-[12px] transition-colors" style={{ borderColor: active ? "var(--accent)" : "var(--line-soft)", background: active ? "var(--accent-soft)" : "transparent", color: active ? "var(--accent)" : "var(--ink-dim)" }} onClick={onClick}>{label}{count !== undefined && <span className="ml-1 font-mono-nr text-[10.5px]" style={{ color: "var(--ink-faint)" }}>{count}</span>}</button>; }
+function CategoryChip({ label, count, active, onClick }: { label: string; count?: number; active: boolean; onClick: () => void }) { return <Chip active={active} onClick={onClick}>{label}{count !== undefined && <span className="ml-1 font-mono-nr text-[10.5px]" style={{ color: "var(--ink-faint)" }}>{count}</span>}</Chip>; }
 
 function CatalogSkeleton() { return <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3" aria-label="Loading catalog">{Array.from({ length: 6 }).map((_, index) => <div key={index} className="h-[230px] animate-pulse rounded-lg border" style={{ borderColor: "var(--line-soft)", background: "var(--bg-inset)" }} />)}</div>; }

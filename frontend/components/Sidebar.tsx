@@ -7,6 +7,8 @@ import useSWR, { mutate } from "swr";
 import { api, fetcher, type AISettings, type Feed, type Project } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import FeedSettingsModal from "./FeedSettingsModal";
+import Avatar from "./ui/Avatar";
+import ErrorText from "./ui/ErrorText";
 import {
   ActivityIcon,
   BookmarkIcon,
@@ -215,9 +217,9 @@ export default function Sidebar() {
             autoFocus
           />
           {addError && (
-            <p className="mt-1.5 text-[12px]" style={{ color: "var(--danger)" }}>
+            <ErrorText className="mt-1.5">
               {addError}
-            </p>
+            </ErrorText>
           )}
           <button className="btn btn-accent mt-2 w-full" disabled={busy} type="submit">
             {busy ? "Fetching…" : "Subscribe"}
@@ -307,12 +309,7 @@ export default function Sidebar() {
         className="flex items-center gap-2.5 border-t px-4 py-3.5"
         style={{ borderColor: "var(--line-soft)" }}
       >
-        <div
-          className="flex h-8 w-8 items-center justify-center rounded-full text-[13px] font-semibold"
-          style={{ background: "var(--accent-soft)", color: "var(--accent)" }}
-        >
-          {user?.name?.[0]?.toUpperCase() ?? "?"}
-        </div>
+        <Avatar name={user?.name} size="lg" />
         <div className="min-w-0 flex-1 leading-tight">
           <p className="truncate text-[13px]">{user?.name}</p>
           <p className="font-mono-nr truncate text-[11px]" style={{ color: "var(--ink-faint)" }}>
