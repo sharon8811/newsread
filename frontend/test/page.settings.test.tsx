@@ -150,10 +150,10 @@ describe("SettingsPage", () => {
     mockSWRData();
     const fetchMock = vi.fn().mockResolvedValue({ status: 204, ok: true, json: async () => ({}) });
     vi.stubGlobal("fetch", fetchMock);
-    vi.stubGlobal("confirm", vi.fn().mockReturnValue(true));
     render(<SettingsPage />);
 
     await userEvent.click(screen.getByRole("button", { name: "Disconnect" }));
+    await userEvent.click(screen.getByRole("button", { name: "Really disconnect?" }));
     await waitFor(() => expect(mutateMock).toHaveBeenCalledWith("/integrations"));
     expect(mutateMock).toHaveBeenCalledWith("/share-targets");
     expect(fetchMock.mock.calls[0][0]).toContain("/integrations/slack");
@@ -161,14 +161,15 @@ describe("SettingsPage", () => {
     vi.unstubAllGlobals();
   });
 
-  it("does nothing when the disconnect confirm is declined", async () => {
+  it("does nothing until the armed disconnect is confirmed", async () => {
     mockSWRData();
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
-    vi.stubGlobal("confirm", vi.fn().mockReturnValue(false));
     render(<SettingsPage />);
 
+    // First click only arms the button; no request goes out.
     await userEvent.click(screen.getByRole("button", { name: "Disconnect" }));
+    expect(screen.getByRole("button", { name: "Really disconnect?" })).toBeInTheDocument();
     expect(fetchMock).not.toHaveBeenCalled();
     vi.unstubAllGlobals();
   });

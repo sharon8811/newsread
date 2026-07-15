@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { mutate } from "swr";
 import { mutateArticleLists } from "./ArticleList";
 import {
@@ -10,8 +10,10 @@ import {
   type SortOrder,
   type ViewMode,
 } from "@/lib/api";
-import { TrashIcon, XIcon } from "./icons";
+import { TrashIcon } from "./icons";
+import Modal, { ModalHeader } from "./Modal";
 import Button from "./ui/Button";
+import ConfirmButton from "./ui/ConfirmButton";
 import ErrorText from "./ui/ErrorText";
 import Toggle from "./ui/Toggle";
 
@@ -73,17 +75,8 @@ export default function FeedSettingsModal({
   const [aiEnabled, setAiEnabled] = useState(feed.ai_enabled);
   const [imageGenEnabled, setImageGenEnabled] = useState(feed.image_gen_enabled);
   const [refreshMinutes, setRefreshMinutes] = useState(feed.refresh_interval_minutes);
-  const [confirmingRemove, setConfirmingRemove] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
 
   function buildPatch(): FeedSettingsPatch {
     const patch: FeedSettingsPatch = {};
@@ -124,10 +117,6 @@ export default function FeedSettingsModal({
   }
 
   async function unsubscribe() {
-    if (!confirmingRemove) {
-      setConfirmingRemove(true);
-      return;
-    }
     if (busy) return;
     setBusy(true);
     setError(null);
@@ -150,31 +139,11 @@ export default function FeedSettingsModal({
       ].sort((a, b) => a.value - b.value);
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-6"
-      style={{ background: "var(--bg-scrim)", backdropFilter: "blur(4px)" }}
-      onClick={onClose}
+    <Modal
+      onClose={onClose}
+      contentClassName="max-h-[calc(100dvh-3rem)] overflow-y-auto p-6"
     >
-      <div
-        className="fade-up max-h-full w-full max-w-[480px] overflow-y-auto rounded-lg border p-6"
-        style={{
-          background: "var(--bg-raised)",
-          borderColor: "var(--line)",
-          boxShadow: "var(--shadow-modal)",
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0">
-            <p className="mono-label">Feed settings</p>
-            <h2 className="font-serif-nr mt-1.5 truncate text-[19px] leading-snug">
-              {feed.title}
-            </h2>
-          </div>
-          <button className="icon-btn shrink-0" onClick={onClose} aria-label="Close">
-            <XIcon size={16} />
-          </button>
-        </div>
+        <ModalHeader eyebrow="Feed settings" title={feed.title} titleClassName="truncate" />
 
         <div className="mt-4">
           <label
@@ -278,10 +247,14 @@ export default function FeedSettingsModal({
         <ErrorText className="mt-2">{error}</ErrorText>
 
         <div className="mt-5 flex items-center justify-between">
-          <Button variant="danger" onClick={unsubscribe} disabled={busy}>
+          <ConfirmButton
+            onConfirm={unsubscribe}
+            confirmLabel="Really unsubscribe?"
+            disabled={busy}
+          >
             <TrashIcon size={13} />
-            {confirmingRemove ? "Really unsubscribe?" : "Unsubscribe"}
-          </Button>
+            Unsubscribe
+          </ConfirmButton>
           <div className="flex items-center gap-2">
             <Button variant="ghost" onClick={onClose} disabled={busy}>
               Cancel
@@ -291,7 +264,6 @@ export default function FeedSettingsModal({
             </Button>
           </div>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
