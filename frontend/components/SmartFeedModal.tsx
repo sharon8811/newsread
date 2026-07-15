@@ -17,6 +17,8 @@ import SubscribeQuickSettings, {
 } from "./SubscribeQuickSettings";
 import { StoryRow } from "./CatalogFeedModal";
 import { CheckIcon, ExternalIcon, PlusIcon, XIcon } from "./icons";
+import Chip from "./ui/Chip";
+import ErrorText from "./ui/ErrorText";
 
 /** Subscribe to a topic-parameterized source (any subreddit, news query…):
  * type a topic — or paste the topic's page URL — preview it live, subscribe. */
@@ -145,14 +147,13 @@ export default function SmartFeedModal({
             <div className="mt-2 flex flex-wrap items-center gap-1.5">
               <span className="text-[11px]" style={{ color: "var(--ink-faint)" }}>Try:</span>
               {provider.example_topics.map((example) => (
-                <button
+                <Chip
                   key={example}
-                  className="rounded-full border px-2 py-0.5 text-[11.5px]"
-                  style={{ borderColor: "var(--line-soft)", color: "var(--ink-dim)" }}
+                  className="px-2 py-0.5 text-[11.5px]"
                   onClick={() => setTopic(example)}
                 >
                   {example}
-                </button>
+                </Chip>
               ))}
             </div>
           )}
@@ -165,9 +166,9 @@ export default function SmartFeedModal({
             </p>
           )}
           {resolveError && (
-            <p className="text-[12.5px]" role="alert" style={{ color: "var(--danger)" }}>
+            <ErrorText>
               {resolveError instanceof Error ? resolveError.message : "That topic could not be resolved."}
-            </p>
+            </ErrorText>
           )}
           {resolved && (
             <>
@@ -202,9 +203,9 @@ export default function SmartFeedModal({
                 </ul>
               )}
               {previewError && (
-                <p className="mt-2 text-[12.5px]" role="alert" style={{ color: "var(--danger)" }}>
+                <ErrorText className="mt-2">
                   {previewErrorMessage(previewError, "Could not load stories for this topic right now.")}
-                </p>
+                </ErrorText>
               )}
             </>
           )}
@@ -222,9 +223,9 @@ export default function SmartFeedModal({
                 {resolved?.url ?? provider.topic_hint}
               </p>
               {subscribeError && (
-                <p className="mt-1 text-[12px]" role="alert" style={{ color: "var(--danger)" }}>
+                <ErrorText className="mt-1">
                   {subscribeError}
-                </p>
+                </ErrorText>
               )}
               {feed && feed.article_count === 0 && (
                 <p className="mt-1 text-[12px]" style={{ color: "var(--ink-faint)" }}>

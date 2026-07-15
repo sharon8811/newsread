@@ -12,6 +12,8 @@ import {
 } from "@/lib/api";
 import { mutateArticleLists } from "./ArticleList";
 import { CheckIcon, EyeOffIcon, XIcon } from "./icons";
+import Chip from "./ui/Chip";
+import ErrorText from "./ui/ErrorText";
 
 /** Opens right after "Not interested": the article itself is hidden on mount
  * (one rule of kind 'article'), then each chip adds a broader rule — an
@@ -89,21 +91,14 @@ export default function NotInterestedModal({
     onClose();
   }
 
-  const chipStyle = (active: boolean) => ({
-    borderColor: active ? "var(--accent-border)" : "var(--line)",
-    background: active ? "var(--accent-soft)" : "transparent",
-    color: active ? "var(--accent-bright)" : "var(--ink-dim)",
-  });
-
   function chip(chipKey: string, label: string, body: DislikeRuleCreate) {
     const created = applied[chipKey];
     // The article-rule suppression is always there; only extra hits are news.
     const alsoHid = created ? Math.max(created.rule.hidden_count - 1, 0) : 0;
     return (
-      <button
+      <Chip
         key={chipKey}
-        className="flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[12px] transition-colors"
-        style={chipStyle(!!created)}
+        active={!!created}
         disabled={busyChip === chipKey}
         onClick={() => addRule(chipKey, body)}
       >
@@ -114,7 +109,7 @@ export default function NotInterestedModal({
             +{alsoHid} recent
           </span>
         )}
-      </button>
+      </Chip>
     );
   }
 
@@ -192,9 +187,9 @@ export default function NotInterestedModal({
         </div>
 
         {error && (
-          <p className="mt-3 text-[12.5px]" style={{ color: "var(--danger)" }}>
+          <ErrorText className="mt-3">
             {error}
-          </p>
+          </ErrorText>
         )}
 
         <div className="mt-5 flex items-center justify-between">

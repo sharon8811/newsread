@@ -11,6 +11,8 @@ import {
   type AISettingsSave,
   type AITestResult,
 } from "@/lib/api";
+import Toggle from "./ui/Toggle";
+import ErrorText from "./ui/ErrorText";
 
 const PROVIDERS: AIProvider[] = ["openai", "anthropic", "custom"];
 
@@ -213,9 +215,9 @@ function AISettingsForm({ settings }: { settings: AISettings }) {
         it will become a paid tier. Bring your own API key to keep AI usage on your account.
       </p>
       {settings && !settings.system_available && !settings.configured && (
-        <p className="mt-2 text-[13px]" style={{ color: "var(--danger)" }}>
+        <ErrorText className="mt-2">
           No system default is configured on this server — AI features need your own key.
-        </p>
+        </ErrorText>
       )}
 
       <div
@@ -287,11 +289,11 @@ function AISettingsForm({ settings }: { settings: AISettings }) {
               />
             </Field>
 
-            <label className="flex items-center gap-2 text-[13px]">
-              <input
-                type="checkbox"
+            <div className="flex items-center gap-2 text-[13px]">
+              <Toggle
                 checked={supportsVision}
-                onChange={(e) => setSupportsVision(e.target.checked)}
+                onChange={setSupportsVision}
+                label="Model can read images"
               />
               <span>
                 Model can read images
@@ -299,17 +301,17 @@ function AISettingsForm({ settings }: { settings: AISettings }) {
                   summarizes image-only pages (comics, charts) from a screenshot
                 </span>
               </span>
-            </label>
+            </div>
 
             <div className="border-t pt-3.5" style={{ borderColor: "var(--line-soft)" }}>
-              <label className="flex items-center gap-2 text-[13px]">
-                <input
-                  type="checkbox"
+              <div className="flex items-center gap-2 text-[13px]">
+                <Toggle
                   checked={imageEnabled}
-                  onChange={(e) => setImageEnabled(e.target.checked)}
+                  onChange={setImageEnabled}
+                  label="Image generation for articles without a picture (optional)"
                 />
                 <span>Image generation for articles without a picture (optional)</span>
-              </label>
+              </div>
               {imageEnabled && (
                 <div className="mt-3 flex flex-col gap-3">
                   <Field label="Image provider">

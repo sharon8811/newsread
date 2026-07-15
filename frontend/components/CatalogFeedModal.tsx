@@ -11,6 +11,7 @@ import SubscribeQuickSettings, {
   toSubscribeOptions,
 } from "./SubscribeQuickSettings";
 import { CheckIcon, ExternalIcon, PlusIcon, XIcon } from "./icons";
+import ErrorText from "./ui/ErrorText";
 
 /** A preview story row; titles without a resolvable link render as plain text
  * instead of dead anchors (some feeds publish guid-only items). */
@@ -201,9 +202,9 @@ export default function CatalogFeedModal({
             </>
           )}
           {previewError && cachedStories.length === 0 && (
-            <p className="mt-2 text-[12.5px]" role="alert" style={{ color: "var(--danger)" }}>
+            <ErrorText className="mt-2">
               {previewErrorMessage(previewError, "Could not load stories from this feed right now.")}
-            </p>
+            </ErrorText>
           )}
         </div>
 
@@ -219,9 +220,9 @@ export default function CatalogFeedModal({
                 {entry.url}
               </p>
               {error && (
-                <p className="mt-1 text-[12px]" role="alert" style={{ color: "var(--danger)" }}>
+                <ErrorText className="mt-1">
                   {error}
-                </p>
+                </ErrorText>
               )}
             </div>
             {entry.subscribed ? (

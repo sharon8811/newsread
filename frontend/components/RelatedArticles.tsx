@@ -15,6 +15,8 @@ import {
 } from "@/lib/api";
 import { timeAgo } from "@/lib/format";
 import { SparkleIcon } from "./icons";
+import Badge from "./ui/Badge";
+import ErrorText from "./ui/ErrorText";
 
 /** Related coverage from the user's subscribed feeds (server-side hybrid:
  * shared-resource entities lead, embedding KNN boosted by shared name
@@ -80,16 +82,7 @@ export default function RelatedArticles({ article }: { article: ArticleDetail })
                 {item.title}
               </p>
               {item.tier === "same_story" && (
-                <span
-                  className="font-mono-nr shrink-0 rounded-full border px-2 py-0.5 text-[10px]"
-                  style={{
-                    borderColor: "var(--accent-border)",
-                    background: "var(--accent-soft)",
-                    color: "var(--accent-bright)",
-                  }}
-                >
-                  SAME STORY
-                </span>
+                <Badge tone="accent-strong" className="text-[10px]">SAME STORY</Badge>
               )}
             </div>
             <p className="font-mono-nr mt-1 text-[11px]" style={{ color: "var(--ink-faint)" }}>
@@ -132,9 +125,9 @@ export default function RelatedArticles({ article }: { article: ArticleDetail })
 
       {error && !busy && (
         <div className="mt-4 flex items-center gap-3">
-          <p className="text-[13px]" style={{ color: "var(--danger)" }}>
+          <ErrorText>
             {error}
-          </p>
+          </ErrorText>
           <button className="btn" onClick={synthesize}>
             Try again
           </button>

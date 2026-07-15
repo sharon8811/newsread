@@ -11,6 +11,9 @@ import {
   type ViewMode,
 } from "@/lib/api";
 import { TrashIcon, XIcon } from "./icons";
+import Button from "./ui/Button";
+import ErrorText from "./ui/ErrorText";
+import Toggle from "./ui/Toggle";
 
 const RETENTION_OPTIONS = [
   { value: 0, label: "Keep forever" },
@@ -50,32 +53,6 @@ function Row({
       </div>
       <div className="shrink-0">{children}</div>
     </div>
-  );
-}
-
-function Toggle({
-  checked,
-  onChange,
-  label,
-}: {
-  checked: boolean;
-  onChange: (v: boolean) => void;
-  label: string;
-}) {
-  return (
-    <button
-      role="switch"
-      aria-checked={checked}
-      aria-label={label}
-      onClick={() => onChange(!checked)}
-      className="relative h-[22px] w-[38px] rounded-full transition-colors"
-      style={{ background: checked ? "var(--accent)" : "var(--line)" }}
-    >
-      <span
-        className="absolute top-[3px] h-4 w-4 rounded-full transition-all"
-        style={{ background: "var(--bg-raised)", left: checked ? 18 : 3 }}
-      />
-    </button>
   );
 }
 
@@ -298,29 +275,20 @@ export default function FeedSettingsModal({
           </Row>
         </div>
 
-        {error && (
-          <p className="mt-2 text-[12.5px]" style={{ color: "var(--danger)" }}>
-            {error}
-          </p>
-        )}
+        <ErrorText className="mt-2">{error}</ErrorText>
 
         <div className="mt-5 flex items-center justify-between">
-          <button
-            className="btn btn-ghost"
-            style={{ color: "var(--danger)" }}
-            onClick={unsubscribe}
-            disabled={busy}
-          >
+          <Button variant="danger" onClick={unsubscribe} disabled={busy}>
             <TrashIcon size={13} />
             {confirmingRemove ? "Really unsubscribe?" : "Unsubscribe"}
-          </button>
+          </Button>
           <div className="flex items-center gap-2">
-            <button className="btn btn-ghost" onClick={onClose} disabled={busy}>
+            <Button variant="ghost" onClick={onClose} disabled={busy}>
               Cancel
-            </button>
-            <button className="btn btn-accent" onClick={save} disabled={busy}>
+            </Button>
+            <Button variant="primary" onClick={save} loading={busy}>
               {busy ? "Saving…" : "Save"}
-            </button>
+            </Button>
           </div>
         </div>
       </div>

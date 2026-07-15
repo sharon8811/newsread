@@ -5,6 +5,7 @@ import { useState } from "react";
 import useSWR, { mutate } from "swr";
 import { api, fetcher, type Project } from "@/lib/api";
 import { FolderIcon, PlusIcon, XIcon } from "@/components/icons";
+import ErrorText from "@/components/ui/ErrorText";
 
 export default function ProjectsPage() {
   const { data: projects, isLoading } = useSWR<Project[]>("/projects", fetcher);
@@ -74,9 +75,9 @@ export default function ProjectsPage() {
             onChange={(e) => setDescription(e.target.value)}
           />
           {error && (
-            <p className="mt-2 text-[12.5px]" style={{ color: "var(--danger)" }}>
+            <ErrorText className="mt-2">
               {error}
-            </p>
+            </ErrorText>
           )}
           <button className="btn btn-accent mt-3" disabled={busy || !name.trim()} type="submit">
             {busy ? "Creating…" : "Create project"}

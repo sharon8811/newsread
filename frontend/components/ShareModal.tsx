@@ -22,6 +22,10 @@ import {
   XIcon,
 } from "./icons";
 import Modal, { ModalClose, ModalTitle } from "./Modal";
+import Avatar from "./ui/Avatar";
+import Badge from "./ui/Badge";
+import Chip from "./ui/Chip";
+import ErrorText from "./ui/ErrorText";
 
 export default function ShareModal({
   article,
@@ -196,12 +200,6 @@ export default function ShareModal({
     setTimeout(onClose, 900);
   }
 
-  const chipStyle = (active: boolean) => ({
-    borderColor: active ? "var(--accent-border)" : "var(--line)",
-    background: active ? "var(--accent-soft)" : "transparent",
-    color: active ? "var(--accent-bright)" : "var(--ink-dim)",
-  });
-
   return (
     <Modal onClose={onClose} contentClassName="max-h-[calc(100dvh-3rem)] overflow-y-auto p-6">
         {sent ? (
@@ -240,14 +238,10 @@ export default function ShareModal({
               {recipients.length > 0 && (
                 <div className="mb-2 flex flex-wrap gap-1.5">
                   {recipients.map((r) => (
-                    <span
+                    <Badge
                       key={r.id}
-                      className="font-mono-nr flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[12px]"
-                      style={{
-                        borderColor: "var(--accent-border)",
-                        background: "var(--accent-soft)",
-                        color: "var(--accent-bright)",
-                      }}
+                      tone="accent-strong"
+                      className="gap-1.5 px-2.5 py-1 text-[12px]"
                     >
                       @{r.username}
                       <button
@@ -258,7 +252,7 @@ export default function ShareModal({
                       >
                         <XIcon size={11} />
                       </button>
-                    </span>
+                    </Badge>
                   ))}
                 </div>
               )}
@@ -284,12 +278,7 @@ export default function ShareModal({
                       className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left transition-colors hover:bg-[var(--bg-hover)]"
                       onClick={() => addRecipient(u)}
                     >
-                      <span
-                        className="flex h-7 w-7 items-center justify-center rounded-full text-[12px] font-semibold"
-                        style={{ background: "var(--accent-soft)", color: "var(--accent)" }}
-                      >
-                        {u.name[0]?.toUpperCase()}
-                      </span>
+                      <Avatar name={u.name} />
                       <span className="text-[13.5px]">{u.name}</span>
                       <span
                         className="font-mono-nr text-[11.5px]"
@@ -308,12 +297,7 @@ export default function ShareModal({
               {targets?.map((target) => {
                 const active = selected.has(target.id);
                 return (
-                  <button
-                    key={target.id}
-                    className="flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[12px] transition-colors"
-                    style={chipStyle(active)}
-                    onClick={() => toggleTarget(target.id)}
-                  >
+                  <Chip key={target.id} active={active} onClick={() => toggleTarget(target.id)}>
                     {target.platform === "slack" ? (
                       <SlackIcon size={12} />
                     ) : (
@@ -323,19 +307,18 @@ export default function ShareModal({
                       ? target.display_name.replace(/^#\s*/, "")
                       : target.display_name}
                     {active && <CheckIcon size={11} />}
-                  </button>
+                  </Chip>
                 );
               })}
-              <button
-                className="flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[12px] transition-colors"
-                style={chipStyle(whatsapp)}
+              <Chip
+                active={whatsapp}
                 onClick={() => setWhatsapp((v) => !v)}
                 title="Opens WhatsApp with the message prefilled"
               >
                 <WhatsAppIcon size={12} />
                 WhatsApp
                 {whatsapp && <CheckIcon size={11} />}
-              </button>
+              </Chip>
             </div>
 
             <textarea
@@ -374,9 +357,9 @@ export default function ShareModal({
             )}
 
             {error && (
-              <p className="mt-2 text-[12.5px]" style={{ color: "var(--danger)" }}>
+              <ErrorText className="mt-2">
                 {error}
-              </p>
+              </ErrorText>
             )}
 
             <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

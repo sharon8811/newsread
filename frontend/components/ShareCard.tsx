@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { mutate } from "swr";
 import { api, type Share } from "@/lib/api";
 import { domainOf, timeAgo } from "@/lib/format";
+import Avatar from "./ui/Avatar";
 
 export default function ShareCard({
   share,
@@ -33,15 +34,11 @@ export default function ShareCard({
       onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
     >
       <div className="flex items-center gap-2.5">
-        <span
-          className="flex h-7 w-7 items-center justify-center rounded-full text-[12px] font-semibold"
-          style={{ background: "var(--accent-soft)", color: "var(--accent)" }}
-        >
-          {(direction === "received"
-            ? share.from_user.name[0]
-            : share.to_users[0]?.name[0] ?? "?"
-          )?.toUpperCase()}
-        </span>
+        <Avatar
+          name={
+            direction === "received" ? share.from_user.name : share.to_users[0]?.name
+          }
+        />
         <p className="text-[13px]" style={{ color: "var(--ink-dim)" }}>
           {direction === "received" ? (
             <>
