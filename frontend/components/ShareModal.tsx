@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { mutate } from "swr";
 import {
   api,
@@ -9,21 +9,19 @@ import {
   type UserPublic,
 } from "@/lib/api";
 import { keys } from "@/lib/keys";
-import { useAiStatus, useShareTargets, useUserSearch } from "@/lib/queries";
-import { useDebouncedValue } from "@/lib/useDebouncedValue";
+import { useAiStatus } from "@/lib/queries";
 import {
   CheckIcon,
   ExternalIcon,
   ShareIcon,
-  SlackIcon,
   SparkleIcon,
-  TeamsIcon,
   WhatsAppIcon,
   XIcon,
 } from "./icons";
 import Modal, { ModalClose, ModalTitle } from "./Modal";
-import Avatar from "./ui/Avatar";
-import Badge from "./ui/Badge";
+import ShareDestinationPicker, {
+  type ExternalShareDestination,
+} from "./ShareDestinationPicker";
 import Chip from "./ui/Chip";
 import ErrorText from "./ui/ErrorText";
 
@@ -34,8 +32,10 @@ export default function ShareModal({
   article: Article;
   onClose: () => void;
 }) {
-  const [query, setQuery] = useState("");
   const [recipients, setRecipients] = useState<UserPublic[]>([]);
+  const [externalDestinations, setExternalDestinations] = useState<
+    ExternalShareDestination[]
+  >([]);
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -43,39 +43,12 @@ export default function ShareModal({
   const [appShareBusy, setAppShareBusy] = useState(false);
   const [appShareStatus, setAppShareStatus] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
-  // External targets selected for this share; internal share tracked separately
+  // External destinations selected for this share; internal share tracked separately
   // so a retry after a partial failure doesn't re-send what already went out.
-  const [selected, setSelected] = useState<Set<number>>(new Set());
   const [whatsapp, setWhatsapp] = useState(false);
   const [internalSent, setInternalSent] = useState(false);
-  const searchRef = useRef<HTMLInputElement>(null);
 
-  const { data: targets } = useShareTargets();
   const { data: aiStatus } = useAiStatus();
-
-  // SWR keyed on the debounced query replaces the debounce+cancel effect;
-  // recipient filtering happens at render time.
-  const liveQuery = query.trim().replace(/^@/, "");
-  const searchQuery = useDebouncedValue(liveQuery, 200);
-  const { data: userMatches } = useUserSearch(liveQuery ? searchQuery : "");
-  const results = liveQuery
-    ? (userMatches ?? []).filter((u) => !recipients.some((r) => r.id === u.id))
-    : [];
-
-  function addRecipient(user: UserPublic) {
-    setRecipients((r) => [...r, user]);
-    setQuery("");
-    searchRef.current?.focus();
-  }
-
-  function toggleTarget(id: number) {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
 
   async function suggestMessage() {
     if (aiBusy) return;
@@ -136,7 +109,7 @@ export default function ShareModal({
   }
 
   const nothingChosen =
-    recipients.length === 0 && selected.size === 0 && !whatsapp;
+    recipients.length === 0 && externalDestinations.length === 0 && !whatsapp;
 
   async function submit() {
     if (nothingChosen || busy) return;
@@ -161,20 +134,32 @@ export default function ShareModal({
       }
     }
 
-    for (const target of targets?.filter((t) => selected.has(t.id)) ?? []) {
+    for (const destination of externalDestinations) {
       try {
         await api("/shares/external", {
           method: "POST",
-          body: { article_id: article.id, message: note.trim(), target_id: target.id },
+          body: {
+            article_id: article.id,
+            message: note.trim(),
+            ...(destination.savedId
+              ? { target_id: destination.savedId }
+              : {
+                  target: {
+                    platform: destination.platform,
+                    external_id: destination.externalId,
+                    display_name: destination.displayName,
+                    target_type: destination.targetType,
+                    meta: destination.meta,
+                  },
+                }),
+          },
         });
-        setSelected((prev) => {
-          const next = new Set(prev);
-          next.delete(target.id);
-          return next;
-        });
+        setExternalDestinations((current) =>
+          current.filter((item) => item.key !== destination.key),
+        );
       } catch (err) {
         failures.push(
-          `${target.display_name}: ${err instanceof Error ? err.message : "failed"}`,
+          `${destination.displayName}: ${err instanceof Error ? err.message : "failed"}`,
         );
       }
     }
@@ -195,7 +180,10 @@ export default function ShareModal({
   }
 
   return (
-    <Modal onClose={onClose} contentClassName="max-h-[calc(100dvh-3rem)] overflow-y-auto p-6">
+    <Modal
+      onClose={onClose}
+      contentClassName="max-h-[calc(100dvh-1.5rem)] overflow-y-auto p-4 sm:max-h-[calc(100dvh-3rem)] sm:p-6"
+    >
         {sent ? (
           <div className="flex flex-col items-center gap-3 py-10">
             <ModalTitle className="sr-only">Article shared</ModalTitle>
@@ -228,97 +216,22 @@ export default function ShareModal({
               </ModalClose>
             </div>
 
-            <div className="relative mt-5">
-              {recipients.length > 0 && (
-                <div className="mb-2 flex flex-wrap gap-1.5">
-                  {recipients.map((r) => (
-                    <Badge
-                      key={r.id}
-                      tone="accent-strong"
-                      className="gap-1.5 px-2.5 py-1 text-body-sm"
-                    >
-                      @{r.username}
-                      <button
-                        className="opacity-70 hover:opacity-100"
-                        onClick={() =>
-                          setRecipients((rs) => rs.filter((x) => x.id !== r.id))
-                        }
-                      >
-                        <XIcon size={11} />
-                      </button>
-                    </Badge>
-                  ))}
-                </div>
-              )}
-              <input
-                ref={searchRef}
-                className="input"
-                placeholder="@username: who should read this?"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
+            <div className="mt-5">
+              <label htmlFor="share-message" className="text-body-sm font-medium">
+                Message
+                <span className="ml-1 font-normal" style={{ color: "var(--ink-faint)" }}>
+                  optional
+                </span>
+              </label>
+              <textarea
+                id="share-message"
+                className="input mt-1.5 min-h-24 resize-none font-serif-nr text-[16px] italic sm:text-[15.5px]"
+                placeholder="Add context for the people or app you share with"
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
                 autoFocus
               />
-              {results.length > 0 && (
-                <div
-                  className="absolute left-0 right-0 top-full z-10 mt-1.5 overflow-hidden rounded-md border"
-                  style={{ background: "var(--bg-raised)", borderColor: "var(--line)" }}
-                >
-                  {results.map((u) => (
-                    <button
-                      key={u.id}
-                      className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left transition-colors hover:bg-[var(--bg-hover)]"
-                      onClick={() => addRecipient(u)}
-                    >
-                      <Avatar name={u.name} />
-                      <span className="text-body">{u.name}</span>
-                      <span
-                        className="font-mono-nr text-label"
-                        style={{ color: "var(--ink-faint)" }}
-                      >
-                        @{u.username}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              )}
             </div>
-
-            {/* External quick-share targets (saved in Settings) + WhatsApp handoff */}
-            <div className="mt-4 flex flex-wrap gap-1.5">
-              {targets?.map((target) => {
-                const active = selected.has(target.id);
-                return (
-                  <Chip key={target.id} active={active} onClick={() => toggleTarget(target.id)}>
-                    {target.platform === "slack" ? (
-                      <SlackIcon size={12} />
-                    ) : (
-                      <TeamsIcon size={12} />
-                    )}
-                    {target.platform === "slack"
-                      ? target.display_name.replace(/^#\s*/, "")
-                      : target.display_name}
-                    {active && <CheckIcon size={11} />}
-                  </Chip>
-                );
-              })}
-              <Chip
-                active={whatsapp}
-                onClick={() => setWhatsapp((v) => !v)}
-                title="Opens WhatsApp with the message prefilled"
-              >
-                <WhatsAppIcon size={12} />
-                WhatsApp
-                {whatsapp && <CheckIcon size={11} />}
-              </Chip>
-            </div>
-
-            <textarea
-              className="input mt-3 resize-none font-serif-nr italic"
-              style={{ fontSize: 15.5, minHeight: 96 }}
-              placeholder="Why are you sharing this? Sent as your note and as the chat message."
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-            />
             {aiStatus?.configured && (
               <div className="mt-2 flex justify-end">
                 <button
@@ -337,6 +250,42 @@ export default function ShareModal({
               </div>
             )}
 
+            <ShareDestinationPicker
+              recipients={recipients}
+              externalDestinations={externalDestinations}
+              onAddRecipient={(recipient) =>
+                setRecipients((current) => [...current, recipient])
+              }
+              onRemoveRecipient={(userId) =>
+                setRecipients((current) => current.filter((recipient) => recipient.id !== userId))
+              }
+              onAddExternal={(destination) =>
+                setExternalDestinations((current) => [...current, destination])
+              }
+              onRemoveExternal={(key) =>
+                setExternalDestinations((current) =>
+                  current.filter((destination) => destination.key !== key),
+                )
+              }
+            />
+
+            <div className="mt-2.5 flex items-center justify-between gap-3">
+              <Chip
+                active={whatsapp}
+                onClick={() => setWhatsapp((value) => !value)}
+                title="Opens WhatsApp with the message prefilled"
+              >
+                <WhatsAppIcon size={12} />
+                WhatsApp
+                {whatsapp && <CheckIcon size={11} />}
+              </Chip>
+              {(recipients.length > 0 || externalDestinations.length > 0) && (
+                <p className="font-mono-nr text-label" style={{ color: "var(--ink-faint)" }}>
+                  {recipients.length + externalDestinations.length} selected
+                </p>
+              )}
+            </div>
+
             {appShareStatus && (
               <p
                 className="mt-2 text-right text-body-sm"
@@ -353,39 +302,24 @@ export default function ShareModal({
               </ErrorText>
             )}
 
-            <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <p className="font-mono-nr text-label" style={{ color: "var(--ink-faint)" }}>
-                {nothingChosen
-                  ? "Select a reader or channel"
-                  : [
-                      recipients.length > 0 &&
-                        `${recipients.length} reader${recipients.length > 1 ? "s" : ""}`,
-                      selected.size > 0 &&
-                        `${selected.size} channel${selected.size > 1 ? "s" : ""}`,
-                      whatsapp && "WhatsApp",
-                    ]
-                      .filter(Boolean)
-                      .join(" · ")}
-              </p>
-              <div className="flex items-center justify-end gap-2">
+            <div className="mt-4 grid grid-cols-2 gap-2">
                 <button
-                  className="btn"
+                  className="btn btn-accent w-full"
                   disabled={appShareBusy}
                   onClick={shareWithApp}
                   title="Open your device's app picker"
                 >
                   <ExternalIcon size={13} />
-                  {appShareBusy ? "Opening…" : "Choose an app"}
+                  {appShareBusy ? "Opening…" : "Share to app"}
                 </button>
                 <button
-                  className="btn btn-accent"
+                  className="btn w-full"
                   disabled={nothingChosen || busy}
                   onClick={submit}
                 >
                   <ShareIcon size={14} />
                   {busy ? "Sending…" : "Send"}
                 </button>
-              </div>
             </div>
           </>
         )}

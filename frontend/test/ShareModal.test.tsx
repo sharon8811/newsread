@@ -18,6 +18,7 @@ const cara = makePublic({ id: 3, username: "cara", name: "Cara" });
 // ShareModal reads quick-share targets + AI status via useSWR too; the base
 // suite exercises the internal-share path, so those keys stay undefined.
 swrMock.mockImplementation((key: unknown) => {
+  if (key === "/integrations" || key === "/share-targets") return { data: [] };
   if (typeof key === "string" && key.startsWith("/users/search")) {
     if (searchState.users === null) return { error: new Error("network") };
     return { data: searchState.users };
@@ -38,7 +39,7 @@ function makeFetch(opts: {
 }
 
 async function addBob() {
-  const input = screen.getByPlaceholderText(/who should read this/);
+  const input = screen.getByRole("combobox", { name: /Share to/ });
   await userEvent.type(input, "@bo");
   const option = await screen.findByText("Bob");
   await userEvent.click(option);
@@ -54,7 +55,8 @@ describe("<ShareModal>", () => {
     vi.stubGlobal("fetch", makeFetch());
     render(<ShareModal article={makeArticle({ title: "My Story" })} onClose={vi.fn()} />);
     expect(screen.getByText("My Story")).toBeInTheDocument();
-    expect(screen.getByText("Select a reader or channel")).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: /Share to/ })).toHaveValue("");
+    expect(screen.getByLabelText(/Message/)).toHaveFocus();
     expect(screen.getByRole("button", { name: /Send/ })).toBeDisabled();
   });
 
@@ -93,7 +95,7 @@ describe("<ShareModal>", () => {
     vi.stubGlobal("fetch", fetchMock);
     render(<ShareModal article={makeArticle()} onClose={vi.fn()} />);
 
-    const input = screen.getByPlaceholderText(/who should read this/);
+    const input = screen.getByRole("combobox", { name: /Share to/ });
     await userEvent.type(input, "@bo");
     await screen.findByText("Bob");
 
@@ -106,7 +108,7 @@ describe("<ShareModal>", () => {
     expect(screen.getByText("@bob")).toBeInTheDocument();
     expect((input as HTMLInputElement).value).toBe("");
     expect(screen.queryByText("Cara")).not.toBeInTheDocument();
-    expect(screen.getByText("1 reader")).toBeInTheDocument();
+    expect(screen.getByText("1 selected")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Send/ })).toBeEnabled();
   });
 
@@ -117,13 +119,13 @@ describe("<ShareModal>", () => {
     await addBob();
 
     // search again: bob is filtered out, cara remains
-    const input = screen.getByPlaceholderText(/who should read this/);
+    const input = screen.getByRole("combobox", { name: /Share to/ });
     await userEvent.type(input, "ca");
     await screen.findByText("Cara");
     expect(screen.queryByText("Bob")).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByText("Cara"));
-    expect(screen.getByText("2 readers")).toBeInTheDocument();
+    expect(screen.getByText("2 selected")).toBeInTheDocument();
   });
 
   it("removes a recipient", async () => {
@@ -131,19 +133,17 @@ describe("<ShareModal>", () => {
     render(<ShareModal article={makeArticle()} onClose={vi.fn()} />);
 
     await addBob();
-    const chip = screen.getByText("@bob").closest("span")!;
-    const removeBtn = chip.querySelector("button")!;
-    await userEvent.click(removeBtn);
+    await userEvent.click(screen.getByRole("button", { name: "Remove @bob" }));
 
     expect(screen.queryByText("@bob")).not.toBeInTheDocument();
-    expect(screen.getByText("Select a reader or channel")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Send/ })).toBeDisabled();
   });
 
   it("clears results when the query is emptied", async () => {
     vi.stubGlobal("fetch", makeFetch());
     render(<ShareModal article={makeArticle()} onClose={vi.fn()} />);
 
-    const input = screen.getByPlaceholderText(/who should read this/);
+    const input = screen.getByRole("combobox", { name: /Share to/ });
     await userEvent.type(input, "bo");
     await screen.findByText("Bob");
     await userEvent.clear(input);
@@ -156,7 +156,7 @@ describe("<ShareModal>", () => {
     searchState.users = null;
     render(<ShareModal article={makeArticle()} onClose={vi.fn()} />);
 
-    const input = screen.getByPlaceholderText(/who should read this/);
+    const input = screen.getByRole("combobox", { name: /Share to/ });
     await userEvent.type(input, "bo");
     await waitFor(() =>
       expect(
@@ -174,7 +174,7 @@ describe("<ShareModal>", () => {
     render(<ShareModal article={makeArticle({ id: 7 })} onClose={onClose} />);
 
     await addBob();
-    await userEvent.type(screen.getByPlaceholderText(/Why are you sharing/), "  read this  ");
+    await userEvent.type(screen.getByLabelText(/Message/), "  read this  ");
     await userEvent.click(screen.getByRole("button", { name: /Send/ }));
 
     await screen.findByText("Shared.");

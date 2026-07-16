@@ -2,7 +2,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import ShareModal from "@/components/ShareModal";
-import { makeArticle, makeShareTarget } from "./fixtures";
+import type { ShareTarget, TargetOption } from "@/lib/api";
+import { makeArticle, makeIntegration, makeShareTarget } from "./fixtures";
 
 const { swrMock, mutateMock } = vi.hoisted(() => ({
   swrMock: vi.fn(),
@@ -18,9 +19,61 @@ const teamsTarget = makeShareTarget({
   display_name: "Eng › General",
 });
 
-function mockSWRData({ targets = [slackTarget, teamsTarget], ai = false } = {}) {
+function mockSWRData({
+  targets = [slackTarget, teamsTarget],
+  ai = false,
+  connected = true,
+  slackOptions,
+}: {
+  targets?: ShareTarget[];
+  ai?: boolean;
+  connected?: boolean;
+  slackOptions?: TargetOption[];
+} = {}) {
   swrMock.mockImplementation((key: string) => {
     if (key === "/share-targets") return { data: targets };
+    if (key === "/integrations") {
+      return {
+        data: [
+          makeIntegration({ connected, status: connected ? "active" : null }),
+          makeIntegration({
+            platform: "teams",
+            connected,
+            status: connected ? "active" : null,
+          }),
+        ],
+      };
+    }
+    if (key?.startsWith("/integrations/slack/targets")) {
+      return {
+        data:
+          slackOptions ??
+          targets
+            .filter((target) => target.platform === "slack")
+            .map((target) => ({
+              external_id: target.external_id,
+              display_name: target.display_name,
+              target_type: target.target_type,
+              meta: target.meta,
+              saved_id: target.id,
+            })),
+        isLoading: false,
+      };
+    }
+    if (key?.startsWith("/integrations/teams/targets")) {
+      return {
+        data: targets
+          .filter((target) => target.platform === "teams")
+          .map((target) => ({
+            external_id: target.external_id,
+            display_name: target.display_name,
+            target_type: target.target_type,
+            meta: target.meta,
+            saved_id: target.id,
+          })),
+        isLoading: false,
+      };
+    }
     if (key === "/ai/status")
       return { data: { configured: ai, model: null, search: false, search_provider: null } };
     return { data: undefined };
@@ -64,12 +117,15 @@ describe("<ShareModal> external targets", () => {
     vi.unstubAllGlobals();
   });
 
-  it("renders saved quick-share chips without a duplicate Slack hash", () => {
+  it("shows saved Slack and Teams destinations in the default dropdown", async () => {
     mockSWRData();
     render(<ShareModal article={makeArticle()} onClose={vi.fn()} />);
-    expect(screen.getByText("ai-news")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("combobox", { name: /Share to/ }));
+    expect(await screen.findByText("ai-news")).toBeInTheDocument();
     expect(screen.queryByText("#ai-news")).not.toBeInTheDocument();
     expect(screen.getByText("Eng › General")).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Slack" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Microsoft Teams" })).toBeInTheDocument();
     expect(screen.getByText("WhatsApp")).toBeInTheDocument();
   });
 
@@ -80,9 +136,10 @@ describe("<ShareModal> external targets", () => {
     const onClose = vi.fn();
     render(<ShareModal article={makeArticle({ id: 7 })} onClose={onClose} />);
 
-    await userEvent.click(screen.getByText("ai-news"));
+    await userEvent.click(screen.getByRole("combobox", { name: /Share to/ }));
+    await userEvent.click(await screen.findByText("ai-news"));
     await userEvent.type(
-      screen.getByPlaceholderText(/Why are you sharing this/),
+      screen.getByLabelText(/Message/),
       "worth a read",
     );
     await userEvent.click(screen.getByRole("button", { name: /Send/ }));
@@ -98,6 +155,42 @@ describe("<ShareModal> external targets", () => {
     vi.unstubAllGlobals();
   });
 
+  it("sends a live autocomplete result without requiring it to be saved first", async () => {
+    mockSWRData({
+      targets: [],
+      slackOptions: [
+        {
+          external_id: "C99",
+          display_name: "#launch-room",
+          target_type: "channel",
+          meta: { team_id: "T1" },
+          saved_id: null,
+        },
+      ],
+    });
+    const { fn, calls } = makeFetch();
+    vi.stubGlobal("fetch", fn);
+    render(<ShareModal article={makeArticle({ id: 8 })} onClose={vi.fn()} />);
+
+    await userEvent.click(screen.getByRole("combobox", { name: /Share to/ }));
+    await userEvent.click(await screen.findByText("launch-room"));
+    await userEvent.click(screen.getByRole("button", { name: /Send/ }));
+
+    await screen.findByText("Shared.");
+    const external = calls.find((call) => call.url.includes("/shares/external"));
+    expect(external?.body).toEqual({
+      article_id: 8,
+      message: "",
+      target: {
+        platform: "slack",
+        external_id: "C99",
+        display_name: "#launch-room",
+        target_type: "channel",
+        meta: { team_id: "T1" },
+      },
+    });
+  });
+
   it("keeps the modal open and shows the target name when a send fails", async () => {
     mockSWRData();
     const { fn } = makeFetch({
@@ -107,7 +200,8 @@ describe("<ShareModal> external targets", () => {
     vi.stubGlobal("fetch", fn);
     render(<ShareModal article={makeArticle()} onClose={vi.fn()} />);
 
-    await userEvent.click(screen.getByText("ai-news"));
+    await userEvent.click(screen.getByRole("combobox", { name: /Share to/ }));
+    await userEvent.click(await screen.findByText("ai-news"));
     await userEvent.click(screen.getByRole("button", { name: /Send/ }));
 
     expect(await screen.findByText(/#ai-news: not a member/)).toBeInTheDocument();
@@ -130,7 +224,7 @@ describe("<ShareModal> external targets", () => {
 
     await userEvent.click(screen.getByText("WhatsApp"));
     await userEvent.type(
-      screen.getByPlaceholderText(/Why are you sharing this/),
+      screen.getByLabelText(/Message/),
       "look at this",
     );
     await userEvent.click(screen.getByRole("button", { name: /Send/ }));
@@ -163,10 +257,10 @@ describe("<ShareModal> external targets", () => {
     );
 
     await userEvent.type(
-      screen.getByPlaceholderText(/Why are you sharing this/),
+      screen.getByLabelText(/Message/),
       "Worth your time",
     );
-    await userEvent.click(screen.getByRole("button", { name: "Choose an app" }));
+    await userEvent.click(screen.getByRole("button", { name: "Share to app" }));
 
     expect(share).toHaveBeenCalledWith({
       title: "A useful story",
@@ -195,7 +289,7 @@ describe("<ShareModal> external targets", () => {
       />,
     );
 
-    await userEvent.click(screen.getByRole("button", { name: "Choose an app" }));
+    await userEvent.click(screen.getByRole("button", { name: "Share to app" }));
 
     expect(share).toHaveBeenCalledWith({
       title: "A useful story",
@@ -219,7 +313,7 @@ describe("<ShareModal> external targets", () => {
     });
     render(<ShareModal article={makeArticle()} onClose={vi.fn()} />);
 
-    await userEvent.click(screen.getByRole("button", { name: "Choose an app" }));
+    await userEvent.click(screen.getByRole("button", { name: "Share to app" }));
 
     expect(screen.getByRole("button", { name: "Opening…" })).toBeDisabled();
     expect(share).toHaveBeenCalledTimes(1);
@@ -237,10 +331,10 @@ describe("<ShareModal> external targets", () => {
     });
     render(<ShareModal article={makeArticle()} onClose={vi.fn()} />);
 
-    await userEvent.click(screen.getByRole("button", { name: "Choose an app" }));
+    await userEvent.click(screen.getByRole("button", { name: "Share to app" }));
 
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Choose an app" })).toBeEnabled(),
+      expect(screen.getByRole("button", { name: "Share to app" })).toBeEnabled(),
     );
     expect(screen.queryByText("Shared.")).not.toBeInTheDocument();
     expect(screen.queryByText("cancelled")).not.toBeInTheDocument();
@@ -255,10 +349,10 @@ describe("<ShareModal> external targets", () => {
     });
     render(<ShareModal article={makeArticle()} onClose={vi.fn()} />);
 
-    await userEvent.click(screen.getByRole("button", { name: "Choose an app" }));
+    await userEvent.click(screen.getByRole("button", { name: "Share to app" }));
 
     expect(await screen.findByText("Native share failed")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Choose an app" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Share to app" })).toBeEnabled();
   });
 
   it("falls back to a generic error for a non-Error native rejection", async () => {
@@ -270,7 +364,7 @@ describe("<ShareModal> external targets", () => {
     });
     render(<ShareModal article={makeArticle()} onClose={vi.fn()} />);
 
-    await userEvent.click(screen.getByRole("button", { name: "Choose an app" }));
+    await userEvent.click(screen.getByRole("button", { name: "Share to app" }));
 
     expect(await screen.findByText("Could not open the app picker")).toBeInTheDocument();
   });
@@ -279,7 +373,7 @@ describe("<ShareModal> external targets", () => {
     mockSWRData({ ai: true });
     render(<ShareModal article={makeArticle()} onClose={vi.fn()} />);
 
-    const chooseApp = screen.getByRole("button", { name: "Choose an app" });
+    const chooseApp = screen.getByRole("button", { name: "Share to app" });
     const send = screen.getByRole("button", { name: "Send" });
     const draft = screen.getByRole("button", { name: "Draft with AI" });
 
@@ -303,10 +397,10 @@ describe("<ShareModal> external targets", () => {
     );
 
     await userEvent.type(
-      screen.getByPlaceholderText(/Why are you sharing this/),
+      screen.getByLabelText(/Message/),
       "Read this",
     );
-    await userEvent.click(screen.getByRole("button", { name: "Choose an app" }));
+    await userEvent.click(screen.getByRole("button", { name: "Share to app" }));
 
     expect(writeText).toHaveBeenCalledWith("Read this\nhttps://a.example/fallback");
     expect(
@@ -328,7 +422,7 @@ describe("<ShareModal> external targets", () => {
       />,
     );
 
-    await userEvent.click(screen.getByRole("button", { name: "Choose an app" }));
+    await userEvent.click(screen.getByRole("button", { name: "Share to app" }));
 
     expect(writeText).toHaveBeenCalledWith("https://a.example/fallback");
     expect(
@@ -340,7 +434,7 @@ describe("<ShareModal> external targets", () => {
     mockSWRData({ targets: [] });
     render(<ShareModal article={makeArticle()} onClose={vi.fn()} />);
 
-    await userEvent.click(screen.getByRole("button", { name: "Choose an app" }));
+    await userEvent.click(screen.getByRole("button", { name: "Share to app" }));
 
     expect(
       await screen.findByText("App sharing is not supported in this browser"),
@@ -356,7 +450,7 @@ describe("<ShareModal> external targets", () => {
     });
     render(<ShareModal article={makeArticle()} onClose={vi.fn()} />);
 
-    await userEvent.click(screen.getByRole("button", { name: "Choose an app" }));
+    await userEvent.click(screen.getByRole("button", { name: "Share to app" }));
 
     expect(
       await screen.findByText("Could not open the app picker or copy the link"),
@@ -377,7 +471,7 @@ describe("<ShareModal> external targets", () => {
 
     await userEvent.click(screen.getByText("Draft with AI"));
     await waitFor(() =>
-      expect(screen.getByPlaceholderText(/Why are you sharing this/)).toHaveValue(
+      expect(screen.getByLabelText(/Message/)).toHaveValue(
         "A crisp AI note.",
       ),
     );
@@ -388,10 +482,12 @@ describe("<ShareModal> external targets", () => {
     vi.unstubAllGlobals();
   });
 
-  it("requires a reader or a channel before sending", () => {
+  it("focuses the message first and requires a destination before sending", () => {
     mockSWRData();
     render(<ShareModal article={makeArticle()} onClose={vi.fn()} />);
-    expect(screen.getByText("Select a reader or channel")).toBeInTheDocument();
+    expect(screen.getByLabelText(/Message/)).toHaveFocus();
+    expect(screen.getByLabelText(/Message/)).toHaveClass("text-[16px]");
+    expect(screen.getByRole("combobox", { name: /Share to/ })).toHaveClass("text-[16px]");
     expect(screen.getByRole("button", { name: /Send/ })).toBeDisabled();
   });
 });

@@ -275,7 +275,7 @@ export default function QAPanel({
         }}
       >
         <input
-          className="input"
+          className="input text-[16px] sm:text-body-lg"
           placeholder={placeholder}
           value={input}
           onChange={(e) => setInput(e.target.value)}
