@@ -24,7 +24,12 @@ describe("<Modal>", () => {
     const dialog = screen.getByRole("dialog", { name: "Example dialog" });
     expect(screen.getByTestId("transformed-ancestor")).not.toContainElement(dialog);
     expect(document.body).toContainElement(dialog);
-    expect(dialog).toHaveClass("left-1/2", "top-1/2");
+    expect(dialog).toHaveClass(
+      "left-1/2",
+      "top-1/2",
+      "w-[calc(100%-2rem)]",
+      "sm:w-[calc(100%-3rem)]",
+    );
   });
 
   it("supports drawer placement", () => {

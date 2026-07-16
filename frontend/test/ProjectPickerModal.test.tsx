@@ -42,6 +42,11 @@ describe("<ProjectPickerModal>", () => {
     expect(screen.getByText("AI Research")).toBeInTheDocument();
     expect(screen.getByText("2 members")).toBeInTheDocument();
     expect(screen.getByText("1 member")).toBeInTheDocument();
+    expect(screen.getByRole("dialog")).toHaveClass(
+      "max-h-[calc(100dvh-1.5rem)]",
+      "p-4",
+      "sm:p-6",
+    );
   });
 
   it("portals the picker outside a transformed article", () => {

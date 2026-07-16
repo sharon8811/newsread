@@ -107,7 +107,7 @@ export default function NotInterestedModal({
   }
 
   return (
-    <Modal onClose={onClose} contentClassName="p-6">
+    <Modal onClose={onClose} contentClassName="p-4 sm:p-6">
         <ModalHeader
           eyebrow={
             <>

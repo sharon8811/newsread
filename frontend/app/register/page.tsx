@@ -54,7 +54,7 @@ export default function RegisterPage() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center px-6">
+    <main className="flex min-h-dvh items-center justify-center px-4 py-8 sm:px-6">
       <div className="fade-up w-full max-w-[380px]">
         <h1 className="wordmark text-[40px]">
           NewsRead<span className="dot">.</span>

@@ -36,6 +36,7 @@ describe("LoginPage", () => {
     render(<LoginPage />);
     expect(screen.getByText("Sign in")).toBeInTheDocument();
     expect(screen.getByText("Email or username")).toBeInTheDocument();
+    expect(screen.getByRole("main")).toHaveClass("min-h-dvh", "px-4", "sm:px-6");
   });
 
   it("shows the create-account link when signups are open", () => {

@@ -87,9 +87,9 @@ export default function SmartFeedModal({
   return (
     <Modal
       onClose={onClose}
-      contentClassName="flex max-h-[min(680px,90vh)] max-w-[560px] flex-col"
+      contentClassName="flex max-h-[calc(100dvh-1.5rem)] max-w-[560px] flex-col sm:max-h-[min(680px,90vh)]"
     >
-        <header className="border-b p-6 pb-4" style={{ borderColor: "var(--line-soft)" }}>
+        <header className="border-b p-4 sm:p-6 sm:pb-4" style={{ borderColor: "var(--line-soft)" }}>
           <ModalHeader eyebrow={`${provider.category} · Smart feed`} title={provider.name}>
             <a
               href={provider.site_url}
@@ -131,7 +131,7 @@ export default function SmartFeedModal({
           )}
         </header>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6">
           {!debounced && (
             <p className="text-body-sm" style={{ color: "var(--ink-faint)" }}>
               Enter a {provider.topic_label.toLowerCase()} to preview its latest stories.
@@ -179,7 +179,7 @@ export default function SmartFeedModal({
           )}
         </div>
 
-        <footer className="border-t px-6 py-4" style={{ borderColor: "var(--line-soft)" }}>
+        <footer className="border-t px-4 py-4 sm:px-6" style={{ borderColor: "var(--line-soft)" }}>
           {!feed && (
             <div className="mb-3">
               <SubscribeQuickSettings value={settings} onChange={setSettings} disabled={busy} />
