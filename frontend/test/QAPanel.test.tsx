@@ -91,6 +91,7 @@ describe("<QAPanel>", () => {
     expect(screen.getByText("Ask the article")).toBeInTheDocument();
     expect(screen.getByText("What are the key points?")).toBeInTheDocument();
     expect(screen.queryByText("· web-aware")).toBeNull();
+    expect(screen.getByPlaceholderText(panelProps.placeholder)).toHaveClass("text-[16px]");
   });
 
   it("shows the web-aware label when search is enabled", () => {
