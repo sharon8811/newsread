@@ -1,0 +1,8 @@
+{
+  "name": "newsread-demo-video-recorder",
+  "private": true,
+  "description": "Playwright recorder for the README demo video (see ../SKILL.md)",
+  "dependencies": {
+    "playwright-core": "^1.61.1"
+  }
+}
