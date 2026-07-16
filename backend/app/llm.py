@@ -12,6 +12,7 @@ import time
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from functools import lru_cache
 from urllib.parse import urlparse
 
 from openai import AsyncOpenAI
@@ -330,30 +331,30 @@ def _article_context(
 # The general "write in the article's language" rule in SUMMARY_SYSTEM is not
 # reliable on its own — a Hebrew article about US politics still drifted to
 # English ~1 in 5 times. Naming the language explicitly per article makes it
-# deterministic. Script detection covers the languages where drift is both
-# likeliest and most jarring; Latin-script languages are left to the general
-# rule (scripts don't distinguish French from English).
-_SCRIPTS: list[tuple[str, re.Pattern[str]]] = [
-    ("Hebrew", re.compile(r"[֐-׿]")),
-    ("Arabic", re.compile(r"[؀-ۿݐ-ݿ]")),
-    ("Cyrillic", re.compile(r"[Ѐ-ӿ]")),
-    ("Greek", re.compile(r"[Ͱ-Ͽ]")),
-    ("Japanese", re.compile(r"[぀-ヿ]")),  # kana; checked before Han
-    ("Chinese", re.compile(r"[一-鿿]")),
-    ("Korean", re.compile(r"[가-힯]")),
-]
+# deterministic. Lingua (Rust-backed) detects all 75 supported languages,
+# including Latin-script ones a dominant-script heuristic can't tell apart.
+
+
+@lru_cache(maxsize=1)
+def _language_detector():
+    """Process-wide singleton, built on first summary. Language models load
+    lazily per language actually encountered (a feed mix of Hebrew+English
+    stays ~tens of MB), and every request/job in the process shares them."""
+    from lingua import LanguageDetectorBuilder
+
+    return LanguageDetectorBuilder.from_all_languages().build()
 
 
 def _article_language(text: str) -> str | None:
-    """Language name from the dominant non-Latin script, or None for Latin."""
-    sample = text[:2000]
-    letters = sum(1 for ch in sample if ch.isalpha())
-    if not letters:
+    """Detected language name, or None when English/undetectable (an explicit
+    'write in English' note would be noise — English is already the drift)."""
+    sample = text[:2000].strip()
+    if not sample:
         return None
-    for name, pattern in _SCRIPTS:
-        if len(pattern.findall(sample)) / letters > 0.25:
-            return name
-    return None
+    language = _language_detector().detect_language_of(sample)
+    if language is None or language.name == "ENGLISH":
+        return None
+    return language.name.title()
 
 
 def _language_note(detection_text: str) -> str:
