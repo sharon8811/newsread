@@ -285,7 +285,9 @@ PARAGRAPH: two to four sentences with the essential information (plain text, no 
 FULL:
 One or two short paragraphs, at most 120 words total. Give the reader the key facts and why they matter — enough to decide whether the article is worth opening. This is a preview, not a replacement: never try to cover everything, and leave the depth, quotes and finer details to the original article. GitHub-flavored markdown is available — including a table when one genuinely fits the material — but no headings, no code blocks, no links.
 
-Be concrete and specific. State the content directly instead of narrating the article — no "the author notes", "the article discusses"; name the specific person, company or site when attribution matters. Never pad, never editorialize, never mention that you are summarizing."""
+Be concrete and specific. State the content directly instead of narrating the article — no "the author notes", "the article discusses"; name the specific person, company or site when attribution matters. Never pad, never editorialize, never mention that you are summarizing.
+
+Write every level in the language the article is written in (a Hebrew article gets Hebrew summaries, a French one French) — only the ONELINER/PARAGRAPH/FULL labels stay in English. Ignore the language of these instructions and of any site boilerplate around the article."""
 
 _ONELINER_RE = re.compile(r"ONELINER:\s*(.+)")
 _PARAGRAPH_RE = re.compile(r"PARAGRAPH:\s*(.+?)(?=\n\s*FULL:|\Z)", re.DOTALL)

@@ -11,11 +11,15 @@ import {
   setReadingSession,
 } from "./readingSession";
 
-// Reading-mode window over the article list: opens anchored at the resume
-// point (server-side reading frontier), pages backward through read history
-// and forward through unread, and marks articles read as they scroll past.
-// Marks are optimistic and flushed in batches; the deepest article passed
-// travels along as the new frontier.
+// Reading-mode window over the article list: pages backward through read
+// history and forward through unread, and marks articles read as they scroll
+// past. Marks are optimistic and flushed in batches; the deepest article
+// passed travels along as the new frontier.
+//
+// Anchoring differs by scope: the inbox opens at the resume point (server-side
+// reading frontier) Telegram-style, but a single feed's list always opens at
+// the newest article — opening a news feed partway down its history reads as
+// broken ordering, and "N unread ↓" already covers picking up where you left.
 
 const PAGE_SIZE = 50;
 const FLUSH_DELAY_MS = 1500;
@@ -152,7 +156,7 @@ export function useReadingWindow(opts: WindowOpts) {
     setLoading(true);
     try {
       const page = await apiWithHeaders<Article[]>(
-        listPath({ filter, feedId, enabled }, { anchor: "resume" }),
+        listPath({ filter, feedId, enabled }, feedId ? {} : { anchor: "resume" }),
       );
       if (generation !== generationRef.current) return;
       pendingRef.current.clear();
@@ -350,7 +354,7 @@ export function useReadingWindow(opts: WindowOpts) {
     const timer = setInterval(async () => {
       try {
         const page = await apiWithHeaders<Article[]>(
-          listPath({ filter, feedId, enabled }, { anchor: "resume" }),
+          listPath({ filter, feedId, enabled }, feedId ? {} : { anchor: "resume" }),
         );
         const byId = new Map(page.data.map((a) => [a.id, a]));
         setArticles((list) =>
