@@ -19,6 +19,7 @@ import {
   type ProjectArticle,
   type ProjectComment,
   type RelatedArticle,
+  type ServerConfig,
   type Share,
   type ShareTarget,
   type SmartFeed,
@@ -30,6 +31,11 @@ import { keys } from "./keys";
 
 // Thin, typed wrappers over useSWR: one hook per resource, all reading from
 // the shared key registry so mutators (below) always hit the right cache.
+
+// Deployment feature flags. Unauthenticated (login/register read it) and
+// effectively static per server, so skip focus revalidation.
+export const useServerConfig = () =>
+  useSWR<ServerConfig>(keys.config, fetcher, { revalidateOnFocus: false });
 
 export const useFeeds = (config?: SWRConfiguration<Feed[]>) =>
   useSWR<Feed[]>(keys.feeds, fetcher, config);
@@ -83,11 +89,11 @@ export const useUnseenShareCount = (
   config?: SWRConfiguration<{ count: number }>,
 ) => useSWR<{ count: number }>(keys.sharesUnseenCount, fetcher, config);
 
-export const useShareTargets = () =>
-  useSWR<ShareTarget[]>(keys.shareTargets, fetcher);
+export const useShareTargets = (enabled = true) =>
+  useSWR<ShareTarget[]>(enabled ? keys.shareTargets : null, fetcher);
 
-export const useIntegrations = () =>
-  useSWR<IntegrationStatus[]>(keys.integrations, fetcher);
+export const useIntegrations = (enabled = true) =>
+  useSWR<IntegrationStatus[]>(enabled ? keys.integrations : null, fetcher);
 
 export const useDislikeRules = () =>
   useSWR<DislikeRule[]>(keys.dislikeRules, fetcher);

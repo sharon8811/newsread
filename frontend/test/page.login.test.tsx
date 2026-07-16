@@ -4,15 +4,17 @@ import userEvent from "@testing-library/user-event";
 import LoginPage from "@/app/login/page";
 import { makeUser } from "./fixtures";
 
-const { pushMock, replaceMock, authState } = vi.hoisted(() => ({
+const { pushMock, replaceMock, authState, serverConfig } = vi.hoisted(() => ({
   pushMock: vi.fn(),
   replaceMock: vi.fn(),
   authState: { user: null as unknown, ready: true, authed: false, login: vi.fn() },
+  serverConfig: { data: undefined as unknown },
 }));
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: pushMock, replace: replaceMock }),
 }));
 vi.mock("@/lib/auth", () => ({ useAuth: () => authState }));
+vi.mock("@/lib/queries", () => ({ useServerConfig: () => serverConfig }));
 vi.mock("next/link", () => ({
   default: ({ children, href }: { children: React.ReactNode; href: string }) => (
     <a href={href}>{children}</a>
@@ -27,12 +29,30 @@ describe("LoginPage", () => {
     authState.ready = true;
     authState.authed = false;
     authState.login = vi.fn().mockResolvedValue(undefined);
+    serverConfig.data = { allow_signup: true, messaging_enabled: true };
   });
 
   it("renders the sign-in form", () => {
     render(<LoginPage />);
     expect(screen.getByText("Sign in")).toBeInTheDocument();
     expect(screen.getByText("Email or username")).toBeInTheDocument();
+  });
+
+  it("shows the create-account link when signups are open", () => {
+    render(<LoginPage />);
+    expect(screen.getByText("Create an account")).toBeInTheDocument();
+  });
+
+  it("hides the create-account link when signups are closed", () => {
+    serverConfig.data = { allow_signup: false, messaging_enabled: true };
+    render(<LoginPage />);
+    expect(screen.queryByText("Create an account")).not.toBeInTheDocument();
+  });
+
+  it("hides the create-account link while server flags load", () => {
+    serverConfig.data = undefined;
+    render(<LoginPage />);
+    expect(screen.queryByText("Create an account")).not.toBeInTheDocument();
   });
 
   function fields(container: HTMLElement) {

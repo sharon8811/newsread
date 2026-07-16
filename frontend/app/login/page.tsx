@@ -4,12 +4,14 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth";
+import { useServerConfig } from "@/lib/queries";
 import Button from "@/components/ui/Button";
 import ErrorText from "@/components/ui/ErrorText";
 import Field from "@/components/ui/Field";
 
 export default function LoginPage() {
   const { authed, ready, login } = useAuth();
+  const { data: config } = useServerConfig();
   const router = useRouter();
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
@@ -70,12 +72,14 @@ export default function LoginPage() {
           </Button>
         </form>
 
-        <p className="mt-6 text-body" style={{ color: "var(--ink-faint)" }}>
-          New here?{" "}
-          <Link href="/register" style={{ color: "var(--accent-bright)" }}>
-            Create an account
-          </Link>
-        </p>
+        {config?.allow_signup && (
+          <p className="mt-6 text-body" style={{ color: "var(--ink-faint)" }}>
+            New here?{" "}
+            <Link href="/register" style={{ color: "var(--accent-bright)" }}>
+              Create an account
+            </Link>
+          </p>
+        )}
       </div>
     </main>
   );

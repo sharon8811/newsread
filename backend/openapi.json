@@ -3101,6 +3101,25 @@
         "title": "RelatedArticleItem",
         "type": "object"
       },
+      "ServerConfigOut": {
+        "description": "Deployment-mode feature flags clients read before login (GET /config).\nallow_signup is the EFFECTIVE value: on a fresh instance with signups\ndisabled it stays true until the first (owner) account exists.",
+        "properties": {
+          "allow_signup": {
+            "title": "Allow Signup",
+            "type": "boolean"
+          },
+          "messaging_enabled": {
+            "title": "Messaging Enabled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "allow_signup",
+          "messaging_enabled"
+        ],
+        "title": "ServerConfigOut",
+        "type": "object"
+      },
       "ShareCreateIn": {
         "properties": {
           "article_id": {
@@ -5671,6 +5690,27 @@
         "summary": "Report Client Error",
         "tags": [
           "client-errors"
+        ]
+      }
+    },
+    "/api/config": {
+      "get": {
+        "operationId": "server_config_api_config_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServerConfigOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Server Config",
+        "tags": [
+          "config"
         ]
       }
     },

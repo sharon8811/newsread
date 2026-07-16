@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -11,13 +11,29 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { usePalette } from "@/lib/theme";
+import type { ServerConfig } from "@/lib/types";
 
 export default function LoginScreen() {
   const { serverUrl, login, register, changeServer } = useAuth();
   const { colors } = usePalette();
   const [mode, setMode] = useState<"login" | "register">("login");
+  // null = flags still loading (toggle hidden, so it never flashes away).
+  // Servers older than GET /config don't have signup gating — treat a failed
+  // fetch as signups-open to keep them working as before.
+  const [allowSignup, setAllowSignup] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    api<ServerConfig>("/config")
+      .then((config) => !cancelled && setAllowSignup(config.allow_signup))
+      .catch(() => !cancelled && setAllowSignup(true));
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const [identifier, setIdentifier] = useState("");
   const [email, setEmail] = useState("");
   const [username, setUsername] = useState("");
@@ -117,17 +133,19 @@ export default function LoginScreen() {
             )}
           </Pressable>
 
-          <Pressable
-            onPress={() => {
-              setMode(mode === "login" ? "register" : "login");
-              setError(null);
-            }}
-            disabled={busy}
-          >
-            <Text style={[styles.link, { color: colors.tint }]}>
-              {mode === "login" ? "New here? Create an account" : "Have an account? Sign in"}
-            </Text>
-          </Pressable>
+          {allowSignup === true && (
+            <Pressable
+              onPress={() => {
+                setMode(mode === "login" ? "register" : "login");
+                setError(null);
+              }}
+              disabled={busy}
+            >
+              <Text style={[styles.link, { color: colors.tint }]}>
+                {mode === "login" ? "New here? Create an account" : "Have an account? Sign in"}
+              </Text>
+            </Pressable>
+          )}
 
           <Pressable onPress={() => changeServer()} disabled={busy}>
             <Text style={[styles.link, { color: colors.muted }]}>

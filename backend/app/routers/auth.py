@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from sqlalchemy import func, or_, select
 
+from ..config import settings
 from ..deps import CurrentUser, DbSession
 from ..models import User
 from ..schemas import LoginIn, RegisterIn, TokenOut, UserOut
@@ -9,8 +10,20 @@ from ..security import create_access_token, hash_password, verify_password
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
+async def signup_open(session: DbSession) -> bool:
+    """Whether /auth/register currently accepts new accounts. With signups
+    disabled (single-user self-hosted default), a fresh instance still lets
+    the first account through so the owner can be created from the normal
+    register form."""
+    if settings.allow_signup:
+        return True
+    return (await session.scalar(select(func.count()).select_from(User))) == 0
+
+
 @router.post("/register", response_model=TokenOut, status_code=201)
 async def register(body: RegisterIn, session: DbSession):
+    if not await signup_open(session):
+        raise HTTPException(status_code=403, detail="Signups are disabled on this server")
     existing = await session.scalar(
         select(User).where(
             or_(

@@ -131,7 +131,9 @@ async def integration_status(
         out.append(
             IntegrationStatusOut(
                 platform=platform,
-                configured=adapter.is_configured() and crypto.is_configured(),
+                configured=settings.messaging_enabled
+                and adapter.is_configured()
+                and crypto.is_configured(),
                 connected=connection is not None,
                 status=connection.status if connection else None,
                 workspace_name=connection.workspace_name if connection else None,
@@ -147,6 +149,11 @@ async def authorize(
     user: CurrentUser,
 ):
     adapter = _adapter_or_404(platform)
+    if not settings.messaging_enabled:
+        raise HTTPException(
+            status_code=503,
+            detail="Messaging integrations are disabled on this server",
+        )
     if not adapter.is_configured():
         raise HTTPException(
             status_code=503,

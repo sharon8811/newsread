@@ -23,6 +23,13 @@ export type ServerInfo = {
   min_client_version: string;
 };
 
+// Deployment feature flags (GET /config, unauthenticated). allow_signup is
+// the effective value: false once a single-user server has its owner account.
+export type ServerConfig = {
+  allow_signup: boolean;
+  messaging_enabled: boolean;
+};
+
 // One entry in the curated feed directory (GET /catalog).
 export type CatalogEntry = {
   id: number;

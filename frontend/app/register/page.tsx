@@ -4,12 +4,14 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth";
+import { useServerConfig } from "@/lib/queries";
 import Button from "@/components/ui/Button";
 import ErrorText from "@/components/ui/ErrorText";
 import Field from "@/components/ui/Field";
 
 export default function RegisterPage() {
   const { authed, ready, register } = useAuth();
+  const { data: config } = useServerConfig();
   const router = useRouter();
   const [form, setForm] = useState({ name: "", username: "", email: "", password: "" });
   const [error, setError] = useState<string | null>(null);
@@ -18,6 +20,15 @@ export default function RegisterPage() {
   useEffect(() => {
     if (ready && authed) router.replace("/");
   }, [ready, authed, router]);
+
+  // Signups closed (single-user self-hosted deployments): send visitors to
+  // sign in instead. The form stays hidden until the flags load so it never
+  // flashes and then vanishes.
+  useEffect(() => {
+    if (config && !config.allow_signup) router.replace("/login");
+  }, [config, router]);
+
+  if (!config?.allow_signup) return null;
 
   function set<K extends keyof typeof form>(key: K, value: string) {
     setForm((f) => ({ ...f, [key]: value }));

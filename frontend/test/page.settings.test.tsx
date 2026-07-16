@@ -35,11 +35,13 @@ function mockSWRData({
   ],
   targets = [makeShareTarget({ id: 5, display_name: "#ai-news" })],
   pickerOptions = undefined as unknown[] | Error | undefined,
+  serverConfig = { allow_signup: true, messaging_enabled: true } as unknown,
 } = {}) {
   // The picker's bound mutate writes back into the holder; the re-render
   // caused by the component's own setState picks the new value up.
   const holder = { options: pickerOptions };
   swrMock.mockImplementation((key: string) => {
+    if (key === "/config") return { data: serverConfig };
     if (key === "/integrations") return { data: integrations };
     if (key === "/share-targets") return { data: targets };
     if (typeof key === "string" && key.includes("/targets?q=")) {
@@ -66,6 +68,23 @@ describe("SettingsPage", () => {
     mutateMock.mockClear();
     replaceMock.mockClear();
     searchParams.value = new URLSearchParams();
+  });
+
+  it("hides the messaging sections when the deployment disables messaging", () => {
+    mockSWRData({ serverConfig: { allow_signup: true, messaging_enabled: false } });
+    render(<SettingsPage />);
+    expect(screen.queryByText("Connections")).not.toBeInTheDocument();
+    expect(screen.queryByText("Quick share")).not.toBeInTheDocument();
+    // The rest of the settings page still renders.
+    expect(screen.getByText("Settings")).toBeInTheDocument();
+  });
+
+  it("hides the messaging sections while server flags load", () => {
+    // null stands in for SWR's "no data yet" (undefined would hit the
+    // destructuring default above and mean flags-loaded-and-enabled).
+    mockSWRData({ serverConfig: null });
+    render(<SettingsPage />);
+    expect(screen.queryByText("Connections")).not.toBeInTheDocument();
   });
 
   it("renders connection cards with their state", () => {

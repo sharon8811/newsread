@@ -20,6 +20,7 @@ import {
   mutateIntegrations,
   mutateShareTargets,
   useIntegrations,
+  useServerConfig,
   useShareTargets,
 } from "@/lib/queries";
 import { useDebouncedValue } from "@/lib/useDebouncedValue";
@@ -259,8 +260,13 @@ function SettingsContent() {
   const [banner, setBanner] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
   const [pickerPlatform, setPickerPlatform] = useState<MessagingPlatform | null>(null);
 
-  const { data: integrations } = useIntegrations();
-  const { data: targets } = useShareTargets();
+  const { data: config } = useServerConfig();
+  // Messaging disabled on this deployment (e.g. single-user self-hosted):
+  // skip the whole Connections/Quick-share area instead of rendering
+  // "not configured" cards for platforms that can never be enabled.
+  const messagingEnabled = config?.messaging_enabled === true;
+  const { data: integrations } = useIntegrations(messagingEnabled);
+  const { data: targets } = useShareTargets(messagingEnabled);
 
   // The OAuth callback redirects back here with ?connected= or ?error=.
   useEffect(() => {
@@ -325,87 +331,91 @@ function SettingsContent() {
           </div>
         )}
 
-        <section>
-          <p className="mono-label">Connections</p>
-          <p className="mt-1.5 text-body" style={{ color: "var(--ink-faint)" }}>
-            Link a messaging platform to share articles straight into your channels — messages
-            are sent as you, from your account.
-          </p>
-          <div className="mt-3.5 flex flex-col gap-2.5">
-            {integrations?.map((integration) => (
-              <ConnectionCard
-                key={integration.platform}
-                integration={integration}
-                onChanged={() => mutate(keys.integrations)}
-              />
-            ))}
-          </div>
-        </section>
-
-        <section className="mt-9">
-          <p className="mono-label">Quick share</p>
-          <p className="mt-1.5 text-body" style={{ color: "var(--ink-faint)" }}>
-            Channels and chats saved here show up as one-tap targets in the share dialog.
-          </p>
-
-          {targets && targets.length > 0 && (
-            <div className="mt-3.5 flex flex-col gap-1">
-              {targets.map((target) => (
-                <div
-                  key={target.id}
-                  className="group flex items-center gap-2.5 rounded-md border px-3.5 py-2 text-body"
-                  style={{ background: "var(--bg-raised)", borderColor: "var(--line)" }}
-                >
-                  <span style={{ color: "var(--ink-faint)" }}>
-                    <PlatformIcon platform={target.platform} size={14} />
-                  </span>
-                  <span className="min-w-0 flex-1 truncate">{target.display_name}</span>
-                  <button
-                    className="icon-btn shrink-0 opacity-0 group-hover:opacity-100"
-                    style={{ width: 24, height: 24 }}
-                    title="Remove"
-                    onClick={() => removeTarget(target)}
-                  >
-                    <TrashIcon size={13} />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {connectedPlatforms.length === 0 ? (
-            <p className="mt-3 text-body" style={{ color: "var(--ink-faint)" }}>
-              Connect a platform above to start saving quick-share targets.
-            </p>
-          ) : (
-            <div className="mt-3.5">
-              <div className="flex gap-2">
-                {connectedPlatforms.map((integration) => (
-                  <button
+        {messagingEnabled && (
+          <>
+            <section>
+              <p className="mono-label">Connections</p>
+              <p className="mt-1.5 text-body" style={{ color: "var(--ink-faint)" }}>
+                Link a messaging platform to share articles straight into your channels — messages
+                are sent as you, from your account.
+              </p>
+              <div className="mt-3.5 flex flex-col gap-2.5">
+                {integrations?.map((integration) => (
+                  <ConnectionCard
                     key={integration.platform}
-                    className="btn"
-                    style={
-                      pickerPlatform === integration.platform
-                        ? { borderColor: "var(--accent-border)", color: "var(--accent-bright)" }
-                        : undefined
-                    }
-                    onClick={() =>
-                      setPickerPlatform((p) =>
-                        p === integration.platform ? null : integration.platform,
-                      )
-                    }
-                  >
-                    <PlatformIcon platform={integration.platform} size={14} />
-                    {pickerPlatform === integration.platform
-                      ? "Close"
-                      : `Browse ${PLATFORM_LABELS[integration.platform]}`}
-                  </button>
+                    integration={integration}
+                    onChanged={() => mutate(keys.integrations)}
+                  />
                 ))}
               </div>
-              {pickerPlatform && <TargetPicker platform={pickerPlatform} />}
-            </div>
-          )}
-        </section>
+            </section>
+
+            <section className="mt-9">
+              <p className="mono-label">Quick share</p>
+              <p className="mt-1.5 text-body" style={{ color: "var(--ink-faint)" }}>
+                Channels and chats saved here show up as one-tap targets in the share dialog.
+              </p>
+
+              {targets && targets.length > 0 && (
+                <div className="mt-3.5 flex flex-col gap-1">
+                  {targets.map((target) => (
+                    <div
+                      key={target.id}
+                      className="group flex items-center gap-2.5 rounded-md border px-3.5 py-2 text-body"
+                      style={{ background: "var(--bg-raised)", borderColor: "var(--line)" }}
+                    >
+                      <span style={{ color: "var(--ink-faint)" }}>
+                        <PlatformIcon platform={target.platform} size={14} />
+                      </span>
+                      <span className="min-w-0 flex-1 truncate">{target.display_name}</span>
+                      <button
+                        className="icon-btn shrink-0 opacity-0 group-hover:opacity-100"
+                        style={{ width: 24, height: 24 }}
+                        title="Remove"
+                        onClick={() => removeTarget(target)}
+                      >
+                        <TrashIcon size={13} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {connectedPlatforms.length === 0 ? (
+                <p className="mt-3 text-body" style={{ color: "var(--ink-faint)" }}>
+                  Connect a platform above to start saving quick-share targets.
+                </p>
+              ) : (
+                <div className="mt-3.5">
+                  <div className="flex gap-2">
+                    {connectedPlatforms.map((integration) => (
+                      <button
+                        key={integration.platform}
+                        className="btn"
+                        style={
+                          pickerPlatform === integration.platform
+                            ? { borderColor: "var(--accent-border)", color: "var(--accent-bright)" }
+                            : undefined
+                        }
+                        onClick={() =>
+                          setPickerPlatform((p) =>
+                            p === integration.platform ? null : integration.platform,
+                          )
+                        }
+                      >
+                        <PlatformIcon platform={integration.platform} size={14} />
+                        {pickerPlatform === integration.platform
+                          ? "Close"
+                          : `Browse ${PLATFORM_LABELS[integration.platform]}`}
+                      </button>
+                    ))}
+                  </div>
+                  {pickerPlatform && <TargetPicker platform={pickerPlatform} />}
+                </div>
+              )}
+            </section>
+          </>
+        )}
 
         <NotInterestedSection />
 

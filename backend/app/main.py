@@ -15,6 +15,7 @@ from .routers import (
     auth,
     catalog,
     client_errors,
+    config,
     devices,
     entities,
     feeds,
@@ -54,6 +55,7 @@ app.add_middleware(
 )
 
 app.include_router(auth.router, prefix="/api")
+app.include_router(config.router, prefix="/api")
 app.include_router(users.router, prefix="/api")
 app.include_router(feeds.router, prefix="/api")
 app.include_router(catalog.router, prefix="/api")

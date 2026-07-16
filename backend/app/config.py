@@ -1,5 +1,13 @@
-from pydantic import AliasChoices, Field
+from enum import StrEnum
+
+from pydantic import AliasChoices, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class DeploymentMode(StrEnum):
+    self_hosted = "self_hosted"
+    staging = "staging"
+    prod = "prod"
 
 
 class Settings(BaseSettings):
@@ -9,6 +17,19 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",
     )
+
+    # Where this instance runs. The mode is consulted ONLY inside this file:
+    # it picks defaults for the feature flags below and arms the prod boot
+    # checks. Everything else in the app reads the individual flags.
+    deployment: DeploymentMode = DeploymentMode.self_hosted
+
+    # Feature flags. None = derive from deployment mode; an explicit
+    # NEWSREAD_* env var always wins. After validation both are concrete bools.
+    # self_hosted is single-user: registration closes once the owner exists.
+    allow_signup: bool | None = None  # NEWSREAD_ALLOW_SIGNUP
+    # Slack/Teams sharing. Off for self_hosted (a single-user instance showing
+    # workspace-integration UI is noise); still requires credentials when on.
+    messaging_enabled: bool | None = None  # NEWSREAD_MESSAGING_ENABLED
 
     database_url: str = "postgresql+asyncpg://newsread:newsread@localhost:5433/newsread"
     redis_url: str = "redis://localhost:6380/0"
@@ -117,6 +138,21 @@ class Settings(BaseSettings):
     # Fernet key encrypting per-user platform tokens at rest. Generate with:
     # python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
     token_encryption_key: str = ""  # NEWSREAD_TOKEN_ENCRYPTION_KEY
+
+    @model_validator(mode="after")
+    def _resolve_deployment(self) -> "Settings":
+        """Fill mode-derived flag defaults and refuse insecure prod boots."""
+        is_self_hosted = self.deployment is DeploymentMode.self_hosted
+        if self.allow_signup is None:
+            self.allow_signup = not is_self_hosted
+        if self.messaging_enabled is None:
+            self.messaging_enabled = not is_self_hosted
+        if not is_self_hosted and self.jwt_secret == "dev-secret-change-me":
+            raise ValueError(
+                f"NEWSREAD_DEPLOYMENT={self.deployment.value} requires a real "
+                "NEWSREAD_JWT_SECRET (the dev default signs forgeable tokens)"
+            )
+        return self
 
 
 settings = Settings()
