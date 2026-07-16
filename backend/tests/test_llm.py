@@ -64,6 +64,55 @@ async def test_summarize(monkeypatch):
     assert full == "full body"
 
 
+def test_article_language_detects_language():
+    assert llm._article_language("מפעיל הטלפרומפטר של טראמפ חשוד בהימורים") == "Hebrew"
+    assert llm._article_language("Президент подписал новый указ о поддержке экономики") == "Russian"
+    assert llm._article_language("日本の首相は新しい経済政策を発表しました") == "Japanese"
+    # Latin-script languages are detected too — the regex approach couldn't.
+    assert (
+        llm._article_language(
+            "Le président de la République a signé un nouveau décret sur la politique énergétique"
+        )
+        == "French"
+    )
+
+
+def test_article_language_none_for_english_and_noise():
+    # English gets no note — it's already the drift direction, a note is noise.
+    assert llm._article_language("Tesla driver in fatal Texas crash overrode FSD warnings") is None
+    # A few foreign words inside English text must not trigger it.
+    assert llm._article_language("The word שלום means hello in everyday speech") is None
+    assert llm._article_language("12345 !!!") is None
+    assert llm._article_language("   ") is None
+
+
+async def test_summarize_names_detected_language(monkeypatch):
+    captured = {}
+
+    async def fake_complete(messages, max_tokens, **kwargs):
+        captured["user"] = messages[1]["content"]
+        return "ONELINER: g\nPARAGRAPH: p.\nFULL:\nf"
+
+    monkeypatch.setattr(llm, "_complete", fake_complete)
+    await llm.summarize("כותרת", "המאמר עוסק בנושא חשוב מאוד בישראל")
+    assert "The article is in Hebrew" in captured["user"]
+
+    await llm.summarize("Title", "plain English body text")
+    assert "The article is in" not in captured["user"]
+
+
+async def test_summarize_screenshot_names_language_from_title(monkeypatch):
+    captured = {}
+
+    async def fake_complete(messages, max_tokens, **kwargs):
+        captured["text"] = messages[1]["content"][0]["text"]
+        return "ONELINER: g\nPARAGRAPH: p.\nFULL:\nf"
+
+    monkeypatch.setattr(llm, "_complete", fake_complete)
+    await llm.summarize_screenshot("שערורייה בבית הלבן: מה קרה שם", b"\xff\xd8")
+    assert "The article is in Hebrew" in captured["text"]
+
+
 async def test_complete_handles_none_content(monkeypatch):
     monkeypatch.setattr(llm, "get_client", lambda: _fake_client(None))
     out = await llm._complete([{"role": "user", "content": "x"}], max_tokens=10)

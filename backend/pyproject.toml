@@ -28,6 +28,7 @@ dependencies = [
     # call SIGILLs (crashes the backend on startup). 43-45 run fine.
     "cryptography>=43,<46",
     "alembic>=1.18.5",
+    "lingua-language-detector>=2.2.0",
 ]
 
 [dependency-groups]

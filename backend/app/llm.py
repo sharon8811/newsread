@@ -12,6 +12,7 @@ import time
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from functools import lru_cache
 from urllib.parse import urlparse
 
 from openai import AsyncOpenAI
@@ -327,6 +328,45 @@ def _article_context(
     return "\n".join(lines)
 
 
+# The general "write in the article's language" rule in SUMMARY_SYSTEM is not
+# reliable on its own — a Hebrew article about US politics still drifted to
+# English ~1 in 5 times. Naming the language explicitly per article makes it
+# deterministic. Lingua (Rust-backed) detects all 75 supported languages,
+# including Latin-script ones a dominant-script heuristic can't tell apart.
+
+
+@lru_cache(maxsize=1)
+def _language_detector():
+    """Process-wide singleton, built on first summary. Language models load
+    lazily per language actually encountered (a feed mix of Hebrew+English
+    stays ~tens of MB), and every request/job in the process shares them."""
+    from lingua import LanguageDetectorBuilder
+
+    return LanguageDetectorBuilder.from_all_languages().build()
+
+
+def _article_language(text: str) -> str | None:
+    """Detected language name, or None when English/undetectable (an explicit
+    'write in English' note would be noise — English is already the drift)."""
+    sample = text[:2000].strip()
+    if not sample:
+        return None
+    language = _language_detector().detect_language_of(sample)
+    if language is None or language.name == "ENGLISH":
+        return None
+    return language.name.title()
+
+
+def _language_note(detection_text: str) -> str:
+    language = _article_language(detection_text)
+    if language is None:
+        return ""
+    return (
+        f"\n\nThe article is in {language}: write the ONELINER, PARAGRAPH and "
+        f"FULL summaries in {language}."
+    )
+
+
 async def summarize(
     title: str,
     text: str,
@@ -339,10 +379,11 @@ async def summarize(
 ) -> tuple[str, str, str]:
     """Return (one-liner, paragraph, full) summaries from a single completion."""
     context = _article_context(title, url=url, author=author, published_at=published_at)
+    note = _language_note(f"{title}\n{text}")
     raw = await _complete(
         [
             {"role": "system", "content": SUMMARY_SYSTEM},
-            {"role": "user", "content": f"{context}\n\nArticle text:\n{text}"},
+            {"role": "user", "content": f"{context}\n\nArticle text:\n{text}{note}"},
         ],
         max_tokens=1500,
         config=config,
@@ -372,13 +413,14 @@ async def summarize_screenshot(
     instead of prose. Only called for vision-capable configs."""
     image_b64 = base64.b64encode(image_jpeg).decode()
     context = _article_context(title, url=url, author=author, published_at=published_at)
+    note = _language_note(title)  # no text here; the title is the best signal
     raw = await _complete(
         [
             {"role": "system", "content": SUMMARY_SYSTEM},
             {
                 "role": "user",
                 "content": [
-                    {"type": "text", "text": f"{context}\n\n{_SCREENSHOT_NOTE}"},
+                    {"type": "text", "text": f"{context}\n\n{_SCREENSHOT_NOTE}{note}"},
                     {
                         "type": "image_url",
                         "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"},
