@@ -28,9 +28,12 @@
   --line: #d8d8d4;
   --line-soft: #e5e5e1;
   --shadow-modal: 0 24px 80px rgba(28, 30, 34, 0.28);
-  --serif: var(--font-serif), Georgia, serif;
-  --sans: var(--font-sans), ui-sans-serif, sans-serif;
-  --mono: var(--font-mono), ui-monospace, monospace;
+  /* Fallback is per-glyph: Latin renders from the primary font, Hebrew falls
+     through to the Hebrew companion, anything else to system fonts (which
+     cover Arabic/CJK/etc. natively). */
+  --serif: var(--font-serif), var(--font-serif-hebrew), Georgia, serif;
+  --sans: var(--font-sans), var(--font-sans-hebrew), system-ui, ui-sans-serif, sans-serif;
+  --mono: var(--font-mono), var(--font-sans-hebrew), ui-monospace, monospace;
 }
 
 @media (prefers-color-scheme: dark) {

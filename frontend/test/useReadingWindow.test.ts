@@ -113,6 +113,25 @@ describe("useReadingWindow", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("opens feed-scoped windows at the top, without a resume anchor", async () => {
+    const fetchMock = installFetch([
+      {
+        match: (u) => u.includes("feed_id=7") && !u.includes("anchor"),
+        articles: [makeArticle({ id: 1 })],
+        headers: { "X-Unread-Count": "2" },
+      },
+    ]);
+    const { result } = renderHook(() =>
+      useReadingWindow({ filter: "unread", feedId: "7", enabled: true }),
+    );
+    await waitFor(() => expect(result.current.articles).toHaveLength(1));
+    expect(result.current.unreadCount).toBe(2);
+    // The inbox resume anchor must never leak into feed lists.
+    expect(
+      fetchMock.mock.calls.filter((call) => String(call[0]).includes("anchor")),
+    ).toHaveLength(0);
+  });
+
   it("falls back to an empty window when the anchor request fails", async () => {
     installFetch([{ match: (u) => u.includes("anchor=resume"), fail: true }]);
     const { result } = renderHook(() =>
@@ -208,10 +227,12 @@ describe("useReadingWindow", () => {
   it("markPassed is optimistic, tracks the frontier, and flushes a batch", async () => {
     vi.useFakeTimers();
     const fetchMock = installFetch([
-      anchorRoute(
-        [makeArticle({ id: 1 }), makeArticle({ id: 2 }), makeArticle({ id: 3 })],
-        { "X-Unread-Count": "3" },
-      ),
+      {
+        // Feed-scoped windows load without a resume anchor.
+        match: (u) => u.includes("feed_id=7") && !u.includes("batch"),
+        articles: [makeArticle({ id: 1 }), makeArticle({ id: 2 }), makeArticle({ id: 3 })],
+        headers: { "X-Unread-Count": "3" },
+      },
       batchRoute(),
     ]);
     const { result } = renderHook(() =>
