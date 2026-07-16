@@ -327,6 +327,45 @@ def _article_context(
     return "\n".join(lines)
 
 
+# The general "write in the article's language" rule in SUMMARY_SYSTEM is not
+# reliable on its own — a Hebrew article about US politics still drifted to
+# English ~1 in 5 times. Naming the language explicitly per article makes it
+# deterministic. Script detection covers the languages where drift is both
+# likeliest and most jarring; Latin-script languages are left to the general
+# rule (scripts don't distinguish French from English).
+_SCRIPTS: list[tuple[str, re.Pattern[str]]] = [
+    ("Hebrew", re.compile(r"[֐-׿]")),
+    ("Arabic", re.compile(r"[؀-ۿݐ-ݿ]")),
+    ("Cyrillic", re.compile(r"[Ѐ-ӿ]")),
+    ("Greek", re.compile(r"[Ͱ-Ͽ]")),
+    ("Japanese", re.compile(r"[぀-ヿ]")),  # kana; checked before Han
+    ("Chinese", re.compile(r"[一-鿿]")),
+    ("Korean", re.compile(r"[가-힯]")),
+]
+
+
+def _article_language(text: str) -> str | None:
+    """Language name from the dominant non-Latin script, or None for Latin."""
+    sample = text[:2000]
+    letters = sum(1 for ch in sample if ch.isalpha())
+    if not letters:
+        return None
+    for name, pattern in _SCRIPTS:
+        if len(pattern.findall(sample)) / letters > 0.25:
+            return name
+    return None
+
+
+def _language_note(detection_text: str) -> str:
+    language = _article_language(detection_text)
+    if language is None:
+        return ""
+    return (
+        f"\n\nThe article is in {language}: write the ONELINER, PARAGRAPH and "
+        f"FULL summaries in {language}."
+    )
+
+
 async def summarize(
     title: str,
     text: str,
@@ -339,10 +378,11 @@ async def summarize(
 ) -> tuple[str, str, str]:
     """Return (one-liner, paragraph, full) summaries from a single completion."""
     context = _article_context(title, url=url, author=author, published_at=published_at)
+    note = _language_note(f"{title}\n{text}")
     raw = await _complete(
         [
             {"role": "system", "content": SUMMARY_SYSTEM},
-            {"role": "user", "content": f"{context}\n\nArticle text:\n{text}"},
+            {"role": "user", "content": f"{context}\n\nArticle text:\n{text}{note}"},
         ],
         max_tokens=1500,
         config=config,
@@ -372,13 +412,14 @@ async def summarize_screenshot(
     instead of prose. Only called for vision-capable configs."""
     image_b64 = base64.b64encode(image_jpeg).decode()
     context = _article_context(title, url=url, author=author, published_at=published_at)
+    note = _language_note(title)  # no text here; the title is the best signal
     raw = await _complete(
         [
             {"role": "system", "content": SUMMARY_SYSTEM},
             {
                 "role": "user",
                 "content": [
-                    {"type": "text", "text": f"{context}\n\n{_SCREENSHOT_NOTE}"},
+                    {"type": "text", "text": f"{context}\n\n{_SCREENSHOT_NOTE}{note}"},
                     {
                         "type": "image_url",
                         "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"},
