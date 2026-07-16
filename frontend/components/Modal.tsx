@@ -21,7 +21,7 @@ export default function Modal({
   contentClassName = "",
 }: ModalProps) {
   const centered =
-    "left-1/2 top-1/2 w-[calc(100%-3rem)] max-w-[480px] -translate-x-1/2 -translate-y-1/2 rounded-lg";
+    "left-1/2 top-1/2 w-[calc(100%-2rem)] max-w-[480px] -translate-x-1/2 -translate-y-1/2 rounded-lg sm:w-[calc(100%-3rem)]";
   const drawer =
     "bottom-0 right-0 top-auto h-[min(88dvh,760px)] w-full rounded-t-xl sm:bottom-auto sm:top-0 sm:h-dvh sm:max-w-[440px] sm:rounded-none sm:border-y-0 sm:border-r-0";
 

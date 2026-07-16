@@ -92,6 +92,23 @@
   --text-display-lg: 26px; /* stat tiles, boot wordmark */
 }
 
+/* The compact desktop scale feels undersized on a phone and makes Safari
+   zoom focused controls below 16px. Keep the editorial proportions while
+   giving mobile UI copy one measured step more presence. */
+@media (max-width: 639px) {
+  :root {
+    --text-caption: 11px;
+    --text-label: 12px;
+    --text-body-sm: 13px;
+    --text-body: 14px;
+    --text-body-lg: 16px;
+    --text-lead: 18px;
+    --text-title: 20px;
+    --text-display: 23px;
+    --text-display-lg: 28px;
+  }
+}
+
 /* Expose the semantic tokens as Tailwind utilities (text-ink, bg-raised,
    border-line, …). `inline` makes utilities reference the var() directly so
    scoped overrides (.stories-scope, dark mode) keep working per-element. */
@@ -124,6 +141,8 @@
 
 html {
   background: var(--bg);
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 body {
@@ -206,6 +225,17 @@ body {
 .input:focus {
   border-color: var(--accent-border);
   box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+/* iOS Safari enlarges the viewport when a focused control is below 16px.
+   !important intentionally beats legacy inline density overrides, including
+   compact selects that use button styling; desktop keeps those sizes. */
+@media (max-width: 639px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
 }
 
 .btn {

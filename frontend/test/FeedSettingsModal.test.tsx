@@ -37,6 +37,11 @@ describe("<FeedSettingsModal>", () => {
     expect(screen.getByLabelText("Sort order")).toHaveValue("oldest");
     expect(screen.getByLabelText("Retention")).toHaveValue("30");
     expect(screen.getByLabelText("View mode")).toHaveValue("default");
+    expect(screen.getByRole("dialog")).toHaveClass(
+      "max-h-[calc(100dvh-1.5rem)]",
+      "p-4",
+      "sm:p-6",
+    );
   });
 
   it("closes without a request when nothing changed", async () => {

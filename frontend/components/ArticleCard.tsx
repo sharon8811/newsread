@@ -135,7 +135,7 @@ function ArticleCard({
           >
             {article.author ?? article.feed_title}
           </span>
-          <div className="ml-auto flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+          <div className="ml-auto flex shrink-0 items-center gap-0.5 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
             <button
               className={`icon-btn ${article.is_saved ? "active" : ""}`}
               title={article.is_saved ? "Unsave" : "Save for later"}

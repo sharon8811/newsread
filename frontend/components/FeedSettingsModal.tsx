@@ -142,7 +142,7 @@ export default function FeedSettingsModal({
   return (
     <Modal
       onClose={onClose}
-      contentClassName="max-h-[calc(100dvh-3rem)] overflow-y-auto p-6"
+      contentClassName="max-h-[calc(100dvh-1.5rem)] overflow-y-auto p-4 sm:max-h-[calc(100dvh-3rem)] sm:p-6"
     >
         <ModalHeader eyebrow="Feed settings" title={feed.title} titleClassName="truncate" />
 

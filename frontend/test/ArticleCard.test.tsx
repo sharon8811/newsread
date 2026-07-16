@@ -92,6 +92,15 @@ describe("<ArticleCard>", () => {
     expect(pushMock).not.toHaveBeenCalled();
   });
 
+  it("keeps card actions visible on touch-sized screens", () => {
+    renderCard();
+    expect(screen.getByTitle("Save for later").parentElement).toHaveClass(
+      "opacity-100",
+      "sm:opacity-0",
+      "sm:group-hover:opacity-100",
+    );
+  });
+
   it("share button opens the share flow without navigating", async () => {
     const { article, onShare } = renderCard();
     await userEvent.click(screen.getByTitle("Share with a note"));

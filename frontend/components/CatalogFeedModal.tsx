@@ -78,9 +78,9 @@ export default function CatalogFeedModal({
   return (
     <Modal
       onClose={onClose}
-      contentClassName="flex max-h-[min(680px,90vh)] max-w-[560px] flex-col"
+      contentClassName="flex max-h-[calc(100dvh-1.5rem)] max-w-[560px] flex-col sm:max-h-[min(680px,90vh)]"
     >
-        <header className="border-b p-6 pb-4" style={{ borderColor: "var(--line-soft)" }}>
+        <header className="border-b p-4 sm:p-6 sm:pb-4" style={{ borderColor: "var(--line-soft)" }}>
           <ModalHeader
             eyebrow={`${entry.category} · ${formatFeedType(entry.content_type)}`}
             title={entry.title}
@@ -117,7 +117,7 @@ export default function CatalogFeedModal({
           </div>
         </header>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6">
           {entry.description && (
             <p className="mb-4 text-body leading-relaxed" style={{ color: "var(--ink-dim)" }}>
               {entry.description}
@@ -179,7 +179,7 @@ export default function CatalogFeedModal({
           )}
         </div>
 
-        <footer className="border-t px-6 py-4" style={{ borderColor: "var(--line-soft)" }}>
+        <footer className="border-t px-4 py-4 sm:px-6" style={{ borderColor: "var(--line-soft)" }}>
           {!entry.subscribed && (
             <div className="mb-3">
               <SubscribeQuickSettings value={settings} onChange={setSettings} disabled={disabled} />

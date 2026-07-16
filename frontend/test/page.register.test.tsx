@@ -43,6 +43,7 @@ describe("RegisterPage", () => {
     expect(screen.getByText("Username")).toBeInTheDocument();
     expect(screen.getByText("Email")).toBeInTheDocument();
     expect(screen.getByText("Password")).toBeInTheDocument();
+    expect(screen.getByRole("main")).toHaveClass("min-h-dvh", "px-4", "sm:px-6");
   });
 
   it("registers and redirects on submit", async () => {

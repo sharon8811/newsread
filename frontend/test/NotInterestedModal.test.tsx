@@ -58,6 +58,7 @@ describe("<NotInterestedModal>", () => {
     swrMock.mockReturnValue({ data: undefined });
     renderModal();
     expect(screen.getByText("Suggesting topics…")).toBeInTheDocument();
+    expect(screen.getByRole("dialog")).toHaveClass("p-4", "sm:p-6");
   });
 
   it("falls back to the article's own entity badges before options load", () => {

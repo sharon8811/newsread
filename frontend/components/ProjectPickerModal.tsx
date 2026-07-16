@@ -145,7 +145,10 @@ export default function ProjectPickerModal({
   }
 
   return (
-    <Modal onClose={onClose} contentClassName="max-h-[calc(100dvh-3rem)] overflow-y-auto p-6">
+    <Modal
+      onClose={onClose}
+      contentClassName="max-h-[calc(100dvh-1.5rem)] overflow-y-auto p-4 sm:max-h-[calc(100dvh-3rem)] sm:p-6"
+    >
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="mono-label">Add to project</p>
