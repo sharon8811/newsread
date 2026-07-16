@@ -612,6 +612,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Server Config */
+        get: operations["server_config_api_config_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/devices": {
         parameters: {
             query?: never;
@@ -2538,6 +2555,18 @@ export interface components {
             /** Title */
             title: string;
         };
+        /**
+         * ServerConfigOut
+         * @description Deployment-mode feature flags clients read before login (GET /config).
+         *     allow_signup is the EFFECTIVE value: on a fresh instance with signups
+         *     disabled it stays true until the first (owner) account exists.
+         */
+        ServerConfigOut: {
+            /** Allow Signup */
+            allow_signup: boolean;
+            /** Messaging Enabled */
+            messaging_enabled: boolean;
+        };
         /** ShareCreateIn */
         ShareCreateIn: {
             /** Article Id */
@@ -3887,6 +3916,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    server_config_api_config_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServerConfigOut"];
                 };
             };
         };

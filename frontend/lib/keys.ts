@@ -4,6 +4,8 @@
 // (articlesKey / mutateArticleLists).
 
 export const keys = {
+  config: "/config",
+
   feeds: "/feeds",
 
   projects: "/projects",

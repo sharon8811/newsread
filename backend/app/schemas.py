@@ -500,6 +500,15 @@ Platform = Literal["slack", "teams"]
 TargetType = Literal["channel", "group", "dm", "chat"]
 
 
+class ServerConfigOut(BaseModel):
+    """Deployment-mode feature flags clients read before login (GET /config).
+    allow_signup is the EFFECTIVE value: on a fresh instance with signups
+    disabled it stays true until the first (owner) account exists."""
+
+    allow_signup: bool
+    messaging_enabled: bool
+
+
 class IntegrationStatusOut(BaseModel):
     platform: Platform
     configured: bool  # server has client credentials for this platform

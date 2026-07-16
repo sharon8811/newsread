@@ -1,3 +1,13 @@
+from app.config import settings
+
+REGISTRATION = {
+    "email": "alice@example.com",
+    "username": "alice",
+    "name": "Alice",
+    "password": "password123",
+}
+
+
 async def test_register_success(client):
     resp = await client.post(
         "/api/auth/register",
@@ -136,3 +146,17 @@ async def test_refresh_returns_new_working_token(client, users):
 async def test_refresh_unauthenticated(client):
     resp = await client.post("/api/auth/refresh")
     assert resp.status_code == 401
+
+
+async def test_register_first_user_allowed_when_signups_closed(client, monkeypatch):
+    monkeypatch.setattr(settings, "allow_signup", False)
+    resp = await client.post("/api/auth/register", json=REGISTRATION)
+    assert resp.status_code == 201
+
+
+async def test_register_forbidden_when_signups_closed_and_user_exists(client, users, monkeypatch):
+    monkeypatch.setattr(settings, "allow_signup", False)
+    await users.create(username="owner", email="owner@example.com")
+    resp = await client.post("/api/auth/register", json=REGISTRATION)
+    assert resp.status_code == 403
+    assert "disabled" in resp.json()["detail"]

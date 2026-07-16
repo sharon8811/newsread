@@ -215,6 +215,9 @@ type WithOptional<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>;
 // values, so keep the narrower value type it was written against.
 type BadgeData = Record<string, string | number | null | undefined>;
 
+// Deployment-mode feature flags served unauthenticated by GET /config.
+export type ServerConfig = Schemas["ServerConfigOut"];
+
 export type User = Schemas["UserOut"];
 export type UserPublic = Schemas["UserPublic"];
 export type ViewMode = User["default_view"];

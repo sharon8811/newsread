@@ -544,3 +544,19 @@ async def test_share_message_llm_failure_502(client, users, data, monkeypatch):
         headers=users.auth(me),
     )
     assert resp.status_code == 502
+
+
+async def test_status_all_unconfigured_when_messaging_disabled(client, users, monkeypatch):
+    monkeypatch.setattr(settings, "messaging_enabled", False)
+    user = await users.create()
+    resp = await client.get("/api/integrations", headers=users.auth(user))
+    assert resp.status_code == 200
+    assert all(item["configured"] is False for item in resp.json())
+
+
+async def test_authorize_503_when_messaging_disabled(client, users, monkeypatch):
+    monkeypatch.setattr(settings, "messaging_enabled", False)
+    user = await users.create()
+    resp = await client.get("/api/integrations/slack/authorize", headers=users.auth(user))
+    assert resp.status_code == 503
+    assert "disabled" in resp.json()["detail"]

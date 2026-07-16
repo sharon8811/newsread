@@ -56,6 +56,13 @@ for _var in (
 ):
     os.environ[_var] = ""
 
+# Deployment-mode determinism: the suite exercises the open-signup and
+# messaging-enabled paths regardless of the developer's .env; the self_hosted
+# gates themselves are tested by monkeypatching settings flags directly.
+os.environ["NEWSREAD_DEPLOYMENT"] = "self_hosted"
+os.environ["NEWSREAD_ALLOW_SIGNUP"] = "true"
+os.environ["NEWSREAD_MESSAGING_ENABLED"] = "true"
+
 # Messaging-integration tests need deterministic values regardless of .env:
 # a fixed (valid) Fernet key and known callback/frontend origins.
 # bcrypt at production cost (12 rounds, ~0.2-0.3s per hash) dominates suite

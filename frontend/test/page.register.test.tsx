@@ -4,15 +4,17 @@ import userEvent from "@testing-library/user-event";
 import RegisterPage from "@/app/register/page";
 import { makeUser } from "./fixtures";
 
-const { pushMock, replaceMock, authState } = vi.hoisted(() => ({
+const { pushMock, replaceMock, authState, serverConfig } = vi.hoisted(() => ({
   pushMock: vi.fn(),
   replaceMock: vi.fn(),
   authState: { user: null as unknown, ready: true, authed: false, register: vi.fn() },
+  serverConfig: { data: undefined as unknown },
 }));
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: pushMock, replace: replaceMock }),
 }));
 vi.mock("@/lib/auth", () => ({ useAuth: () => authState }));
+vi.mock("@/lib/queries", () => ({ useServerConfig: () => serverConfig }));
 vi.mock("next/link", () => ({
   default: ({ children, href }: { children: React.ReactNode; href: string }) => (
     <a href={href}>{children}</a>
@@ -27,6 +29,7 @@ describe("RegisterPage", () => {
     authState.ready = true;
     authState.authed = false;
     authState.register = vi.fn().mockResolvedValue(undefined);
+    serverConfig.data = { allow_signup: true, messaging_enabled: true };
   });
 
   function fields(container: HTMLElement) {
@@ -92,5 +95,19 @@ describe("RegisterPage", () => {
     authState.authed = true;
     render(<RegisterPage />);
     await waitFor(() => expect(replaceMock).toHaveBeenCalledWith("/"));
+  });
+
+  it("redirects to login when signups are closed", async () => {
+    serverConfig.data = { allow_signup: false, messaging_enabled: true };
+    const { container } = render(<RegisterPage />);
+    expect(container.querySelector("input")).toBeNull();
+    await waitFor(() => expect(replaceMock).toHaveBeenCalledWith("/login"));
+  });
+
+  it("renders nothing (and stays put) while server flags load", () => {
+    serverConfig.data = undefined;
+    const { container } = render(<RegisterPage />);
+    expect(container.querySelector("input")).toBeNull();
+    expect(replaceMock).not.toHaveBeenCalled();
   });
 });

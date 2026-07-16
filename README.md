@@ -63,7 +63,7 @@ Open [http://localhost:3000](http://localhost:3000), create an account, and add 
 https://hnrss.org/newest.jsonfeed?points=100
 ```
 
-To try the social loop, register a second account in a private window and share an article at it with a note.
+A local install runs in **single-user mode** by default: registration closes once your account (the first one) exists, and the Slack/Teams integrations stay hidden. To try the social loop, open signups first — set `NEWSREAD_ALLOW_SIGNUP=true` in `.env` and `docker compose up -d backend` — then register a second account in a private window and share an article at it with a note. See the deployment modes section below for the full story.
 
 ## Everything it does
 
@@ -86,6 +86,29 @@ To try the social loop, register a second account in a private window and share 
 | Extraction | Scrapling (fetch) + trafilatura (article text) |
 | LLM | Any OpenAI-compatible endpoint |
 | Mobile | React Native (Expo Router) + SWR, bring-your-own-server |
+
+<details>
+<summary><b>Deployment modes</b></summary>
+
+`NEWSREAD_DEPLOYMENT` tells the backend where it's running and picks safe
+defaults for the feature flags; every flag can still be overridden
+individually. Clients read the effective flags at runtime from
+`GET /api/config`, so changing one is a backend restart — no frontend rebuild.
+
+| Mode | Signups | Slack/Teams | Notes |
+|------|---------|-------------|-------|
+| `self_hosted` (default) | first account only | hidden | single-user instance |
+| `staging` / `prod` | open | available | refuses to boot with the dev JWT secret |
+
+Overrides: `NEWSREAD_ALLOW_SIGNUP` (with signups closed, registration still
+works while the server has zero accounts, so the owner can sign up normally)
+and `NEWSREAD_MESSAGING_ENABLED` (integrations additionally need the Slack or
+Teams credentials from `.env.example`).
+
+Public deployments must set `NEWSREAD_DEPLOYMENT=prod` **and** a real
+`NEWSREAD_JWT_SECRET` — prod and staging refuse to start with the dev default.
+
+</details>
 
 <details>
 <summary><b>Local development</b></summary>
