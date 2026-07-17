@@ -504,7 +504,8 @@ async def list_articles(
     keeps that backward context available even when `filter=unread`, while
     forward pages remain unread-only. Both hand back an
     `X-Prev-Cursor` usable for the next backward page whenever earlier rows
-    exist."""
+    exist. A reading window without an anchor starts at the ordinary top page
+    and still reports `X-Unread-Count` plus a zero `X-New-Above-Count`."""
     if cursor is not None and q:
         raise HTTPException(status_code=422, detail="cursor cannot be combined with q")
     if anchor is not None and (cursor is not None or q):
@@ -589,8 +590,8 @@ async def list_articles(
             scope_stmt = stmt  # pre-pagination scope, reused for anchor lookups
             stmt = stmt.order_by(*list_order)
             anchor_article: Article | None = None
+            unread = or_(UserArticleState.id.is_(None), UserArticleState.is_read.is_(False))
             if anchor is not None:
-                unread = or_(UserArticleState.id.is_(None), UserArticleState.is_read.is_(False))
                 scope = f"feed:{feed_id}" if feed_id is not None else "inbox"
                 position = await session.scalar(
                     select(UserReadingPosition).where(
@@ -623,10 +624,12 @@ async def list_articles(
                     ).first()
                     if anchor_row is not None:
                         anchor_article = anchor_row[0]
+            if anchor is not None or reading_window:
                 unread_total = await session.scalar(
                     select(func.count()).select_from(scope_stmt.where(unread).subquery())
                 )
                 response.headers["X-Unread-Count"] = str(unread_total or 0)
+            if anchor is not None:
                 new_above = 0
                 if anchor_article is not None:
                     new_above = await session.scalar(
@@ -642,6 +645,9 @@ async def list_articles(
                         )
                     )
                 response.headers["X-New-Above-Count"] = str(new_above or 0)
+            elif reading_window:
+                # A top-anchored reading window has nothing newer above it.
+                response.headers["X-New-Above-Count"] = "0"
             if anchor_article is not None:
                 anchor_published = anchor_article.published_at
                 stmt = stmt.where(

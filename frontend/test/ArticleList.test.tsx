@@ -373,6 +373,14 @@ function readingFetch(
   });
 }
 
+function isTopReadingRequest(url: string) {
+  return (
+    url.includes("/articles?") &&
+    !url.includes("cursor=") &&
+    !url.includes("direction=")
+  );
+}
+
 function renderReading(ui: React.ReactElement) {
   // The reading window roots its observers in the app shell's <main> scroller.
   return render(<main>{ui}</main>);
@@ -388,16 +396,24 @@ describe("<ArticleList> reading mode", () => {
     Element.prototype.scrollIntoView = vi.fn();
   });
 
-  it("loads the anchored window and shows the unread pill", async () => {
+  it("loads newest first, clears a restored scroll offset, and shows the unread pill", async () => {
     const fetchMock = readingFetch(
-      [makeArticle({ id: 1, title: "Resume Here" }), makeArticle({ id: 2, title: "Next" })],
+      [makeArticle({ id: 2, title: "Newest" }), makeArticle({ id: 1, title: "Older" })],
       { "X-Unread-Count": "7", "X-New-Above-Count": "0" },
     );
     vi.stubGlobal("fetch", fetchMock);
-    renderReading(<ArticleList filter="unread" emptyTitle="Empty" />);
-    expect(await screen.findByText("Resume Here")).toBeInTheDocument();
-    expect(String(fetchMock.mock.calls[0][0])).toContain("anchor=resume");
+    const { container } = renderReading(<ArticleList filter="unread" emptyTitle="Empty" />);
+    const scroller = container.querySelector("main") as HTMLElement;
+    scroller.scrollTop = 500;
+    expect(await screen.findByText("Newest")).toBeInTheDocument();
+    await waitFor(() => expect(scroller.scrollTop).toBe(0));
+    expect(String(fetchMock.mock.calls[0][0])).not.toContain("anchor=resume");
     expect(String(fetchMock.mock.calls[0][0])).toContain("reading_window=true");
+    expect(
+      [...container.querySelectorAll("[data-article-id]")].map((node) =>
+        Number((node as HTMLElement).dataset.articleId),
+      ),
+    ).toEqual([2, 1]);
     expect(screen.getByText("7 unread ↓")).toBeInTheDocument();
     expect(screen.queryByText(/new ↑/)).not.toBeInTheDocument();
   });
@@ -551,7 +567,7 @@ describe("<ArticleList> reading mode interactions", () => {
   it("bottom sentinel loads the next page; end of list shows the keys hint", async () => {
     const fetchMock = routedFetch([
       {
-        match: (u) => u.includes("anchor=resume"),
+        match: isTopReadingRequest,
         articles: [makeArticle({ id: 1, title: "First" })],
         headers: { "X-Unread-Count": "2", "X-Next-Cursor": "n1" },
       },
@@ -578,7 +594,7 @@ describe("<ArticleList> reading mode interactions", () => {
   it("top sentinel pages read history in above", async () => {
     const fetchMock = routedFetch([
       {
-        match: (u) => u.includes("anchor=resume"),
+        match: isTopReadingRequest,
         articles: [makeArticle({ id: 5, title: "Anchor" })],
         headers: { "X-Unread-Count": "1", "X-Prev-Cursor": "p1" },
       },
@@ -601,7 +617,7 @@ describe("<ArticleList> reading mode interactions", () => {
   it("unread pill jumps to the next unread below the viewport", async () => {
     routedFetch([
       {
-        match: (u) => u.includes("anchor=resume"),
+        match: isTopReadingRequest,
         articles: [
           makeArticle({ id: 1, title: "Read One", is_read: true }),
           makeArticle({ id: 2, title: "Unread Two" }),
@@ -640,14 +656,15 @@ describe("<ArticleList> reading mode interactions", () => {
   });
 
   it("unread pill falls back to the top when only new-above items remain", async () => {
+    let topCalls = 0;
     const fetchMock = routedFetch([
       {
-        match: (u) => u.includes("anchor=resume"),
+        match: (u) => isTopReadingRequest(u) && topCalls++ === 0,
         articles: [makeArticle({ id: 1, title: "Read One", is_read: true })],
         headers: { "X-Unread-Count": "2", "X-New-Above-Count": "2" },
       },
       {
-        match: (u) => !u.includes("anchor"),
+        match: isTopReadingRequest,
         articles: [makeArticle({ id: 9, title: "Fresh Top" })],
       },
     ]);
@@ -661,7 +678,7 @@ describe("<ArticleList> reading mode interactions", () => {
       if (pill) fireEvent.click(pill);
       expect(
         fetchMock.mock.calls.some(
-          (c) => !String(c[0]).includes("anchor") && String(c[0]).includes("/articles?"),
+          (c) => isTopReadingRequest(String(c[0])),
         ),
       ).toBe(true);
     });
@@ -669,14 +686,15 @@ describe("<ArticleList> reading mode interactions", () => {
   });
 
   it("new-above pill resets the window to the top of the list", async () => {
+    let topCalls = 0;
     routedFetch([
       {
-        match: (u) => u.includes("anchor=resume"),
+        match: (u) => isTopReadingRequest(u) && topCalls++ === 0,
         articles: [makeArticle({ id: 5, title: "Mid Anchor" })],
         headers: { "X-Unread-Count": "3", "X-New-Above-Count": "2" },
       },
       {
-        match: (u) => !u.includes("anchor"),
+        match: isTopReadingRequest,
         articles: [makeArticle({ id: 9, title: "Breaking Top" })],
       },
     ]);
@@ -695,7 +713,7 @@ describe("<ArticleList> reading mode interactions", () => {
   it("keyboard m toggles read through the window (no full refetch)", async () => {
     const fetchMock = routedFetch([
       {
-        match: (u) => u.includes("anchor=resume"),
+        match: isTopReadingRequest,
         articles: [makeArticle({ id: 3, title: "Toggle Me" })],
         headers: { "X-Unread-Count": "1" },
       },
@@ -714,7 +732,7 @@ describe("<ArticleList> reading mode interactions", () => {
   it("keyboard Enter opens the selected article from the window", async () => {
     routedFetch([
       {
-        match: (u) => u.includes("anchor=resume"),
+        match: isTopReadingRequest,
         articles: [makeArticle({ id: 77, title: "Openable" })],
         headers: { "X-Unread-Count": "1" },
       },
@@ -731,7 +749,7 @@ describe("<ArticleList> reading mode interactions", () => {
   it("keeps a clicked unread row in place when the list remounts", async () => {
     const fetchMock = routedFetch([
       {
-        match: (u) => u.includes("anchor=resume"),
+        match: isTopReadingRequest,
         articles: [
           makeArticle({ id: 81, title: "Return Here" }),
           makeArticle({ id: 82, title: "Still Below" }),
@@ -759,7 +777,7 @@ describe("<ArticleList> reading mode interactions", () => {
       offset: 0,
     });
     expect(
-      fetchMock.mock.calls.filter((call) => String(call[0]).includes("anchor=resume")),
+      fetchMock.mock.calls.filter((call) => isTopReadingRequest(String(call[0]))),
     ).toHaveLength(1);
     second.unmount();
   });
@@ -855,7 +873,7 @@ function routedJumpFetch() {
     if (u.includes("/state")) {
       return Promise.resolve({ ok: true, status: 204, json: async () => ({}) });
     }
-    if (u.includes("anchor=resume")) {
+    if (isTopReadingRequest(u)) {
       return Promise.resolve(
         pageResponse([makeArticle({ id: 51, title: "Read One", is_read: true })], {
           "X-Unread-Count": "1",

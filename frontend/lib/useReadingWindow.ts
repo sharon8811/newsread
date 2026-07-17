@@ -16,10 +16,10 @@ import {
 // past. Marks are optimistic and flushed in batches; the deepest article
 // passed travels along as the new frontier.
 //
-// Anchoring differs by scope: the inbox opens at the resume point (server-side
-// reading frontier) Telegram-style, but a single feed's list always opens at
-// the newest article — opening a news feed partway down its history reads as
-// broken ordering, and "N unread ↓" already covers picking up where you left.
+// Every cold list load starts at the configured top of the scope (newest for
+// the inbox). In-memory snapshots preserve the exact window while navigating
+// to an article and back, but a browser reload must never reopen at a stale
+// server-side reading frontier or halfway through a card.
 
 const PAGE_SIZE = 50;
 const FLUSH_DELAY_MS = 1500;
@@ -156,7 +156,7 @@ export function useReadingWindow(opts: WindowOpts) {
     setLoading(true);
     try {
       const page = await apiWithHeaders<Article[]>(
-        listPath({ filter, feedId, enabled }, feedId ? {} : { anchor: "resume" }),
+        listPath({ filter, feedId, enabled }),
       );
       if (generation !== generationRef.current) return;
       pendingRef.current.clear();
@@ -354,7 +354,7 @@ export function useReadingWindow(opts: WindowOpts) {
     const timer = setInterval(async () => {
       try {
         const page = await apiWithHeaders<Article[]>(
-          listPath({ filter, feedId, enabled }, feedId ? {} : { anchor: "resume" }),
+          listPath({ filter, feedId, enabled }),
         );
         const byId = new Map(page.data.map((a) => [a.id, a]));
         setArticles((list) =>

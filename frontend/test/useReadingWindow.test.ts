@@ -35,8 +35,12 @@ function installFetch(routes: Route[]) {
   return fetchMock;
 }
 
-const anchorRoute = (articles: Article[], headers: Record<string, string> = {}): Route => ({
-  match: (u) => u.includes("anchor=resume"),
+const topRoute = (articles: Article[], headers: Record<string, string> = {}): Route => ({
+  match: (u) =>
+    u.includes("/articles?") &&
+    !u.includes("cursor=") &&
+    !u.includes("direction=") &&
+    !u.includes("/state/"),
   articles,
   headers,
 });
@@ -57,29 +61,30 @@ describe("useReadingWindow", () => {
     vi.useRealTimers();
   });
 
-  it("anchors on mount and exposes counters from headers", async () => {
-    installFetch([
-      anchorRoute([makeArticle({ id: 1 })], {
+  it("opens at the newest page without a resume anchor and exposes counters", async () => {
+    const fetchMock = installFetch([
+      topRoute([makeArticle({ id: 2 }), makeArticle({ id: 1 })], {
         "X-Unread-Count": "9",
-        "X-New-Above-Count": "3",
-        "X-Prev-Cursor": "prev",
+        "X-New-Above-Count": "0",
         "X-Next-Cursor": "next",
       }),
     ]);
     const { result } = renderHook(() =>
       useReadingWindow({ filter: "all", enabled: true }),
     );
-    await waitFor(() => expect(result.current.articles).toHaveLength(1));
+    await waitFor(() => expect(result.current.articles).toHaveLength(2));
+    expect(result.current.articles?.map((article) => article.id)).toEqual([2, 1]);
     expect(result.current.unreadCount).toBe(9);
-    expect(result.current.newAbove).toBe(3);
-    expect(result.current.prevCursor).toBe("prev");
+    expect(result.current.newAbove).toBe(0);
+    expect(result.current.prevCursor).toBeNull();
     expect(result.current.nextCursor).toBe("next");
     expect(result.current.loading).toBe(false);
+    expect(String(fetchMock.mock.calls[0][0])).not.toContain("anchor=resume");
   });
 
   it("keeps an opened article in the cached window across navigation", async () => {
     const fetchMock = installFetch([
-      anchorRoute(
+      topRoute(
         [makeArticle({ id: 1, title: "Opened" }), makeArticle({ id: 2, title: "Next" })],
         { "X-Unread-Count": "2" },
       ),
@@ -103,7 +108,7 @@ describe("useReadingWindow", () => {
     expect(second.result.current.articles?.[0].is_read).toBe(true);
     expect(second.result.current.unreadCount).toBe(1);
     expect(
-      fetchMock.mock.calls.filter((call) => String(call[0]).includes("anchor=resume")),
+      fetchMock.mock.calls.filter((call) => String(call[0]).includes("/articles?")),
     ).toHaveLength(1);
   });
 
@@ -126,14 +131,14 @@ describe("useReadingWindow", () => {
     );
     await waitFor(() => expect(result.current.articles).toHaveLength(1));
     expect(result.current.unreadCount).toBe(2);
-    // The inbox resume anchor must never leak into feed lists.
+    // A resume anchor must never leak into any cold list.
     expect(
       fetchMock.mock.calls.filter((call) => String(call[0]).includes("anchor")),
     ).toHaveLength(0);
   });
 
-  it("falls back to an empty window when the anchor request fails", async () => {
-    installFetch([{ match: (u) => u.includes("anchor=resume"), fail: true }]);
+  it("falls back to an empty window when the top-page request fails", async () => {
+    installFetch([{ ...topRoute([]), fail: true }]);
     const { result } = renderHook(() =>
       useReadingWindow({ filter: "all", enabled: true }),
     );
@@ -143,7 +148,7 @@ describe("useReadingWindow", () => {
 
   it("loadOlder prepends deduped history and advances the prev cursor", async () => {
     installFetch([
-      anchorRoute([makeArticle({ id: 5, title: "Anchor" })], {
+      topRoute([makeArticle({ id: 5, title: "Anchor" })], {
         "X-Prev-Cursor": "p1",
       }),
       {
@@ -169,7 +174,7 @@ describe("useReadingWindow", () => {
   });
 
   it("loadOlder resolves false without a cursor", async () => {
-    installFetch([anchorRoute([makeArticle({ id: 1 })])]);
+    installFetch([topRoute([makeArticle({ id: 1 })])]);
     const { result } = renderHook(() =>
       useReadingWindow({ filter: "all", enabled: true }),
     );
@@ -183,7 +188,7 @@ describe("useReadingWindow", () => {
 
   it("loadNewer appends the next page and tracks the next cursor", async () => {
     installFetch([
-      anchorRoute([makeArticle({ id: 1 })], { "X-Next-Cursor": "n1" }),
+      topRoute([makeArticle({ id: 1 })], { "X-Next-Cursor": "n1" }),
       {
         match: (u) => u.includes("cursor=n1") && !u.includes("direction"),
         articles: [makeArticle({ id: 2 })],
@@ -202,20 +207,21 @@ describe("useReadingWindow", () => {
   });
 
   it("resetToTop replaces the window with the plain first page", async () => {
-    installFetch([
-      anchorRoute([makeArticle({ id: 9, title: "Anchor" })], {
-        "X-New-Above-Count": "2",
-      }),
-      {
-        match: (u) => !u.includes("anchor") && !u.includes("batch"),
-        articles: [makeArticle({ id: 1, title: "Top" })],
-        headers: { "X-Next-Cursor": "n" },
+    let requestCount = 0;
+    installFetch([{
+      ...topRoute([]),
+      get articles() {
+        requestCount += 1;
+        return requestCount === 1
+          ? [makeArticle({ id: 9, title: "Initial" })]
+          : [makeArticle({ id: 1, title: "Top" })];
       },
-    ]);
+      headers: { "X-Next-Cursor": "n" },
+    } as Route]);
     const { result } = renderHook(() =>
       useReadingWindow({ filter: "all", enabled: true }),
     );
-    await waitFor(() => expect(result.current.newAbove).toBe(2));
+    await waitFor(() => expect(result.current.articles?.[0].title).toBe("Initial"));
     await act(async () => {
       await result.current.resetToTop();
     });
@@ -261,7 +267,7 @@ describe("useReadingWindow", () => {
     vi.useFakeTimers();
     let failBatch = true;
     const fetchMock = installFetch([
-      anchorRoute([makeArticle({ id: 1 }), makeArticle({ id: 2 })], {
+      topRoute([makeArticle({ id: 1 }), makeArticle({ id: 2 })], {
         "X-Unread-Count": "2",
       }),
       {
@@ -290,9 +296,9 @@ describe("useReadingWindow", () => {
     expect(new Set(lastBody.article_ids)).toEqual(new Set([1, 2]));
   });
 
-  it("re-anchors on the articles-refresh event", async () => {
+  it("reloads the newest page on the articles-refresh event", async () => {
     const fetchMock = installFetch([
-      anchorRoute([makeArticle({ id: 1 })], { "X-Unread-Count": "1" }),
+      topRoute([makeArticle({ id: 1 })], { "X-Unread-Count": "1" }),
     ]);
     const { result } = renderHook(() =>
       useReadingWindow({ filter: "all", enabled: true }),
@@ -310,7 +316,7 @@ describe("useReadingWindow", () => {
   it("flushes with keepalive when the tab hides", async () => {
     vi.useFakeTimers();
     const fetchMock = installFetch([
-      anchorRoute([makeArticle({ id: 1 })], { "X-Unread-Count": "1" }),
+      topRoute([makeArticle({ id: 1 })], { "X-Unread-Count": "1" }),
       batchRoute(),
     ]);
     const { result } = renderHook(() =>
@@ -336,7 +342,7 @@ describe("useReadingWindow", () => {
   it("flushes on unmount", async () => {
     vi.useFakeTimers();
     const fetchMock = installFetch([
-      anchorRoute([makeArticle({ id: 1 })], { "X-Unread-Count": "1" }),
+      topRoute([makeArticle({ id: 1 })], { "X-Unread-Count": "1" }),
       batchRoute(),
     ]);
     const { result, unmount } = renderHook(() =>
@@ -352,7 +358,7 @@ describe("useReadingWindow", () => {
 
   it("toggleRead and toggleSaved update in place and post single states", async () => {
     const fetchMock = installFetch([
-      anchorRoute([makeArticle({ id: 4, is_read: false, is_saved: false })], {
+      topRoute([makeArticle({ id: 4, is_read: false, is_saved: false })], {
         "X-Unread-Count": "1",
       }),
       { match: (u) => u.includes("/articles/4/state"), articles: [] },
@@ -396,7 +402,7 @@ describe("useReadingWindow", () => {
     let served: Article[] = [pending];
     installFetch([
       {
-        match: (u) => u.includes("anchor=resume"),
+        match: topRoute([]).match,
         get articles() {
           return served;
         },
@@ -427,7 +433,7 @@ describe("useReadingWindow edges", () => {
 
   it("loadNewer resolves false when the page request fails", async () => {
     installFetch([
-      anchorRoute([makeArticle({ id: 1 })], { "X-Next-Cursor": "n1" }),
+      topRoute([makeArticle({ id: 1 })], { "X-Next-Cursor": "n1" }),
       { match: (u) => u.includes("cursor=n1"), fail: true },
     ]);
     const { result } = renderHook(() =>
@@ -482,7 +488,7 @@ describe("useReadingWindow edges", () => {
   it("does not flush while the tab stays visible", async () => {
     vi.useFakeTimers();
     const fetchMock = installFetch([
-      anchorRoute([makeArticle({ id: 1 })], { "X-Unread-Count": "1" }),
+      topRoute([makeArticle({ id: 1 })], { "X-Unread-Count": "1" }),
       batchRoute(),
     ]);
     const { result } = renderHook(() =>
@@ -500,7 +506,7 @@ describe("useReadingWindow edges", () => {
 
   it("keeps the counter null when the server sends no count header", async () => {
     installFetch([
-      { match: (u) => u.includes("anchor=resume"), articles: [makeArticle({ id: 1 })] },
+      topRoute([makeArticle({ id: 1 })]),
       batchRoute(),
     ]);
     const { result } = renderHook(() =>
@@ -521,7 +527,7 @@ describe("useReadingWindow last edges", () => {
   it("markPassed skips articles that are already read", async () => {
     vi.useFakeTimers();
     const fetchMock = installFetch([
-      anchorRoute([makeArticle({ id: 1, is_read: true })], { "X-Unread-Count": "0" }),
+      topRoute([makeArticle({ id: 1, is_read: true })], { "X-Unread-Count": "0" }),
       batchRoute(),
     ]);
     const { result } = renderHook(() =>
@@ -536,7 +542,7 @@ describe("useReadingWindow last edges", () => {
     expect(result.current.unreadCount).toBe(0);
   });
 
-  it("drops a stale anchor response when the scope changes mid-flight", async () => {
+  it("drops a stale top-page response when the scope changes mid-flight", async () => {
     const resolvers: Array<() => void> = [];
     const fetchMock = vi.fn().mockImplementation((url: string) => {
       const isAll = String(url).includes("filter=all");
@@ -557,7 +563,7 @@ describe("useReadingWindow last edges", () => {
         useReadingWindow({ filter, enabled: true }),
       { initialProps: { filter: "all" as "all" | "unread" } },
     );
-    rerender({ filter: "unread" }); // supersedes the in-flight "all" anchor
+    rerender({ filter: "unread" }); // supersedes the in-flight "all" page
     await act(async () => {
       resolvers.forEach((r) => r()); // resolve stale first, then current
       await Promise.resolve();

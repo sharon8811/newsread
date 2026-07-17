@@ -1467,6 +1467,24 @@ async def test_anchor_at_top_has_no_prev_cursor(client, users, data):
     assert "x-prev-cursor" not in resp.headers
 
 
+async def test_top_reading_window_starts_newest_and_reports_counters(client, users, data):
+    user, feed = await _setup(users, data)
+    arts = await _dated_articles(data, feed, 3)
+    await data.state(user, arts[0], is_read=True)  # oldest is excluded by the unread filter
+
+    resp = await client.get(
+        "/api/articles",
+        params={"filter": "unread", "reading_window": True, "limit": 2},
+        headers=users.auth(user),
+    )
+
+    assert resp.status_code == 200
+    assert [article["title"] for article in resp.json()] == ["A2", "A1"]
+    assert resp.headers["x-unread-count"] == "2"
+    assert resp.headers["x-new-above-count"] == "0"
+    assert "x-prev-cursor" not in resp.headers
+
+
 async def test_anchor_all_read_falls_back_to_top(client, users, data):
     user, feed = await _setup(users, data)
     arts = await _dated_articles(data, feed, 2)

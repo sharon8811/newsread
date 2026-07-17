@@ -151,7 +151,8 @@ export interface paths {
          *     keeps that backward context available even when `filter=unread`, while
          *     forward pages remain unread-only. Both hand back an
          *     `X-Prev-Cursor` usable for the next backward page whenever earlier rows
-         *     exist.
+         *     exist. A reading window without an anchor starts at the ordinary top page
+         *     and still reports `X-Unread-Count` plus a zero `X-New-Above-Count`.
          */
         get: operations["list_articles_api_articles_get"];
         put?: never;

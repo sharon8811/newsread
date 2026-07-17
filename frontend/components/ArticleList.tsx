@@ -82,8 +82,8 @@ type ListProps = {
 
 export default function ArticleList(props: ListProps) {
   // Search results and the saved shelf are lookup modes: flat fetch, no
-  // auto-read. Everything else is the reading experience — resume anchor,
-  // endless scroll both ways, scroll-past marks read.
+  // auto-read. Everything else is the reading experience — top-anchored cold
+  // loads, cached return position, endless forward scroll, scroll-past reads.
   const readingMode = !props.q && props.filter !== "saved";
   if (readingMode) {
     return (
@@ -280,7 +280,7 @@ function ReadingListItem({
   );
 }
 
-// ——— reading mode: resume anchor + endless both ways + scroll-past reads ———
+// ——— reading mode: newest-first cold load + cached return + scroll-past reads ———
 
 function ReadingList({
   filter,
@@ -314,6 +314,10 @@ function ReadingList({
 
   const listRef = useRef<HTMLDivElement | null>(null);
   const scrollerRef = useRef<HTMLElement | null>(null);
+  // A snapshot means this is an in-session return and its position belongs to
+  // AppLayout's semantic article anchor. Without one, this is a cold load and
+  // native browser scroll restoration must not reopen between article cards.
+  const resetColdLoadRef = useRef(articles === null);
   const itemEls = useRef(new Map<number, HTMLElement>());
   const passObserver = useRef<IntersectionObserver | null>(null);
   const compensation = useRef<{ height: number; top: number } | null>(null);
@@ -328,6 +332,27 @@ function ReadingList({
   useLayoutEffect(() => {
     scrollerRef.current = listRef.current?.closest("main") ?? null;
   }, []);
+
+  useLayoutEffect(() => {
+    if (!resetColdLoadRef.current || articles === null) return;
+    resetColdLoadRef.current = false;
+    const scroller = scrollerRef.current;
+    if (!scroller) return;
+
+    const reset = () => {
+      scroller.scrollTop = 0;
+    };
+    reset();
+    let secondFrame = 0;
+    const firstFrame = requestAnimationFrame(() => {
+      reset();
+      secondFrame = requestAnimationFrame(reset);
+    });
+    return () => {
+      cancelAnimationFrame(firstFrame);
+      cancelAnimationFrame(secondFrame);
+    };
+  }, [articles]);
 
   // Scroll-past auto-read: an item whose box fully left through the top edge
   // of the scroller has been passed. Scrolling back up never re-marks — the
