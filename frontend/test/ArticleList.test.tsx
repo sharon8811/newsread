@@ -746,6 +746,35 @@ describe("<ArticleList> reading mode interactions", () => {
     expect(await screen.findByText("All caught up ✓")).toBeInTheDocument();
   });
 
+  it("fetches a fresh unread window after leaving for another app section", async () => {
+    let requestCount = 0;
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      if (!isTopReadingRequest(String(url))) {
+        return Promise.reject(new Error(`unexpected route: ${url}`));
+      }
+      requestCount += 1;
+      return Promise.resolve(
+        pageResponse(
+          requestCount === 1
+            ? [makeArticle({ id: 71, title: "Previously read", is_read: true })]
+            : [makeArticle({ id: 72, title: "Newest unread" })],
+          { "X-Unread-Count": "1" },
+        ),
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const first = renderReading(<ArticleList filter="unread" emptyTitle="Empty" />);
+    await screen.findByText("Previously read");
+    first.unmount();
+
+    const second = renderReading(<ArticleList filter="unread" emptyTitle="Empty" />);
+    expect(await screen.findByText("Newest unread")).toBeInTheDocument();
+    expect(screen.queryByText("Previously read")).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    second.unmount();
+  });
+
   it("keeps a clicked unread row in place when the list remounts", async () => {
     const fetchMock = routedFetch([
       {

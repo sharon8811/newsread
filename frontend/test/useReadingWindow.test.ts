@@ -4,7 +4,11 @@ import {
   ARTICLES_REFRESH_EVENT,
   useReadingWindow,
 } from "@/lib/useReadingWindow";
-import { clearReadingSessions } from "@/lib/readingSession";
+import {
+  clearReadingSessions,
+  readingSessionKey,
+  setReadingReturnAnchor,
+} from "@/lib/readingSession";
 import { makeArticle } from "./fixtures";
 import type { Article } from "@/lib/api";
 
@@ -98,6 +102,7 @@ describe("useReadingWindow", () => {
     expect(first.result.current.articles?.map((article) => article.id)).toEqual([1, 2]);
     expect(first.result.current.articles?.[0].is_read).toBe(true);
     expect(first.result.current.unreadCount).toBe(1);
+    setReadingReturnAnchor(readingSessionKey("unread"), { articleId: 1, offset: 0 });
     first.unmount();
 
     const second = renderHook(() =>
@@ -110,6 +115,37 @@ describe("useReadingWindow", () => {
     expect(
       fetchMock.mock.calls.filter((call) => String(call[0]).includes("/articles?")),
     ).toHaveLength(1);
+  });
+
+  it("refetches the newest page after a non-article navigation", async () => {
+    let requestCount = 0;
+    const fetchMock = installFetch([
+      {
+        ...topRoute([]),
+        get articles() {
+          requestCount += 1;
+          return requestCount === 1
+            ? [makeArticle({ id: 1, title: "Old cached row", is_read: true })]
+            : [makeArticle({ id: 2, title: "Fresh unread row" })];
+        },
+        headers: { "X-Unread-Count": "1" },
+      } as Route,
+    ]);
+
+    const first = renderHook(() =>
+      useReadingWindow({ filter: "unread", enabled: true }),
+    );
+    await waitFor(() => expect(first.result.current.articles?.[0].id).toBe(1));
+    first.unmount();
+
+    const second = renderHook(() =>
+      useReadingWindow({ filter: "unread", enabled: true }),
+    );
+    await waitFor(() => expect(second.result.current.articles?.[0].id).toBe(2));
+    expect(second.result.current.articles?.[0].title).toBe("Fresh unread row");
+    expect(
+      fetchMock.mock.calls.filter((call) => String(call[0]).includes("/articles?")),
+    ).toHaveLength(2);
   });
 
   it("does nothing when disabled", () => {

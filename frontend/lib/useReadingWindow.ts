@@ -5,6 +5,7 @@ import { mutate } from "swr";
 import { api, apiWithHeaders, sendReadBatch, type Article } from "./api";
 import { keys } from "./keys";
 import {
+  getReadingReturnAnchor,
   getReadingSession,
   markArticleReadInReadingSessions,
   readingSessionKey,
@@ -50,7 +51,12 @@ export function useReadingWindow(opts: WindowOpts) {
   const { filter, feedId, enabled } = opts;
   const key = listPath({ filter, feedId, enabled });
   const sessionKey = readingSessionKey(filter, feedId);
-  const initialSession = getReadingSession(sessionKey);
+  // The snapshot exists to make article detail → Back seamless. Ordinary app
+  // navigation (Inbox → Sent → Inbox) must fetch the current unread page
+  // instead of reviving an old window whose leading rows are already read.
+  const initialSession = getReadingReturnAnchor(sessionKey)
+    ? getReadingSession(sessionKey)
+    : null;
 
   const [articles, setArticles] = useState<Article[] | null>(initialSession?.articles ?? null);
   const [prevCursor, setPrevCursor] = useState<string | null>(
@@ -172,7 +178,9 @@ export function useReadingWindow(opts: WindowOpts) {
   // Initial load + reload on scope change.
   useEffect(() => {
     if (!enabled) return;
-    const session = getReadingSession(sessionKey);
+    const session = getReadingReturnAnchor(sessionKey)
+      ? getReadingSession(sessionKey)
+      : null;
     stateSessionKeyRef.current = sessionKey;
     if (session) {
       setArticles(session.articles);

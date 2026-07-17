@@ -32,6 +32,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     if (pathname.startsWith("/article/")) return;
     const pending = getLatestReadingReturnAnchor();
     if (!pending) return;
+    // Article-return anchors are only valid for the inbox/feed list at `/`.
+    // Visiting Sent, Settings, or another app section turns the next inbox
+    // visit into a fresh load instead of a delayed article-detail return.
+    if (pathname !== "/") {
+      clearReadingReturnAnchor(pending.key);
+      return;
+    }
 
     const restore = () => {
       const scroller = document.querySelector<HTMLElement>("main");
