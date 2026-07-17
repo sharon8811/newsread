@@ -88,4 +88,18 @@ describe("AppLayout reading return restoration", () => {
 
     expect(getReadingReturnAnchor(key)).toEqual({ articleId: 42, offset: 180 });
   });
+
+  it("clears the article-return anchor on unrelated app navigation", () => {
+    pathnameState.value = "/sent";
+    const key = readingSessionKey("unread");
+    setReadingReturnAnchor(key, { articleId: 42, offset: 180 });
+
+    render(
+      <AppLayout>
+        <div>Sent content</div>
+      </AppLayout>,
+    );
+
+    expect(getReadingReturnAnchor(key)).toBeNull();
+  });
 });
