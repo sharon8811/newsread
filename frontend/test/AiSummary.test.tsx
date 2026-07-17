@@ -77,6 +77,24 @@ describe("<AiSummary>", () => {
     await waitFor(() => expect(mutateMock).toHaveBeenCalledWith("/articles/1"));
   });
 
+  it("explains a too-short source without requesting a summary", async () => {
+    stubStatus(true);
+    const fetchMock = okFetch();
+    vi.stubGlobal("fetch", fetchMock);
+    render(
+      <AiSummary
+        article={makeArticleDetail({ summary: "", summary_skipped_reason: "too_short" })}
+      />,
+    );
+    expect(
+      screen.getByText("This post is already short, so there’s no AI summary."),
+    ).toBeInTheDocument();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(mutateMock).not.toHaveBeenCalled();
+    expect(screen.queryByTitle("Regenerate summary")).not.toBeInTheDocument();
+  });
+
   it("regenerates on the refresh button (force=true)", async () => {
     stubStatus(true);
     const fetchMock = okFetch();

@@ -121,7 +121,42 @@ async def _clean_hnrss_content(conn) -> None:
         )
 
 
-ONE_SHOT_REPAIRS = {"clean_hnrss_boilerplate_lxml": _clean_hnrss_content}
+async def _skip_existing_short_summaries(conn) -> None:
+    """Apply the short-source policy to summaries generated before it existed.
+
+    Entity links and NER stamps intentionally stay intact. Clearing the summary
+    also makes an existing embedding stale, so the normal embedding worker will
+    converge it back to the title/excerpt input.
+    """
+    from .extractor import is_too_short_to_summarize
+    from .fetcher import strip_html
+
+    rows = (
+        await conn.execute(
+            text(
+                "SELECT id, full_text, content_html FROM articles "
+                "WHERE summary <> '' AND summary_skipped_reason IS NULL"
+            )
+        )
+    ).mappings()
+    for row in rows:
+        source = row["full_text"] or strip_html(row["content_html"])
+        if not is_too_short_to_summarize(source):
+            continue
+        await conn.execute(
+            text(
+                "UPDATE articles SET summary_short = '', summary_medium = '', summary = '', "
+                "summary_model = NULL, summary_generated_at = NULL, "
+                "summary_skipped_reason = 'too_short' WHERE id = :id"
+            ),
+            {"id": row["id"]},
+        )
+
+
+ONE_SHOT_REPAIRS = {
+    "clean_hnrss_boilerplate_lxml": _clean_hnrss_content,
+    "skip_existing_short_summaries": _skip_existing_short_summaries,
+}
 
 
 async def init_db(max_attempts: int = 30) -> None:

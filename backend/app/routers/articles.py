@@ -875,6 +875,7 @@ async def get_article(
         **item.model_dump(exclude={"entities", "image_pending"}),
         content_html=article.content_html,
         summary_model=article.summary_model,
+        summary_skipped_reason=article.summary_skipped_reason,
         entities=full_entities,
         image_pending=image_pending,
     )

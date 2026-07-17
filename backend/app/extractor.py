@@ -18,6 +18,19 @@ MIN_USEFUL_CHARS = 800
 
 MAX_LLM_CHARS = 24_000
 
+# Short pages that contain only a browser/app shell are not "already short";
+# their useful content may be visual and can still be grounded by a screenshot.
+# Keep these deliberately narrow so ordinary short posts never spend a vision
+# call merely to restate themselves.
+_VISUAL_STUB_PREFIXES = (
+    "you need to enable javascript to run this app",
+    "enable javascript and cookies to continue",
+    "javascript is disabled",
+    "just a moment",
+    "checking your browser",
+    "please verify you are human",
+)
+
 # Don't re-hit a page that recently failed to yield text (site likely blocks bots).
 REFETCH_COOLDOWN = timedelta(hours=6)
 
@@ -111,3 +124,18 @@ def clip_for_llm(text: str) -> str:
 def is_thin(text: str) -> bool:
     """True when all we have is a link stub — too little to ground an LLM on."""
     return len(text.strip()) < 400
+
+
+def is_visual_stub(text: str) -> bool:
+    """True when short extracted text is an empty/browser shell.
+
+    These pages may still be useful as screenshots (maps, comics, charts),
+    unlike a real 200-character post that is already shorter than a summary.
+    """
+    normalized = " ".join(text.casefold().split())
+    return not normalized or normalized.startswith(_VISUAL_STUB_PREFIXES)
+
+
+def is_too_short_to_summarize(text: str) -> bool:
+    """A real, non-visual post whose source is already under 400 characters."""
+    return is_thin(text) and not is_visual_stub(text)

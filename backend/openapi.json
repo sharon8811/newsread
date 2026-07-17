@@ -709,6 +709,18 @@
             "title": "Summary Short",
             "type": "string"
           },
+          "summary_skipped_reason": {
+            "anyOf": [
+              {
+                "const": "too_short",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary Skipped Reason"
+          },
           "title": {
             "title": "Title",
             "type": "string"
@@ -3488,6 +3500,18 @@
               }
             ],
             "title": "Model"
+          },
+          "skipped_reason": {
+            "anyOf": [
+              {
+                "const": "too_short",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Skipped Reason"
           },
           "summary": {
             "title": "Summary",

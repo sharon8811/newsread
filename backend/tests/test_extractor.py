@@ -9,6 +9,8 @@ from app.extractor import (
     ensure_full_text,
     fetch_page,
     is_thin,
+    is_too_short_to_summarize,
+    is_visual_stub,
 )
 from app.models import Article, Feed
 
@@ -16,6 +18,15 @@ from app.models import Article, Feed
 def test_is_thin():
     assert is_thin("short")
     assert not is_thin("x" * 400)
+
+
+def test_short_source_classification_preserves_visual_fallbacks():
+    assert is_too_short_to_summarize("Seed7 is a GPL-licensed language.")
+    assert not is_too_short_to_summarize("x" * 400)
+    assert is_visual_stub("")
+    assert is_visual_stub("You need to enable JavaScript to run this app.")
+    assert is_visual_stub("  Checking   your browser before accessing the site ")
+    assert not is_visual_stub("A concise but meaningful post.")
 
 
 def test_clip_for_llm():

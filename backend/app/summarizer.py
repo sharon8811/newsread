@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import llm, screenshot
 from .config import settings
-from .extractor import clip_for_llm, ensure_full_text, is_thin
+from .extractor import clip_for_llm, ensure_full_text, is_thin, is_too_short_to_summarize
 from .models import Article
 
 logger = logging.getLogger(__name__)
@@ -15,6 +15,10 @@ logger = logging.getLogger(__name__)
 
 class ThinContentError(Exception):
     """The article's full text is unavailable — refusing to summarize a stub."""
+
+
+class SummarySkipped(Exception):
+    """The source is already shorter than a useful summary; no LLM call was made."""
 
 
 async def generate_summaries(
@@ -36,6 +40,15 @@ async def generate_summaries(
     on every bot-blocked stub.
     """
     text = await ensure_full_text(session, article, allow_refetch=allow_refetch)
+    if is_too_short_to_summarize(text):
+        article.summary_short = ""
+        article.summary_medium = ""
+        article.summary = ""
+        article.summary_model = None
+        article.summary_generated_at = None
+        article.summary_skipped_reason = "too_short"
+        await session.commit()
+        raise SummarySkipped()
     if is_thin(text):
         short, medium, full = await _summarize_from_screenshot(
             article, allow_vision, config=config, usage=usage
@@ -58,6 +71,7 @@ async def generate_summaries(
     article.summary = full
     article.summary_model = config.model if config is not None else settings.openai_model
     article.summary_generated_at = datetime.now(UTC)
+    article.summary_skipped_reason = None
     await session.commit()
 
 
