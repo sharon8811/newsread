@@ -290,6 +290,7 @@ class EntityPageOut(BaseModel):
 class ArticleDetail(ArticleListItem):
     content_html: str
     summary_model: str | None = None
+    summary_skipped_reason: Literal["too_short"] | None = None
     entities: list[EntityFull] = []
 
 
@@ -695,6 +696,7 @@ class SummaryOut(BaseModel):
     summary_medium: str = ""
     model: str | None
     generated_at: datetime | None
+    skipped_reason: Literal["too_short"] | None = None
 
 
 class SynthesisTimelineItem(BaseModel):

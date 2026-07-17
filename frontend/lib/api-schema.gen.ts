@@ -1680,6 +1680,8 @@ export interface components {
              * @default
              */
             summary_short: string;
+            /** Summary Skipped Reason */
+            summary_skipped_reason?: "too_short" | null;
             /** Title */
             title: string;
             /** Url */
@@ -2709,6 +2711,8 @@ export interface components {
             generated_at: string | null;
             /** Model */
             model: string | null;
+            /** Skipped Reason */
+            skipped_reason?: "too_short" | null;
             /** Summary */
             summary: string;
             /**

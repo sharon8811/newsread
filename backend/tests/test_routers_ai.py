@@ -1,12 +1,12 @@
 import json
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app import llm, qa_agent
-from app.models import Conversation, Message
+from app.models import Conversation, LLMUsage, Message
 from app.routers import ai as ai_router
-from app.summarizer import ThinContentError
+from app.summarizer import SummarySkipped, ThinContentError
 
 
 async def _setup(users, data):
@@ -91,6 +91,41 @@ async def test_summarize_thin_content(client, users, data, monkeypatch):
     monkeypatch.setattr(ai_router, "generate_summaries", raise_thin)
     resp = await client.post(f"/api/articles/{art.id}/summarize", headers=users.auth(user))
     assert resp.status_code == 422
+
+
+async def test_summarize_short_content_returns_skipped_without_usage(
+    client, users, data, session, monkeypatch
+):
+    user, feed, art = await _setup(users, data)
+    monkeypatch.setattr(llm, "is_configured", lambda: True)
+
+    async def skip(session_, article, **kwargs):
+        article.summary_skipped_reason = "too_short"
+        await session_.commit()
+        raise SummarySkipped()
+
+    monkeypatch.setattr(ai_router, "generate_summaries", skip)
+    resp = await client.post(f"/api/articles/{art.id}/summarize", headers=users.auth(user))
+    assert resp.status_code == 200
+    assert resp.json()["skipped_reason"] == "too_short"
+    usage_count = await session.scalar(
+        select(func.count()).select_from(LLMUsage).where(LLMUsage.feature == "summary")
+    )
+    assert usage_count == 0
+
+
+async def test_summarize_returns_cached_skip_without_llm_config(client, users, data, monkeypatch):
+    user, feed, art = await _setup(users, data)
+    art.summary_skipped_reason = "too_short"
+    await data.session.commit()
+
+    async def fail_resolve(*args, **kwargs):  # pragma: no cover - must not be reached
+        raise AssertionError("cached skip attempted to resolve an LLM")
+
+    monkeypatch.setattr(ai_router, "_resolve_llm", fail_resolve)
+    resp = await client.post(f"/api/articles/{art.id}/summarize", headers=users.auth(user))
+    assert resp.status_code == 200
+    assert resp.json()["skipped_reason"] == "too_short"
 
 
 async def test_summarize_llm_failure(client, users, data, monkeypatch):
@@ -682,7 +717,7 @@ async def test_ask_project_stream_article_without_summary_gets_hint(
 # --- bring-your-own-key: per-user config + usage logging ---
 
 from app import crypto
-from app.models import LLMUsage, UserAISettings
+from app.models import UserAISettings
 
 OWN_KEY = "sk-own-12345678"
 

@@ -2,7 +2,7 @@ import pytest
 
 from app import summarizer
 from app.models import Article, Feed
-from app.summarizer import ThinContentError, generate_summaries
+from app.summarizer import SummarySkipped, ThinContentError, generate_summaries
 
 
 async def _make_article(session, **kwargs):
@@ -34,6 +34,7 @@ async def test_generate_summaries_success(session, monkeypatch):
     monkeypatch.setattr(summarizer, "ensure_full_text", fake_ensure)
     monkeypatch.setattr(summarizer.llm, "summarize", fake_summarize)
     monkeypatch.setattr(summarizer.settings, "openai_model", "test-model")
+    art.summary_skipped_reason = "too_short"
 
     await generate_summaries(session, art)
     assert art.summary_short == "short one"
@@ -41,13 +42,43 @@ async def test_generate_summaries_success(session, monkeypatch):
     assert art.summary == "full three"
     assert art.summary_model == "test-model"
     assert art.summary_generated_at is not None
+    assert art.summary_skipped_reason is None
+
+
+async def test_generate_summaries_skips_real_short_source_without_llm_or_vision(
+    session, monkeypatch
+):
+    art = await _make_article(session)
+    art.summary_short = "old short"
+    art.summary_medium = "old medium"
+    art.summary = "old full"
+    art.summary_model = "old-model"
+
+    async def fake_ensure(session_, article, allow_refetch=True):
+        return "Seed7 is a GPL-licensed open source programming language."
+
+    async def fail(*args, **kwargs):  # pragma: no cover - must not be reached
+        raise AssertionError("short post attempted an LLM or screenshot call")
+
+    monkeypatch.setattr(summarizer, "ensure_full_text", fake_ensure)
+    monkeypatch.setattr(summarizer.llm, "summarize", fail)
+    monkeypatch.setattr(summarizer.screenshot, "capture", fail)
+
+    with pytest.raises(SummarySkipped):
+        await generate_summaries(session, art, config=_vision_config(), allow_vision=True)
+    assert art.summary_short == ""
+    assert art.summary_medium == ""
+    assert art.summary == ""
+    assert art.summary_model is None
+    assert art.summary_generated_at is None
+    assert art.summary_skipped_reason == "too_short"
 
 
 async def test_generate_summaries_thin_raises(session, monkeypatch):
     art = await _make_article(session)
 
     async def fake_ensure(session_, article, allow_refetch=True):
-        return "tiny"
+        return "You need to enable JavaScript to run this app."
 
     monkeypatch.setattr(summarizer, "ensure_full_text", fake_ensure)
     with pytest.raises(ThinContentError):
@@ -86,7 +117,7 @@ async def test_thin_with_vision_summarizes_from_screenshot(session, monkeypatch)
     art = await _make_article(session)
 
     async def fake_ensure(session_, article, allow_refetch=True):
-        return "tiny"
+        return "You need to enable JavaScript to run this app."
 
     async def fake_capture(url):
         return b"jpeg"
@@ -108,7 +139,7 @@ async def test_thin_without_vision_capability_raises(session, monkeypatch):
     art = await _make_article(session)
 
     async def fake_ensure(session_, article, allow_refetch=True):
-        return "tiny"
+        return "You need to enable JavaScript to run this app."
 
     async def fail_capture(url):  # pragma: no cover - must not be reached
         raise AssertionError("screenshot attempted without a vision model")
@@ -126,7 +157,7 @@ async def test_thin_batch_path_never_screenshots(session, monkeypatch):
     art = await _make_article(session)
 
     async def fake_ensure(session_, article, allow_refetch=True):
-        return "tiny"
+        return "You need to enable JavaScript to run this app."
 
     async def fail_capture(url):  # pragma: no cover - must not be reached
         raise AssertionError("batch path attempted a screenshot")
@@ -142,7 +173,7 @@ async def test_thin_system_config_uses_env_vision_flag(session, monkeypatch):
     art = await _make_article(session)
 
     async def fake_ensure(session_, article, allow_refetch=True):
-        return "tiny"
+        return "You need to enable JavaScript to run this app."
 
     async def fake_capture(url):
         return b"jpeg"
@@ -165,7 +196,7 @@ async def test_thin_screenshot_failure_raises_thin(session, monkeypatch):
     art = await _make_article(session)
 
     async def fake_ensure(session_, article, allow_refetch=True):
-        return "tiny"
+        return "You need to enable JavaScript to run this app."
 
     async def fake_capture(url):
         return None

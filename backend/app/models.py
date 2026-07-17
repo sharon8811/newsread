@@ -255,6 +255,9 @@ class Article(Base):
     summary: Mapped[str] = mapped_column(Text, default="", server_default="")
     summary_model: Mapped[str | None] = mapped_column(String(120))
     summary_generated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Explicit terminal state for articles whose source is already shorter
+    # than a useful summary. NULL means summary generation remains eligible.
+    summary_skipped_reason: Mapped[str | None] = mapped_column(String(32))
     entities_extracted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # LLM named-entity tagging (see ner.py); separate stamp because it runs
     # on a different trigger (needs summary/full text) than the link scan.

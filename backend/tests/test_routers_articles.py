@@ -399,9 +399,12 @@ async def test_list_articles_hybrid_search_empty_page(client, users, data, monke
 async def test_get_article(client, users, data):
     user, feed = await _setup(users, data)
     art = await data.article(feed, content_html="<p>full body</p>")
+    art.summary_skipped_reason = "too_short"
+    await data.session.commit()
     resp = await client.get(f"/api/articles/{art.id}", headers=users.auth(user))
     assert resp.status_code == 200
     assert resp.json()["content_html"] == "<p>full body</p>"
+    assert resp.json()["summary_skipped_reason"] == "too_short"
 
 
 async def test_get_article_with_entity_snapshots(client, users, data, session):

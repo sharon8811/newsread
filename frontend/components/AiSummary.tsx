@@ -19,6 +19,7 @@ export default function AiSummary({ article }: { article: ArticleDetail }) {
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const requestedRef = useRef(false);
+  const skippedAsTooShort = article.summary_skipped_reason === "too_short";
 
   async function generate(force: boolean) {
     setGenerating(true);
@@ -36,11 +37,30 @@ export default function AiSummary({ article }: { article: ArticleDetail }) {
   }
 
   useEffect(() => {
-    if (!status?.configured || article.summary || requestedRef.current) return;
+    if (!status?.configured || article.summary || skippedAsTooShort || requestedRef.current) return;
     requestedRef.current = true;
     generate(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status?.configured, article.id]);
+  }, [status?.configured, article.id, skippedAsTooShort]);
+
+  if (skippedAsTooShort) {
+    return (
+      <section
+        className="fade-up mt-7 rounded-md border p-5"
+        style={{ borderColor: "var(--line)", background: "var(--paper-raised)" }}
+      >
+        <div className="flex items-center gap-2">
+          <SparkleIcon size={13} className="shrink-0" />
+          <span className="mono-label" style={{ color: "var(--ink-dim)" }}>
+            AI Summary
+          </span>
+        </div>
+        <p className="mt-3 text-body" style={{ color: "var(--ink-dim)" }}>
+          This post is already short, so there’s no AI summary.
+        </p>
+      </section>
+    );
+  }
 
   if (!status?.configured) return null;
 

@@ -154,6 +154,7 @@ export function makeArticleDetail(over: Partial<ArticleDetail> = {}): ArticleDet
     ...makeArticle(),
     content_html: "<p>full body</p>",
     summary_model: null,
+    summary_skipped_reason: null,
     entities: [],
     ...over,
   } as ArticleDetail;

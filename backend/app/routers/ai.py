@@ -38,7 +38,7 @@ from ..schemas import (
     SynthesisSourceOut,
     SynthesisTimelineItem,
 )
-from ..summarizer import ThinContentError, generate_summaries
+from ..summarizer import SummarySkipped, ThinContentError, generate_summaries
 from .articles import related_articles
 from .projects import _member_or_404, visible_pins
 
@@ -87,21 +87,28 @@ async def summarize_article(
     force: bool = False,
 ):
     article = await accessible_article(session, user.id, article_id)
-    if article.summary and article.summary_short and not force:
+    if not force and (
+        (article.summary and article.summary_short) or article.summary_skipped_reason == "too_short"
+    ):
         return _summary_out(article)
     config = await _resolve_llm(session, user)
 
-    # ThinContentError passes through unrecorded (no LLM call happened) to the
-    # app-level 422 handler.
-    async with llm.usage_tracker(
-        session,
-        user_id=user.id,
-        feature="summary",
-        config=config,
-        log_label=f"Summarization for article {article.id}",
-        passthrough=(ThinContentError,),
-    ) as usage:
-        await generate_summaries(session, article, config=config, usage=usage, allow_vision=True)
+    # Both domain exits pass through unrecorded because no LLM call happened.
+    # ThinContentError remains a 422; SummarySkipped is an intentional 200.
+    try:
+        async with llm.usage_tracker(
+            session,
+            user_id=user.id,
+            feature="summary",
+            config=config,
+            log_label=f"Summarization for article {article.id}",
+            passthrough=(ThinContentError, SummarySkipped),
+        ) as usage:
+            await generate_summaries(
+                session, article, config=config, usage=usage, allow_vision=True
+            )
+    except SummarySkipped:
+        pass
     return _summary_out(article)
 
 
@@ -112,6 +119,7 @@ def _summary_out(article: Article) -> SummaryOut:
         summary_medium=article.summary_medium,
         model=article.summary_model,
         generated_at=article.summary_generated_at,
+        skipped_reason=article.summary_skipped_reason,
     )
 
 

@@ -2,7 +2,7 @@ from datetime import UTC, datetime, timedelta
 
 from app import worker
 from app.models import Article, ArticleEmbedding, Feed
-from app.summarizer import ThinContentError
+from app.summarizer import SummarySkipped, ThinContentError
 
 
 async def _feed(session, **kwargs):
@@ -78,6 +78,19 @@ async def test_summarize_quietly_thin_content(session, monkeypatch):
     )  # no raise
 
 
+async def test_summarize_quietly_short_content(session, monkeypatch):
+    feed = await _feed(session)
+    art = await _article(session, feed)
+
+    async def skip(s, article, allow_refetch=False):
+        raise SummarySkipped()
+
+    monkeypatch.setattr(worker, "generate_summaries", skip)
+    await worker._for_each_article(
+        [art.id], concurrency=1, label="Auto-summary", fn=worker._summarize_quietly
+    )  # no raise
+
+
 async def test_summarize_quietly_generic_error(session, monkeypatch):
     feed = await _feed(session)
     art = await _article(session, feed)
@@ -134,6 +147,14 @@ async def test_enrich_and_summarize_full_pipeline(session, monkeypatch):
     feed = await _feed(session)
     # Article needing enrich + summary.
     art = await _article(session, feed, full_text="", image_url=None, summary_short="")
+    skipped = await _article(
+        session,
+        feed,
+        guid="already-short",
+        full_text="short",
+        image_url="https://x/short.png",
+        summary_skipped_reason="too_short",
+    )
 
     async def fake_enrich(s, article):
         article.full_text = "text"
@@ -158,6 +179,7 @@ async def test_enrich_and_summarize_full_pipeline(session, monkeypatch):
 
     await worker.enrich_and_summarize(feed_id=feed.id)
     assert summarized == [art.id]
+    assert skipped.id not in summarized
 
 
 async def test_enrich_and_summarize_scoped_to_feed(session, monkeypatch):
@@ -328,7 +350,14 @@ async def test_ner_batch_not_configured(monkeypatch):
 async def test_ner_batch_selects_stamps_and_retags(session, monkeypatch):
     feed = await _feed(session)
     now = datetime.now(UTC)
-    ready = await _article(session, feed, guid="ready", full_text_fetched_at=now, full_text="body")
+    ready = await _article(
+        session,
+        feed,
+        guid="ready",
+        full_text_fetched_at=now,
+        full_text="body",
+        summary_skipped_reason="too_short",
+    )
     await _article(session, feed, guid="pending")  # never enriched: wait
     # Tagged before its summary existed -> re-tagged.
     stale = await _article(

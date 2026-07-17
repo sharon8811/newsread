@@ -29,7 +29,7 @@ from .models import (
     Share,
     UserDislikeRule,
 )
-from .summarizer import ThinContentError, generate_summaries
+from .summarizer import SummarySkipped, ThinContentError, generate_summaries
 
 logger = logging.getLogger(__name__)
 
@@ -65,8 +65,8 @@ async def _for_each_article(ids, *, concurrency: int, label: str, fn) -> None:
 async def _summarize_quietly(session, article) -> None:
     try:
         await generate_summaries(session, article, allow_refetch=False)
-    except ThinContentError:
-        pass  # site blocks fetching; the article view explains this
+    except (ThinContentError, SummarySkipped):
+        pass  # expected terminal states: unavailable or already short
 
 
 async def enrich_and_summarize(ctx: dict | None = None, feed_id: int | None = None) -> None:
@@ -109,6 +109,7 @@ async def enrich_and_summarize(ctx: dict | None = None, feed_id: int | None = No
             .join(Feed, Feed.id == Article.feed_id)
             .where(Feed.ai_enabled.is_(True))
             .where(Article.summary_short == "")
+            .where(Article.summary_skipped_reason.is_(None))
             # Skip articles whose page fetch already failed and whose feed
             # content is a stub — they'd be ThinContent-skipped every cycle.
             .where(
