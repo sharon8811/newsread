@@ -99,6 +99,27 @@ async def test_entity_rule_suppresses_for_subscriber_only(session, users):
     assert await _suppressed_ids(session, outsider) == set()
 
 
+async def test_entity_rule_never_hides_imported_articles(session, users):
+    # An explicit import is the strongest interest signal — dislike rules must
+    # not suppress articles the user pasted into their hidden import feed.
+    user = await users.create(username="imp")
+    import_feed = Feed(url=f"newsread://imported/{user.id}", owner_user_id=user.id)
+    session.add(import_feed)
+    await session.commit()
+    await _subscribe(session, user, import_feed)
+    art = await _article(session, import_feed, guid="imported")
+    entity = Entity(kind="github", canonical_key="acme/widget", url="https://gh/acme/widget")
+    session.add(entity)
+    await session.commit()
+    session.add(ArticleEntity(article_id=art.id, entity_id=entity.id, source="primary"))
+    await session.commit()
+    await _entity_rule(session, user, entity)
+
+    cutoff = NOW - suppressions.SUPPRESS_WINDOW
+    assert await suppressions.apply_entity_rules(session, cutoff=cutoff) == 0
+    assert await _suppressed_ids(session, user) == set()
+
+
 async def test_entity_rule_idempotent_and_window_scoped(session, users):
     user = await users.create(username="u")
     feed = await _feed(session)

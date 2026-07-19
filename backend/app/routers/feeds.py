@@ -23,10 +23,12 @@ def _normalize_url(url: str) -> str:
 
 
 async def _get_subscribed_feed(session: AsyncSession, user: User, feed_id: int) -> Feed:
+    # Hidden import feeds have no user-facing settings, refresh, or
+    # unsubscribe — they 404 here like any other feed the user can't manage.
     feed = await session.scalar(
         select(Feed)
         .join(Subscription, and_(Subscription.feed_id == Feed.id, Subscription.user_id == user.id))
-        .where(Feed.id == feed_id)
+        .where(Feed.id == feed_id, Feed.owner_user_id.is_(None))
     )
     if feed is None:
         raise HTTPException(status_code=404, detail="Feed not found")
@@ -76,6 +78,8 @@ def _feed_list_stmt(user_id: int):
             UserArticleState,
             and_(UserArticleState.article_id == Article.id, UserArticleState.user_id == user_id),
         )
+        # The user's hidden "Imported" feed is not a subscription they manage.
+        .where(Feed.owner_user_id.is_(None))
         .group_by(Feed.id, Subscription.id)
         .order_by(func.coalesce(Subscription.title_override, Feed.title))
     )

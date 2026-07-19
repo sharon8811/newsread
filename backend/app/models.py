@@ -133,6 +133,12 @@ class Feed(Base):
     # Global switch: generate AI illustrations for this feed's imageless
     # articles (shared by all subscribers, like ai_enabled).
     image_gen_enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    # Non-null marks this as the user's hidden "Imported" feed holding their
+    # pasted-URL articles. It has a newsread:// sentinel URL, is never polled,
+    # and stays out of every feed listing and feed-settings endpoint.
+    owner_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), unique=True, default=None
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     articles: Mapped[list["Article"]] = relationship(

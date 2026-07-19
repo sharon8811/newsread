@@ -55,11 +55,12 @@ async def test_fetch_page_success(monkeypatch):
     monkeypatch.setattr(
         extractor.trafilatura,
         "extract_metadata",
-        lambda html: types.SimpleNamespace(image="https://x/og.png"),
+        lambda html: types.SimpleNamespace(image="https://x/og.png", title="Page Title"),
     )
-    text, image = await fetch_page("https://x/a")
+    text, image, title = await fetch_page("https://x/a")
     assert text == "extracted prose"
     assert image == "https://x/og.png"
+    assert title == "Page Title"
 
 
 async def test_fetch_page_fetch_raises(monkeypatch):
@@ -67,7 +68,7 @@ async def test_fetch_page_fetch_raises(monkeypatch):
         raise RuntimeError("blocked")
 
     monkeypatch.setattr(extractor.AsyncFetcher, "get", staticmethod(fake_get))
-    assert await fetch_page("https://x/a") == ("", None)
+    assert await fetch_page("https://x/a") == ("", None, None)
 
 
 async def test_fetch_page_non_200(monkeypatch):
@@ -75,7 +76,7 @@ async def test_fetch_page_non_200(monkeypatch):
         return _fake_page(status=403)
 
     monkeypatch.setattr(extractor.AsyncFetcher, "get", staticmethod(fake_get))
-    assert await fetch_page("https://x/a") == ("", None)
+    assert await fetch_page("https://x/a") == ("", None, None)
 
 
 async def test_fetch_page_image_from_css_fallback(monkeypatch):
@@ -87,8 +88,9 @@ async def test_fetch_page_image_from_css_fallback(monkeypatch):
     monkeypatch.setattr(extractor.AsyncFetcher, "get", staticmethod(fake_get))
     monkeypatch.setattr(extractor.trafilatura, "extract", lambda html, **k: "text")
     monkeypatch.setattr(extractor.trafilatura, "extract_metadata", lambda html: None)
-    text, image = await fetch_page("https://x/a")
+    text, image, title = await fetch_page("https://x/a")
     assert image == "https://x/twitter.png"
+    assert title is None
 
 
 async def test_fetch_page_rejects_relative_image(monkeypatch):
@@ -100,7 +102,7 @@ async def test_fetch_page_rejects_relative_image(monkeypatch):
     monkeypatch.setattr(extractor.AsyncFetcher, "get", staticmethod(fake_get))
     monkeypatch.setattr(extractor.trafilatura, "extract", lambda html, **k: "text")
     monkeypatch.setattr(extractor.trafilatura, "extract_metadata", lambda html: None)
-    text, image = await fetch_page("https://x/a")
+    text, image, title = await fetch_page("https://x/a")
     assert image is None
 
 
@@ -116,9 +118,10 @@ async def test_fetch_page_metadata_raises_but_survives(monkeypatch):
     monkeypatch.setattr(extractor.AsyncFetcher, "get", staticmethod(fake_get))
     monkeypatch.setattr(extractor.trafilatura, "extract", lambda html, **k: "text")
     monkeypatch.setattr(extractor.trafilatura, "extract_metadata", boom)
-    text, image = await fetch_page("https://x/a")
+    text, image, title = await fetch_page("https://x/a")
     assert text == "text"
     assert image is None
+    assert title is None
 
 
 def _recent(seconds):
@@ -157,7 +160,7 @@ async def test_enrich_article_fills_text_and_image(session, monkeypatch):
     art = await _make_article(session, content_html="<p>thin</p>")
 
     async def fake_fetch_page(url):
-        return "the full extracted text", "https://x/og.png"
+        return "the full extracted text", "https://x/og.png", "T2"
 
     monkeypatch.setattr(extractor, "fetch_page", fake_fetch_page)
     await enrich_article(session, art)
@@ -173,7 +176,7 @@ async def test_enrich_article_skips_when_nothing_needed(session, monkeypatch):
     async def fake_fetch_page(url):
         nonlocal called
         called = True
-        return "x", "y"
+        return "x", "y", "z"
 
     monkeypatch.setattr(extractor, "fetch_page", fake_fetch_page)
     await enrich_article(session, art)
@@ -205,7 +208,7 @@ async def test_enrich_article_stamps_when_no_image_found(session, monkeypatch):
     art = await _make_article(session, content_html=rich)
 
     async def fake_fetch_page(url):
-        return "", None
+        return "", None, None
 
     monkeypatch.setattr(extractor, "fetch_page", fake_fetch_page)
     await enrich_article(session, art)
@@ -230,7 +233,7 @@ async def test_ensure_full_text_fetches_when_thin(session, monkeypatch):
     art = await _make_article(session, content_html="<p>thin</p>")
 
     async def fake_fetch_page(url):
-        return "freshly fetched body text", None
+        return "freshly fetched body text", None, None
 
     monkeypatch.setattr(extractor, "fetch_page", fake_fetch_page)
     out = await ensure_full_text(session, art)

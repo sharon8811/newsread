@@ -407,6 +407,7 @@ def _scoped_article_ids(user_id: int, feed_id: int | None, filter: str):
     """Article.id select with the same subscription/filter scope as the list."""
     stmt = (
         select(Article.id)
+        .join(Feed, Feed.id == Article.feed_id)
         .join(
             Subscription,
             and_(Subscription.feed_id == Article.feed_id, Subscription.user_id == user_id),
@@ -423,10 +424,10 @@ def _scoped_article_ids(user_id: int, feed_id: int | None, filter: str):
     if feed_id is not None:
         stmt = stmt.where(Article.feed_id == feed_id)
     else:
-        # Muted feeds stay out of the aggregate inbox; their own page and the
-        # saved list still show everything.
+        # Muted feeds and the hidden "Imported" feed stay out of the aggregate
+        # inbox; their own pages and the saved list still show everything.
         if filter != "saved":
-            stmt = stmt.where(Subscription.is_muted.is_(False))
+            stmt = stmt.where(Subscription.is_muted.is_(False), Feed.owner_user_id.is_(None))
     if filter == "unread":
         stmt = stmt.where(or_(UserArticleState.id.is_(None), UserArticleState.is_read.is_(False)))
     elif filter == "saved":
@@ -531,7 +532,9 @@ async def list_articles(
     if feed_id is not None:
         base_stmt = base_stmt.where(Article.feed_id == feed_id)
     elif filter != "saved":
-        base_stmt = base_stmt.where(Subscription.is_muted.is_(False))
+        # Muted feeds and the hidden "Imported" feed stay out of the aggregate
+        # inbox (mirrors _scoped_article_ids).
+        base_stmt = base_stmt.where(Subscription.is_muted.is_(False), Feed.owner_user_id.is_(None))
     if filter != "saved":
         base_stmt = base_stmt.where(not_suppressed(user.id))
 
