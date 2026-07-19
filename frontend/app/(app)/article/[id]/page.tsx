@@ -46,10 +46,12 @@ export default function ArticlePage() {
   // While an AI illustration is rendering, poll the detail so the image
   // appears the moment it lands (and the "generating" state clears if it
   // fails). Server-side pending stops reporting after ~3 min, which halts
-  // the poll on its own.
+  // the poll on its own. Same while background enrichment is filling text /
+  // image / title (freshly imported URLs, just-fetched feed articles):
+  // enriching flips off when the fetch attempt is stamped, bounding the poll.
   const { data: article, error } = useArticleDetail(id ?? null, {
     refreshInterval: (data) =>
-      data?.image_pending && !data.image_url ? 3000 : 0,
+      (data?.image_pending && !data.image_url) || data?.enriching ? 3000 : 0,
   });
   const [sharing, setSharing] = useState(false);
   const [pickingProject, setPickingProject] = useState(false);

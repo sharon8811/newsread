@@ -70,6 +70,7 @@ describe("<Sidebar>", () => {
     expect(screen.getByText("Shared with me")).toBeInTheDocument();
     expect(screen.getByText("Sent")).toBeInTheDocument();
     expect(screen.getByText("Saved")).toBeInTheDocument();
+    expect(screen.getByText("Imported").closest("a")).toHaveAttribute("href", "/imported");
     expect(screen.getByText("Projects").closest("a")).toHaveAttribute("href", "/projects");
     expect(screen.getByText("Activity").closest("a")).toHaveAttribute("href", "/activity");
     expect(screen.getByText("Alice")).toBeInTheDocument();

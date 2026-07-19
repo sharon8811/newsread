@@ -23,6 +23,7 @@ import {
   FolderIcon,
   GearIcon,
   InboxIcon,
+  LinkIcon,
   LogoutIcon,
   MuteIcon,
   PlusIcon,
@@ -161,6 +162,12 @@ export default function Sidebar() {
           active={pathname === "/saved"}
           icon={<BookmarkIcon />}
           label="Saved"
+        />
+        <NavLink
+          href="/imported"
+          active={pathname === "/imported"}
+          icon={<LinkIcon />}
+          label="Imported"
         />
         <NavLink
           href="/catalog"

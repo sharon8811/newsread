@@ -224,6 +224,9 @@ export type ViewMode = User["default_view"];
 export type SortOrder = NonNullable<Schemas["FeedOut"]["sort_order"]>;
 
 export type Feed = Schemas["FeedOut"];
+
+// The user's hidden "Imported" feed (pasted-URL articles live there).
+export type ImportFeed = Schemas["ImportFeedOut"];
 // PATCH /feeds/{id}/settings — only send the fields being changed.
 export type FeedSettingsPatch = Schemas["FeedSettingsIn"];
 
