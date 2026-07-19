@@ -186,6 +186,26 @@ export function useReadingWindow(opts: WindowOpts) {
     await Promise.allSettled(writes);
   }, []);
 
+  const scheduleFlush = useCallback(() => {
+    if (!flushTimerRef.current) {
+      flushTimerRef.current = setTimeout(() => flush(), FLUSH_DELAY_MS);
+    }
+  }, [flush]);
+
+  // A failed unread write falls back to the read-flush pipeline: restore the
+  // marks locally and re-queue them so the next flush reconciles the server.
+  const requeueAsRead = useCallback(
+    (ids: number[]) => {
+      ids.forEach((id) => {
+        undoneRef.current.delete(id);
+        pendingRef.current.add(id);
+      });
+      applyLocalReadState(ids, true);
+      scheduleFlush();
+    },
+    [applyLocalReadState, scheduleFlush],
+  );
+
   const applyPage = useCallback(
     (
       page: { data: Article[]; headers: Headers },
@@ -356,12 +376,10 @@ export function useReadingWindow(opts: WindowOpts) {
           frontierRef.current = id;
         }
       }
-      if (!flushTimerRef.current) {
-        flushTimerRef.current = setTimeout(() => flush(), FLUSH_DELAY_MS);
-      }
+      scheduleFlush();
       return true;
     },
-    [applyLocalReadState, flush],
+    [applyLocalReadState, scheduleFlush],
   );
 
   // Undo can race the delayed auto-read flush. Remove marks that have not
@@ -384,18 +402,11 @@ export function useReadingWindow(opts: WindowOpts) {
         });
         mutate(keys.feeds);
       } catch (error) {
-        changed.forEach((id) => {
-          undoneRef.current.delete(id);
-          pendingRef.current.add(id);
-        });
-        applyLocalReadState(changed, true);
-        if (!flushTimerRef.current) {
-          flushTimerRef.current = setTimeout(() => flush(), FLUSH_DELAY_MS);
-        }
+        requeueAsRead(changed);
         throw error;
       }
     },
-    [applyLocalReadState, flush, waitForBatchWrites],
+    [applyLocalReadState, requeueAsRead, waitForBatchWrites],
   );
 
   // Manual toggles (m key, row actions) keep their immediate single-article
@@ -418,20 +429,12 @@ export function useReadingWindow(opts: WindowOpts) {
         });
         mutate(keys.feeds);
       } catch (error) {
-        applyLocalReadState(changed, !next);
-        if (!next) {
-          changed.forEach((id) => {
-            undoneRef.current.delete(id);
-            pendingRef.current.add(id);
-          });
-          if (!flushTimerRef.current) {
-            flushTimerRef.current = setTimeout(() => flush(), FLUSH_DELAY_MS);
-          }
-        }
+        if (next) applyLocalReadState(changed, false);
+        else requeueAsRead(changed);
         throw error;
       }
     },
-    [applyLocalReadState, flush, waitForBatchWrites],
+    [applyLocalReadState, requeueAsRead, waitForBatchWrites],
   );
 
   const markOpened = useCallback((articleId: number) => {

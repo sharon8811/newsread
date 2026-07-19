@@ -7,14 +7,8 @@ import { domainOf, timeAgo } from "@/lib/format";
 import EntityBadges from "./EntityBadges";
 import GeneratingIndicator from "./GeneratingIndicator";
 import ReadStateIndicator from "./ReadStateIndicator";
-import {
-  BookmarkIcon,
-  CheckIcon,
-  ExternalIcon,
-  EyeOffIcon,
-  FolderIcon,
-  ShareIcon,
-} from "./icons";
+import ReadToggleButton from "./ReadToggleButton";
+import { BookmarkIcon, ExternalIcon, EyeOffIcon, FolderIcon, ShareIcon } from "./icons";
 
 // Memoized: the reading list re-renders on every selection move and
 // scroll-past mark, and handler props are stable — only the touched row
@@ -145,30 +139,17 @@ function ArticleRow({
       </div>
 
       {onToggleRead && (
-        <button
-          className={`icon-btn min-h-11 min-w-11 self-center sm:hidden ${article.is_read ? "active" : ""}`}
-          title={article.is_read ? "Mark as unread" : "Mark as read"}
-          onClick={(e) => {
-            e.stopPropagation();
-            onToggleRead(article);
-          }}
-        >
-          <CheckIcon size={16} />
-        </button>
+        <ReadToggleButton
+          article={article}
+          onToggle={onToggleRead}
+          size={16}
+          className="min-h-11 min-w-11 self-center sm:hidden"
+        />
       )}
 
       <div className="hidden items-center gap-0.5 self-center opacity-0 transition-opacity group-hover:opacity-100 sm:flex">
         {onToggleRead && (
-          <button
-            className={`icon-btn ${article.is_read ? "active" : ""}`}
-            title={article.is_read ? "Mark as unread" : "Mark as read"}
-            onClick={(e) => {
-              e.stopPropagation();
-              onToggleRead(article);
-            }}
-          >
-            <CheckIcon size={15} />
-          </button>
+          <ReadToggleButton article={article} onToggle={onToggleRead} />
         )}
         <button
           className={`icon-btn ${article.is_saved ? "active" : ""}`}

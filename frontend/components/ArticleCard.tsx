@@ -7,14 +7,8 @@ import { domainOf, timeAgo } from "@/lib/format";
 import EntityBadges from "./EntityBadges";
 import GeneratingIndicator from "./GeneratingIndicator";
 import ReadStateIndicator from "./ReadStateIndicator";
-import {
-  BookmarkIcon,
-  CheckIcon,
-  ExternalIcon,
-  EyeOffIcon,
-  FolderIcon,
-  ShareIcon,
-} from "./icons";
+import ReadToggleButton from "./ReadToggleButton";
+import { BookmarkIcon, ExternalIcon, EyeOffIcon, FolderIcon, ShareIcon } from "./icons";
 
 // Memoized: the reading list re-renders on every selection move and
 // scroll-past mark, and handler props are stable — only the touched card
@@ -156,16 +150,11 @@ function ArticleCard({
           </span>
           <div className="ml-auto flex shrink-0 items-center gap-0.5 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
             {onToggleRead && (
-              <button
-                className={`icon-btn min-h-11 min-w-11 sm:min-h-0 sm:min-w-0 ${article.is_read ? "active" : ""}`}
-                title={article.is_read ? "Mark as unread" : "Mark as read"}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onToggleRead(article);
-                }}
-              >
-                <CheckIcon size={15} />
-              </button>
+              <ReadToggleButton
+                article={article}
+                onToggle={onToggleRead}
+                className="min-h-11 min-w-11 sm:min-h-0 sm:min-w-0"
+              />
             )}
             <button
               className={`icon-btn ${article.is_saved ? "active" : ""}`}
