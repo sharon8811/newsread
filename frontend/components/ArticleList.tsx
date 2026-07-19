@@ -28,6 +28,7 @@ import ArticleRow from "./ArticleRow";
 import NotInterestedModal from "./NotInterestedModal";
 import ProjectPickerModal from "./ProjectPickerModal";
 import ShareModal from "./ShareModal";
+import { CheckIcon } from "./icons";
 
 export function articlesKey(opts: {
   filter: "all" | "unread" | "saved";
@@ -300,6 +301,7 @@ function ReadingList({
     loadNewer,
     resetToTop,
     markPassed,
+    undoPassed,
     toggleRead,
     markOpened,
     toggleSaved,
@@ -310,6 +312,9 @@ function ReadingList({
   const [sharing, setSharing] = useState<Article | null>(null);
   const [pickingProject, setPickingProject] = useState<Article | null>(null);
   const [dismissing, setDismissing] = useState<PendingDismiss | null>(null);
+  const [recentPassed, setRecentPassed] = useState<number[]>([]);
+  const [readFeedbackError, setReadFeedbackError] = useState<string | null>(null);
+  const [overlayTop, setOverlayTop] = useState(120);
   const openDismiss = useCallback((a: Article) => setDismissing(startDismiss(a)), []);
 
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -354,34 +359,115 @@ function ReadingList({
     };
   }, [articles]);
 
-  // Scroll-past auto-read: an item whose box fully left through the top edge
-  // of the scroller has been passed. Scrolling back up never re-marks — the
-  // exit event only fires on the way out.
+  // Scroll-past auto-read: the observer's top edge is inset by the visible
+  // sticky list header, so "passed" means the whole article has left the
+  // actual reading viewport rather than merely slipping behind the header.
   useEffect(() => {
     const root = scrollerRef.current;
     if (!root) return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          const rect = entry.boundingClientRect;
-          // Unmounting elements report a zero rect; ignore them.
-          if (rect.width === 0 && rect.height === 0) continue;
-          const rootTop = entry.rootBounds?.top ?? 0;
-          if (!entry.isIntersecting && rect.bottom <= rootTop) {
-            const id = Number((entry.target as HTMLElement).dataset.articleId);
-            if (id) markPassed(id);
+    let observer: IntersectionObserver | null = null;
+    let lastHeaderHeight: number | null = null;
+    const header = root.querySelector<HTMLElement>("[data-reading-header]");
+
+    const connect = () => {
+      const headerHeight = Math.ceil(header?.getBoundingClientRect().height ?? 0);
+      setOverlayTop(
+        Math.max(
+          12,
+          Math.ceil(root.getBoundingClientRect().top + headerHeight + 12),
+        ),
+      );
+      // Resize events fire constantly (mobile URL-bar show/hide among them);
+      // only an actual header-height change warrants rebuilding the observer.
+      if (headerHeight === lastHeaderHeight) return;
+      lastHeaderHeight = headerHeight;
+      // A fresh observer's first delivery is a snapshot of current positions,
+      // not a scroll transition — processing it would re-mark undone articles
+      // still sitting above the boundary, so it only arms the observer.
+      let snapshotDelivery = true;
+      observer?.disconnect();
+      observer = new IntersectionObserver(
+        (entries) => {
+          if (snapshotDelivery) {
+            snapshotDelivery = false;
+            return;
           }
-        }
-      },
-      { root, threshold: 0 },
-    );
-    passObserver.current = observer;
-    itemEls.current.forEach((el) => observer.observe(el));
+          for (const entry of entries) {
+            const rect = entry.boundingClientRect;
+            // Unmounting elements report a zero rect; ignore them.
+            if (rect.width === 0 && rect.height === 0) continue;
+            const rootTop =
+              entry.rootBounds?.top ??
+              root.getBoundingClientRect().top + headerHeight;
+            if (!entry.isIntersecting && rect.bottom <= rootTop) {
+              const id = Number((entry.target as HTMLElement).dataset.articleId);
+              if (id && markPassed(id)) {
+                setReadFeedbackError(null);
+                setRecentPassed((current) =>
+                  current.includes(id) ? current : [...current, id],
+                );
+              }
+            }
+          }
+        },
+        {
+          root,
+          threshold: 0,
+          rootMargin: `-${headerHeight}px 0px 0px 0px`,
+        },
+      );
+      passObserver.current = observer;
+      itemEls.current.forEach((el) => observer?.observe(el));
+    };
+
+    connect();
+    const resizeObserver =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(connect);
+    resizeObserver?.observe(root);
+    if (header) resizeObserver?.observe(header);
+    window.addEventListener("resize", connect);
     return () => {
-      observer.disconnect();
+      window.removeEventListener("resize", connect);
+      resizeObserver?.disconnect();
+      observer?.disconnect();
       passObserver.current = null;
     };
   }, [markPassed]);
+
+  useEffect(() => {
+    if (recentPassed.length === 0 && !readFeedbackError) return;
+    const timer = setTimeout(() => {
+      setRecentPassed([]);
+      setReadFeedbackError(null);
+    }, 5000);
+    return () => clearTimeout(timer);
+  }, [recentPassed, readFeedbackError]);
+
+  const handleUndoPassed = useCallback(async () => {
+    const ids = recentPassed;
+    setRecentPassed([]);
+    try {
+      await undoPassed(ids);
+    } catch {
+      setReadFeedbackError("Could not undo. Use Mark as unread on the article.");
+    }
+  }, [recentPassed, undoPassed]);
+
+  const handleToggleRead = useCallback(
+    async (article: Article) => {
+      if (article.is_read) {
+        setRecentPassed((current) => current.filter((id) => id !== article.id));
+      }
+      try {
+        await toggleRead(article);
+      } catch {
+        setReadFeedbackError("Could not update read state. Please try again.");
+      }
+    },
+    [toggleRead],
+  );
 
   const onItemElement = useCallback((id: number, el: HTMLElement | null) => {
     const map = itemEls.current;
@@ -506,7 +592,7 @@ function ReadingList({
     setSelected,
     modalOpen: Boolean(sharing || pickingProject || dismissing),
     toggleSaved,
-    toggleRead,
+    toggleRead: handleToggleRead,
     openArticle,
   });
 
@@ -539,6 +625,8 @@ function ReadingList({
       onAddToProject: setPickingProject,
       onNotInterested: openDismiss,
       onOpen: openArticle,
+      onToggleRead: handleToggleRead,
+      showReadState: true,
     };
     return (
       <ReadingListItem
@@ -594,8 +682,9 @@ function ReadingList({
       {newAbove > 0 && (
         <button
           onClick={jumpToNew}
-          className="fixed left-1/2 top-[120px] z-30 -translate-x-1/2 rounded-full border px-3.5 py-1.5 text-body-sm font-medium shadow-md transition-colors"
+          className="fixed left-1/2 z-30 -translate-x-1/2 rounded-full border px-3.5 py-1.5 text-body-sm font-medium shadow-md transition-colors"
           style={{
+            top: overlayTop,
             background: "var(--accent)",
             borderColor: "var(--accent)",
             color: "#fff",
@@ -603,6 +692,36 @@ function ReadingList({
         >
           {newAbove} new ↑
         </button>
+      )}
+      {(recentPassed.length > 0 || readFeedbackError) && (
+        <div
+          className="font-mono-nr fixed left-1/2 z-40 flex max-w-[calc(100vw-24px)] -translate-x-1/2 items-center gap-2 rounded-md border px-3 py-2 text-label shadow-lg"
+          style={{
+            top: overlayTop + (newAbove > 0 ? 44 : 0),
+            background: "var(--bg-raised)",
+            borderColor: readFeedbackError ? "var(--danger)" : "var(--line)",
+            color: readFeedbackError ? "var(--danger)" : "var(--ink)",
+          }}
+          role="status"
+          aria-live="polite"
+        >
+          {!readFeedbackError && <CheckIcon size={14} />}
+          <span className="whitespace-nowrap">
+            {readFeedbackError ??
+              (recentPassed.length === 1
+                ? "Marked read"
+                : `${recentPassed.length} marked read`)}
+          </span>
+          {!readFeedbackError && (
+            <button
+              className="ml-1 border-l pl-2 font-semibold"
+              style={{ borderColor: "var(--line)", color: "var(--accent)" }}
+              onClick={handleUndoPassed}
+            >
+              Undo
+            </button>
+          )}
+        </div>
       )}
       {unreadCount !== null && (
         <button

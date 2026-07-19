@@ -299,6 +299,116 @@ describe("useReadingWindow", () => {
     expect(mutateMock).toHaveBeenCalledWith("/feeds");
   });
 
+  it("reports only the first pass and undoes before the delayed flush", async () => {
+    vi.useFakeTimers();
+    const fetchMock = installFetch([
+      topRoute([makeArticle({ id: 1 })], { "X-Unread-Count": "1" }),
+      batchRoute(),
+    ]);
+    const { result } = renderHook(() =>
+      useReadingWindow({ filter: "all", enabled: true }),
+    );
+    await vi.waitFor(() => expect(result.current.articles).toHaveLength(1));
+
+    act(() => {
+      expect(result.current.markPassed(1)).toBe(true);
+      expect(result.current.markPassed(1)).toBe(false);
+      expect(result.current.markPassed(99)).toBe(false);
+    });
+    expect(result.current.unreadCount).toBe(0);
+
+    await act(async () => {
+      await result.current.undoPassed([1, 1]);
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    expect(result.current.articles![0].is_read).toBe(false);
+    expect(result.current.unreadCount).toBe(1);
+    const batches = fetchMock.mock.calls.filter((call) =>
+      String(call[0]).includes("/state/batch"),
+    );
+    expect(batches).toHaveLength(1);
+    expect(JSON.parse((batches[0][1] as RequestInit).body as string)).toMatchObject({
+      article_ids: [1],
+      is_read: false,
+    });
+  });
+
+  it("makes undo the final write when the auto-read batch is already in flight", async () => {
+    vi.useFakeTimers();
+    let resolveAutoRead!: (response: {
+      ok: boolean;
+      status: number;
+      json: () => Promise<object>;
+    }) => void;
+    const bodies: Record<string, unknown>[] = [];
+    const fetchMock = vi.fn((url: string, opts?: RequestInit) => {
+      if (String(url).includes("/state/batch")) {
+        const body = JSON.parse(opts?.body as string) as Record<string, unknown>;
+        bodies.push(body);
+        if (body.is_read === false) {
+          return Promise.resolve({ ok: true, status: 204, json: async () => ({}) });
+        }
+        return new Promise((resolve) => {
+          resolveAutoRead = resolve;
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: async () => [makeArticle({ id: 1 })],
+        headers: new Headers({ "X-Unread-Count": "1" }),
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { result } = renderHook(() =>
+      useReadingWindow({ filter: "all", enabled: true }),
+    );
+    await vi.waitFor(() => expect(result.current.articles).toHaveLength(1));
+    act(() => result.current.markPassed(1));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    expect(bodies).toHaveLength(1);
+
+    let undo!: Promise<void>;
+    act(() => {
+      undo = result.current.undoPassed([1]);
+    });
+    expect(result.current.articles![0].is_read).toBe(false);
+    expect(bodies).toHaveLength(1);
+    resolveAutoRead({ ok: true, status: 204, json: async () => ({}) });
+    await act(async () => undo);
+    expect(bodies).toHaveLength(2);
+    expect(bodies[0].is_read).toBeUndefined();
+    expect(bodies[1]).toMatchObject({ article_ids: [1], is_read: false });
+  });
+
+  it("rolls an undo back when the unread request fails", async () => {
+    vi.useFakeTimers();
+    const fetchMock = installFetch([
+      topRoute([makeArticle({ id: 1 })], { "X-Unread-Count": "1" }),
+      batchRoute({ fail: true }),
+    ]);
+    const { result } = renderHook(() =>
+      useReadingWindow({ filter: "all", enabled: true }),
+    );
+    await vi.waitFor(() => expect(result.current.articles).toHaveLength(1));
+    act(() => result.current.markPassed(1));
+    await act(async () => {
+      await expect(result.current.undoPassed([1])).rejects.toThrow("network down");
+    });
+    expect(result.current.articles![0].is_read).toBe(true);
+    expect(result.current.unreadCount).toBe(0);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    const batches = fetchMock.mock.calls
+      .filter((call) => String(call[0]).includes("/state/batch"))
+      .map((call) => JSON.parse((call[1] as RequestInit).body as string));
+    expect(batches).toHaveLength(2);
+    expect(batches[1].is_read).toBeUndefined();
+  });
+
   it("re-queues the batch when the flush fails, then retries on the next flush", async () => {
     vi.useFakeTimers();
     let failBatch = true;
