@@ -534,9 +534,7 @@ async def list_articles(
     elif filter != "saved":
         # Muted feeds and the hidden "Imported" feed stay out of the aggregate
         # inbox (mirrors _scoped_article_ids).
-        base_stmt = base_stmt.where(
-            Subscription.is_muted.is_(False), Feed.owner_user_id.is_(None)
-        )
+        base_stmt = base_stmt.where(Subscription.is_muted.is_(False), Feed.owner_user_id.is_(None))
     if filter != "saved":
         base_stmt = base_stmt.where(not_suppressed(user.id))
 

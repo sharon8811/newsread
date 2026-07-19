@@ -1,0 +1,26 @@
+#!/bin/sh
+# Mirrors the backend CI lint gate (ruff check + ruff format --check) so a
+# commit can't pass locally and then fail CI on formatting.
+#
+# One-time setup per clone:  git config core.hooksPath .githooks
+
+set -e
+
+staged_py=$(git diff --cached --name-only --diff-filter=ACMR -- 'backend/*.py')
+[ -z "$staged_py" ] && exit 0
+
+if [ -x backend/.venv/bin/ruff ]; then
+    RUFF=backend/.venv/bin/ruff
+else
+    RUFF="uv run --project backend ruff"
+fi
+
+echo "pre-commit: ruff on staged backend files"
+# shellcheck disable=SC2086
+if ! $RUFF check $staged_py || ! $RUFF format --check $staged_py; then
+    echo ""
+    echo "pre-commit: ruff failed. Fix with:"
+    echo "  cd backend && .venv/bin/ruff check --fix . && .venv/bin/ruff format ."
+    echo "then re-stage and commit again."
+    exit 1
+fi
