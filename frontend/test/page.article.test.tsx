@@ -284,6 +284,28 @@ describe("ArticlePage", () => {
     expect(container.querySelector(".shimmer")).toBeNull();
   });
 
+  it("polls the detail while an illustration renders or enrichment runs", () => {
+    swrMock.mockReturnValue({ data: makeArticleDetail({ is_read: true }), error: undefined });
+    render(<ArticlePage />);
+    const config = swrMock.mock.calls[0][2] as {
+      refreshInterval: (data?: ReturnType<typeof makeArticleDetail>) => number;
+    };
+    expect(config.refreshInterval(undefined)).toBe(0);
+    expect(config.refreshInterval(makeArticleDetail())).toBe(0);
+    expect(
+      config.refreshInterval(makeArticleDetail({ image_pending: true, image_url: null })),
+    ).toBe(3000);
+    // A pending image that already landed stops that leg of the poll.
+    expect(
+      config.refreshInterval(
+        makeArticleDetail({ image_pending: true, image_url: "/x.png" }),
+      ),
+    ).toBe(0);
+    // Freshly imported URLs enrich in the background — keep polling until the
+    // fetch attempt is stamped.
+    expect(config.refreshInterval(makeArticleDetail({ enriching: true }))).toBe(3000);
+  });
+
   it("renders no illustration hero for an imageless article", () => {
     swrMock.mockReturnValue({
       data: makeArticleDetail({ is_read: true, image_url: null, image_pending: false }),

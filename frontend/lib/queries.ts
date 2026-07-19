@@ -14,6 +14,7 @@ import {
   type DislikeRule,
   type EntityPage,
   type Feed,
+  type ImportFeed,
   type IntegrationStatus,
   type Project,
   type ProjectArticle,
@@ -39,6 +40,11 @@ export const useServerConfig = () =>
 
 export const useFeeds = (config?: SWRConfiguration<Feed[]>) =>
   useSWR<Feed[]>(keys.feeds, fetcher, config);
+
+// The user's hidden import feed id; created server-side on first call and
+// stable forever after, so focus revalidation buys nothing.
+export const useImportFeed = () =>
+  useSWR<ImportFeed>(keys.importFeed, fetcher, { revalidateOnFocus: false });
 
 export const useProjects = (config?: SWRConfiguration<Project[]>) =>
   useSWR<Project[]>(keys.projects, fetcher, config);

@@ -7,6 +7,7 @@ export const keys = {
   config: "/config",
 
   feeds: "/feeds",
+  importFeed: "/imports/feed",
 
   projects: "/projects",
   project: (id: number | string) => `/projects/${id}`,
