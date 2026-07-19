@@ -2459,6 +2459,34 @@
         "title": "HeartbeatIn",
         "type": "object"
       },
+      "ImportFeedOut": {
+        "properties": {
+          "feed_id": {
+            "title": "Feed Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "feed_id"
+        ],
+        "title": "ImportFeedOut",
+        "type": "object"
+      },
+      "ImportIn": {
+        "properties": {
+          "url": {
+            "maxLength": 2048,
+            "minLength": 4,
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "title": "ImportIn",
+        "type": "object"
+      },
       "IntegrationStatusOut": {
         "properties": {
           "account_name": {
@@ -6106,6 +6134,79 @@
           }
         },
         "summary": "Health"
+      }
+    },
+    "/api/imports": {
+      "post": {
+        "operationId": "import_url_api_imports_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArticleDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Import Url",
+        "tags": [
+          "imports"
+        ]
+      }
+    },
+    "/api/imports/feed": {
+      "get": {
+        "description": "The user's import feed id (created on first call) \u2014 the Imported page\nlists it via GET /articles?feed_id=...",
+        "operationId": "import_feed_api_imports_feed_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportFeedOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Import Feed",
+        "tags": [
+          "imports"
+        ]
       }
     },
     "/api/integrations": {

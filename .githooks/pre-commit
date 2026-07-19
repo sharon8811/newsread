@@ -1,26 +1,51 @@
 #!/bin/sh
-# Mirrors the backend CI lint gate (ruff check + ruff format --check) so a
-# commit can't pass locally and then fail CI on formatting.
+# Mirrors the backend CI gates (ruff check + ruff format --check, and the
+# exported-OpenAPI freshness check) so a commit can't pass locally and then
+# fail CI on formatting or a stale schema artifact.
 #
 # One-time setup per clone:  git config core.hooksPath .githooks
 
 set -e
 
-staged_py=$(git diff --cached --name-only --diff-filter=ACMR -- 'backend/*.py')
-[ -z "$staged_py" ] && exit 0
+staged_backend=$(git diff --cached --name-only --diff-filter=ACMR -- backend)
+[ -z "$staged_backend" ] && exit 0
 
-if [ -x backend/.venv/bin/ruff ]; then
-    RUFF=backend/.venv/bin/ruff
-else
-    RUFF="uv run --project backend ruff"
+staged_py=$(git diff --cached --name-only --diff-filter=ACMR -- 'backend/*.py')
+
+if [ -n "$staged_py" ]; then
+    if [ -x backend/.venv/bin/ruff ]; then
+        RUFF=backend/.venv/bin/ruff
+    else
+        RUFF="uv run --project backend ruff"
+    fi
+    echo "pre-commit: ruff on staged backend files"
+    # shellcheck disable=SC2086
+    if ! $RUFF check $staged_py || ! $RUFF format --check $staged_py; then
+        echo ""
+        echo "pre-commit: ruff failed. Fix with:"
+        echo "  cd backend && .venv/bin/ruff check --fix . && .venv/bin/ruff format ."
+        echo "then re-stage and commit again."
+        exit 1
+    fi
 fi
 
-echo "pre-commit: ruff on staged backend files"
-# shellcheck disable=SC2086
-if ! $RUFF check $staged_py || ! $RUFF format --check $staged_py; then
-    echo ""
-    echo "pre-commit: ruff failed. Fix with:"
-    echo "  cd backend && .venv/bin/ruff check --fix . && .venv/bin/ruff format ."
-    echo "then re-stage and commit again."
-    exit 1
+# CI regenerates backend/openapi.json and fails if the committed copy is
+# stale; frontend/lib/api-schema.gen.ts is generated from it.
+if [ -x backend/.venv/bin/python ]; then
+    echo "pre-commit: OpenAPI schema freshness"
+    tmp=$(mktemp)
+    trap 'rm -f "$tmp"' EXIT
+    (cd backend && PYTHONPATH=. .venv/bin/python -c "
+import json
+from app.main import app
+print(json.dumps(app.openapi(), indent=2, sort_keys=True))
+") > "$tmp"
+    if ! diff -q "$tmp" backend/openapi.json >/dev/null; then
+        echo ""
+        echo "pre-commit: backend/openapi.json is stale. Regenerate with:"
+        echo "  cd backend && PYTHONPATH=. .venv/bin/python scripts/export_openapi.py"
+        echo "  cd ../frontend && npm run types:gen"
+        echo "then stage backend/openapi.json and frontend/lib/api-schema.gen.ts."
+        exit 1
+    fi
 fi
