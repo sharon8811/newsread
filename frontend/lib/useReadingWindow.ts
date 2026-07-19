@@ -159,11 +159,14 @@ export function useReadingWindow(opts: WindowOpts) {
       .map((article) => article.id);
     if (changed.length === 0) return changed;
     const changedSet = new Set(changed);
-    const next = current.map((article) =>
-      changedSet.has(article.id) ? { ...article, is_read: isRead } : article,
-    );
-    articlesRef.current = next;
-    setArticles(next);
+    const apply = (list: Article[]) =>
+      list.map((article) =>
+        changedSet.has(article.id) ? { ...article, is_read: isRead } : article,
+      );
+    // Functional update: a page prepend/append queued in the same tick must
+    // not be clobbered by a snapshot of the pre-update list.
+    articlesRef.current = apply(current);
+    setArticles((list) => (list ? apply(list) : list));
     setUnreadCount((count) =>
       count === null
         ? count

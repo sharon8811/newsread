@@ -360,12 +360,13 @@ function ReadingList({
   }, [articles]);
 
   // Scroll-past auto-read: the observer's top edge is inset by the visible
-  // sticky Inbox header, so "passed" means the whole article has left the
+  // sticky list header, so "passed" means the whole article has left the
   // actual reading viewport rather than merely slipping behind the header.
   useEffect(() => {
     const root = scrollerRef.current;
     if (!root) return;
     let observer: IntersectionObserver | null = null;
+    let lastHeaderHeight: number | null = null;
     const header = root.querySelector<HTMLElement>("[data-reading-header]");
 
     const connect = () => {
@@ -376,9 +377,21 @@ function ReadingList({
           Math.ceil(root.getBoundingClientRect().top + headerHeight + 12),
         ),
       );
+      // Resize events fire constantly (mobile URL-bar show/hide among them);
+      // only an actual header-height change warrants rebuilding the observer.
+      if (headerHeight === lastHeaderHeight) return;
+      lastHeaderHeight = headerHeight;
+      // A fresh observer's first delivery is a snapshot of current positions,
+      // not a scroll transition — processing it would re-mark undone articles
+      // still sitting above the boundary, so it only arms the observer.
+      let snapshotDelivery = true;
       observer?.disconnect();
       observer = new IntersectionObserver(
         (entries) => {
+          if (snapshotDelivery) {
+            snapshotDelivery = false;
+            return;
+          }
           for (const entry of entries) {
             const rect = entry.boundingClientRect;
             // Unmounting elements report a zero rect; ignore them.

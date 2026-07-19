@@ -472,6 +472,9 @@ describe("<ArticleList> reading mode", () => {
       const target = container.querySelector('[data-article-id="11"]')!;
       const io = await ioFor(target);
       act(() => {
+        // The observer's first delivery is the initial-position snapshot the
+        // browser sends on observe; the component only arms on it.
+        io.callback([]);
         io.callback([
           {
             isIntersecting: false,
@@ -529,6 +532,7 @@ describe("<ArticleList> reading mode", () => {
       const second = container.querySelector('[data-article-id="42"]')!;
       const io = await ioFor(first);
       act(() => {
+        io.callback([]);
         io.callback(
           [first, second].map((target) => ({
             isIntersecting: false,
@@ -602,6 +606,76 @@ describe("<ArticleList> reading mode", () => {
     expect(io.options?.rootMargin).toBe("-96px 0px 0px 0px");
   });
 
+  it("does not re-mark an undone article when the observer reconnects", async () => {
+    vi.useFakeTimers();
+    try {
+      const fetchMock = readingFetch(
+        [makeArticle({ id: 71, title: "Undone" })],
+        { "X-Unread-Count": "1" },
+      );
+      vi.stubGlobal("fetch", fetchMock);
+      const { container } = renderReading(
+        <ArticleList filter="all" emptyTitle="Empty" />,
+      );
+      await vi.waitFor(() =>
+        expect(container.querySelector('[data-article-id="71"]')).toBeTruthy(),
+      );
+      const target = container.querySelector('[data-article-id="71"]')!;
+      const io = await ioFor(target);
+      act(() => {
+        io.callback([]);
+        io.callback([
+          {
+            isIntersecting: false,
+            target,
+            boundingClientRect: { width: 100, height: 50, top: -60, bottom: -10 } as DOMRectReadOnly,
+            rootBounds: { top: 0 } as DOMRectReadOnly,
+          },
+        ]);
+      });
+      await vi.waitFor(() => expect(screen.getByText("Marked read")).toBeInTheDocument());
+      await act(async () => {
+        fireEvent.click(screen.getByText("Undo"));
+        await Promise.resolve();
+      });
+      await vi.waitFor(() => expect(screen.getByLabelText("Unread")).toBeInTheDocument());
+
+      // The header grows (font load, rewrap) → the observer reconnects and
+      // the browser re-delivers current positions. The undone article still
+      // sits above the boundary but must stay unread.
+      const header = screen.getByTestId("reading-header");
+      vi.spyOn(header, "getBoundingClientRect").mockReturnValue({
+        top: 0, bottom: 96, left: 0, right: 100, width: 100, height: 96,
+        x: 0, y: 0, toJSON: () => ({}),
+      });
+      act(() => {
+        fireEvent(window, new Event("resize"));
+      });
+      const reconnected = await ioFor(target);
+      expect(reconnected).not.toBe(io);
+      const abovePassedEntry = {
+        isIntersecting: false,
+        target,
+        boundingClientRect: { width: 100, height: 50, top: 36, bottom: 86 } as DOMRectReadOnly,
+        rootBounds: { top: 96 } as DOMRectReadOnly,
+      };
+      act(() => {
+        reconnected.callback([abovePassedEntry]);
+      });
+      expect(screen.getByLabelText("Unread")).toBeInTheDocument();
+      expect(screen.queryByText("Marked read")).not.toBeInTheDocument();
+
+      // A genuine later pass still marks.
+      act(() => {
+        reconnected.callback([abovePassedEntry]);
+      });
+      await vi.waitFor(() => expect(screen.getByText("Marked read")).toBeInTheDocument());
+      expect(screen.getByLabelText("Read")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("re-marking an already-read article is a no-op (no queue, no flush)", async () => {
     vi.useFakeTimers();
     try {
@@ -618,6 +692,7 @@ describe("<ArticleList> reading mode", () => {
       );
       const target = container.querySelector('[data-article-id="21"]')!;
       const io = await ioFor(target);
+      io.callback([]);
       io.callback([
         {
           isIntersecting: false,
@@ -979,6 +1054,7 @@ describe("<ArticleList> reading mode guards", () => {
       );
       const target = container.querySelector('[data-article-id="31"]')!;
       const io = await ioFor(target);
+      io.callback([]);
       io.callback([
         {
           // unmount storm: zero rect must not mark
