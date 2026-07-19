@@ -138,4 +138,45 @@ describe("<ArticleRow>", () => {
     expect(container.querySelector(".shimmer")).not.toBeNull();
     expect(screen.getByRole("status")).toHaveAccessibleName("Generating illustration");
   });
+
+  it("shows an explicit unread/read label in reading mode", () => {
+    const first = render(
+      <ArticleRow article={makeArticle()} index={0} showReadState
+        onToggleSaved={noop} onShare={noop} onAddToProject={noop} onNotInterested={noop} />,
+    );
+    expect(screen.getByLabelText("Unread")).toHaveTextContent("Unread");
+    first.unmount();
+
+    render(
+      <ArticleRow article={makeArticle({ is_read: true })} index={0} showReadState
+        onToggleSaved={noop} onShare={noop} onAddToProject={noop} onNotInterested={noop} />,
+    );
+    expect(screen.getByLabelText("Read")).toHaveTextContent("Read");
+  });
+
+  it("provides touch and desktop read controls without navigating", async () => {
+    const article = makeArticle();
+    const onToggleRead = vi.fn();
+    render(
+      <ArticleRow article={article} index={0} showReadState onToggleRead={onToggleRead}
+        onToggleSaved={noop} onShare={noop} onAddToProject={noop} onNotInterested={noop} />,
+    );
+    const controls = screen.getAllByTitle("Mark as read");
+    expect(controls).toHaveLength(2);
+    expect(controls[0]).toHaveClass("min-h-11", "sm:hidden");
+    await userEvent.click(controls[0]);
+    await userEvent.click(controls[1]);
+    expect(onToggleRead).toHaveBeenCalledTimes(2);
+    expect(onToggleRead).toHaveBeenNthCalledWith(1, article);
+    expect(pushMock).not.toHaveBeenCalled();
+  });
+
+  it("offers Mark as unread for a read row", () => {
+    render(
+      <ArticleRow article={makeArticle({ is_read: true })} index={0} showReadState
+        onToggleRead={noop} onToggleSaved={noop} onShare={noop}
+        onAddToProject={noop} onNotInterested={noop} />,
+    );
+    expect(screen.getAllByTitle("Mark as unread")[0]).toHaveClass("active");
+  });
 });

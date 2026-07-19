@@ -93,6 +93,8 @@ export function useReadingWindow(opts: WindowOpts) {
     });
   }, [enabled, sessionKey, articles, prevCursor, nextCursor, unreadCount, newAbove]);
   const pendingRef = useRef<Set<number>>(new Set());
+  const undoneRef = useRef<Set<number>>(new Set());
+  const batchWriteByArticleRef = useRef<Map<number, Promise<Response>>>(new Map());
   const frontierRef = useRef<number | null>(null);
   const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadingOlderRef = useRef(false);
@@ -114,7 +116,7 @@ export function useReadingWindow(opts: WindowOpts) {
     if (ids.length === 0) return;
     pendingRef.current.clear();
     const feed = feedIdRef.current;
-    sendReadBatch(
+    const request = sendReadBatch(
       {
         article_ids: ids,
         read_source: "scrolled",
@@ -126,12 +128,59 @@ export function useReadingWindow(opts: WindowOpts) {
           : {}),
       },
       { keepalive },
-    )
+    ).then((response) => {
+      if (!response.ok) throw new Error("Could not save read state");
+      return response;
+    });
+    ids.forEach((id) => batchWriteByArticleRef.current.set(id, request));
+    request
       .then(() => mutate(keys.feeds))
       .catch(() => {
         // Re-queue so the next flush retries; reads are idempotent upserts.
-        ids.forEach((id) => pendingRef.current.add(id));
+        ids.forEach((id) => {
+          if (!undoneRef.current.has(id)) pendingRef.current.add(id);
+        });
+      })
+      .finally(() => {
+        ids.forEach((id) => {
+          if (batchWriteByArticleRef.current.get(id) === request) {
+            batchWriteByArticleRef.current.delete(id);
+          }
+        });
       });
+  }, []);
+
+  const applyLocalReadState = useCallback((ids: number[], isRead: boolean) => {
+    const wanted = new Set(ids);
+    const current = articlesRef.current;
+    if (!current) return [];
+    const changed = current
+      .filter((article) => wanted.has(article.id) && article.is_read !== isRead)
+      .map((article) => article.id);
+    if (changed.length === 0) return changed;
+    const changedSet = new Set(changed);
+    const next = current.map((article) =>
+      changedSet.has(article.id) ? { ...article, is_read: isRead } : article,
+    );
+    articlesRef.current = next;
+    setArticles(next);
+    setUnreadCount((count) =>
+      count === null
+        ? count
+        : Math.max(0, count + (isRead ? -changed.length : changed.length)),
+    );
+    return changed;
+  }, []);
+
+  const waitForBatchWrites = useCallback(async (ids: number[]) => {
+    const writes = [
+      ...new Set(
+        ids
+          .map((id) => batchWriteByArticleRef.current.get(id))
+          .filter((request): request is Promise<Response> => Boolean(request)),
+      ),
+    ];
+    await Promise.allSettled(writes);
   }, []);
 
   const applyPage = useCallback(
@@ -287,14 +336,12 @@ export function useReadingWindow(opts: WindowOpts) {
 
   // An article scrolled past the top edge: optimistic read + queued flush.
   const markPassed = useCallback(
-    (id: number) => {
+    (id: number): boolean => {
       const current = articlesRef.current;
       const article = current?.find((a) => a.id === id);
-      if (!article || article.is_read) return;
-      setArticles((list) =>
-        list ? list.map((a) => (a.id === id ? { ...a, is_read: true } : a)) : list,
-      );
-      setUnreadCount((count) => (count === null ? count : Math.max(0, count - 1)));
+      if (!article || article.is_read) return false;
+      applyLocalReadState([id], true);
+      undoneRef.current.delete(id);
       pendingRef.current.add(id);
       // The frontier is the deepest article passed, in list order.
       if (current) {
@@ -309,24 +356,80 @@ export function useReadingWindow(opts: WindowOpts) {
       if (!flushTimerRef.current) {
         flushTimerRef.current = setTimeout(() => flush(), FLUSH_DELAY_MS);
       }
+      return true;
     },
-    [flush],
+    [applyLocalReadState, flush],
+  );
+
+  // Undo can race the delayed auto-read flush. Remove marks that have not
+  // left yet; if a batch is already in flight, wait and then write unread so
+  // the user's correction is always the final server state.
+  const undoPassed = useCallback(
+    async (ids: number[]) => {
+      const uniqueIds = [...new Set(ids)];
+      uniqueIds.forEach((id) => {
+        pendingRef.current.delete(id);
+        undoneRef.current.add(id);
+      });
+      const changed = applyLocalReadState(uniqueIds, false);
+      if (changed.length === 0) return;
+      await waitForBatchWrites(changed);
+      try {
+        await api("/articles/state/batch", {
+          method: "POST",
+          body: { article_ids: changed, is_read: false, read_source: "scrolled" },
+        });
+        mutate(keys.feeds);
+      } catch (error) {
+        changed.forEach((id) => {
+          undoneRef.current.delete(id);
+          pendingRef.current.add(id);
+        });
+        applyLocalReadState(changed, true);
+        if (!flushTimerRef.current) {
+          flushTimerRef.current = setTimeout(() => flush(), FLUSH_DELAY_MS);
+        }
+        throw error;
+      }
+    },
+    [applyLocalReadState, flush, waitForBatchWrites],
   );
 
   // Manual toggles (m key, row actions) keep their immediate single-article
   // semantics; the window state updates in place instead of a full refetch.
-  const toggleRead = useCallback(async (article: Article) => {
-    const next = !article.is_read;
-    setArticles((list) =>
-      list ? list.map((a) => (a.id === article.id ? { ...a, is_read: next } : a)) : list,
-    );
-    setUnreadCount((count) => (count === null ? count : Math.max(0, count + (next ? -1 : 1))));
-    await api(`/articles/${article.id}/state`, {
-      method: "POST",
-      body: { is_read: next },
-    });
-    mutate(keys.feeds);
-  }, []);
+  const toggleRead = useCallback(
+    async (article: Article) => {
+      const current = articlesRef.current?.find((item) => item.id === article.id);
+      if (!current) return;
+      const next = !current.is_read;
+      pendingRef.current.delete(article.id);
+      if (next) undoneRef.current.delete(article.id);
+      else undoneRef.current.add(article.id);
+      const changed = applyLocalReadState([article.id], next);
+      if (changed.length === 0) return;
+      if (!next) await waitForBatchWrites(changed);
+      try {
+        await api(`/articles/${article.id}/state`, {
+          method: "POST",
+          body: { is_read: next },
+        });
+        mutate(keys.feeds);
+      } catch (error) {
+        applyLocalReadState(changed, !next);
+        if (!next) {
+          changed.forEach((id) => {
+            undoneRef.current.delete(id);
+            pendingRef.current.add(id);
+          });
+          if (!flushTimerRef.current) {
+            flushTimerRef.current = setTimeout(() => flush(), FLUSH_DELAY_MS);
+          }
+        }
+        throw error;
+      }
+    },
+    [applyLocalReadState, flush, waitForBatchWrites],
+  );
 
   const markOpened = useCallback((articleId: number) => {
     const article = articlesRef.current?.find((item) => item.id === articleId);
@@ -393,6 +496,7 @@ export function useReadingWindow(opts: WindowOpts) {
     loadNewer,
     resetToTop,
     markPassed,
+    undoPassed,
     toggleRead,
     markOpened,
     toggleSaved,

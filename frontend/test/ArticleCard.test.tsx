@@ -132,6 +132,38 @@ describe("<ArticleCard>", () => {
     renderCard({ is_saved: true });
     expect(screen.getByTitle("Unsave").className).toContain("active");
   });
+
+  it("shows an explicit unread/read label in reading mode", () => {
+    const first = renderCard({ is_read: false }, { showReadState: true });
+    expect(screen.getByLabelText("Unread")).toHaveTextContent("Unread");
+    first.unmount();
+
+    renderCard({ is_read: true }, { showReadState: true });
+    expect(screen.getByLabelText("Read")).toHaveTextContent("Read");
+  });
+
+  it("toggles read state without opening the card", async () => {
+    const onToggleRead = vi.fn();
+    const { article } = renderCard(
+      { is_read: false },
+      { showReadState: true, onToggleRead },
+    );
+    await userEvent.click(screen.getByTitle("Mark as read"));
+    expect(onToggleRead).toHaveBeenCalledWith(article);
+    expect(pushMock).not.toHaveBeenCalled();
+    expect(screen.getByTitle("Mark as read")).toHaveClass(
+      "min-h-11",
+      "min-w-11",
+    );
+  });
+
+  it("offers Mark as unread for a read card", () => {
+    renderCard(
+      { is_read: true },
+      { showReadState: true, onToggleRead: vi.fn() },
+    );
+    expect(screen.getByTitle("Mark as unread")).toHaveClass("active");
+  });
 });
 
 describe("<ArticleCard> generating illustration", () => {

@@ -6,7 +6,15 @@ import { imageSrc, type Article } from "@/lib/api";
 import { domainOf, timeAgo } from "@/lib/format";
 import EntityBadges from "./EntityBadges";
 import GeneratingIndicator from "./GeneratingIndicator";
-import { BookmarkIcon, ExternalIcon, EyeOffIcon, FolderIcon, ShareIcon } from "./icons";
+import ReadStateIndicator from "./ReadStateIndicator";
+import {
+  BookmarkIcon,
+  CheckIcon,
+  ExternalIcon,
+  EyeOffIcon,
+  FolderIcon,
+  ShareIcon,
+} from "./icons";
 
 // Memoized: the reading list re-renders on every selection move and
 // scroll-past mark, and handler props are stable — only the touched row
@@ -20,6 +28,8 @@ function ArticleRow({
   onAddToProject,
   onNotInterested,
   onOpen,
+  onToggleRead,
+  showReadState = false,
 }: {
   article: Article;
   selected?: boolean;
@@ -29,6 +39,8 @@ function ArticleRow({
   onAddToProject: (article: Article) => void;
   onNotInterested: (article: Article) => void;
   onOpen?: (article: Article) => void;
+  onToggleRead?: (article: Article) => void;
+  showReadState?: boolean;
 }) {
   const router = useRouter();
   const [expanded, setExpanded] = useState(false);
@@ -53,10 +65,12 @@ function ArticleRow({
         (e.currentTarget.style.background = selected ? "var(--bg-hover)" : "transparent")
       }
     >
-      <span
-        className="dot-unread mt-[10px]"
-        style={{ opacity: article.is_read ? 0 : 1 }}
-      />
+      {!showReadState && (
+        <span
+          className="dot-unread mt-[10px]"
+          style={{ opacity: article.is_read ? 0 : 1 }}
+        />
+      )}
       <div className="min-w-0 flex-1">
         <h3
           className="font-serif-nr text-lead leading-snug sm:text-title"
@@ -68,12 +82,20 @@ function ArticleRow({
           {article.title}
         </h3>
         <p
-          className="font-mono-nr mt-1.5 truncate text-label"
+          className="font-mono-nr mt-1.5 flex items-center gap-2 truncate text-label"
           style={{ color: "var(--ink-faint)" }}
         >
-          {domainOf(article.url)}
-          {article.author ? ` · ${article.author}` : ""}
-          {article.published_at ? ` · ${timeAgo(article.published_at)}` : ""}
+          {showReadState && (
+            <>
+              <ReadStateIndicator isRead={article.is_read} />
+              <span aria-hidden="true">·</span>
+            </>
+          )}
+          <span className="truncate">
+            {domainOf(article.url)}
+            {article.author ? ` · ${article.author}` : ""}
+            {article.published_at ? ` · ${timeAgo(article.published_at)}` : ""}
+          </span>
         </p>
 
         {article.entities.length > 0 && (
@@ -122,7 +144,32 @@ function ArticleRow({
         )}
       </div>
 
+      {onToggleRead && (
+        <button
+          className={`icon-btn min-h-11 min-w-11 self-center sm:hidden ${article.is_read ? "active" : ""}`}
+          title={article.is_read ? "Mark as unread" : "Mark as read"}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleRead(article);
+          }}
+        >
+          <CheckIcon size={16} />
+        </button>
+      )}
+
       <div className="hidden items-center gap-0.5 self-center opacity-0 transition-opacity group-hover:opacity-100 sm:flex">
+        {onToggleRead && (
+          <button
+            className={`icon-btn ${article.is_read ? "active" : ""}`}
+            title={article.is_read ? "Mark as unread" : "Mark as read"}
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleRead(article);
+            }}
+          >
+            <CheckIcon size={15} />
+          </button>
+        )}
         <button
           className={`icon-btn ${article.is_saved ? "active" : ""}`}
           title={article.is_saved ? "Unsave" : "Save for later"}

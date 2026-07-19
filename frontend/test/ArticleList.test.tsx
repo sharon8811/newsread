@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { act, render, screen, fireEvent, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import ArticleList, {
   articlesKey,
@@ -383,7 +383,12 @@ function isTopReadingRequest(url: string) {
 
 function renderReading(ui: React.ReactElement) {
   // The reading window roots its observers in the app shell's <main> scroller.
-  return render(<main>{ui}</main>);
+  return render(
+    <main>
+      <header data-reading-header data-testid="reading-header" />
+      {ui}
+    </main>,
+  );
 }
 
 describe("<ArticleList> reading mode", () => {
@@ -466,19 +471,25 @@ describe("<ArticleList> reading mode", () => {
       // Simulate the item's box fully exiting through the scroller's top edge.
       const target = container.querySelector('[data-article-id="11"]')!;
       const io = await ioFor(target);
-      io.callback([
-        {
-          isIntersecting: false,
-          target,
-          boundingClientRect: { width: 100, height: 50, top: -60, bottom: -10 } as DOMRectReadOnly,
-          rootBounds: { top: 0 } as DOMRectReadOnly,
-        },
-      ]);
+      act(() => {
+        io.callback([
+          {
+            isIntersecting: false,
+            target,
+            boundingClientRect: { width: 100, height: 50, top: -60, bottom: -10 } as DOMRectReadOnly,
+            rootBounds: { top: 0 } as DOMRectReadOnly,
+          },
+        ]);
+      });
 
       // Optimistic: the pill drops before any network flush.
       await vi.waitFor(() => expect(screen.getByText("1 unread ↓")).toBeInTheDocument());
+      expect(screen.getByText("Marked read")).toBeInTheDocument();
+      expect(screen.getByLabelText("Read")).toBeInTheDocument();
 
-      await vi.advanceTimersByTimeAsync(2000);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2000);
+      });
       const batchCall = fetchMock.mock.calls.find((c) =>
         String(c[0]).includes("/state/batch"),
       )!;
@@ -487,9 +498,108 @@ describe("<ArticleList> reading mode", () => {
       expect(body.article_ids).toEqual([11]);
       expect(body.read_source).toBe("scrolled");
       expect(body.frontier_article_id).toBe(11);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5001);
+      });
+      expect(screen.queryByText("Marked read")).not.toBeInTheDocument();
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("coalesces scroll-past feedback and Undo restores every article", async () => {
+    vi.useFakeTimers();
+    try {
+      const fetchMock = readingFetch(
+        [
+          makeArticle({ id: 41, title: "First passing" }),
+          makeArticle({ id: 42, title: "Second passing" }),
+        ],
+        { "X-Unread-Count": "2" },
+      );
+      vi.stubGlobal("fetch", fetchMock);
+      const { container } = renderReading(
+        <ArticleList filter="all" emptyTitle="Empty" />,
+      );
+      await vi.waitFor(() =>
+        expect(container.querySelectorAll("[data-article-id]")).toHaveLength(2),
+      );
+      const first = container.querySelector('[data-article-id="41"]')!;
+      const second = container.querySelector('[data-article-id="42"]')!;
+      const io = await ioFor(first);
+      act(() => {
+        io.callback(
+          [first, second].map((target) => ({
+            isIntersecting: false,
+            target,
+            boundingClientRect: {
+              width: 100,
+              height: 50,
+              top: -60,
+              bottom: -10,
+            } as DOMRectReadOnly,
+            rootBounds: { top: 0 } as DOMRectReadOnly,
+          })),
+        );
+      });
+      await vi.waitFor(() =>
+        expect(screen.getByText("2 marked read")).toBeInTheDocument(),
+      );
+      expect(screen.getByText("All caught up ✓")).toBeInTheDocument();
+
+      await act(async () => {
+        fireEvent.click(screen.getByText("Undo"));
+        await Promise.resolve();
+      });
+      await vi.waitFor(() => expect(screen.getByText("2 unread ↓")).toBeInTheDocument());
+      expect(screen.getAllByLabelText("Unread")).toHaveLength(2);
+      const batches = fetchMock.mock.calls
+        .filter((call) => String(call[0]).includes("/state/batch"))
+        .map((call) => JSON.parse(call[1].body));
+      expect(batches).toEqual([
+        expect.objectContaining({ article_ids: [41, 42], is_read: false }),
+      ]);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2000);
+      });
+      expect(
+        fetchMock.mock.calls.filter((call) =>
+          String(call[0]).includes("/state/batch"),
+        ),
+      ).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("aligns the auto-read boundary and feedback below the sticky header", async () => {
+    vi.stubGlobal(
+      "fetch",
+      readingFetch([makeArticle({ id: 61, title: "Aligned" })], {
+        "X-Unread-Count": "1",
+      }),
+    );
+    const { container } = renderReading(
+      <ArticleList filter="all" emptyTitle="Empty" />,
+    );
+    await screen.findByText("Aligned");
+    const header = screen.getByTestId("reading-header");
+    vi.spyOn(header, "getBoundingClientRect").mockReturnValue({
+      top: 0,
+      bottom: 96,
+      left: 0,
+      right: 100,
+      width: 100,
+      height: 96,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
+    fireEvent(window, new Event("resize"));
+    const target = container.querySelector('[data-article-id="61"]')!;
+    const io = await ioFor(target);
+    expect(io.options?.rootMargin).toBe("-96px 0px 0px 0px");
   });
 
   it("re-marking an already-read article is a no-op (no queue, no flush)", async () => {
@@ -727,6 +837,30 @@ describe("<ArticleList> reading mode interactions", () => {
       ).toBe(true),
     );
     await screen.findByText("All caught up ✓");
+  });
+
+  it("manual row controls visibly mark read and unread", async () => {
+    const fetchMock = routedFetch([
+      {
+        match: isTopReadingRequest,
+        articles: [makeArticle({ id: 63, title: "Manual state" })],
+        headers: { "X-Unread-Count": "1" },
+      },
+    ]);
+    renderReading(<ArticleList filter="all" emptyTitle="Empty" />);
+    await screen.findByText("Manual state");
+
+    fireEvent.click(screen.getAllByTitle("Mark as read")[0]);
+    await screen.findByLabelText("Read");
+    expect(screen.getByText("All caught up ✓")).toBeInTheDocument();
+
+    fireEvent.click(screen.getAllByTitle("Mark as unread")[0]);
+    await screen.findByLabelText("Unread");
+    expect(screen.getByText("1 unread ↓")).toBeInTheDocument();
+    const stateBodies = fetchMock.mock.calls
+      .filter((call) => String(call[0]).includes("/articles/63/state"))
+      .map((call) => JSON.parse(call[1].body));
+    expect(stateBodies).toEqual([{ is_read: true }, { is_read: false }]);
   });
 
   it("keyboard Enter opens the selected article from the window", async () => {

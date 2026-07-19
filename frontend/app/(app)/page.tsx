@@ -89,6 +89,7 @@ function Inbox() {
   return (
     <>
       <header
+        data-reading-header
         className="sticky top-0 z-20 border-b px-4 pb-3.5 pt-4 sm:px-6 sm:pt-5"
         style={{
           background: "var(--bg-header)",
