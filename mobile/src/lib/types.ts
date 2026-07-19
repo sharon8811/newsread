@@ -100,6 +100,11 @@ export type ArticleDetail = Omit<Article, "entities"> & {
   entities: ArticleEntity[];
 };
 
+// The user's hidden "Imported" feed (pasted-URL articles live there).
+export type ImportFeed = {
+  feed_id: number;
+};
+
 // The /entity/[id] screen: who/what this is plus coverage from the user's feeds.
 export type EntityPage = {
   id: number;

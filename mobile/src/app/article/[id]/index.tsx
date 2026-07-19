@@ -92,7 +92,11 @@ export default function ArticleScreen() {
   // fails). Server-side pending stops reporting after ~3min, which ends the
   // poll on its own. Mirrors the web article view.
   const { data, error, mutate } = useSWR<ArticleDetail>(id ? `/articles/${id}` : null, {
-    refreshInterval: (latest) => (latest?.image_pending && !latest.image_url ? 3000 : 0),
+    // Poll while an illustration renders or background enrichment is filling
+    // text/image/title (freshly imported URLs); enriching flips off when the
+    // fetch attempt is stamped, bounding the poll.
+    refreshInterval: (latest) =>
+      (latest?.image_pending && !latest.image_url) || latest?.enriching ? 3000 : 0,
   });
   const { data: ai } = useSWR<AiStatus>("/ai/status");
   const discussionRef = data ? discussionRefFor(data) : null;

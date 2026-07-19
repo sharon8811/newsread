@@ -13,15 +13,17 @@ type ArticlePage = Page<Article[]>;
 /** Infinite article list over the API's keyset pagination: each page's
  * X-Next-Cursor feeds the next request, so the list stays stable while new
  * articles arrive (no duplicates or skips, unlike offsets). Pass null to
- * disable (the reading filters use useReadingList instead). */
-export function useArticles(filter: ArticleFilter | null) {
+ * disable (the reading filters use useReadingList instead). An optional
+ * feedId scopes the list to one feed (the Imported screen). */
+export function useArticles(filter: ArticleFilter | null, feedId?: number | null) {
   const getKey = (_index: number, previous: ArticlePage | null) => {
     if (filter === null) return null;
     if (previous && !previous.nextCursor) return null; // reached the end
     const cursor = previous?.nextCursor
       ? `&cursor=${encodeURIComponent(previous.nextCursor)}`
       : "";
-    return `/articles?filter=${filter}&limit=${PAGE_SIZE}${cursor}`;
+    const feed = feedId ? `&feed_id=${feedId}` : "";
+    return `/articles?filter=${filter}&limit=${PAGE_SIZE}${feed}${cursor}`;
   };
   const { data, error, size, setSize, isValidating, isLoading, mutate } = useSWRInfinite(
     getKey,

@@ -277,6 +277,9 @@ export default function ArticleListScreen() {
           headerShown: true,
           headerRight: () => (
             <View style={styles.headerButtons}>
+              <Pressable onPress={() => router.push("/imported")} hitSlop={8}>
+                <Ionicons name="link-outline" size={22} color={colors.tint} />
+              </Pressable>
               <Pressable onPress={() => router.push("/catalog")} hitSlop={8}>
                 <Ionicons name="compass-outline" size={22} color={colors.tint} />
               </Pressable>
