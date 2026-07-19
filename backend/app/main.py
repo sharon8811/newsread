@@ -19,6 +19,7 @@ from .routers import (
     devices,
     entities,
     feeds,
+    imports,
     integrations,
     interests,
     projects,
@@ -60,6 +61,7 @@ app.include_router(users.router, prefix="/api")
 app.include_router(feeds.router, prefix="/api")
 app.include_router(catalog.router, prefix="/api")
 app.include_router(articles.router, prefix="/api")
+app.include_router(imports.router, prefix="/api")
 app.include_router(shares.router, prefix="/api")
 app.include_router(projects.router, prefix="/api")
 app.include_router(ai.router, prefix="/api")

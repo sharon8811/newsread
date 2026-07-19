@@ -313,6 +313,17 @@ class ArticleStateBatchIn(BaseModel):
     frontier_feed_id: int | None = None
 
 
+# --- Imports (paste-a-URL) ---
+
+
+class ImportIn(BaseModel):
+    url: str = Field(min_length=4, max_length=2048)
+
+
+class ImportFeedOut(BaseModel):
+    feed_id: int
+
+
 class MarkAllReadIn(BaseModel):
     feed_id: int | None = None
 

@@ -35,25 +35,28 @@ _VISUAL_STUB_PREFIXES = (
 REFETCH_COOLDOWN = timedelta(hours=6)
 
 
-async def fetch_page(url: str) -> tuple[str, str | None]:
-    """Fetch a page; return (extracted prose, lead image URL)."""
+async def fetch_page(url: str) -> tuple[str, str | None, str | None]:
+    """Fetch a page; return (extracted prose, lead image URL, page title)."""
     try:
         page = await AsyncFetcher.get(url, impersonate="chrome")
     except Exception as exc:
         logger.warning("Page fetch of %s failed: %s", url, exc)
-        return "", None
+        return "", None, None
     if page.status != 200:
         logger.warning("Page fetch of %s returned %s", url, page.status)
-        return "", None
+        return "", None, None
 
     html = page.html_content
     text = trafilatura.extract(html, include_comments=False) or ""
 
     image: str | None = None
+    title: str | None = None
     try:
         meta = trafilatura.extract_metadata(html)
         if meta and meta.image:
             image = meta.image
+        if meta and meta.title:
+            title = meta.title
     except Exception:
         pass
     if not image:
@@ -70,7 +73,7 @@ async def fetch_page(url: str) -> tuple[str, str | None]:
                 break
     if image and not image.startswith(("http://", "https://")):
         image = None
-    return text, image
+    return text, image, title
 
 
 async def enrich_article(session: AsyncSession, article: Article) -> None:
@@ -78,7 +81,7 @@ async def enrich_article(session: AsyncSession, article: Article) -> None:
     need_text = not article.full_text and is_thin(strip_html(article.content_html))
     need_image = not article.image_url
     if need_text or need_image:
-        text, image = await fetch_page(article.url)
+        text, image, _ = await fetch_page(article.url)
         if need_text:
             article.full_text = text
         if need_image and image:

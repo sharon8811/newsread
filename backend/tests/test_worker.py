@@ -517,6 +517,27 @@ async def test_poll_feeds_refresh_error_rolls_back(session, monkeypatch):
     await worker.poll_feeds({})  # error swallowed, still runs enrich
 
 
+async def test_poll_feeds_skips_import_feeds(session, users, monkeypatch):
+    user = await users.create(username="importer")
+    import_feed = Feed(url=f"newsread://imported/{user.id}", owner_user_id=user.id)
+    session.add(import_feed)
+    await session.commit()
+    await _feed(session, url="due")
+
+    refreshed = []
+
+    async def fake_refresh(s, feed):
+        refreshed.append(feed.url)
+
+    async def fake_enrich(ctx):
+        pass
+
+    monkeypatch.setattr(worker, "refresh_feed", fake_refresh)
+    monkeypatch.setattr(worker, "enrich_and_summarize", fake_enrich)
+    await worker.poll_feeds({})
+    assert refreshed == ["https://feed/due"]
+
+
 async def test_poll_feeds_due_by_interval(session, monkeypatch):
     # Fetched long ago relative to its interval -> due.
     feed = Feed(

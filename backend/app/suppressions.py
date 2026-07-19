@@ -22,6 +22,7 @@ from .models import (
     ArticleEntity,
     ArticleSuppression,
     DislikeRuleEmbedding,
+    Feed,
     Subscription,
     UserDislikeRule,
 )
@@ -39,13 +40,20 @@ def _scoped(stmt, *, cutoff, feed_id, rule_id):
     """Common filters: recency, optional single feed, optional single rule,
     and only feeds the rule's owner is subscribed to (keeps the table from
     accumulating rows for articles the user could never see)."""
-    stmt = stmt.join(
-        Subscription,
-        and_(
-            Subscription.user_id == UserDislikeRule.user_id,
-            Subscription.feed_id == Article.feed_id,
-        ),
-    ).where(Article.fetched_at >= cutoff)
+    stmt = (
+        stmt.join(
+            Subscription,
+            and_(
+                Subscription.user_id == UserDislikeRule.user_id,
+                Subscription.feed_id == Article.feed_id,
+            ),
+        )
+        .join(Feed, Feed.id == Article.feed_id)
+        # An explicit import is the strongest interest signal — dislike rules
+        # never hide articles the user pasted in themselves.
+        .where(Feed.owner_user_id.is_(None))
+        .where(Article.fetched_at >= cutoff)
+    )
     if feed_id is not None:
         stmt = stmt.where(Article.feed_id == feed_id)
     if rule_id is not None:

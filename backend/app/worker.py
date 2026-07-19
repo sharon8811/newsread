@@ -359,7 +359,9 @@ async def refresh_catalog_embeddings(ctx: dict) -> None:
 async def poll_feeds(ctx: dict) -> None:
     now = datetime.now(UTC)
     async with db.SessionLocal() as session:
-        feeds = (await session.scalars(select(Feed))).all()
+        # Hidden per-user import feeds carry newsread:// sentinel URLs — there
+        # is nothing to poll; their articles arrive via POST /imports.
+        feeds = (await session.scalars(select(Feed).where(Feed.owner_user_id.is_(None)))).all()
         for feed in feeds:
             interval = timedelta(
                 minutes=feed.refresh_interval_minutes or settings.feed_refresh_minutes
