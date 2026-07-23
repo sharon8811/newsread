@@ -164,6 +164,7 @@ class BrowserHistoryDomainRuleIn(BaseModel):
     hostname: str = Field(min_length=1, max_length=253)
     match_subdomains: bool = False
     mode: DomainRuleMode
+    delete_existing: bool = False
 
     @field_validator("hostname")
     @classmethod
@@ -269,6 +270,42 @@ class BrowserHistorySyncOut(BaseModel):
     sync_revision: int
     domain_rules: list[BrowserHistoryDomainRuleOut]
     server_time: datetime
+
+
+class BrowserHistorySummaryOut(BaseModel):
+    active_connection_count: int
+    total_connection_count: int
+    history_count: int
+    has_active_connection: bool
+    has_history: bool
+
+
+class BrowserHistoryPageOut(BaseModel):
+    id: int
+    url: str
+    title: str
+    hostname: str
+    text_excerpt: str
+    first_visited_at: datetime
+    last_visited_at: datetime
+    visit_count: int
+    captured_at: datetime | None
+    source_browsers: list[str]
+
+
+class BrowserHistoryClearIn(BaseModel):
+    confirm: Literal["DELETE"]
+    hostname: str | None = Field(default=None, max_length=253)
+
+    @field_validator("hostname")
+    @classmethod
+    def normalize_optional_hostname(cls, value: str | None) -> str | None:
+        return normalize_history_hostname(value) if value is not None else None
+
+
+class BrowserHistoryDeletionOut(BaseModel):
+    deleted_count: int
+    sync_revision: int
 
 
 # --- Feeds ---

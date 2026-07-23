@@ -283,6 +283,17 @@ export type DislikeOptions = Schemas["DislikeOptionsOut"];
 export type DislikeRuleCreate = Schemas["DislikeRuleIn"];
 export type DislikeRuleCreated = Schemas["DislikeRuleCreateOut"];
 
+// ——— Browser history ———
+
+export type BrowserConnection = Schemas["BrowserConnectionOut"];
+export type BrowserConnectionCreated = Schemas["BrowserConnectionCreatedOut"];
+export type BrowserHistorySettings = Schemas["BrowserHistorySettingsOut"];
+export type BrowserHistoryDomainRule = Schemas["BrowserHistoryDomainRuleOut"];
+export type BrowserHistorySummary = Schemas["BrowserHistorySummaryOut"];
+export type BrowserHistoryPage = Schemas["BrowserHistoryPageOut"];
+export type BrowserHistoryDeletion = Schemas["BrowserHistoryDeletionOut"];
+export type BrowserHistorySort = "recent" | "relevance";
+
 export type AiStatus = Schemas["AiStatusOut"];
 
 // ——— Bring-your-own LLM key ———

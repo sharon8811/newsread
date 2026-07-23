@@ -763,6 +763,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List History */
+        get: operations["list_history_api_history_get"];
+        put?: never;
+        post?: never;
+        /** Clear History */
+        delete: operations["clear_history_api_history_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/history/connections": {
         parameters: {
             query?: never;
@@ -851,6 +869,23 @@ export interface paths {
         patch: operations["update_history_settings_api_history_settings_patch"];
         trace?: never;
     };
+    "/api/history/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** History Summary */
+        get: operations["history_summary_api_history_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/history/sync": {
         parameters: {
             query?: never;
@@ -880,6 +915,23 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/history/{page_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete History Page */
+        delete: operations["delete_history_page_api_history__page_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2007,8 +2059,30 @@ export interface components {
             /** Token Prefix */
             token_prefix: string;
         };
+        /** BrowserHistoryClearIn */
+        BrowserHistoryClearIn: {
+            /**
+             * Confirm
+             * @constant
+             */
+            confirm: "DELETE";
+            /** Hostname */
+            hostname?: string | null;
+        };
+        /** BrowserHistoryDeletionOut */
+        BrowserHistoryDeletionOut: {
+            /** Deleted Count */
+            deleted_count: number;
+            /** Sync Revision */
+            sync_revision: number;
+        };
         /** BrowserHistoryDomainRuleIn */
         BrowserHistoryDomainRuleIn: {
+            /**
+             * Delete Existing
+             * @default false
+             */
+            delete_existing: boolean;
             /** Hostname */
             hostname: string;
             /**
@@ -2046,6 +2120,35 @@ export interface components {
              */
             updated_at: string;
         };
+        /** BrowserHistoryPageOut */
+        BrowserHistoryPageOut: {
+            /** Captured At */
+            captured_at: string | null;
+            /**
+             * First Visited At
+             * Format: date-time
+             */
+            first_visited_at: string;
+            /** Hostname */
+            hostname: string;
+            /** Id */
+            id: number;
+            /**
+             * Last Visited At
+             * Format: date-time
+             */
+            last_visited_at: string;
+            /** Source Browsers */
+            source_browsers: string[];
+            /** Text Excerpt */
+            text_excerpt: string;
+            /** Title */
+            title: string;
+            /** Url */
+            url: string;
+            /** Visit Count */
+            visit_count: number;
+        };
         /** BrowserHistorySettingsIn */
         BrowserHistorySettingsIn: {
             /** Retention Days */
@@ -2057,6 +2160,19 @@ export interface components {
             retention_days: (30 | 90 | 365) | null;
             /** Sync Revision */
             sync_revision: number;
+        };
+        /** BrowserHistorySummaryOut */
+        BrowserHistorySummaryOut: {
+            /** Active Connection Count */
+            active_connection_count: number;
+            /** Has Active Connection */
+            has_active_connection: boolean;
+            /** Has History */
+            has_history: boolean;
+            /** History Count */
+            history_count: number;
+            /** Total Connection Count */
+            total_connection_count: number;
         };
         /** BrowserHistorySyncAcceptedOut */
         BrowserHistorySyncAcceptedOut: {
@@ -4518,6 +4634,75 @@ export interface operations {
             };
         };
     };
+    list_history_api_history_get: {
+        parameters: {
+            query?: {
+                q?: string | null;
+                hostname?: string | null;
+                date_from?: string | null;
+                date_to?: string | null;
+                sort?: "recent" | "relevance";
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrowserHistoryPageOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    clear_history_api_history_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BrowserHistoryClearIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrowserHistoryDeletionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_connections_api_history_connections_get: {
         parameters: {
             query?: never;
@@ -4735,6 +4920,26 @@ export interface operations {
             };
         };
     };
+    history_summary_api_history_summary_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrowserHistorySummaryOut"];
+                };
+            };
+        };
+    };
     sync_history_api_history_sync_post: {
         parameters: {
             query?: never;
@@ -4828,6 +5033,35 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BrowserHistorySyncStatusOut"];
+                };
+            };
+        };
+    };
+    delete_history_page_api_history__page_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                page_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

@@ -551,21 +551,25 @@ Merge gate:
 
 ### Phase 3 — NewsRead web UI (M–L)
 
-- [ ] Add History sidebar link, shown only when the feature flag is on **and**
+- [x] Add History sidebar link, shown only when the feature flag is on **and**
       the user has an active connection or stored history; otherwise the only
       entry point is Settings → Browser history.
-- [ ] Add `/history` with search, filters, loading/error/empty states, ranked and
+- [x] Add `/history` with search, filters, loading/error/empty states, ranked and
       recent results, delete actions, and domain exclusion.
-- [ ] Add Settings → Browser history (integration/installation section) with
+- [x] Add Settings → Browser history (integration/installation section) with
       connection creation, one-time token reveal, copy action, connection
       health, revoke, retention, and clear-all.
-- [ ] Detect the current browser in the settings page and show a
+- [x] Detect the current browser in the settings page and show a
       Chrome/Chromium-required disclaimer when NewsRead is opened from another
       browser, without blocking token creation.
-- [ ] Add SWR keys/hooks/mutators and generated API aliases.
-- [ ] Add frontend tests to the existing 90% branch-coverage gate.
-- [ ] Verify keyboard navigation, screen-reader labels, destructive confirms,
+- [x] Add SWR keys/hooks/mutators and generated API aliases.
+- [x] Add frontend tests to the existing 90% branch-coverage gate.
+- [x] Verify keyboard navigation, screen-reader labels, destructive confirms,
       dark mode, narrow desktop widths, and long URL/title handling.
+
+Phase 3 currently consumes a bounded 50-row keyword result set. Cursor
+pagination, tsvector ranking, embeddings, hybrid fusion, retention cleanup, and
+the realistic seed script remain explicit Phase 2 follow-ups above.
 
 Merge gate:
 

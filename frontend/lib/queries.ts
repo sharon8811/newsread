@@ -8,6 +8,12 @@ import {
   type ActivitySummary,
   type ArticleDetail,
   type ArticleProjectStatus,
+  type BrowserConnection,
+  type BrowserHistoryDomainRule,
+  type BrowserHistoryPage,
+  type BrowserHistorySettings,
+  type BrowserHistorySort,
+  type BrowserHistorySummary,
   type CatalogCategory,
   type CatalogEntry,
   type DislikeOptions,
@@ -115,6 +121,34 @@ export const useCatalogCategories = () =>
 
 export const useSmartFeeds = () => useSWR<SmartFeed[]>(keys.smartFeeds, fetcher);
 
+export const useHistorySummary = (enabled = true) =>
+  useSWR<BrowserHistorySummary>(enabled ? keys.historySummary : null, fetcher);
+
+export const useHistoryConnections = (enabled = true) =>
+  useSWR<BrowserConnection[]>(enabled ? keys.historyConnections : null, fetcher);
+
+export const useHistorySettings = (enabled = true) =>
+  useSWR<BrowserHistorySettings>(enabled ? keys.historySettings : null, fetcher);
+
+export const useHistoryRules = (enabled = true) =>
+  useSWR<BrowserHistoryDomainRule[]>(enabled ? keys.historyRules : null, fetcher);
+
+export const useHistory = (
+  filters: {
+    q?: string;
+    hostname?: string;
+    dateFrom?: string;
+    dateTo?: string;
+    sort?: BrowserHistorySort;
+  },
+  enabled = true,
+) =>
+  useSWR<BrowserHistoryPage[]>(
+    enabled ? keys.history(filters) : null,
+    fetcher,
+    { keepPreviousData: true },
+  );
+
 // Debounce upstream (useDebouncedValue) and pass the settled query; SWR keying
 // makes stale responses drop out naturally — no cancelled-flag effects.
 export const useUserSearch = (q: string) =>
@@ -159,4 +193,18 @@ export function mutateIntegrations() {
 export function mutateAiConfig() {
   mutate(keys.aiSettings);
   mutate(keys.aiStatus);
+}
+
+export function mutateBrowserHistory() {
+  mutate(
+    (key) => typeof key === "string" && (key === "/history" || key.startsWith("/history?")),
+  );
+  mutate(keys.historySummary);
+}
+
+export function mutateBrowserHistorySettings() {
+  mutate(keys.historyConnections);
+  mutate(keys.historySettings);
+  mutate(keys.historyRules);
+  mutate(keys.historySummary);
 }

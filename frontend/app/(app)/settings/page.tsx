@@ -35,6 +35,7 @@ import {
   XIcon,
 } from "@/components/icons";
 import AISettingsSection from "@/components/AISettingsSection";
+import BrowserHistorySettingsSection from "@/components/BrowserHistorySettingsSection";
 import NotInterestedSection from "@/components/NotInterestedSection";
 
 function PlatformIcon({ platform, size }: { platform: MessagingPlatform; size?: number }) {
@@ -415,6 +416,10 @@ function SettingsContent() {
               )}
             </section>
           </>
+        )}
+
+        {config?.browser_history_enabled === true && (
+          <BrowserHistorySettingsSection />
         )}
 
         <NotInterestedSection />

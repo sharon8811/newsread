@@ -38,13 +38,29 @@ vi.mock("@/components/FeedSettingsModal", () => ({
   },
 }));
 
-type SwrData = { feeds?: unknown; unseen?: unknown; projects?: unknown; ai?: unknown };
-function setSwr({ feeds, unseen, projects, ai }: SwrData) {
+type SwrData = {
+  feeds?: unknown;
+  unseen?: unknown;
+  projects?: unknown;
+  ai?: unknown;
+  config?: unknown;
+  history?: unknown;
+};
+function setSwr({
+  feeds,
+  unseen,
+  projects,
+  ai,
+  config = { browser_history_enabled: false },
+  history,
+}: SwrData) {
   swrMock.mockImplementation((key: string) => {
     if (key === "/feeds") return { data: feeds };
     if (key === "/shares/unseen-count") return { data: unseen };
     if (key === "/projects") return { data: projects };
     if (key === "/ai/settings") return { data: ai };
+    if (key === "/config") return { data: config };
+    if (key === "/history/summary") return { data: history };
     return { data: undefined };
   });
 }
@@ -138,6 +154,32 @@ describe("<Sidebar>", () => {
     render(<Sidebar />);
     const link = screen.getByText("Projects").closest("a")!;
     expect(link).toHaveStyle({ background: "var(--bg-hover)" });
+  });
+
+  it("shows History only when enabled and the user has a connection or history", () => {
+    setSwr({
+      feeds: [],
+      unseen: { count: 0 },
+      config: { browser_history_enabled: true },
+      history: {
+        has_active_connection: true,
+        has_history: false,
+        active_connection_count: 1,
+        total_connection_count: 1,
+        history_count: 0,
+      },
+    });
+    const { rerender } = render(<Sidebar />);
+    expect(screen.getByText("History").closest("a")).toHaveAttribute("href", "/history");
+
+    setSwr({
+      feeds: [],
+      unseen: { count: 0 },
+      config: { browser_history_enabled: false },
+      history: { has_active_connection: true, has_history: true },
+    });
+    rerender(<Sidebar />);
+    expect(screen.queryByText("History")).not.toBeInTheDocument();
   });
 
   it("toggles the add-feed form open and closed", async () => {

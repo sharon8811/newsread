@@ -1,12 +1,12 @@
 """Browser-history connections and synchronized capture policy."""
 
 import json
-from datetime import UTC, datetime, timedelta
-from typing import Annotated
+from datetime import UTC, date, datetime, timedelta
+from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response
 from pydantic import ValidationError
-from sqlalchemy import func, select
+from sqlalchemy import case, delete, func, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from ..deps import CurrentUser, DbSession
@@ -15,12 +15,14 @@ from ..history_auth import (
     generate_browser_token,
     require_browser_history_enabled,
 )
-from ..history_policy import sanitize_capture_text
+from ..history_policy import normalize_history_hostname, sanitize_capture_text
 from ..history_sync import SyncRejection, persist_capture
 from ..models import (
     BrowserConnection,
     BrowserHistoryDeletion,
     BrowserHistoryDomainRule,
+    BrowserHistoryPage,
+    BrowserHistoryPageConnection,
     BrowserHistorySettings,
     User,
 )
@@ -29,10 +31,14 @@ from ..schemas import (
     BrowserConnectionCreateIn,
     BrowserConnectionOut,
     BrowserHistoryCaptureIn,
+    BrowserHistoryClearIn,
+    BrowserHistoryDeletionOut,
     BrowserHistoryDomainRuleIn,
     BrowserHistoryDomainRuleOut,
+    BrowserHistoryPageOut,
     BrowserHistorySettingsIn,
     BrowserHistorySettingsOut,
+    BrowserHistorySummaryOut,
     BrowserHistorySyncAcceptedOut,
     BrowserHistorySyncIn,
     BrowserHistorySyncOut,
@@ -101,6 +107,35 @@ def require_sync_content_length(
 ) -> None:
     if content_length is not None and content_length > MAX_SYNC_REQUEST_BYTES:
         raise HTTPException(status_code=413, detail="History sync batch exceeds 1 MiB")
+
+
+async def _write_deletion(
+    session: DbSession,
+    *,
+    user_id: int,
+    scope: str,
+    scope_key: str,
+    revision: int,
+) -> None:
+    statement = pg_insert(BrowserHistoryDeletion).values(
+        user_id=user_id,
+        scope=scope,
+        scope_key=scope_key,
+        revision=revision,
+    )
+    await session.execute(
+        statement.on_conflict_do_update(
+            index_elements=["user_id", "scope", "scope_key"],
+            set_={
+                "revision": statement.excluded.revision,
+                "created_at": func.now(),
+            },
+        )
+    )
+
+
+def _escape_ilike(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
 @router.post(
@@ -252,6 +287,23 @@ async def upsert_domain_rule(
     else:
         rule.mode = body.mode
     history_settings.sync_revision += 1
+    if body.delete_existing:
+        await _write_deletion(
+            session,
+            user_id=user.id,
+            scope="domain",
+            scope_key=body.hostname,
+            revision=history_settings.sync_revision,
+        )
+        await session.execute(
+            delete(BrowserHistoryPage).where(
+                BrowserHistoryPage.user_id == user.id,
+                or_(
+                    BrowserHistoryPage.hostname == body.hostname,
+                    BrowserHistoryPage.hostname.endswith(f".{body.hostname}"),
+                ),
+            )
+        )
     await session.commit()
     await session.refresh(rule)
     return rule
@@ -275,6 +327,179 @@ async def delete_domain_rule(
     history_settings.sync_revision += 1
     await session.delete(rule)
     await session.commit()
+
+
+@router.get("/summary", response_model=BrowserHistorySummaryOut)
+async def history_summary(user: CurrentUser, session: DbSession):
+    active_connections = await session.scalar(
+        select(func.count())
+        .select_from(BrowserConnection)
+        .where(
+            BrowserConnection.user_id == user.id,
+            BrowserConnection.revoked_at.is_(None),
+        )
+    )
+    total_connections = await session.scalar(
+        select(func.count())
+        .select_from(BrowserConnection)
+        .where(BrowserConnection.user_id == user.id)
+    )
+    history_count = await session.scalar(
+        select(func.count())
+        .select_from(BrowserHistoryPage)
+        .where(BrowserHistoryPage.user_id == user.id)
+    )
+    return BrowserHistorySummaryOut(
+        active_connection_count=active_connections,
+        total_connection_count=total_connections,
+        history_count=history_count,
+        has_active_connection=active_connections > 0,
+        has_history=history_count > 0,
+    )
+
+
+@router.get("", response_model=list[BrowserHistoryPageOut])
+async def list_history(
+    user: CurrentUser,
+    session: DbSession,
+    q: str | None = Query(default=None, max_length=200),
+    hostname: str | None = Query(default=None, max_length=253),
+    date_from: date | None = None,
+    date_to: date | None = None,
+    sort: Literal["recent", "relevance"] = "recent",
+    limit: int = Query(default=50, ge=1, le=50),
+):
+    statement = select(BrowserHistoryPage).where(BrowserHistoryPage.user_id == user.id)
+    if hostname:
+        try:
+            normalized_hostname = normalize_history_hostname(hostname)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        statement = statement.where(
+            or_(
+                BrowserHistoryPage.hostname == normalized_hostname,
+                BrowserHistoryPage.hostname.endswith(f".{normalized_hostname}"),
+            )
+        )
+    if date_from:
+        statement = statement.where(func.date(BrowserHistoryPage.last_visited_at) >= date_from)
+    if date_to:
+        statement = statement.where(func.date(BrowserHistoryPage.last_visited_at) <= date_to)
+
+    relevance = None
+    if q:
+        pattern = f"%{_escape_ilike(q.strip())}%"
+        title_match = BrowserHistoryPage.title.ilike(pattern, escape="\\")
+        hostname_match = BrowserHistoryPage.hostname.ilike(pattern, escape="\\")
+        text_match = BrowserHistoryPage.text.ilike(pattern, escape="\\")
+        statement = statement.where(or_(title_match, hostname_match, text_match))
+        relevance = case(
+            (title_match, 3),
+            (hostname_match, 2),
+            else_=1,
+        )
+
+    if sort == "relevance" and relevance is not None:
+        statement = statement.order_by(
+            relevance.desc(),
+            BrowserHistoryPage.last_visited_at.desc(),
+            BrowserHistoryPage.id.desc(),
+        )
+    else:
+        statement = statement.order_by(
+            BrowserHistoryPage.last_visited_at.desc(),
+            BrowserHistoryPage.id.desc(),
+        )
+    pages = list(await session.scalars(statement.limit(limit)))
+    if not pages:
+        return []
+
+    sources: dict[int, list[str]] = {page.id: [] for page in pages}
+    source_rows = await session.execute(
+        select(BrowserHistoryPageConnection.page_id, BrowserConnection.name)
+        .join(
+            BrowserConnection,
+            BrowserConnection.id == BrowserHistoryPageConnection.connection_id,
+        )
+        .where(BrowserHistoryPageConnection.page_id.in_(sources))
+        .order_by(BrowserConnection.name)
+    )
+    for page_id, name in source_rows:
+        if name not in sources[page_id]:
+            sources[page_id].append(name)
+    return [
+        BrowserHistoryPageOut(
+            id=page.id,
+            url=page.url,
+            title=page.title,
+            hostname=page.hostname,
+            text_excerpt=page.text_excerpt,
+            first_visited_at=page.first_visited_at,
+            last_visited_at=page.last_visited_at,
+            visit_count=page.visit_count,
+            captured_at=page.captured_at,
+            source_browsers=sources[page.id],
+        )
+        for page in pages
+    ]
+
+
+@router.delete("/{page_id}", status_code=204)
+async def delete_history_page(
+    page_id: int,
+    user: CurrentUser,
+    session: DbSession,
+):
+    page = await session.scalar(
+        select(BrowserHistoryPage).where(
+            BrowserHistoryPage.id == page_id,
+            BrowserHistoryPage.user_id == user.id,
+        )
+    )
+    if page is None:
+        raise HTTPException(status_code=404, detail="History page not found")
+    history_settings = await _settings_for(session, user.id)
+    history_settings.sync_revision += 1
+    await _write_deletion(
+        session,
+        user_id=user.id,
+        scope="page",
+        scope_key=page.url_hash,
+        revision=history_settings.sync_revision,
+    )
+    await session.delete(page)
+    await session.commit()
+
+
+@router.delete("", response_model=BrowserHistoryDeletionOut)
+async def clear_history(
+    body: BrowserHistoryClearIn,
+    user: CurrentUser,
+    session: DbSession,
+):
+    history_settings = await _settings_for(session, user.id)
+    history_settings.sync_revision += 1
+    scope = "domain" if body.hostname else "all"
+    scope_key = body.hostname or ""
+    await _write_deletion(
+        session,
+        user_id=user.id,
+        scope=scope,
+        scope_key=scope_key,
+        revision=history_settings.sync_revision,
+    )
+    condition = BrowserHistoryPage.user_id == user.id
+    if body.hostname:
+        condition = condition & or_(
+            BrowserHistoryPage.hostname == body.hostname,
+            BrowserHistoryPage.hostname.endswith(f".{body.hostname}"),
+        )
+    result = await session.execute(delete(BrowserHistoryPage).where(condition))
+    await session.commit()
+    return BrowserHistoryDeletionOut(
+        deleted_count=result.rowcount,
+        sync_revision=history_settings.sync_revision,
+    )
 
 
 @router.post(

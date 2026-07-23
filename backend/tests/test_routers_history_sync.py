@@ -268,3 +268,159 @@ async def test_content_length_rejects_oversized_invalid_json_before_parsing(clie
         },
     )
     assert response.status_code == 413
+
+
+async def test_history_summary_list_search_filters_and_sources(client, users):
+    user = await users.create()
+    first = await _pair(client, users, user, "Chrome")
+    second = await _pair(client, users, user, "Chromium")
+    alpha = _capture(
+        "alpha",
+        url="https://news.example.com/alpha",
+        title="Alpha 100% guide",
+        text="A practical guide to local models",
+        visit_count=2,
+    )
+    beta = _capture(
+        "beta",
+        url="https://other.example.net/beta",
+        title="Beta_notes",
+        text="Different subject",
+        visit_count=1,
+    )
+    await _sync(client, first["token"], [alpha, beta])
+    await _sync(client, second["token"], [{**alpha, "visit_count": 3}])
+    headers = users.auth(user)
+
+    summary = (await client.get("/api/history/summary", headers=headers)).json()
+    assert summary == {
+        "active_connection_count": 2,
+        "total_connection_count": 2,
+        "history_count": 2,
+        "has_active_connection": True,
+        "has_history": True,
+    }
+
+    percent = await client.get(
+        "/api/history",
+        params={"q": "100%", "sort": "relevance"},
+        headers=headers,
+    )
+    assert [page["title"] for page in percent.json()] == ["Alpha 100% guide"]
+    assert percent.json()[0]["visit_count"] == 5
+    assert percent.json()[0]["source_browsers"] == ["Chrome", "Chromium"]
+
+    underscore = await client.get(
+        "/api/history",
+        params={"q": "_"},
+        headers=headers,
+    )
+    assert [page["title"] for page in underscore.json()] == ["Beta_notes"]
+
+    domain = await client.get(
+        "/api/history",
+        params={"hostname": "example.com"},
+        headers=headers,
+    )
+    assert [page["hostname"] for page in domain.json()] == ["news.example.com"]
+
+    future = (datetime.now(UTC) + timedelta(days=1)).date().isoformat()
+    empty = await client.get(
+        "/api/history",
+        params={"date_from": future},
+        headers=headers,
+    )
+    assert empty.json() == []
+
+
+async def test_delete_page_is_owner_scoped_and_writes_tombstone(client, users, session):
+    alice = await users.create(username="alice")
+    bob = await users.create(username="bob")
+    pairing = await _pair(client, users, alice)
+    page_id = (await _sync(client, pairing["token"], [_capture()])).json()["accepted"][0]["page_id"]
+
+    denied = await client.delete(
+        f"/api/history/{page_id}",
+        headers=users.auth(bob),
+    )
+    assert denied.status_code == 404
+    deleted = await client.delete(
+        f"/api/history/{page_id}",
+        headers=users.auth(alice),
+    )
+    assert deleted.status_code == 204
+    tombstone = await session.scalar(select(BrowserHistoryDeletion))
+    assert tombstone.scope == "page"
+    assert tombstone.revision == 1
+    assert await session.get(BrowserHistoryPage, page_id) is None
+
+
+async def test_clear_history_supports_domain_then_all(client, users, session):
+    user = await users.create()
+    pairing = await _pair(client, users, user)
+    await _sync(
+        client,
+        pairing["token"],
+        [
+            _capture("domain", url="https://sub.example.com/page"),
+            _capture("other", url="https://other.example.net/page"),
+        ],
+    )
+    headers = users.auth(user)
+
+    domain = await client.request(
+        "DELETE",
+        "/api/history",
+        json={"confirm": "DELETE", "hostname": "example.com"},
+        headers=headers,
+    )
+    assert domain.json() == {"deleted_count": 1, "sync_revision": 1}
+    remaining = list(await session.scalars(select(BrowserHistoryPage)))
+    assert [page.hostname for page in remaining] == ["other.example.net"]
+
+    all_history = await client.request(
+        "DELETE",
+        "/api/history",
+        json={"confirm": "DELETE"},
+        headers=headers,
+    )
+    assert all_history.json() == {"deleted_count": 1, "sync_revision": 2}
+    assert list(await session.scalars(select(BrowserHistoryPage))) == []
+    tombstones = list(
+        await session.scalars(
+            select(BrowserHistoryDeletion).order_by(BrowserHistoryDeletion.revision)
+        )
+    )
+    assert [(row.scope, row.scope_key) for row in tombstones] == [
+        ("domain", "example.com"),
+        ("all", ""),
+    ]
+
+
+async def test_exclude_rule_can_delete_existing_domain_history(client, users, session):
+    user = await users.create()
+    pairing = await _pair(client, users, user)
+    await _sync(
+        client,
+        pairing["token"],
+        [_capture(url="https://mail.example.com/inbox", text="private")],
+    )
+
+    response = await client.post(
+        "/api/history/domain-rules",
+        json={
+            "hostname": "example.com",
+            "match_subdomains": True,
+            "mode": "exclude",
+            "delete_existing": True,
+        },
+        headers=users.auth(user),
+    )
+    assert response.status_code == 201
+    assert await session.scalar(select(BrowserHistoryPage.id)) is None
+    tombstone = await session.scalar(select(BrowserHistoryDeletion))
+    assert (tombstone.scope, tombstone.scope_key, tombstone.revision) == (
+        "domain",
+        "example.com",
+        1,
+    )

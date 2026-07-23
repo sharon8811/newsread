@@ -4,7 +4,15 @@ import userEvent from "@testing-library/user-event";
 import SettingsPage from "@/app/(app)/settings/page";
 import { makeIntegration, makeShareTarget } from "./fixtures";
 
-const { swrMock, mutateMock, replaceMock, router, searchParams } = vi.hoisted(() => {
+const {
+  swrMock,
+  mutateMock,
+  replaceMock,
+  router,
+  searchParams,
+  toastSuccessMock,
+  toastErrorMock,
+} = vi.hoisted(() => {
   const replaceMock = vi.fn();
   return {
     swrMock: vi.fn(),
@@ -14,9 +22,15 @@ const { swrMock, mutateMock, replaceMock, router, searchParams } = vi.hoisted(()
     // would re-fire the page's [searchParams, router] effect forever.
     router: { replace: replaceMock, push: vi.fn() },
     searchParams: { value: new URLSearchParams() },
+    toastSuccessMock: vi.fn(),
+    toastErrorMock: vi.fn(),
   };
 });
 vi.mock("swr", () => ({ default: swrMock, mutate: mutateMock }));
+vi.mock("sonner", () => ({
+  toast: { success: toastSuccessMock, error: toastErrorMock },
+  Toaster: () => null,
+}));
 vi.mock("next/navigation", () => ({
   useRouter: () => router,
   useSearchParams: () => searchParams.value,
@@ -35,7 +49,22 @@ function mockSWRData({
   ],
   targets = [makeShareTarget({ id: 5, display_name: "#ai-news" })],
   pickerOptions = undefined as unknown[] | Error | undefined,
-  serverConfig = { allow_signup: true, messaging_enabled: true } as unknown,
+  serverConfig = {
+    allow_signup: true,
+    messaging_enabled: true,
+    browser_history_enabled: false,
+  } as unknown,
+  historyConnections = [] as unknown,
+  historyConnectionsLoading = false,
+  historySettings = { retention_days: 90, sync_revision: 0 } as unknown,
+  historySummary = {
+    active_connection_count: 0,
+    total_connection_count: 0,
+    history_count: 0,
+    has_active_connection: false,
+    has_history: false,
+  } as unknown,
+  historyRules = [] as unknown[],
 } = {}) {
   // The picker's bound mutate writes back into the holder; the re-render
   // caused by the component's own setState picks the new value up.
@@ -44,6 +73,12 @@ function mockSWRData({
     if (key === "/config") return { data: serverConfig };
     if (key === "/integrations") return { data: integrations };
     if (key === "/share-targets") return { data: targets };
+    if (key === "/history/connections") {
+      return { data: historyConnections, isLoading: historyConnectionsLoading };
+    }
+    if (key === "/history/settings") return { data: historySettings };
+    if (key === "/history/summary") return { data: historySummary };
+    if (key === "/history/domain-rules") return { data: historyRules };
     if (typeof key === "string" && key.includes("/targets?q=")) {
       if (holder.options instanceof Error) return { error: holder.options };
       return {
@@ -85,6 +120,367 @@ describe("SettingsPage", () => {
     mockSWRData({ serverConfig: null });
     render(<SettingsPage />);
     expect(screen.queryByText("Connections")).not.toBeInTheDocument();
+  });
+
+  it("renders browser-history controls only when the feature is enabled", () => {
+    mockSWRData({
+      serverConfig: {
+        allow_signup: true,
+        messaging_enabled: false,
+        browser_history_enabled: true,
+      },
+    });
+    const { rerender } = render(<SettingsPage />);
+    expect(screen.getByText("Browser history")).toBeInTheDocument();
+    expect(screen.getByLabelText("Browser history retention")).toHaveValue("90");
+
+    mockSWRData({
+      serverConfig: {
+        allow_signup: true,
+        messaging_enabled: false,
+        browser_history_enabled: false,
+      },
+    });
+    rerender(<SettingsPage />);
+    expect(screen.queryByText("Browser history")).not.toBeInTheDocument();
+  });
+
+  it("creates and reveals a one-time browser pairing token", async () => {
+    mockSWRData({
+      serverConfig: {
+        allow_signup: true,
+        messaging_enabled: false,
+        browser_history_enabled: true,
+      },
+    });
+    const fetchMock = vi.fn().mockResolvedValue({
+      status: 200,
+      ok: true,
+      json: async () => ({
+        id: 2,
+        name: "Work Chrome",
+        token: "nrh_secret_once",
+        token_prefix: "nrh_secr",
+        created_at: "2026-07-24T10:00:00Z",
+        last_seen_at: null,
+        revoked_at: null,
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<SettingsPage />);
+    await userEvent.type(screen.getByLabelText("Browser name"), "Work Chrome");
+    await userEvent.click(screen.getByRole("button", { name: "Create token" }));
+
+    expect(await screen.findByText("nrh_secret_once")).toBeInTheDocument();
+    expect(screen.getByText(/shown once and cannot be recovered/i)).toBeInTheDocument();
+    const request = fetchMock.mock.calls[0];
+    expect(request[0]).toContain("/history/connections");
+    expect(JSON.parse(request[1].body)).toEqual({ name: "Work Chrome" });
+    expect(mutateMock).toHaveBeenCalledWith("/history/connections");
+    await userEvent.click(screen.getByLabelText("Dismiss pairing token"));
+    expect(screen.queryByText("nrh_secret_once")).not.toBeInTheDocument();
+  });
+
+  it("revokes a paired browser after confirmation", async () => {
+    mockSWRData({
+      serverConfig: {
+        allow_signup: true,
+        messaging_enabled: false,
+        browser_history_enabled: true,
+      },
+      historyConnections: [
+        {
+          id: 9,
+          name: "Home Chrome",
+          token_prefix: "nrh_home",
+          created_at: "2026-07-20T10:00:00Z",
+          last_seen_at: null,
+          revoked_at: null,
+        },
+      ],
+    });
+    const fetchMock = vi.fn().mockResolvedValue({
+      status: 204,
+      ok: true,
+      json: async () => ({}),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<SettingsPage />);
+    await userEvent.click(screen.getByRole("button", { name: "Revoke" }));
+    await userEvent.click(screen.getByRole("button", { name: "Really revoke?" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    expect(fetchMock.mock.calls[0][0]).toContain("/history/connections/9");
+    expect(fetchMock.mock.calls[0][1].method).toBe("DELETE");
+  });
+
+  it("updates retention and clears all captured history after confirmation", async () => {
+    mockSWRData({
+      serverConfig: {
+        allow_signup: true,
+        messaging_enabled: false,
+        browser_history_enabled: true,
+      },
+      historySummary: {
+        active_connection_count: 1,
+        total_connection_count: 1,
+        history_count: 4,
+        has_active_connection: true,
+        has_history: true,
+      },
+    });
+    const fetchMock = vi.fn().mockImplementation((_url: string, init?: RequestInit) =>
+      Promise.resolve({
+        status: 200,
+        ok: true,
+        json: async () =>
+          init?.method === "DELETE"
+            ? { deleted_count: 4, sync_revision: 3 }
+            : { retention_days: 365, sync_revision: 2 },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    render(<SettingsPage />);
+
+    await userEvent.selectOptions(
+      screen.getByLabelText("Browser history retention"),
+      "365",
+    );
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(
+          (call) =>
+            call[1]?.method === "PATCH" &&
+            JSON.parse(call[1].body).retention_days === 365,
+        ),
+      ).toBe(true),
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Clear all" }));
+    await userEvent.click(
+      screen.getByRole("button", { name: "Really clear all?" }),
+    );
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(
+          (call) =>
+            call[1]?.method === "DELETE" &&
+            JSON.parse(call[1].body).confirm === "DELETE",
+        ),
+      ).toBe(true),
+    );
+    expect(mutateMock).toHaveBeenCalledWith("/history/summary");
+  });
+
+  it("renders loading, connection health, rules, and forever retention states", () => {
+    const enabledConfig = {
+      allow_signup: true,
+      messaging_enabled: false,
+      browser_history_enabled: true,
+    };
+    mockSWRData({
+      serverConfig: enabledConfig,
+      historyConnections: null,
+      historyConnectionsLoading: true,
+      historySettings: null,
+      historySummary: null,
+    });
+    const { rerender } = render(<SettingsPage />);
+    expect(
+      screen.getByText("Create a one-time token for each browser."),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Browser history retention")).toBeDisabled();
+    expect(screen.getByLabelText("Browser history retention")).toHaveValue(
+      "forever",
+    );
+
+    mockSWRData({
+      serverConfig: enabledConfig,
+      historyConnections: [
+        {
+          id: 1,
+          name: "Synced Chrome",
+          token_prefix: "nrh_sync",
+          created_at: "2026-07-20T10:00:00Z",
+          last_seen_at: "2026-07-24T10:00:00Z",
+          revoked_at: null,
+        },
+        {
+          id: 2,
+          name: "Old Chrome",
+          token_prefix: "nrh_old",
+          created_at: "2026-07-18T10:00:00Z",
+          last_seen_at: null,
+          revoked_at: "2026-07-23T10:00:00Z",
+        },
+      ],
+      historySummary: {
+        active_connection_count: 1,
+        total_connection_count: 2,
+        history_count: 3,
+        has_active_connection: true,
+        has_history: true,
+      },
+      historyRules: [
+        {
+          id: 4,
+          hostname: "private.example",
+          match_subdomains: true,
+          mode: "metadata_only",
+          created_at: "2026-07-20T10:00:00Z",
+          updated_at: "2026-07-20T10:00:00Z",
+        },
+        {
+          id: 5,
+          hostname: "blocked.example",
+          match_subdomains: false,
+          mode: "exclude",
+          created_at: "2026-07-20T10:00:00Z",
+          updated_at: "2026-07-20T10:00:00Z",
+        },
+      ],
+    });
+    rerender(<SettingsPage />);
+
+    expect(screen.getByRole("link", { name: "Open history" })).toHaveAttribute(
+      "href",
+      "/history",
+    );
+    expect(screen.getByText(/Last synced/)).toBeInTheDocument();
+    expect(screen.getByText(/Revoked/)).toBeInTheDocument();
+    expect(screen.getByText(/private\.example and subdomains/)).toHaveTextContent(
+      "metadata only",
+    );
+    expect(screen.getByText("blocked.example")).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Revoke" })).toHaveLength(1);
+  });
+
+  it("surfaces browser-history management failures", async () => {
+    mockSWRData({
+      serverConfig: {
+        allow_signup: true,
+        messaging_enabled: false,
+        browser_history_enabled: true,
+      },
+      historyConnections: [
+        {
+          id: 9,
+          name: "Home Chrome",
+          token_prefix: "nrh_home",
+          created_at: "2026-07-20T10:00:00Z",
+          last_seen_at: null,
+          revoked_at: null,
+        },
+      ],
+      historyRules: [
+        {
+          id: 4,
+          hostname: "blocked.example",
+          match_subdomains: false,
+          mode: "exclude",
+          created_at: "2026-07-20T10:00:00Z",
+          updated_at: "2026-07-20T10:00:00Z",
+        },
+      ],
+    });
+    const apiFailure = (detail: string) =>
+      Promise.resolve({
+        status: 400,
+        ok: false,
+        statusText: "Bad Request",
+        json: async () => ({ detail }),
+      });
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(() => apiFailure("Pairing denied"))
+      .mockImplementationOnce(() => apiFailure("Revoke denied"))
+      .mockRejectedValueOnce("offline")
+      .mockRejectedValueOnce("offline")
+      .mockImplementationOnce(() => apiFailure("Clear denied"));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<SettingsPage />);
+
+    await userEvent.type(screen.getByLabelText("Browser name"), "Work Chrome");
+    await userEvent.click(screen.getByRole("button", { name: "Create token" }));
+    expect(await screen.findByText("Pairing denied")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Revoke" }));
+    await userEvent.click(screen.getByRole("button", { name: "Really revoke?" }));
+    await waitFor(() =>
+      expect(toastErrorMock).toHaveBeenCalledWith("Revoke denied"),
+    );
+
+    await userEvent.selectOptions(
+      screen.getByLabelText("Browser history retention"),
+      "forever",
+    );
+    await waitFor(() =>
+      expect(toastErrorMock).toHaveBeenCalledWith(
+        "Could not update retention",
+      ),
+    );
+
+    await userEvent.click(
+      screen.getByLabelText("Remove rule for blocked.example"),
+    );
+    await waitFor(() =>
+      expect(toastErrorMock).toHaveBeenCalledWith("Could not remove the rule"),
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Clear all" }));
+    await userEvent.click(
+      screen.getByRole("button", { name: "Really clear all?" }),
+    );
+    await waitFor(() =>
+      expect(toastErrorMock).toHaveBeenCalledWith("Clear denied"),
+    );
+  });
+
+  it("copies the one-time token and reports clipboard failures", async () => {
+    mockSWRData({
+      serverConfig: {
+        allow_signup: true,
+        messaging_enabled: false,
+        browser_history_enabled: true,
+      },
+    });
+    const fetchMock = vi.fn().mockResolvedValue({
+      status: 200,
+      ok: true,
+      json: async () => ({
+        id: 2,
+        name: "Work Chrome",
+        token: "nrh_copy_once",
+        token_prefix: "nrh_copy",
+        created_at: "2026-07-24T10:00:00Z",
+        last_seen_at: null,
+        revoked_at: null,
+      }),
+    });
+    const writeText = vi
+      .fn()
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error("denied"));
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<SettingsPage />);
+    await userEvent.type(screen.getByLabelText("Browser name"), "Work Chrome");
+    await userEvent.click(screen.getByRole("button", { name: "Create token" }));
+
+    const copyButton = await screen.findByRole("button", { name: "Copy" });
+    await userEvent.click(copyButton);
+    await waitFor(() =>
+      expect(toastSuccessMock).toHaveBeenCalledWith("Pairing token copied"),
+    );
+    await userEvent.click(copyButton);
+    await waitFor(() =>
+      expect(toastErrorMock).toHaveBeenCalledWith(
+        "Could not copy. Select the token and copy it manually.",
+      ),
+    );
   });
 
   it("renders connection cards with their state", () => {
