@@ -23,13 +23,16 @@ class Settings(BaseSettings):
     # checks. Everything else in the app reads the individual flags.
     deployment: DeploymentMode = DeploymentMode.self_hosted
 
-    # Feature flags. None = derive from deployment mode; an explicit
-    # NEWSREAD_* env var always wins. After validation both are concrete bools.
+    # Deployment-derived feature flags. None = derive from deployment mode; an
+    # explicit NEWSREAD_* env var always wins. After validation both are bools.
     # self_hosted is single-user: registration closes once the owner exists.
     allow_signup: bool | None = None  # NEWSREAD_ALLOW_SIGNUP
     # Slack/Teams sharing. Off for self_hosted (a single-user instance showing
     # workspace-integration UI is noise); still requires credentials when on.
     messaging_enabled: bool | None = None  # NEWSREAD_MESSAGING_ENABLED
+    # Browser history remains opt-in while its privacy and extension surfaces
+    # are completed. Self-hosters can enable the backend foundation explicitly.
+    browser_history_enabled: bool = False  # NEWSREAD_BROWSER_HISTORY_ENABLED
 
     database_url: str = "postgresql+asyncpg://newsread:newsread@localhost:5433/newsread"
     redis_url: str = "redis://localhost:6380/0"

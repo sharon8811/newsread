@@ -1,4 +1,6 @@
 import json
+import re
+import unicodedata
 from datetime import date, datetime
 from typing import Literal
 
@@ -83,6 +85,113 @@ class DeviceOut(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+# --- Browser history ---
+
+
+def _clean_single_line(value: str) -> str:
+    value = " ".join(value.split())
+    if any(unicodedata.category(char).startswith("C") for char in value):
+        raise ValueError("must not contain control or formatting characters")
+    return value
+
+
+class BrowserConnectionCreateIn(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+
+    @field_validator("name")
+    @classmethod
+    def clean_name(cls, value: str) -> str:
+        value = _clean_single_line(value)
+        if not value:
+            raise ValueError("must not be empty")
+        return value
+
+
+class BrowserConnectionOut(BaseModel):
+    id: int
+    name: str
+    token_prefix: str
+    created_at: datetime
+    last_seen_at: datetime | None
+    revoked_at: datetime | None
+
+    model_config = {"from_attributes": True}
+
+
+class BrowserConnectionCreatedOut(BrowserConnectionOut):
+    token: str
+
+
+HistoryRetentionDays = Literal[30, 90, 365]
+
+
+class BrowserHistorySettingsOut(BaseModel):
+    retention_days: HistoryRetentionDays | None
+    sync_revision: int
+
+
+class BrowserHistorySettingsIn(BaseModel):
+    retention_days: HistoryRetentionDays | None = None
+
+
+DomainRuleMode = Literal["exclude", "metadata_only"]
+_HOST_LABEL = re.compile(r"^[a-z0-9-]+$")
+
+
+def _normalize_hostname(value: str) -> str:
+    hostname = value.strip().lower().rstrip(".")
+    if hostname.startswith("*."):
+        hostname = hostname[2:]
+    if not hostname or any(char in hostname for char in "/:@[]"):
+        raise ValueError("enter a hostname without a scheme, path, or port")
+    try:
+        hostname = hostname.encode("idna").decode("ascii")
+    except UnicodeError as exc:
+        raise ValueError("enter a valid hostname") from exc
+    if len(hostname) > 253:
+        raise ValueError("hostname is too long")
+    labels = hostname.split(".")
+    if any(
+        not label
+        or len(label) > 63
+        or label.startswith("-")
+        or label.endswith("-")
+        or not _HOST_LABEL.fullmatch(label)
+        for label in labels
+    ):
+        raise ValueError("enter a valid hostname")
+    return hostname
+
+
+class BrowserHistoryDomainRuleIn(BaseModel):
+    hostname: str = Field(min_length=1, max_length=253)
+    match_subdomains: bool = False
+    mode: DomainRuleMode
+
+    @field_validator("hostname")
+    @classmethod
+    def normalize_hostname(cls, value: str) -> str:
+        return _normalize_hostname(value)
+
+
+class BrowserHistoryDomainRuleOut(BaseModel):
+    id: int
+    hostname: str
+    match_subdomains: bool
+    mode: DomainRuleMode
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class BrowserHistorySyncStatusOut(BaseModel):
+    connection: BrowserConnectionOut
+    user_name: str
+    settings: BrowserHistorySettingsOut
+    domain_rules: list[BrowserHistoryDomainRuleOut]
 
 
 # --- Feeds ---
@@ -519,6 +628,7 @@ class ServerConfigOut(BaseModel):
 
     allow_signup: bool
     messaging_enabled: bool
+    browser_history_enabled: bool
 
 
 class IntegrationStatusOut(BaseModel):

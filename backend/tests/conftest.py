@@ -62,6 +62,7 @@ for _var in (
 os.environ["NEWSREAD_DEPLOYMENT"] = "self_hosted"
 os.environ["NEWSREAD_ALLOW_SIGNUP"] = "true"
 os.environ["NEWSREAD_MESSAGING_ENABLED"] = "true"
+os.environ["NEWSREAD_BROWSER_HISTORY_ENABLED"] = "true"
 
 # Messaging-integration tests need deterministic values regardless of .env:
 # a fixed (valid) Fernet key and known callback/frontend origins.

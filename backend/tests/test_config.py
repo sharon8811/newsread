@@ -6,7 +6,12 @@ from app.config import DeploymentMode, Settings
 
 def _clear_deployment_env(monkeypatch):
     """conftest pins these for the suite; derivation tests need them unset."""
-    for var in ("NEWSREAD_DEPLOYMENT", "NEWSREAD_ALLOW_SIGNUP", "NEWSREAD_MESSAGING_ENABLED"):
+    for var in (
+        "NEWSREAD_DEPLOYMENT",
+        "NEWSREAD_ALLOW_SIGNUP",
+        "NEWSREAD_MESSAGING_ENABLED",
+        "NEWSREAD_BROWSER_HISTORY_ENABLED",
+    ):
         monkeypatch.delenv(var, raising=False)
 
 
@@ -17,6 +22,7 @@ def test_self_hosted_is_default_and_closes_signup_and_messaging(monkeypatch):
     assert s.deployment is DeploymentMode.self_hosted
     assert s.allow_signup is False
     assert s.messaging_enabled is False
+    assert s.browser_history_enabled is False
 
 
 def test_prod_defaults_open_signup_and_messaging(monkeypatch):
@@ -24,6 +30,7 @@ def test_prod_defaults_open_signup_and_messaging(monkeypatch):
     s = Settings(_env_file=None, deployment="prod", jwt_secret="real-secret")
     assert s.allow_signup is True
     assert s.messaging_enabled is True
+    assert s.browser_history_enabled is False
 
 
 def test_staging_matches_prod_defaults(monkeypatch):
@@ -31,6 +38,7 @@ def test_staging_matches_prod_defaults(monkeypatch):
     s = Settings(_env_file=None, deployment="staging", jwt_secret="real-secret")
     assert s.allow_signup is True
     assert s.messaging_enabled is True
+    assert s.browser_history_enabled is False
 
 
 def test_explicit_flag_beats_mode_default(monkeypatch):
@@ -65,9 +73,11 @@ def test_self_hosted_tolerates_dev_jwt_secret(monkeypatch):
 
 def test_defaults(monkeypatch):
     monkeypatch.delenv("NEWSREAD_JWT_SECRET", raising=False)
+    monkeypatch.delenv("NEWSREAD_BROWSER_HISTORY_ENABLED", raising=False)
     s = Settings(_env_file=None)
     assert s.jwt_expires_days == 30
     assert s.feed_refresh_minutes == 15
+    assert s.browser_history_enabled is False
     assert "postgresql" in s.database_url
 
 

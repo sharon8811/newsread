@@ -19,4 +19,5 @@ async def server_config(session: DbSession):
     return ServerConfigOut(
         allow_signup=await signup_open(session),
         messaging_enabled=settings.messaging_enabled,
+        browser_history_enabled=settings.browser_history_enabled,
     )

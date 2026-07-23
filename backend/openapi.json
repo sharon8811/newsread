@@ -1060,6 +1060,290 @@
         "title": "AuthorizeUrlOut",
         "type": "object"
       },
+      "BrowserConnectionCreateIn": {
+        "properties": {
+          "name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "BrowserConnectionCreateIn",
+        "type": "object"
+      },
+      "BrowserConnectionCreatedOut": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "last_seen_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Seen At"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "revoked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked At"
+          },
+          "token": {
+            "title": "Token",
+            "type": "string"
+          },
+          "token_prefix": {
+            "title": "Token Prefix",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "token_prefix",
+          "created_at",
+          "last_seen_at",
+          "revoked_at",
+          "token"
+        ],
+        "title": "BrowserConnectionCreatedOut",
+        "type": "object"
+      },
+      "BrowserConnectionOut": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "last_seen_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Seen At"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "revoked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked At"
+          },
+          "token_prefix": {
+            "title": "Token Prefix",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "token_prefix",
+          "created_at",
+          "last_seen_at",
+          "revoked_at"
+        ],
+        "title": "BrowserConnectionOut",
+        "type": "object"
+      },
+      "BrowserHistoryDomainRuleIn": {
+        "properties": {
+          "hostname": {
+            "maxLength": 253,
+            "minLength": 1,
+            "title": "Hostname",
+            "type": "string"
+          },
+          "match_subdomains": {
+            "default": false,
+            "title": "Match Subdomains",
+            "type": "boolean"
+          },
+          "mode": {
+            "enum": [
+              "exclude",
+              "metadata_only"
+            ],
+            "title": "Mode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hostname",
+          "mode"
+        ],
+        "title": "BrowserHistoryDomainRuleIn",
+        "type": "object"
+      },
+      "BrowserHistoryDomainRuleOut": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "hostname": {
+            "title": "Hostname",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "match_subdomains": {
+            "title": "Match Subdomains",
+            "type": "boolean"
+          },
+          "mode": {
+            "enum": [
+              "exclude",
+              "metadata_only"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "hostname",
+          "match_subdomains",
+          "mode",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "BrowserHistoryDomainRuleOut",
+        "type": "object"
+      },
+      "BrowserHistorySettingsIn": {
+        "properties": {
+          "retention_days": {
+            "anyOf": [
+              {
+                "enum": [
+                  30,
+                  90,
+                  365
+                ],
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retention Days"
+          }
+        },
+        "title": "BrowserHistorySettingsIn",
+        "type": "object"
+      },
+      "BrowserHistorySettingsOut": {
+        "properties": {
+          "retention_days": {
+            "anyOf": [
+              {
+                "enum": [
+                  30,
+                  90,
+                  365
+                ],
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retention Days"
+          },
+          "sync_revision": {
+            "title": "Sync Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "retention_days",
+          "sync_revision"
+        ],
+        "title": "BrowserHistorySettingsOut",
+        "type": "object"
+      },
+      "BrowserHistorySyncStatusOut": {
+        "properties": {
+          "connection": {
+            "$ref": "#/components/schemas/BrowserConnectionOut"
+          },
+          "domain_rules": {
+            "items": {
+              "$ref": "#/components/schemas/BrowserHistoryDomainRuleOut"
+            },
+            "title": "Domain Rules",
+            "type": "array"
+          },
+          "settings": {
+            "$ref": "#/components/schemas/BrowserHistorySettingsOut"
+          },
+          "user_name": {
+            "title": "User Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "connection",
+          "user_name",
+          "settings",
+          "domain_rules"
+        ],
+        "title": "BrowserHistorySyncStatusOut",
+        "type": "object"
+      },
       "CatalogCategoryOut": {
         "properties": {
           "count": {
@@ -3148,6 +3432,10 @@
             "title": "Allow Signup",
             "type": "boolean"
           },
+          "browser_history_enabled": {
+            "title": "Browser History Enabled",
+            "type": "boolean"
+          },
           "messaging_enabled": {
             "title": "Messaging Enabled",
             "type": "boolean"
@@ -3155,7 +3443,8 @@
         },
         "required": [
           "allow_signup",
-          "messaging_enabled"
+          "messaging_enabled",
+          "browser_history_enabled"
         ],
         "title": "ServerConfigOut",
         "type": "object"
@@ -4114,6 +4403,10 @@
       }
     },
     "securitySchemes": {
+      "BrowserHistoryToken": {
+        "scheme": "bearer",
+        "type": "http"
+      },
       "HTTPBearer": {
         "scheme": "bearer",
         "type": "http"
@@ -6134,6 +6427,330 @@
           }
         },
         "summary": "Health"
+      }
+    },
+    "/api/history/connections": {
+      "get": {
+        "operationId": "list_connections_api_history_connections_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/BrowserConnectionOut"
+                  },
+                  "title": "Response List Connections Api History Connections Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Connections",
+        "tags": [
+          "browser-history"
+        ]
+      },
+      "post": {
+        "operationId": "create_connection_api_history_connections_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BrowserConnectionCreateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserConnectionCreatedOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Connection",
+        "tags": [
+          "browser-history"
+        ]
+      }
+    },
+    "/api/history/connections/{connection_id}": {
+      "delete": {
+        "operationId": "revoke_connection_api_history_connections__connection_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "connection_id",
+            "required": true,
+            "schema": {
+              "title": "Connection Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Revoke Connection",
+        "tags": [
+          "browser-history"
+        ]
+      }
+    },
+    "/api/history/domain-rules": {
+      "get": {
+        "operationId": "list_domain_rules_api_history_domain_rules_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/BrowserHistoryDomainRuleOut"
+                  },
+                  "title": "Response List Domain Rules Api History Domain Rules Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Domain Rules",
+        "tags": [
+          "browser-history"
+        ]
+      },
+      "post": {
+        "operationId": "upsert_domain_rule_api_history_domain_rules_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BrowserHistoryDomainRuleIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserHistoryDomainRuleOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Upsert Domain Rule",
+        "tags": [
+          "browser-history"
+        ]
+      }
+    },
+    "/api/history/domain-rules/{rule_id}": {
+      "delete": {
+        "operationId": "delete_domain_rule_api_history_domain_rules__rule_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "rule_id",
+            "required": true,
+            "schema": {
+              "title": "Rule Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Domain Rule",
+        "tags": [
+          "browser-history"
+        ]
+      }
+    },
+    "/api/history/settings": {
+      "get": {
+        "operationId": "get_history_settings_api_history_settings_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserHistorySettingsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get History Settings",
+        "tags": [
+          "browser-history"
+        ]
+      },
+      "patch": {
+        "operationId": "update_history_settings_api_history_settings_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BrowserHistorySettingsIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserHistorySettingsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update History Settings",
+        "tags": [
+          "browser-history"
+        ]
+      }
+    },
+    "/api/history/sync/status": {
+      "get": {
+        "operationId": "sync_status_api_history_sync_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserHistorySyncStatusOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "BrowserHistoryToken": []
+          }
+        ],
+        "summary": "Sync Status",
+        "tags": [
+          "browser-history"
+        ]
       }
     },
     "/api/imports": {

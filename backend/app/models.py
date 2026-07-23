@@ -115,6 +115,140 @@ class Device(Base):
     )
 
 
+class BrowserConnection(Base):
+    """One Chrome/Chromium extension installation paired to a user.
+
+    The raw high-entropy token is returned once and never persisted. Authentication
+    selects by the unique non-secret prefix, then constant-time compares its SHA-256
+    digest against token_hash.
+    """
+
+    __tablename__ = "browser_connections"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(120))
+    token_prefix: Mapped[str] = mapped_column(String(24), unique=True, index=True)
+    token_hash: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+
+
+class BrowserHistorySettings(Base):
+    """Server-owned history policy shared by all of a user's browsers."""
+
+    __tablename__ = "browser_history_settings"
+
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    retention_days: Mapped[int | None] = mapped_column(Integer, default=90, server_default="90")
+    # Monotonic policy/deletion watermark carried by every queued extension item.
+    sync_revision: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class BrowserHistoryDomainRule(Base):
+    """A synchronized capture exclusion or metadata-only rule."""
+
+    __tablename__ = "browser_history_domain_rules"
+    __table_args__ = (UniqueConstraint("user_id", "hostname", "match_subdomains"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    hostname: Mapped[str] = mapped_column(String(253))
+    match_subdomains: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    mode: Mapped[str] = mapped_column(String(16))  # 'exclude' | 'metadata_only'
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class BrowserHistoryPage(Base):
+    """One private page per user and normalized URL."""
+
+    __tablename__ = "browser_history_pages"
+    __table_args__ = (
+        UniqueConstraint("user_id", "url_hash"),
+        Index("ix_browser_history_user_last_visited", "user_id", "last_visited_at"),
+        Index("ix_browser_history_user_hostname", "user_id", "hostname"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    url_hash: Mapped[str] = mapped_column(String(64))
+    url: Mapped[str] = mapped_column(String(2048))
+    title: Mapped[str] = mapped_column(Text, default="", server_default="")
+    hostname: Mapped[str] = mapped_column(String(253))
+    text: Mapped[str] = mapped_column(Text, default="", server_default="")
+    text_excerpt: Mapped[str] = mapped_column(Text, default="", server_default="")
+    content_hash: Mapped[str | None] = mapped_column(String(64))
+    first_visited_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    last_visited_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    visit_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    captured_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class BrowserHistoryPageConnection(Base):
+    """Absolute visit aggregates reported by one paired browser."""
+
+    __tablename__ = "browser_history_page_connections"
+    __table_args__ = (UniqueConstraint("page_id", "connection_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    page_id: Mapped[int] = mapped_column(
+        ForeignKey("browser_history_pages.id", ondelete="CASCADE"), index=True
+    )
+    connection_id: Mapped[int] = mapped_column(
+        ForeignKey("browser_connections.id", ondelete="CASCADE"), index=True
+    )
+    first_visited_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    last_visited_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    visit_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class BrowserHistoryEmbedding(Base):
+    """Current-model vector for one private history page."""
+
+    __tablename__ = "browser_history_embeddings"
+
+    page_id: Mapped[int] = mapped_column(
+        ForeignKey("browser_history_pages.id", ondelete="CASCADE"), primary_key=True
+    )
+    model: Mapped[str] = mapped_column(String(120))
+    embedding: Mapped[list] = mapped_column(Vector())
+    input_hash: Mapped[str] = mapped_column(String(64))
+    embedded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class BrowserHistoryDeletion(Base):
+    """Server revision tombstone that invalidates older offline captures."""
+
+    __tablename__ = "browser_history_deletions"
+    __table_args__ = (UniqueConstraint("user_id", "scope", "scope_key"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    scope: Mapped[str] = mapped_column(String(16))  # 'page' | 'domain' | 'all'
+    scope_key: Mapped[str] = mapped_column(String(253), default="", server_default="")
+    revision: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class Feed(Base):
     """Global: one row per feed URL, fetched once no matter how many subscribers."""
 

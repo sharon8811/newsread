@@ -763,6 +763,111 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/history/connections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Connections */
+        get: operations["list_connections_api_history_connections_get"];
+        put?: never;
+        /** Create Connection */
+        post: operations["create_connection_api_history_connections_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/history/connections/{connection_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revoke Connection */
+        delete: operations["revoke_connection_api_history_connections__connection_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/history/domain-rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Domain Rules */
+        get: operations["list_domain_rules_api_history_domain_rules_get"];
+        put?: never;
+        /** Upsert Domain Rule */
+        post: operations["upsert_domain_rule_api_history_domain_rules_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/history/domain-rules/{rule_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Domain Rule */
+        delete: operations["delete_domain_rule_api_history_domain_rules__rule_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/history/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get History Settings */
+        get: operations["get_history_settings_api_history_settings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update History Settings */
+        patch: operations["update_history_settings_api_history_settings_patch"];
+        trace?: never;
+    };
+    "/api/history/sync/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Sync Status */
+        get: operations["sync_status_api_history_sync_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/imports": {
         parameters: {
             query?: never;
@@ -1842,6 +1947,109 @@ export interface components {
             /** Url */
             url: string;
         };
+        /** BrowserConnectionCreateIn */
+        BrowserConnectionCreateIn: {
+            /** Name */
+            name: string;
+        };
+        /** BrowserConnectionCreatedOut */
+        BrowserConnectionCreatedOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Id */
+            id: number;
+            /** Last Seen At */
+            last_seen_at: string | null;
+            /** Name */
+            name: string;
+            /** Revoked At */
+            revoked_at: string | null;
+            /** Token */
+            token: string;
+            /** Token Prefix */
+            token_prefix: string;
+        };
+        /** BrowserConnectionOut */
+        BrowserConnectionOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Id */
+            id: number;
+            /** Last Seen At */
+            last_seen_at: string | null;
+            /** Name */
+            name: string;
+            /** Revoked At */
+            revoked_at: string | null;
+            /** Token Prefix */
+            token_prefix: string;
+        };
+        /** BrowserHistoryDomainRuleIn */
+        BrowserHistoryDomainRuleIn: {
+            /** Hostname */
+            hostname: string;
+            /**
+             * Match Subdomains
+             * @default false
+             */
+            match_subdomains: boolean;
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "exclude" | "metadata_only";
+        };
+        /** BrowserHistoryDomainRuleOut */
+        BrowserHistoryDomainRuleOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Hostname */
+            hostname: string;
+            /** Id */
+            id: number;
+            /** Match Subdomains */
+            match_subdomains: boolean;
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "exclude" | "metadata_only";
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** BrowserHistorySettingsIn */
+        BrowserHistorySettingsIn: {
+            /** Retention Days */
+            retention_days?: (30 | 90 | 365) | null;
+        };
+        /** BrowserHistorySettingsOut */
+        BrowserHistorySettingsOut: {
+            /** Retention Days */
+            retention_days: (30 | 90 | 365) | null;
+            /** Sync Revision */
+            sync_revision: number;
+        };
+        /** BrowserHistorySyncStatusOut */
+        BrowserHistorySyncStatusOut: {
+            connection: components["schemas"]["BrowserConnectionOut"];
+            /** Domain Rules */
+            domain_rules: components["schemas"]["BrowserHistoryDomainRuleOut"][];
+            settings: components["schemas"]["BrowserHistorySettingsOut"];
+            /** User Name */
+            user_name: string;
+        };
         /** CatalogCategoryOut */
         CatalogCategoryOut: {
             /** Count */
@@ -2615,6 +2823,8 @@ export interface components {
         ServerConfigOut: {
             /** Allow Signup */
             allow_signup: boolean;
+            /** Browser History Enabled */
+            browser_history_enabled: boolean;
             /** Messaging Enabled */
             messaging_enabled: boolean;
         };
@@ -4250,6 +4460,243 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+        };
+    };
+    list_connections_api_history_connections_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrowserConnectionOut"][];
+                };
+            };
+        };
+    };
+    create_connection_api_history_connections_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BrowserConnectionCreateIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrowserConnectionCreatedOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_connection_api_history_connections__connection_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connection_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_domain_rules_api_history_domain_rules_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrowserHistoryDomainRuleOut"][];
+                };
+            };
+        };
+    };
+    upsert_domain_rule_api_history_domain_rules_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BrowserHistoryDomainRuleIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrowserHistoryDomainRuleOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_domain_rule_api_history_domain_rules__rule_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rule_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_history_settings_api_history_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrowserHistorySettingsOut"];
+                };
+            };
+        };
+    };
+    update_history_settings_api_history_settings_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BrowserHistorySettingsIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrowserHistorySettingsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sync_status_api_history_sync_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrowserHistorySyncStatusOut"];
                 };
             };
         };
