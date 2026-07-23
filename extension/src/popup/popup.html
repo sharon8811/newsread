@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>NewsRead History</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <div>
+          <h1>NewsRead History</h1>
+          <p id="status-text">Checking connection…</p>
+        </div>
+        <span id="status-dot" aria-hidden="true"></span>
+      </header>
+
+      <form id="pairing" hidden>
+        <label>
+          NewsRead server
+          <input id="server-url" type="url" placeholder="https://news.example.com" required />
+        </label>
+        <label>
+          Pairing token
+          <input id="token" type="password" autocomplete="off" required />
+        </label>
+        <button class="primary" type="submit">Pair browser</button>
+      </form>
+
+      <section id="controls" hidden>
+        <div class="metric">
+          <span>Waiting to sync</span>
+          <strong id="queue-count">0</strong>
+        </div>
+        <label class="switch-row">
+          <span>Capture browsing</span>
+          <input id="paused" type="checkbox" role="switch" />
+        </label>
+        <label>
+          Capture mode
+          <select id="capture-mode">
+            <option value="full">Metadata and visible text</option>
+            <option value="metadata_only">Metadata only</option>
+          </select>
+        </label>
+        <div class="actions">
+          <button id="index-current" type="button">Index current page</button>
+          <button id="sync-now" type="button">Sync now</button>
+        </div>
+        <a id="open-history" class="primary link-button" target="_blank">Open History</a>
+      </section>
+
+      <p id="error" role="alert"></p>
+      <footer>
+        <button id="open-options" class="text-button" type="button">Settings and import</button>
+      </footer>
+    </main>
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>

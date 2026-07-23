@@ -1,0 +1,12 @@
+NewsRead History
+Copyright 2026 Sharon Tourjeman
+
+This extension adapts the DOM extraction priority and IndexedDB approach from:
+
+Smart History - Semantic Memory
+Copyright 2026 The Smart History Authors
+https://github.com/duyng/chrome-smart-history
+
+Smart History is licensed under the Apache License, Version 2.0. The adapted
+files were substantially changed for server synchronization, privacy policy,
+and Manifest V3 packaging. See SMART_HISTORY_LICENSE.txt in packaged builds.

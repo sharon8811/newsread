@@ -586,22 +586,22 @@ Merge gate:
 
 ### Phase 4 — Chrome extension (L)
 
-- [ ] Add `extension/` and adapt—not copy blindly—the reference prototype.
-- [ ] Choose and document the minimal build/test setup; TypeScript is preferred if
+- [x] Add `extension/` and adapt—not copy blindly—the reference prototype.
+- [x] Choose and document the minimal build/test setup; TypeScript is preferred if
       it does not complicate Chrome Web Store packaging.
-- [ ] Correct MV3 permissions and offscreen handling; omit offscreen entirely if
+- [x] Correct MV3 permissions and offscreen handling; omit offscreen entirely if
       no browser-local model needs it.
-- [ ] Use optional runtime host permissions for the selected NewsRead origin rather
+- [x] Use optional runtime host permissions for the selected NewsRead origin rather
       than permanently granting the extension network access to arbitrary origins.
-- [ ] Implement pairing, connection health, and revocation handling.
-- [ ] Implement one DOM extraction path.
-- [ ] Implement IndexedDB outbox, content-hash dedup, bounded batches, a maximum
+- [x] Implement pairing, connection health, and revocation handling.
+- [x] Implement one DOM extraction path.
+- [x] Implement IndexedDB outbox, content-hash dedup, bounded batches, a maximum
       queue age, exponential retry with jitter, alarms, and visible failure state.
-- [ ] Implement pause, index-current, exclusions, capture modes, and open-History.
-- [ ] Optionally import old `chrome.history` metadata with progress/cancel.
-- [ ] Add unit tests using mocked Chrome APIs plus a manual unpacked-extension test
+- [x] Implement pause, index-current, exclusions, capture modes, and open-History.
+- [x] Optionally import old `chrome.history` metadata with progress/cancel.
+- [x] Add unit tests using mocked Chrome APIs plus a manual unpacked-extension test
       checklist.
-- [ ] Add packaging/version instructions and required license/NOTICE attribution
+- [x] Add packaging/version instructions and required license/NOTICE attribution
       for reused prototype code.
 
 Merge gate:

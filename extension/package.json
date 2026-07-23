@@ -1,0 +1,19 @@
+{
+  "name": "newsread-browser-history-extension",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/clean.mjs && tsc -p tsconfig.json && node scripts/build.mjs",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:cov": "vitest run --coverage"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.1.32",
+    "@vitest/coverage-v8": "^4.0.0",
+    "fake-indexeddb": "^6.2.4",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.0"
+  }
+}
