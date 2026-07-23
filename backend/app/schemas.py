@@ -1,10 +1,27 @@
 import json
-import re
 import unicodedata
 from datetime import date, datetime
-from typing import Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    EmailStr,
+    Field,
+    WithJsonSchema,
+    field_validator,
+    model_validator,
+)
+
+from .history_policy import (
+    MAX_HISTORY_EXCERPT_CHARS,
+    MAX_HISTORY_TEXT_CHARS,
+    MAX_HISTORY_TITLE_CHARS,
+    MAX_HISTORY_URL_CHARS,
+    MAX_HISTORY_VISIT_COUNT,
+    normalize_history_hostname,
+    sanitize_capture_text,
+    validate_normalized_history_url,
+)
 
 ViewMode = Literal["cards", "list", "stories"]
 SortOrder = Literal["newest", "oldest"]
@@ -137,32 +154,10 @@ class BrowserHistorySettingsIn(BaseModel):
 
 
 DomainRuleMode = Literal["exclude", "metadata_only"]
-_HOST_LABEL = re.compile(r"^[a-z0-9-]+$")
 
 
 def _normalize_hostname(value: str) -> str:
-    hostname = value.strip().lower().rstrip(".")
-    if hostname.startswith("*."):
-        hostname = hostname[2:]
-    if not hostname or any(char in hostname for char in "/:@[]"):
-        raise ValueError("enter a hostname without a scheme, path, or port")
-    try:
-        hostname = hostname.encode("idna").decode("ascii")
-    except UnicodeError as exc:
-        raise ValueError("enter a valid hostname") from exc
-    if len(hostname) > 253:
-        raise ValueError("hostname is too long")
-    labels = hostname.split(".")
-    if any(
-        not label
-        or len(label) > 63
-        or label.startswith("-")
-        or label.endswith("-")
-        or not _HOST_LABEL.fullmatch(label)
-        for label in labels
-    ):
-        raise ValueError("enter a valid hostname")
-    return hostname
+    return normalize_history_hostname(value)
 
 
 class BrowserHistoryDomainRuleIn(BaseModel):
@@ -192,6 +187,88 @@ class BrowserHistorySyncStatusOut(BaseModel):
     user_name: str
     settings: BrowserHistorySettingsOut
     domain_rules: list[BrowserHistoryDomainRuleOut]
+
+
+class BrowserHistoryCaptureIn(BaseModel):
+    record_id: str = Field(min_length=1, max_length=128)
+    url: str = Field(min_length=1, max_length=MAX_HISTORY_URL_CHARS)
+    title: str = Field(default="", max_length=MAX_HISTORY_TITLE_CHARS)
+    text: str = Field(default="", max_length=MAX_HISTORY_TEXT_CHARS)
+    text_excerpt: str = Field(default="", max_length=MAX_HISTORY_EXCERPT_CHARS)
+    first_visited_at: datetime
+    last_visited_at: datetime
+    visit_count: int = Field(ge=1)
+    captured_at: datetime | None = None
+    known_revision: int = Field(default=0, ge=0, le=2_147_483_647)
+
+    @field_validator("record_id")
+    @classmethod
+    def clean_record_id(cls, value: str) -> str:
+        value = _clean_single_line(value)
+        if not value:
+            raise ValueError("must not be empty")
+        return value
+
+    @field_validator("url")
+    @classmethod
+    def validate_url(cls, value: str) -> str:
+        validate_normalized_history_url(value)
+        return value
+
+    @field_validator("title", "text", "text_excerpt", mode="before")
+    @classmethod
+    def sanitize_page_text(cls, value: Any) -> Any:
+        return sanitize_capture_text(value) if isinstance(value, str) else value
+
+    @field_validator("visit_count")
+    @classmethod
+    def cap_visit_count(cls, value: int) -> int:
+        return min(value, MAX_HISTORY_VISIT_COUNT)
+
+    @model_validator(mode="after")
+    def validate_timestamps(self):
+        timestamps = (
+            self.first_visited_at,
+            self.last_visited_at,
+            self.captured_at,
+        )
+        if any(value is not None and value.utcoffset() is None for value in timestamps):
+            raise ValueError("timestamps must include a timezone")
+        if self.last_visited_at < self.first_visited_at:
+            raise ValueError("last_visited_at must not precede first_visited_at")
+        return self
+
+
+BrowserHistoryCapturePayload = Annotated[
+    Any,
+    WithJsonSchema(BrowserHistoryCaptureIn.model_json_schema()),
+]
+
+
+class BrowserHistorySyncIn(BaseModel):
+    # Runtime validation remains per-item so one hostile record cannot reject a
+    # good batch; WithJsonSchema keeps the extension's generated contract exact.
+    records: list[BrowserHistoryCapturePayload] = Field(min_length=1, max_length=100)
+
+
+class BrowserHistorySyncAcceptedOut(BaseModel):
+    record_id: str
+    page_id: int
+    url_hash: str
+
+
+class BrowserHistorySyncRejectedOut(BaseModel):
+    record_id: str
+    code: Literal["invalid", "excluded", "stale_revision"]
+    detail: str
+
+
+class BrowserHistorySyncOut(BaseModel):
+    accepted: list[BrowserHistorySyncAcceptedOut]
+    rejected: list[BrowserHistorySyncRejectedOut]
+    sync_revision: int
+    domain_rules: list[BrowserHistoryDomainRuleOut]
+    server_time: datetime
 
 
 # --- Feeds ---

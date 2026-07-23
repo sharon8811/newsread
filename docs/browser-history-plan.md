@@ -1,6 +1,6 @@
 # Browser History feature plan
 
-> **Status:** Phase 1 implemented; amended review decisions preserved
+> **Status:** Phase 1 committed; Phase 2 in progress; amended review decisions preserved
 > (normalization contract, counter regression, offline-deletion tradeoff,
 > public-deployment privacy posture, dev seed script)
 >
@@ -519,12 +519,17 @@ Merge gate:
 
 ### Phase 2 — Sync, retention, and hybrid search (L)
 
+Normalization, sanitization, request limits, idempotent batch sync, absolute
+per-connection aggregates, synchronized-rule enforcement, and stale-tombstone
+rejection are implemented. Search, deletion endpoints, embeddings, retention,
+and the dev seed script remain.
+
 - [ ] Implement defensive URL normalization and capture validation, including
       the per-field sanitization from “Untrusted-content and injection
       defenses” (control/bidi stripping, timestamp clamping, count caps,
       wildcard-escaped ILIKE).
-- [ ] Add batch sync with absolute per-connection visit aggregates.
-- [ ] Enforce synchronized domain rules and expose their revision to extensions.
+- [x] Add batch sync with absolute per-connection visit aggregates.
+- [x] Enforce synchronized domain rules and expose their revision to extensions.
 - [ ] Add content-hash stale detection and bounded worker embedding.
 - [ ] Add hybrid search/list endpoint with filters and pagination.
 - [ ] Add page/domain/all deletion tombstones and stale-queue protection.

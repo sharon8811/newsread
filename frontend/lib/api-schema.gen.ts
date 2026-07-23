@@ -851,6 +851,23 @@ export interface paths {
         patch: operations["update_history_settings_api_history_settings_patch"];
         trace?: never;
     };
+    "/api/history/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Sync History */
+        post: operations["sync_history_api_history_sync_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/history/sync/status": {
         parameters: {
             query?: never;
@@ -2040,6 +2057,43 @@ export interface components {
             retention_days: (30 | 90 | 365) | null;
             /** Sync Revision */
             sync_revision: number;
+        };
+        /** BrowserHistorySyncAcceptedOut */
+        BrowserHistorySyncAcceptedOut: {
+            /** Page Id */
+            page_id: number;
+            /** Record Id */
+            record_id: string;
+            /** Url Hash */
+            url_hash: string;
+        };
+        /** BrowserHistorySyncOut */
+        BrowserHistorySyncOut: {
+            /** Accepted */
+            accepted: components["schemas"]["BrowserHistorySyncAcceptedOut"][];
+            /** Domain Rules */
+            domain_rules: components["schemas"]["BrowserHistoryDomainRuleOut"][];
+            /** Rejected */
+            rejected: components["schemas"]["BrowserHistorySyncRejectedOut"][];
+            /**
+             * Server Time
+             * Format: date-time
+             */
+            server_time: string;
+            /** Sync Revision */
+            sync_revision: number;
+        };
+        /** BrowserHistorySyncRejectedOut */
+        BrowserHistorySyncRejectedOut: {
+            /**
+             * Code
+             * @enum {string}
+             */
+            code: "invalid" | "excluded" | "stale_revision";
+            /** Detail */
+            detail: string;
+            /** Record Id */
+            record_id: string;
         };
         /** BrowserHistorySyncStatusOut */
         BrowserHistorySyncStatusOut: {
@@ -4668,6 +4722,83 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BrowserHistorySettingsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sync_history_api_history_sync_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Content-Length"?: number | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Records */
+                    records: {
+                        /** Captured At */
+                        captured_at?: string | null;
+                        /**
+                         * First Visited At
+                         * Format: date-time
+                         */
+                        first_visited_at: string;
+                        /**
+                         * Known Revision
+                         * @default 0
+                         */
+                        known_revision?: number;
+                        /**
+                         * Last Visited At
+                         * Format: date-time
+                         */
+                        last_visited_at: string;
+                        /** Record Id */
+                        record_id: string;
+                        /**
+                         * Text
+                         * @default
+                         */
+                        text?: string;
+                        /**
+                         * Text Excerpt
+                         * @default
+                         */
+                        text_excerpt?: string;
+                        /**
+                         * Title
+                         * @default
+                         */
+                        title?: string;
+                        /** Url */
+                        url: string;
+                        /** Visit Count */
+                        visit_count: number;
+                    }[];
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrowserHistorySyncOut"];
                 };
             };
             /** @description Validation Error */

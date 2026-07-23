@@ -1315,6 +1315,100 @@
         "title": "BrowserHistorySettingsOut",
         "type": "object"
       },
+      "BrowserHistorySyncAcceptedOut": {
+        "properties": {
+          "page_id": {
+            "title": "Page Id",
+            "type": "integer"
+          },
+          "record_id": {
+            "title": "Record Id",
+            "type": "string"
+          },
+          "url_hash": {
+            "title": "Url Hash",
+            "type": "string"
+          }
+        },
+        "required": [
+          "record_id",
+          "page_id",
+          "url_hash"
+        ],
+        "title": "BrowserHistorySyncAcceptedOut",
+        "type": "object"
+      },
+      "BrowserHistorySyncOut": {
+        "properties": {
+          "accepted": {
+            "items": {
+              "$ref": "#/components/schemas/BrowserHistorySyncAcceptedOut"
+            },
+            "title": "Accepted",
+            "type": "array"
+          },
+          "domain_rules": {
+            "items": {
+              "$ref": "#/components/schemas/BrowserHistoryDomainRuleOut"
+            },
+            "title": "Domain Rules",
+            "type": "array"
+          },
+          "rejected": {
+            "items": {
+              "$ref": "#/components/schemas/BrowserHistorySyncRejectedOut"
+            },
+            "title": "Rejected",
+            "type": "array"
+          },
+          "server_time": {
+            "format": "date-time",
+            "title": "Server Time",
+            "type": "string"
+          },
+          "sync_revision": {
+            "title": "Sync Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "accepted",
+          "rejected",
+          "sync_revision",
+          "domain_rules",
+          "server_time"
+        ],
+        "title": "BrowserHistorySyncOut",
+        "type": "object"
+      },
+      "BrowserHistorySyncRejectedOut": {
+        "properties": {
+          "code": {
+            "enum": [
+              "invalid",
+              "excluded",
+              "stale_revision"
+            ],
+            "title": "Code",
+            "type": "string"
+          },
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "record_id": {
+            "title": "Record Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "record_id",
+          "code",
+          "detail"
+        ],
+        "title": "BrowserHistorySyncRejectedOut",
+        "type": "object"
+      },
       "BrowserHistorySyncStatusOut": {
         "properties": {
           "connection": {
@@ -6722,6 +6816,159 @@
           }
         ],
         "summary": "Update History Settings",
+        "tags": [
+          "browser-history"
+        ]
+      }
+    },
+    "/api/history/sync": {
+      "post": {
+        "operationId": "sync_history_api_history_sync_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Content-Length",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Content-Length"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "records": {
+                    "items": {
+                      "properties": {
+                        "captured_at": {
+                          "anyOf": [
+                            {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "title": "Captured At"
+                        },
+                        "first_visited_at": {
+                          "format": "date-time",
+                          "title": "First Visited At",
+                          "type": "string"
+                        },
+                        "known_revision": {
+                          "default": 0,
+                          "maximum": 2147483647,
+                          "minimum": 0,
+                          "title": "Known Revision",
+                          "type": "integer"
+                        },
+                        "last_visited_at": {
+                          "format": "date-time",
+                          "title": "Last Visited At",
+                          "type": "string"
+                        },
+                        "record_id": {
+                          "maxLength": 128,
+                          "minLength": 1,
+                          "title": "Record Id",
+                          "type": "string"
+                        },
+                        "text": {
+                          "default": "",
+                          "maxLength": 6000,
+                          "title": "Text",
+                          "type": "string"
+                        },
+                        "text_excerpt": {
+                          "default": "",
+                          "maxLength": 500,
+                          "title": "Text Excerpt",
+                          "type": "string"
+                        },
+                        "title": {
+                          "default": "",
+                          "maxLength": 512,
+                          "title": "Title",
+                          "type": "string"
+                        },
+                        "url": {
+                          "maxLength": 2048,
+                          "minLength": 1,
+                          "title": "Url",
+                          "type": "string"
+                        },
+                        "visit_count": {
+                          "minimum": 1,
+                          "title": "Visit Count",
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "record_id",
+                        "url",
+                        "first_visited_at",
+                        "last_visited_at",
+                        "visit_count"
+                      ],
+                      "title": "BrowserHistoryCaptureIn",
+                      "type": "object"
+                    },
+                    "maxItems": 100,
+                    "minItems": 1,
+                    "title": "Records",
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "records"
+                ],
+                "title": "BrowserHistorySyncIn",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserHistorySyncOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BrowserHistoryToken": []
+          }
+        ],
+        "summary": "Sync History",
         "tags": [
           "browser-history"
         ]

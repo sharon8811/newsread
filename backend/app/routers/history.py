@@ -1,8 +1,11 @@
 """Browser-history connections and synchronized capture policy."""
 
+import json
 from datetime import UTC, datetime, timedelta
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
+from pydantic import ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
@@ -12,8 +15,11 @@ from ..history_auth import (
     generate_browser_token,
     require_browser_history_enabled,
 )
+from ..history_policy import sanitize_capture_text
+from ..history_sync import SyncRejection, persist_capture
 from ..models import (
     BrowserConnection,
+    BrowserHistoryDeletion,
     BrowserHistoryDomainRule,
     BrowserHistorySettings,
     User,
@@ -22,10 +28,15 @@ from ..schemas import (
     BrowserConnectionCreatedOut,
     BrowserConnectionCreateIn,
     BrowserConnectionOut,
+    BrowserHistoryCaptureIn,
     BrowserHistoryDomainRuleIn,
     BrowserHistoryDomainRuleOut,
     BrowserHistorySettingsIn,
     BrowserHistorySettingsOut,
+    BrowserHistorySyncAcceptedOut,
+    BrowserHistorySyncIn,
+    BrowserHistorySyncOut,
+    BrowserHistorySyncRejectedOut,
     BrowserHistorySyncStatusOut,
 )
 
@@ -37,6 +48,17 @@ router = APIRouter(
 
 TOKEN_CREATION_LIMIT = 10
 TOKEN_CREATION_WINDOW = timedelta(hours=1)
+MAX_SYNC_REQUEST_BYTES = 1024 * 1024
+SYNC_REQUEST_OPENAPI = {
+    "requestBody": {
+        "required": True,
+        "content": {
+            "application/json": {
+                "schema": BrowserHistorySyncIn.model_json_schema(),
+            }
+        },
+    }
+}
 
 
 async def _settings_for(session: DbSession, user_id: int) -> BrowserHistorySettings:
@@ -57,6 +79,28 @@ def _settings_out(history_settings: BrowserHistorySettings) -> BrowserHistorySet
         retention_days=history_settings.retention_days,
         sync_revision=history_settings.sync_revision,
     )
+
+
+def _record_id(raw: object, index: int) -> str:
+    if isinstance(raw, dict) and isinstance(raw.get("record_id"), str):
+        cleaned = sanitize_capture_text(raw["record_id"])[:128]
+        if cleaned:
+            return cleaned
+    return f"record-{index}"
+
+
+def _validation_detail(exc: ValidationError) -> str:
+    error = exc.errors(include_url=False)[0]
+    field = ".".join(str(part) for part in error.get("loc", ()))
+    message = error.get("msg", "invalid capture")
+    return f"{field}: {message}" if field else message
+
+
+def require_sync_content_length(
+    content_length: Annotated[int | None, Header(alias="Content-Length")] = None,
+) -> None:
+    if content_length is not None and content_length > MAX_SYNC_REQUEST_BYTES:
+        raise HTTPException(status_code=413, detail="History sync batch exceeds 1 MiB")
 
 
 @router.post(
@@ -231,6 +275,98 @@ async def delete_domain_rule(
     history_settings.sync_revision += 1
     await session.delete(rule)
     await session.commit()
+
+
+@router.post(
+    "/sync",
+    response_model=BrowserHistorySyncOut,
+    dependencies=[Depends(require_sync_content_length)],
+    openapi_extra=SYNC_REQUEST_OPENAPI,
+)
+async def sync_history(
+    request: Request,
+    connection: BrowserConnectionAuth,
+    session: DbSession,
+):
+    raw_body = await request.body()
+    if len(raw_body) > MAX_SYNC_REQUEST_BYTES:
+        raise HTTPException(status_code=413, detail="History sync batch exceeds 1 MiB")
+    try:
+        decoded = json.loads(raw_body)
+        body = BrowserHistorySyncIn.model_validate(decoded)
+    except (json.JSONDecodeError, UnicodeDecodeError, ValidationError) as exc:
+        raise HTTPException(status_code=422, detail="Invalid history sync body") from exc
+
+    history_settings = await _settings_for(session, connection.user_id)
+    rules = list(
+        await session.scalars(
+            select(BrowserHistoryDomainRule)
+            .where(BrowserHistoryDomainRule.user_id == connection.user_id)
+            .order_by(
+                BrowserHistoryDomainRule.hostname,
+                BrowserHistoryDomainRule.match_subdomains,
+            )
+        )
+    )
+    deletions = list(
+        await session.scalars(
+            select(BrowserHistoryDeletion).where(
+                BrowserHistoryDeletion.user_id == connection.user_id
+            )
+        )
+    )
+    accepted: list[BrowserHistorySyncAcceptedOut] = []
+    rejected: list[BrowserHistorySyncRejectedOut] = []
+    now = datetime.now(UTC)
+
+    for index, raw in enumerate(body.records):
+        record_id = _record_id(raw, index)
+        try:
+            capture = BrowserHistoryCaptureIn.model_validate(raw)
+        except ValidationError as exc:
+            rejected.append(
+                BrowserHistorySyncRejectedOut(
+                    record_id=record_id,
+                    code="invalid",
+                    detail=_validation_detail(exc),
+                )
+            )
+            continue
+        try:
+            page, normalized = await persist_capture(
+                session,
+                connection,
+                capture,
+                rules=rules,
+                deletions=deletions,
+                now=now,
+            )
+        except SyncRejection as exc:
+            rejected.append(
+                BrowserHistorySyncRejectedOut(
+                    record_id=capture.record_id,
+                    code=exc.code,
+                    detail=exc.detail,
+                )
+            )
+            continue
+        accepted.append(
+            BrowserHistorySyncAcceptedOut(
+                record_id=capture.record_id,
+                page_id=page.id,
+                url_hash=normalized.url_hash,
+            )
+        )
+
+    connection.last_seen_at = now
+    await session.commit()
+    return BrowserHistorySyncOut(
+        accepted=accepted,
+        rejected=rejected,
+        sync_revision=history_settings.sync_revision,
+        domain_rules=[BrowserHistoryDomainRuleOut.model_validate(rule) for rule in rules],
+        server_time=now,
+    )
 
 
 @router.get("/sync/status", response_model=BrowserHistorySyncStatusOut)
