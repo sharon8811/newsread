@@ -56,12 +56,14 @@ export const keys = {
     dateFrom,
     dateTo,
     sort,
+    cursor,
   }: {
     q?: string;
     hostname?: string;
     dateFrom?: string;
     dateTo?: string;
     sort?: "recent" | "relevance";
+    cursor?: string;
   }) => {
     const params = new URLSearchParams();
     if (q) params.set("q", q);
@@ -69,6 +71,7 @@ export const keys = {
     if (dateFrom) params.set("date_from", dateFrom);
     if (dateTo) params.set("date_to", dateTo);
     if (sort && sort !== "recent") params.set("sort", sort);
+    if (cursor) params.set("cursor", cursor);
     const qs = params.toString();
     return qs ? `/history?${qs}` : "/history";
   },

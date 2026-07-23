@@ -4643,6 +4643,7 @@ export interface operations {
                 date_to?: string | null;
                 sort?: "recent" | "relevance";
                 limit?: number;
+                cursor?: string | null;
             };
             header?: never;
             path?: never;

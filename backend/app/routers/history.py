@@ -1,14 +1,18 @@
 """Browser-history connections and synchronized capture policy."""
 
+import base64
+import hashlib
 import json
+import math
 from datetime import UTC, date, datetime, timedelta
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response
 from pydantic import ValidationError
-from sqlalchemy import case, delete, func, or_, select
+from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
+from .. import history_search
 from ..deps import CurrentUser, DbSession
 from ..history_auth import (
     BrowserConnectionAuth,
@@ -55,6 +59,8 @@ router = APIRouter(
 TOKEN_CREATION_LIMIT = 10
 TOKEN_CREATION_WINDOW = timedelta(hours=1)
 MAX_SYNC_REQUEST_BYTES = 1024 * 1024
+SYNC_RATE_LIMIT = 60
+SYNC_RATE_WINDOW_SECONDS = 60
 SYNC_REQUEST_OPENAPI = {
     "requestBody": {
         "required": True,
@@ -134,8 +140,69 @@ async def _write_deletion(
     )
 
 
-def _escape_ilike(value: str) -> str:
-    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+def _history_cursor_signature(
+    *,
+    q: str | None,
+    hostname: str | None,
+    date_from: date | None,
+    date_to: date | None,
+    sort: str,
+) -> str:
+    value = json.dumps(
+        {
+            "q": q,
+            "hostname": hostname,
+            "date_from": date_from.isoformat() if date_from else None,
+            "date_to": date_to.isoformat() if date_to else None,
+            "sort": sort,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(value.encode()).hexdigest()[:16]
+
+
+def _encode_history_cursor(payload: dict) -> str:
+    raw = json.dumps(payload, separators=(",", ":")).encode()
+    return base64.urlsafe_b64encode(raw).decode().rstrip("=")
+
+
+def _decode_history_cursor(cursor: str, signature: str) -> dict:
+    try:
+        padded = cursor + "=" * (-len(cursor) % 4)
+        payload = json.loads(base64.urlsafe_b64decode(padded).decode())
+        if not isinstance(payload, dict) or payload.get("signature") != signature:
+            raise ValueError
+        return payload
+    except (ValueError, TypeError, UnicodeDecodeError, json.JSONDecodeError):
+        raise HTTPException(status_code=422, detail="Invalid history cursor") from None
+
+
+async def _enforce_sync_rate_limit(
+    session: DbSession,
+    connection: BrowserConnection,
+) -> None:
+    locked = await session.scalar(
+        select(BrowserConnection).where(BrowserConnection.id == connection.id).with_for_update()
+    )
+    now = datetime.now(UTC)
+    window = timedelta(seconds=SYNC_RATE_WINDOW_SECONDS)
+    if locked.sync_window_started_at is None or locked.sync_window_started_at + window <= now:
+        locked.sync_window_started_at = now
+        locked.sync_request_count = 0
+    if locked.sync_request_count >= SYNC_RATE_LIMIT:
+        retry_after = max(
+            1,
+            math.ceil((locked.sync_window_started_at + window - now).total_seconds()),
+        )
+        await session.rollback()
+        raise HTTPException(
+            status_code=429,
+            detail="Too many history sync requests; retry later",
+            headers={"Retry-After": str(retry_after)},
+        )
+    locked.sync_request_count += 1
+    await session.commit()
 
 
 @router.post(
@@ -360,6 +427,7 @@ async def history_summary(user: CurrentUser, session: DbSession):
 
 @router.get("", response_model=list[BrowserHistoryPageOut])
 async def list_history(
+    response: Response,
     user: CurrentUser,
     session: DbSession,
     q: str | None = Query(default=None, max_length=200),
@@ -368,49 +436,117 @@ async def list_history(
     date_to: date | None = None,
     sort: Literal["recent", "relevance"] = "recent",
     limit: int = Query(default=50, ge=1, le=50),
+    cursor: str | None = Query(default=None, max_length=500),
 ):
-    statement = select(BrowserHistoryPage).where(BrowserHistoryPage.user_id == user.id)
+    query = q.strip() if q and q.strip() else None
+    normalized_hostname = None
     if hostname:
         try:
             normalized_hostname = normalize_history_hostname(hostname)
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
-        statement = statement.where(
-            or_(
-                BrowserHistoryPage.hostname == normalized_hostname,
-                BrowserHistoryPage.hostname.endswith(f".{normalized_hostname}"),
+    signature = _history_cursor_signature(
+        q=query,
+        hostname=normalized_hostname,
+        date_from=date_from,
+        date_to=date_to,
+        sort=sort,
+    )
+    payload = _decode_history_cursor(cursor, signature) if cursor else None
+
+    ranked_ids: list[int] | None = None
+    if query:
+        ranked_ids = await history_search.hybrid_search_ids(
+            session,
+            user_id=user.id,
+            query=query,
+            hostname=normalized_hostname,
+            date_from=date_from,
+            date_to=date_to,
+        )
+        if not ranked_ids:
+            return []
+
+    if sort == "relevance" and ranked_ids is not None:
+        offset = 0
+        if payload:
+            if payload.get("mode") != "ranked" or not isinstance(payload.get("offset"), int):
+                raise HTTPException(status_code=422, detail="Invalid history cursor")
+            offset = payload["offset"]
+            if offset < 0 or offset > history_search.HISTORY_SEARCH_POOL:
+                raise HTTPException(status_code=422, detail="Invalid history cursor")
+        page_ids = ranked_ids[offset : offset + limit + 1]
+        has_more = len(page_ids) > limit
+        page_ids = page_ids[:limit]
+        unordered = list(
+            await session.scalars(
+                select(BrowserHistoryPage).where(
+                    BrowserHistoryPage.user_id == user.id,
+                    BrowserHistoryPage.id.in_(page_ids),
+                )
             )
         )
-    if date_from:
-        statement = statement.where(func.date(BrowserHistoryPage.last_visited_at) >= date_from)
-    if date_to:
-        statement = statement.where(func.date(BrowserHistoryPage.last_visited_at) <= date_to)
-
-    relevance = None
-    if q:
-        pattern = f"%{_escape_ilike(q.strip())}%"
-        title_match = BrowserHistoryPage.title.ilike(pattern, escape="\\")
-        hostname_match = BrowserHistoryPage.hostname.ilike(pattern, escape="\\")
-        text_match = BrowserHistoryPage.text.ilike(pattern, escape="\\")
-        statement = statement.where(or_(title_match, hostname_match, text_match))
-        relevance = case(
-            (title_match, 3),
-            (hostname_match, 2),
-            else_=1,
-        )
-
-    if sort == "relevance" and relevance is not None:
-        statement = statement.order_by(
-            relevance.desc(),
-            BrowserHistoryPage.last_visited_at.desc(),
-            BrowserHistoryPage.id.desc(),
-        )
+        by_id = {page.id: page for page in unordered}
+        pages = [by_id[page_id] for page_id in page_ids if page_id in by_id]
+        if has_more:
+            response.headers["X-Next-Cursor"] = _encode_history_cursor(
+                {
+                    "mode": "ranked",
+                    "offset": offset + limit,
+                    "signature": signature,
+                }
+            )
     else:
+        statement = history_search.scoped_pages(
+            user.id,
+            hostname=normalized_hostname,
+            date_from=date_from,
+            date_to=date_to,
+        )
+        if ranked_ids is not None:
+            statement = statement.where(BrowserHistoryPage.id.in_(ranked_ids))
+        if payload:
+            if (
+                payload.get("mode") != "recent"
+                or not isinstance(payload.get("last_visited_at"), str)
+                or not isinstance(payload.get("id"), int)
+            ):
+                raise HTTPException(status_code=422, detail="Invalid history cursor")
+            try:
+                cursor_time = datetime.fromisoformat(payload["last_visited_at"])
+                if cursor_time.utcoffset() is None:
+                    raise ValueError
+            except ValueError:
+                raise HTTPException(
+                    status_code=422,
+                    detail="Invalid history cursor",
+                ) from None
+            statement = statement.where(
+                or_(
+                    BrowserHistoryPage.last_visited_at < cursor_time,
+                    and_(
+                        BrowserHistoryPage.last_visited_at == cursor_time,
+                        BrowserHistoryPage.id < payload["id"],
+                    ),
+                )
+            )
         statement = statement.order_by(
             BrowserHistoryPage.last_visited_at.desc(),
             BrowserHistoryPage.id.desc(),
         )
-    pages = list(await session.scalars(statement.limit(limit)))
+        pages = list(await session.scalars(statement.limit(limit + 1)))
+        has_more = len(pages) > limit
+        pages = pages[:limit]
+        if has_more:
+            last_page = pages[-1]
+            response.headers["X-Next-Cursor"] = _encode_history_cursor(
+                {
+                    "mode": "recent",
+                    "last_visited_at": last_page.last_visited_at.isoformat(),
+                    "id": last_page.id,
+                    "signature": signature,
+                }
+            )
     if not pages:
         return []
 
@@ -513,6 +649,7 @@ async def sync_history(
     connection: BrowserConnectionAuth,
     session: DbSession,
 ):
+    await _enforce_sync_rate_limit(session, connection)
     raw_body = await request.body()
     if len(raw_body) > MAX_SYNC_REQUEST_BYTES:
         raise HTTPException(status_code=413, detail="History sync batch exceeds 1 MiB")

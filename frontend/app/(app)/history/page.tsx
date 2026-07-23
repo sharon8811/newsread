@@ -187,6 +187,10 @@ export default function HistoryPage() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [querySort, setQuerySort] = useState<BrowserHistorySort>("relevance");
+  const [cursorStack, setCursorStack] = useState<(string | undefined)[]>([
+    undefined,
+  ]);
+  const [pageIndex, setPageIndex] = useState(0);
   const debouncedQuery = useDebouncedValue(query.trim(), 250);
   const debouncedHostname = useDebouncedValue(hostname.trim(), 250);
   const hostnameFilterValid = isValidHostnameFilter(debouncedHostname);
@@ -194,7 +198,7 @@ export default function HistoryPage() {
   const shouldLoadHistory =
     enabled && summary?.has_history === true && hostnameFilterValid;
   const {
-    data: pages,
+    data: historyPage,
     error,
     isLoading,
     mutate,
@@ -205,9 +209,25 @@ export default function HistoryPage() {
       dateFrom: dateFrom || undefined,
       dateTo: dateTo || undefined,
       sort,
+      cursor: cursorStack[pageIndex],
     },
     shouldLoadHistory,
   );
+  const pages = historyPage?.items;
+
+  function resetPagination() {
+    setCursorStack([undefined]);
+    setPageIndex(0);
+  }
+
+  function showNextPage() {
+    if (!historyPage?.nextCursor) return;
+    setCursorStack((current) => [
+      ...current.slice(0, pageIndex + 1),
+      historyPage.nextCursor ?? undefined,
+    ]);
+    setPageIndex((current) => current + 1);
+  }
 
   if (config && !enabled) notFound();
 
@@ -294,7 +314,10 @@ export default function HistoryPage() {
                   placeholder="Search titles, domains, and page text…"
                   value={query}
                   autoFocus
-                  onChange={(event) => setQuery(event.target.value)}
+                  onChange={(event) => {
+                    setQuery(event.target.value);
+                    resetPagination();
+                  }}
                 />
               </div>
               <div className="mt-2.5 grid grid-cols-2 gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto_auto]">
@@ -307,29 +330,39 @@ export default function HistoryPage() {
                   aria-invalid={!hostnameFilterValid}
                   placeholder="Domain"
                   value={hostname}
-                  onChange={(event) => setHostname(event.target.value)}
+                  onChange={(event) => {
+                    setHostname(event.target.value);
+                    resetPagination();
+                  }}
                 />
                 <input
                   className="input min-w-0"
                   type="date"
                   aria-label="Visited after"
                   value={dateFrom}
-                  onChange={(event) => setDateFrom(event.target.value)}
+                  onChange={(event) => {
+                    setDateFrom(event.target.value);
+                    resetPagination();
+                  }}
                 />
                 <input
                   className="input min-w-0"
                   type="date"
                   aria-label="Visited before"
                   value={dateTo}
-                  onChange={(event) => setDateTo(event.target.value)}
+                  onChange={(event) => {
+                    setDateTo(event.target.value);
+                    resetPagination();
+                  }}
                 />
                 <select
                   className="input col-span-2 w-full sm:col-span-1 sm:w-auto"
                   aria-label="Sort history"
                   value={sort}
-                  onChange={(event) =>
-                    setQuerySort(event.target.value as BrowserHistorySort)
-                  }
+                  onChange={(event) => {
+                    setQuerySort(event.target.value as BrowserHistorySort);
+                    resetPagination();
+                  }}
                 >
                   <option value="relevance" disabled={!debouncedQuery}>
                     Best match
@@ -387,7 +420,41 @@ export default function HistoryPage() {
                   </p>
                 </div>
               ) : (
-                pages?.map((page) => <HistoryRow key={page.id} page={page} />)
+                <>
+                  {pages?.map((page) => (
+                    <HistoryRow key={page.id} page={page} />
+                  ))}
+                  {(pageIndex > 0 || historyPage?.nextCursor) && (
+                    <nav
+                      className="mt-5 flex items-center justify-between border-t pt-4"
+                      style={{ borderColor: "var(--line-soft)" }}
+                      aria-label="History pages"
+                    >
+                      <button
+                        className="btn"
+                        disabled={pageIndex === 0}
+                        onClick={() =>
+                          setPageIndex((current) => Math.max(0, current - 1))
+                        }
+                      >
+                        Previous
+                      </button>
+                      <span
+                        className="text-caption"
+                        style={{ color: "var(--ink-faint)" }}
+                      >
+                        Page {pageIndex + 1}
+                      </span>
+                      <button
+                        className="btn"
+                        disabled={!historyPage?.nextCursor}
+                        onClick={showNextPage}
+                      >
+                        Next
+                      </button>
+                    </nav>
+                  )}
+                </>
               )}
             </section>
           </>

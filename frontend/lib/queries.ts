@@ -3,6 +3,7 @@
 import useSWR, { mutate, type SWRConfiguration } from "swr";
 import {
   fetcher,
+  apiWithHeaders,
   type AISettings,
   type AiStatus,
   type ActivitySummary,
@@ -140,12 +141,19 @@ export const useHistory = (
     dateFrom?: string;
     dateTo?: string;
     sort?: BrowserHistorySort;
+    cursor?: string;
   },
   enabled = true,
 ) =>
-  useSWR<BrowserHistoryPage[]>(
+  useSWR<{ items: BrowserHistoryPage[]; nextCursor: string | null }>(
     enabled ? keys.history(filters) : null,
-    fetcher,
+    async (path: string) => {
+      const page = await apiWithHeaders<BrowserHistoryPage[]>(path);
+      return {
+        items: page.data,
+        nextCursor: page.headers.get("X-Next-Cursor"),
+      };
+    },
     { keepPreviousData: true },
   );
 

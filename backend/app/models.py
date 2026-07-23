@@ -133,6 +133,12 @@ class BrowserConnection(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    sync_window_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    sync_request_count: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        server_default="0",
+    )
 
 
 class BrowserHistorySettings(Base):

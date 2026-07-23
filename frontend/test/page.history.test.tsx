@@ -44,6 +44,7 @@ const {
       ] as unknown[],
       historyError: undefined as Error | undefined,
       historyLoading: false,
+      nextCursor: null as string | null,
     },
   }));
 
@@ -61,7 +62,10 @@ function installSWR() {
     if (key === "/history/summary") return { data: state.summary };
     if (typeof key === "string" && (key === "/history" || key.startsWith("/history?"))) {
       return {
-        data: state.pages,
+        data:
+          state.pages === undefined
+            ? undefined
+            : { items: state.pages, nextCursor: state.nextCursor },
         isLoading: state.historyLoading,
         error: state.historyError,
         mutate: localMutateMock,
@@ -97,6 +101,7 @@ describe("HistoryPage", () => {
     ];
     state.historyError = undefined;
     state.historyLoading = false;
+    state.nextCursor = null;
     installSWR();
   });
 
@@ -183,6 +188,21 @@ describe("HistoryPage", () => {
     expect(screen.getByText(/Keep the paired extension running/)).toBeInTheDocument();
   });
 
+  it("distinguishes an empty filtered result from an empty history", async () => {
+    state.pages = [];
+    render(<HistoryPage />);
+    await userEvent.type(
+      screen.getByLabelText("Search browser history"),
+      "no match",
+    );
+    expect(
+      await screen.findByText("Nothing matched those filters."),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Try a broader search or clear one of the filters."),
+    ).toBeInTheDocument();
+  });
+
   it("shows a retry action when history results fail to load", async () => {
     state.historyError = new Error("unavailable");
     render(<HistoryPage />);
@@ -198,6 +218,32 @@ describe("HistoryPage", () => {
     state.historyLoading = true;
     const { container } = render(<HistoryPage />);
     expect(container.querySelectorAll(".animate-pulse")).toHaveLength(3);
+  });
+
+  it("moves through cursor pages and resets pagination when filters change", async () => {
+    state.nextCursor = "next-page";
+    render(<HistoryPage />);
+
+    expect(screen.getByText("Page 1")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Previous" })).toBeDisabled();
+    await userEvent.click(screen.getByRole("button", { name: "Next" }));
+    expect(screen.getByText("Page 2")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        swrMock.mock.calls.some((call) =>
+          String(call[0]).includes("cursor=next-page"),
+        ),
+      ).toBe(true),
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Previous" }));
+    expect(screen.getByText("Page 1")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Next" }));
+    await userEvent.type(
+      screen.getByLabelText("Search browser history"),
+      "postgres",
+    );
+    expect(screen.getByText("Page 1")).toBeInTheDocument();
   });
 
   it("keys search, domain, date, and sort filters through the API", async () => {

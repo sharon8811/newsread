@@ -2,13 +2,17 @@ from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select
 
+from app import embeddings, history_embeddings
+from app.config import settings
 from app.history_policy import MAX_HISTORY_VISIT_COUNT, validate_normalized_history_url
 from app.models import (
     BrowserHistoryDeletion,
+    BrowserHistoryEmbedding,
     BrowserHistoryPage,
     BrowserHistoryPageConnection,
     BrowserHistorySettings,
 )
+from app.routers import history as history_router
 
 
 async def _pair(client, users, user, name="Chrome"):
@@ -331,6 +335,157 @@ async def test_history_summary_list_search_filters_and_sources(client, users):
         headers=headers,
     )
     assert empty.json() == []
+
+
+async def test_history_search_uses_tsvector_and_current_model_vectors(
+    client,
+    users,
+    session,
+    monkeypatch,
+):
+    alice = await users.create(username="alice")
+    bob = await users.create(username="bob")
+    alice_pairing = await _pair(client, users, alice)
+    bob_pairing = await _pair(client, users, bob)
+    first = _capture(
+        "first",
+        url="https://alpha.example.com/page",
+        title="Database indexing notes",
+        text="PostgreSQL weighted document retrieval",
+    )
+    second = _capture(
+        "second",
+        url="https://beta.example.com/page",
+        title="Rendering notes",
+        text="Component update lifecycle",
+    )
+    alice_sync = await _sync(client, alice_pairing["token"], [first, second])
+    bob_sync = await _sync(
+        client,
+        bob_pairing["token"],
+        [_capture("bob", url="https://private.example.net/page")],
+    )
+    first_id, second_id = [item["page_id"] for item in alice_sync.json()["accepted"]]
+    bob_id = bob_sync.json()["accepted"][0]["page_id"]
+    session.add_all(
+        [
+            BrowserHistoryEmbedding(
+                page_id=first_id,
+                model=settings.openai_embedding_model,
+                embedding=[1.0, 0.0],
+                input_hash="first",
+            ),
+            BrowserHistoryEmbedding(
+                page_id=second_id,
+                model=settings.openai_embedding_model,
+                embedding=[0.0, 1.0],
+                input_hash="second",
+            ),
+            BrowserHistoryEmbedding(
+                page_id=bob_id,
+                model=settings.openai_embedding_model,
+                embedding=[1.0, 0.0],
+                input_hash="bob",
+            ),
+        ]
+    )
+    await session.commit()
+
+    keyword = await client.get(
+        "/api/history",
+        params={"q": "weighted retrieval", "sort": "relevance"},
+        headers=users.auth(alice),
+    )
+    assert [page["id"] for page in keyword.json()] == [first_id]
+
+    async def fake_embed_query(query):
+        assert query in {"concept without keywords", "component lifecycle"}
+        return [1.0, 0.0]
+
+    monkeypatch.setattr(history_embeddings, "is_configured", lambda: True)
+    monkeypatch.setattr(embeddings, "embed_query", fake_embed_query)
+    semantic = await client.get(
+        "/api/history",
+        params={"q": "concept without keywords", "sort": "relevance"},
+        headers=users.auth(alice),
+    )
+    assert [page["id"] for page in semantic.json()] == [first_id, second_id]
+    assert bob_id not in {page["id"] for page in semantic.json()}
+
+    hybrid = await client.get(
+        "/api/history",
+        params={"q": "component lifecycle", "sort": "relevance"},
+        headers=users.auth(alice),
+    )
+    assert [page["id"] for page in hybrid.json()] == [second_id, first_id]
+
+
+async def test_history_recent_and_ranked_cursor_pagination(client, users):
+    user = await users.create()
+    pairing = await _pair(client, users, user)
+    now = datetime.now(UTC)
+    records = [
+        _capture(
+            f"page-{index}",
+            url=f"https://page{index}.example.com/item",
+            title=f"Cursor result {index}",
+            text="cursor pagination",
+            first=now - timedelta(days=index + 1),
+            last=now - timedelta(hours=index),
+            captured=now - timedelta(hours=index),
+        )
+        for index in range(3)
+    ]
+    await _sync(client, pairing["token"], records)
+    headers = users.auth(user)
+
+    first = await client.get(
+        "/api/history",
+        params={"limit": 1},
+        headers=headers,
+    )
+    first_cursor = first.headers["x-next-cursor"]
+    second = await client.get(
+        "/api/history",
+        params={"limit": 1, "cursor": first_cursor},
+        headers=headers,
+    )
+    assert first.json()[0]["id"] != second.json()[0]["id"]
+
+    ranked = await client.get(
+        "/api/history",
+        params={"q": "cursor pagination", "sort": "relevance", "limit": 1},
+        headers=headers,
+    )
+    ranked_cursor = ranked.headers["x-next-cursor"]
+    ranked_next = await client.get(
+        "/api/history",
+        params={
+            "q": "cursor pagination",
+            "sort": "relevance",
+            "limit": 1,
+            "cursor": ranked_cursor,
+        },
+        headers=headers,
+    )
+    assert ranked.json()[0]["id"] != ranked_next.json()[0]["id"]
+
+    mismatched = await client.get(
+        "/api/history",
+        params={"hostname": "example.com", "cursor": first_cursor},
+        headers=headers,
+    )
+    assert mismatched.status_code == 422
+
+
+async def test_sync_rate_limit_returns_retry_after(client, users, monkeypatch):
+    user = await users.create()
+    pairing = await _pair(client, users, user)
+    monkeypatch.setattr(history_router, "SYNC_RATE_LIMIT", 1)
+    assert (await _sync(client, pairing["token"], [_capture("first")])).status_code == 200
+    limited = await _sync(client, pairing["token"], [_capture("second")])
+    assert limited.status_code == 429
+    assert int(limited.headers["retry-after"]) >= 1
 
 
 async def test_delete_page_is_owner_scoped_and_writes_tombstone(client, users, session):

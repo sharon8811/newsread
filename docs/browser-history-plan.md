@@ -519,27 +519,32 @@ Merge gate:
 
 ### Phase 2 — Sync, retention, and hybrid search (L)
 
-Normalization, sanitization, request limits, idempotent batch sync, absolute
-per-connection aggregates, synchronized-rule enforcement, and stale-tombstone
-rejection are implemented. Search, deletion endpoints, embeddings, retention,
-and the dev seed script remain.
+Normalization, sanitization, request and rate limits, idempotent batch sync,
+absolute per-connection aggregates, synchronized-rule enforcement,
+stale-tombstone rejection, hybrid retrieval, retention, and cursor pagination
+are implemented.
 
-- [ ] Implement defensive URL normalization and capture validation, including
+- [x] Implement defensive URL normalization and capture validation, including
       the per-field sanitization from “Untrusted-content and injection
       defenses” (control/bidi stripping, timestamp clamping, count caps,
       wildcard-escaped ILIKE).
 - [x] Add batch sync with absolute per-connection visit aggregates.
 - [x] Enforce synchronized domain rules and expose their revision to extensions.
-- [ ] Add content-hash stale detection and bounded worker embedding.
-- [ ] Add hybrid search/list endpoint with filters and pagination.
-- [ ] Add page/domain/all deletion tombstones and stale-queue protection.
-- [ ] Add daily retention cleanup.
-- [ ] Add a small dev-only seed/sync script that pushes realistic fake history
+- [x] Add content-hash stale detection and bounded worker embedding.
+- [x] Add hybrid search/list endpoint with filters and pagination.
+- [x] Add page/domain/all deletion tombstones and stale-queue protection.
+- [x] Add daily retention cleanup.
+- [x] Add a small dev-only seed/sync script that pushes realistic fake history
       through the real sync endpoint, so Phase 3 UI work can be visually
       verified against a populated corpus before the extension exists.
-- [ ] Export OpenAPI and regenerate frontend types.
-- [ ] Cover idempotent retry, out-of-order capture, multi-connection aggregation,
+- [x] Export OpenAPI and regenerate frontend types.
+- [x] Cover idempotent retry, out-of-order capture, multi-connection aggregation,
       keyword-only operation, current-model vectors, deletion, and retention.
+
+For local visual data, run `backend/scripts/seed_browser_history.py` against a
+feature-enabled development server with `--identifier`, or pass an existing
+`--connection-token`. The script creates 36 deterministic records through the
+same `/api/history/sync` contract used by the extension.
 
 Merge gate:
 
@@ -567,9 +572,8 @@ Merge gate:
 - [x] Verify keyboard navigation, screen-reader labels, destructive confirms,
       dark mode, narrow desktop widths, and long URL/title handling.
 
-Phase 3 currently consumes a bounded 50-row keyword result set. Cursor
-pagination, tsvector ranking, embeddings, hybrid fusion, retention cleanup, and
-the realistic seed script remain explicit Phase 2 follow-ups above.
+Phase 3 consumes cursor-paginated 50-row result pages backed by the completed
+Phase 2 keyword and vector retrieval pipeline.
 
 Merge gate:
 
@@ -702,6 +706,8 @@ Initial values to validate under load:
 
 - 100 records per sync batch;
 - 1 MiB maximum sync request;
+- 60 sync requests per minute per connection, enforced through durable
+  connection-row windows and returned as `429` with `Retry-After`;
 - 6,000 captured text characters per page;
 - 200 results in each vector/keyword candidate pool;
 - 50 results maximum per response;
