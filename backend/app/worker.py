@@ -18,6 +18,7 @@ from . import (
     db,
     embeddings,
     history_embeddings,
+    history_summaries,
     llm,
     ner,
     push,
@@ -538,6 +539,7 @@ class WorkerSettings:
     functions = [
         enrich_feed,
         embed_history_document,
+        history_summaries.generate_history_summary,
         send_share_push,
         send_project_pin_push,
     ]
@@ -545,5 +547,6 @@ class WorkerSettings:
         cron(poll_feeds, minute=set(range(0, 60, 3)), run_at_startup=True),
         cron(refresh_entities, minute={7, 37}),
         cron(refresh_catalog_embeddings, minute=17, run_at_startup=True),
+        cron(history_summaries.generate_history_summaries_batch, minute=None),
         cron(cleanup_history_retention, hour=3, minute=11),
     ]

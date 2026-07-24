@@ -2,7 +2,7 @@ import json
 import logging
 import time
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,6 +14,15 @@ from ..deps import CurrentUser, DbSession
 from ..enrichers import badge_for
 from ..extractor import clip_for_llm, ensure_full_text, is_thin
 from ..fetcher import canonical_hn_comments_url
+from ..history_auth import require_browser_history_content_enabled
+from ..history_documents import (
+    history_prompt_corpus,
+    latest_history_location,
+    load_history_document,
+    owned_history_document,
+)
+from ..history_embeddings import DOCUMENT_EXTRACTION_VERSION
+from ..history_ingest import HistoryIngestService, get_history_ingest_service
 from ..models import (
     Article,
     ArticleEntity,
@@ -208,9 +217,10 @@ async def _get_or_create_conversation(
     *,
     article_id: int | None = None,
     project_id: int | None = None,
+    history_document_id: int | None = None,
     kind: str = "article",
 ) -> Conversation:
-    """One thread per (article, user, kind), or per (project, user)."""
+    """One thread per article kind, project, or immutable history document."""
     stmt = (
         select(Conversation)
         .where(Conversation.user_id == user_id)
@@ -218,6 +228,8 @@ async def _get_or_create_conversation(
     )
     if project_id is not None:
         stmt = stmt.where(Conversation.project_id == project_id)
+    elif history_document_id is not None:
+        stmt = stmt.where(Conversation.history_document_id == history_document_id)
     else:
         stmt = stmt.where(Conversation.article_id == article_id, Conversation.kind == kind)
     conversation = await session.scalar(stmt)
@@ -228,6 +240,7 @@ async def _get_or_create_conversation(
             user_id=user_id,
             article_id=article_id,
             project_id=project_id,
+            history_document_id=history_document_id,
             kind=kind,
             messages=[],
         )
@@ -255,6 +268,93 @@ async def get_conversation(
     if conversation is None:
         return []
     return [MessageOut.model_validate(m) for m in conversation.messages]
+
+
+@router.get(
+    "/history/documents/{document_id}/qa",
+    response_model=list[MessageOut],
+    dependencies=[Depends(require_browser_history_content_enabled)],
+)
+async def get_history_conversation(
+    document_id: int,
+    user: CurrentUser,
+    session: DbSession,
+):
+    document = await owned_history_document(
+        session,
+        user_id=user.id,
+        document_id=document_id,
+    )
+    if document is None:
+        raise HTTPException(status_code=404, detail="History document not found")
+    conversation = await session.scalar(
+        select(Conversation)
+        .where(
+            Conversation.user_id == user.id,
+            Conversation.history_document_id == document.id,
+        )
+        .options(selectinload(Conversation.messages))
+    )
+    if conversation is None:
+        return []
+    return [MessageOut.model_validate(message) for message in conversation.messages]
+
+
+@router.post(
+    "/history/documents/{document_id}/qa/stream",
+    dependencies=[Depends(require_browser_history_content_enabled)],
+)
+async def ask_history_stream(
+    document_id: int,
+    body: AskIn,
+    user: CurrentUser,
+    session: DbSession,
+    ingest: HistoryIngestService = Depends(get_history_ingest_service),
+):
+    """Answer only after the user explicitly opens Q&A and submits a question."""
+    document = await owned_history_document(
+        session,
+        user_id=user.id,
+        document_id=document_id,
+    )
+    if document is None:
+        raise HTTPException(status_code=404, detail="History document not found")
+    if document.extraction_version != DOCUMENT_EXTRACTION_VERSION:
+        raise HTTPException(status_code=422, detail="Legacy history content does not support Q&A")
+    canonical = await load_history_document(session, document, storage=ingest.storage)
+    location = await latest_history_location(
+        session,
+        user_id=user.id,
+        document_id=document.id,
+    )
+    if location is None:
+        raise HTTPException(status_code=404, detail="History document not found")
+    config = await _resolve_llm(session, user)
+    conversation = await _get_or_create_conversation(
+        session,
+        user.id,
+        history_document_id=document.id,
+        kind="history",
+    )
+    history = [(message.role, message.content) for message in conversation.messages]
+    question = body.content.strip()
+    return _qa_stream_response(
+        session,
+        user_id=user.id,
+        config=config,
+        conversation_id=conversation.id,
+        question=question,
+        events=qa_agent.stream_history_answer(
+            title=location.title or location.url,
+            url=location.url,
+            corpus=history_prompt_corpus(canonical),
+            history=history,
+            question=question,
+            config=config,
+        ),
+        log_label=f"Q&A stream for history document {document.id}",
+        usage_feature="history_qa",
+    )
 
 
 async def _entity_context(session: AsyncSession, article_id: int) -> list[dict]:
@@ -291,6 +391,7 @@ def _qa_stream_response(
     question: str,
     events,
     log_label: str,
+    usage_feature: str = "qa",
 ) -> StreamingResponse:
     """The SSE pipeline shared by all Q&A streams: forward agent events,
     meter usage, then persist the exchange and emit `done`.
@@ -319,7 +420,7 @@ def _qa_stream_response(
             await llm.record_usage(
                 session,
                 user_id=user_id,
-                feature="qa",
+                feature=usage_feature,
                 config=config,
                 duration_ms=llm.ms_since(started),
                 status="error",
@@ -335,7 +436,7 @@ def _qa_stream_response(
             await llm.record_usage(
                 session,
                 user_id=user_id,
-                feature="qa",
+                feature=usage_feature,
                 config=config,
                 usage=usage,
                 duration_ms=llm.ms_since(started),
@@ -347,7 +448,7 @@ def _qa_stream_response(
         await llm.record_usage(
             session,
             user_id=user_id,
-            feature="qa",
+            feature=usage_feature,
             config=config,
             usage=usage,
             duration_ms=llm.ms_since(started),

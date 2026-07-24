@@ -352,6 +352,8 @@ class BrowserHistoryPageOut(BaseModel):
     title: str
     hostname: str
     text_excerpt: str
+    current_document_id: int | None = None
+    favicon_image_id: int | None = None
     first_visited_at: datetime
     last_visited_at: datetime
     visit_count: int
@@ -368,6 +370,7 @@ class BrowserHistoryDocumentLocationOut(BaseModel):
     last_seen_at: datetime
     visit_count: int
     source_browsers: list[str]
+    favicon_image_id: int | None = None
 
 
 class BrowserHistoryDocumentSearchOut(BaseModel):
@@ -379,6 +382,72 @@ class BrowserHistoryDocumentSearchOut(BaseModel):
 
 class BrowserHistoryPageSearchOut(BrowserHistoryPageOut):
     type: Literal["page"] = "page"
+
+
+class BrowserHistoryDocumentVersionOut(BaseModel):
+    document_id: int
+    first_seen_at: datetime
+    last_seen_at: datetime
+    is_current: bool
+
+
+class BrowserHistoryDocumentDetailOut(BaseModel):
+    document_id: int
+    text_excerpt: str
+    character_count: int
+    extraction_version: str
+    lead_image_id: int | None
+    locations: list[BrowserHistoryDocumentLocationOut]
+    other_versions: list[BrowserHistoryDocumentVersionOut]
+    embedding_state: Literal["ready", "pending", "unavailable"]
+    summary_state: Literal[
+        "not_requested",
+        "queued",
+        "running",
+        "ready",
+        "too_short",
+        "error",
+    ]
+
+
+class BrowserHistoryContentBlockOut(BaseModel):
+    id: str
+    kind: Literal["heading", "paragraph", "list_item", "quote", "code"]
+    text: str
+
+
+class BrowserHistoryDocumentContentOut(BaseModel):
+    document_id: int
+    content_type: Literal["article", "page", "legacy"]
+    language: str
+    blocks: list[BrowserHistoryContentBlockOut]
+
+
+class BrowserHistoryCitationOut(BaseModel):
+    label: int
+    block_id: str
+    quote: str
+    prefix: str | None
+    suffix: str | None
+    source_document_id: int
+    source_page_id: int | None
+    url: str | None
+
+
+class BrowserHistoryDocumentSummaryOut(BaseModel):
+    state: Literal[
+        "not_requested",
+        "queued",
+        "running",
+        "ready",
+        "too_short",
+        "error",
+    ]
+    markdown: str | None = None
+    model: str | None = None
+    generated_at: datetime | None = None
+    error_code: str | None = None
+    citations: list[BrowserHistoryCitationOut] = Field(default_factory=list)
 
 
 class BrowserHistoryClearIn(BaseModel):

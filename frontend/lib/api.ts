@@ -102,6 +102,15 @@ export async function apiDownload(path: string, fallbackName: string): Promise<v
   URL.revokeObjectURL(url);
 }
 
+export async function apiBlob(path: string): Promise<Blob> {
+  const res = await fetch(`${API_URL}/api${path}`, { headers: authHeaders() });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throwApiError(res, data);
+  }
+  return res.blob();
+}
+
 // Like api(), but hands back response headers too — article list pagination
 // travels in X-Next-Cursor / X-Prev-Cursor / X-Unread-Count / X-New-Above-Count.
 export async function apiWithHeaders<T>(
@@ -179,6 +188,18 @@ export function streamProjectQA(
   onEvent: (event: QAStreamEvent) => void,
 ): Promise<void> {
   return streamSSE(`/projects/${projectId}/qa/stream`, content, onEvent);
+}
+
+export function streamHistoryQA(
+  documentId: number,
+  content: string,
+  onEvent: (event: QAStreamEvent) => void,
+): Promise<void> {
+  return streamSSE(
+    `/history/documents/${documentId}/qa/stream`,
+    content,
+    onEvent,
+  );
 }
 
 async function streamSSE(
@@ -324,6 +345,12 @@ export type BrowserHistoryListItem =
 export type BrowserHistoryDeletion = Schemas["BrowserHistoryDeletionOut"];
 export type BrowserHistoryExtension = Schemas["BrowserHistoryExtensionOut"];
 export type BrowserHistorySort = "recent" | "relevance";
+export type BrowserHistoryDocumentDetail =
+  Schemas["BrowserHistoryDocumentDetailOut"];
+export type BrowserHistoryDocumentContent =
+  Schemas["BrowserHistoryDocumentContentOut"];
+export type BrowserHistoryDocumentSummary =
+  Schemas["BrowserHistoryDocumentSummaryOut"];
 
 export type AiStatus = Schemas["AiStatusOut"];
 
@@ -350,11 +377,21 @@ export type AISettingsSave = Omit<
 export type AITestResult = Schemas["AITestOut"];
 
 // FE-only: which usage features get a friendly label (backend stores plain strings).
-export type UsageFeatureKey = "summary" | "qa" | "share" | "image" | "topics" | "synthesis";
+export type UsageFeatureKey =
+  | "summary"
+  | "qa"
+  | "history_summary"
+  | "history_qa"
+  | "share"
+  | "image"
+  | "topics"
+  | "synthesis";
 
 export const USAGE_FEATURE_LABELS: Record<UsageFeatureKey, string> = {
   summary: "Summaries",
   qa: "Q&A",
+  history_summary: "History summaries",
+  history_qa: "History Q&A",
   share: "Share messages",
   image: "Images",
   topics: "Topic suggestions",

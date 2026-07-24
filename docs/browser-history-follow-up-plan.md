@@ -360,7 +360,7 @@ Store summaries separately from documents so generation remains optional:
 
 - `document_id`;
 - `model`, `prompt_version`, and `input_hash`;
-- `status`: `queued`, `generating`, `ready`, or `failed`;
+- `status`: `queued`, `running`, `ready`, `error`, or `too_short`;
 - Markdown summary;
 - validated citation JSON;
 - `generated_at` and a safe error code.
@@ -675,18 +675,18 @@ documents.
 
 ### Phase 4 — detail view, explicit lazy summaries, and page Q&A
 
-- [ ] Add owner-scoped detail/content/summary APIs.
-- [ ] Add the History detail page and article-style summary component.
-- [ ] Show favicons in History list rows and the lead image on the detail view, loaded
+- [x] Add owner-scoped detail/content/summary APIs.
+- [x] Add the History detail page and article-style summary component.
+- [x] Show favicons in History list rows and the lead image on the detail view, loaded
       only through the owner-scoped image endpoint.
-- [ ] Require a visible user click to create a summary; verify that navigation and preview
+- [x] Require a visible user click to create a summary; verify that navigation and preview
       never enqueue it.
-- [ ] Generate structured block citations and reject invalid model output.
-- [ ] Cache by document input hash, model, and prompt version.
-- [ ] Track `history_summary` usage, failures, and retries.
-- [ ] Add owner-scoped history Q&A endpoints reusing the existing Q&A agent with a
+- [x] Generate structured block citations and reject invalid model output.
+- [x] Cache by document input hash, model, and prompt version.
+- [x] Track `history_summary` usage, failures, and retries.
+- [x] Add owner-scoped history Q&A endpoints reusing the existing Q&A agent with a
       history instruction set grounded in stored blocks.
-- [ ] Gate the Q&A panel behind an explicit enable action and track `history_qa` usage;
+- [x] Gate the Q&A panel behind an explicit enable action and track `history_qa` usage;
       verify zero agent calls before it.
 
 Acceptance: a captured page can be viewed without an LLM call; one click generates a cited

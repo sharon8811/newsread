@@ -29,6 +29,7 @@ import {
 import ConfirmButton from "@/components/ui/ConfirmButton";
 import ErrorText from "@/components/ui/ErrorText";
 import Skeleton from "@/components/ui/Skeleton";
+import PrivateHistoryImage from "@/components/PrivateHistoryImage";
 
 function safePageUrl(value: string): string | null {
   try {
@@ -68,6 +69,8 @@ function pageForHistoryRow(item: BrowserHistoryListItem): BrowserHistoryPage {
       title: location.title,
       hostname: location.hostname,
       text_excerpt: item.text_excerpt,
+      current_document_id: item.document_id,
+      favicon_image_id: location.favicon_image_id,
       first_visited_at: location.first_seen_at,
       last_visited_at: location.last_seen_at,
       visit_count: location.visit_count,
@@ -82,6 +85,10 @@ function HistoryRow({ item }: { item: BrowserHistoryListItem }) {
   const page = pageForHistoryRow(item);
   const [busy, setBusy] = useState<"delete" | "exclude" | null>(null);
   const href = safePageUrl(page.url);
+  const documentId =
+    "type" in item && item.type === "document"
+      ? item.document_id
+      : page.current_document_id;
   const locationCount =
     "type" in item && item.type === "document" ? item.locations.length : 1;
 
@@ -130,8 +137,27 @@ function HistoryRow({ item }: { item: BrowserHistoryListItem }) {
       style={{ borderColor: "var(--line-soft)" }}
     >
       <div className="flex items-start gap-4">
+        {page.favicon_image_id && (
+          <span
+            className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-md border"
+            style={{ borderColor: "var(--line-soft)", background: "var(--paper-raised)" }}
+          >
+            <PrivateHistoryImage
+              imageId={page.favicon_image_id}
+              alt=""
+              className="h-5 w-5 object-contain"
+            />
+          </span>
+        )}
         <div className="min-w-0 flex-1">
-          {href ? (
+          {documentId ? (
+            <Link
+              href={`/history/documents/${documentId}`}
+              className="inline-flex max-w-full items-start text-lead font-medium leading-snug hover:underline"
+            >
+              <span className="min-w-0 break-words">{title}</span>
+            </Link>
+          ) : href ? (
             <a
               href={href}
               target="_blank"
@@ -149,6 +175,17 @@ function HistoryRow({ item }: { item: BrowserHistoryListItem }) {
             style={{ color: "var(--accent)" }}
           >
             {page.hostname}
+            {href && documentId && (
+              <a
+                href={href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="ml-2 inline-flex align-middle hover:opacity-70"
+                title="Open current page"
+              >
+                <ExternalIcon size={12} />
+              </a>
+            )}
           </p>
           {page.text_excerpt && (
             <p

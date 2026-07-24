@@ -3,6 +3,7 @@ from datetime import date, datetime
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     Date,
     DateTime,
     Float,
@@ -394,6 +395,10 @@ class BrowserHistorySummary(Base):
 
     __tablename__ = "browser_history_summaries"
     __table_args__ = (
+        CheckConstraint(
+            "status IN ('queued', 'running', 'ready', 'error', 'too_short')",
+            name="ck_browser_history_summary_status",
+        ),
         UniqueConstraint(
             "document_id",
             "model",

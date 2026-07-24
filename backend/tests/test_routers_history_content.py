@@ -8,6 +8,7 @@ from datetime import UTC, datetime, timedelta
 from PIL import Image
 from sqlalchemy import func, select
 
+from app import llm, qa_agent
 from app.history_content import canonicalize_history_document_value
 from app.history_crypto import MasterKeyring
 from app.history_ingest import (
@@ -22,6 +23,9 @@ from app.models import (
     BrowserHistoryImage,
     BrowserHistoryPage,
     BrowserHistoryPageDocument,
+    BrowserHistorySummary,
+    Conversation,
+    Message,
 )
 
 
@@ -107,6 +111,211 @@ async def test_content_endpoints_stay_hidden_until_capability_is_enabled(
     )
 
     assert response.status_code == 404
+
+
+async def test_document_detail_and_content_are_owner_scoped_and_side_effect_free(
+    client,
+    users,
+    session,
+    monkeypatch,
+):
+    owner = await users.create()
+    other = await users.create()
+    pairing = await _pair(client, users, owner)
+    document = _document("A private saved article body. " * 20)
+
+    async def unexpected_llm(*args, **kwargs):
+        raise AssertionError("detail reads must not resolve or call an LLM")
+
+    monkeypatch.setattr(llm, "resolve_config", unexpected_llm)
+    with _content_enabled(monkeypatch):
+        extension_headers = {"Authorization": f"Bearer {pairing['token']}"}
+        uploaded = await client.put(
+            f"/api/history/sync/content/{document.content_hash}",
+            content=document.canonical_bytes,
+            headers={**extension_headers, "Content-Type": "application/json"},
+        )
+        document_id = uploaded.json()["document_id"]
+        synced = await client.post(
+            "/api/history/sync",
+            json={
+                "records": [
+                    _capture(
+                        "detail",
+                        "https://detail.example.com/private",
+                        document.content_hash,
+                    )
+                ]
+            },
+            headers=extension_headers,
+        )
+        assert synced.status_code == 200
+        assert len(synced.json()["accepted"]) == 1, synced.json()
+
+        detail = await client.get(
+            f"/api/history/documents/{document_id}",
+            headers=users.auth(owner),
+        )
+        content = await client.get(
+            f"/api/history/documents/{document_id}/content",
+            headers=users.auth(owner),
+        )
+        empty_qa = await client.get(
+            f"/api/history/documents/{document_id}/qa",
+            headers=users.auth(owner),
+        )
+        other_detail = await client.get(
+            f"/api/history/documents/{document_id}",
+            headers=users.auth(other),
+        )
+
+    assert detail.status_code == 200, detail.text
+    assert detail.json()["document_id"] == document_id
+    assert detail.json()["locations"][0]["url"] == "https://detail.example.com/private"
+    assert detail.json()["summary_state"] == "not_requested"
+    assert content.status_code == 200
+    assert content.json()["blocks"][0]["id"] == "b0001"
+    assert empty_qa.json() == []
+    assert other_detail.status_code == 404
+    assert await session.scalar(select(func.count()).select_from(BrowserHistorySummary)) == 0
+    assert await session.scalar(select(func.count()).select_from(Conversation)) == 0
+
+
+async def test_summary_request_is_lazy_idempotent_and_queued_once(
+    client,
+    users,
+    session,
+    monkeypatch,
+):
+    user = await users.create()
+    pairing = await _pair(client, users, user)
+    document = _document("Enough private content to summarize. " * 20)
+    enqueued: list[tuple] = []
+
+    async def configured(session, user_id):
+        return llm.LLMConfig(
+            provider="system",
+            api_key="test",
+            base_url=None,
+            model="summary-model",
+        )
+
+    async def capture_enqueue(*args):
+        enqueued.append(args)
+
+    monkeypatch.setattr(llm, "resolve_config", configured)
+    monkeypatch.setattr("app.routers.history.queue.enqueue", capture_enqueue)
+    with _content_enabled(monkeypatch):
+        extension_headers = {"Authorization": f"Bearer {pairing['token']}"}
+        uploaded = await client.put(
+            f"/api/history/sync/content/{document.content_hash}",
+            content=document.canonical_bytes,
+            headers={**extension_headers, "Content-Type": "application/json"},
+        )
+        document_id = uploaded.json()["document_id"]
+        synced = await client.post(
+            "/api/history/sync",
+            json={
+                "records": [
+                    _capture(
+                        "summary",
+                        "https://summary.example.com/private",
+                        document.content_hash,
+                    )
+                ]
+            },
+            headers=extension_headers,
+        )
+        assert len(synced.json()["accepted"]) == 1, synced.json()
+        before = await client.get(
+            f"/api/history/documents/{document_id}/summary",
+            headers=users.auth(user),
+        )
+        first = await client.post(
+            f"/api/history/documents/{document_id}/summarize",
+            headers=users.auth(user),
+        )
+        second = await client.post(
+            f"/api/history/documents/{document_id}/summarize",
+            headers=users.auth(user),
+        )
+
+    assert before.status_code == 200, before.text
+    assert before.json()["state"] == "not_requested"
+    assert first.json()["state"] == second.json()["state"] == "queued"
+    summary_jobs = [job for job in enqueued if job[0] == "generate_history_summary"]
+    assert summary_jobs == [("generate_history_summary", 1)]
+    assert await session.scalar(select(func.count()).select_from(BrowserHistorySummary)) == 1
+
+
+async def test_history_qa_is_explicit_document_bound_and_metered(
+    client,
+    users,
+    session,
+    monkeypatch,
+):
+    user = await users.create()
+    pairing = await _pair(client, users, user)
+    document = _document("Stored evidence for private history Q and A. " * 20)
+    usage_features: list[str] = []
+
+    async def configured(session, user_id):
+        return llm.LLMConfig(
+            provider="system",
+            api_key="test",
+            base_url=None,
+            model="qa-model",
+        )
+
+    async def answer(**kwargs):
+        assert '"id":"b0001"' in kwargs["corpus"]
+        yield {
+            "type": "result",
+            "content": "A grounded answer.",
+            "tool_events": [],
+            "usage": {"prompt_tokens": 7, "completion_tokens": 3},
+        }
+
+    async def record_usage(session, **kwargs):
+        usage_features.append(kwargs["feature"])
+
+    monkeypatch.setattr(llm, "resolve_config", configured)
+    monkeypatch.setattr(llm, "record_usage", record_usage)
+    monkeypatch.setattr(qa_agent, "stream_history_answer", answer)
+    with _content_enabled(monkeypatch):
+        extension_headers = {"Authorization": f"Bearer {pairing['token']}"}
+        uploaded = await client.put(
+            f"/api/history/sync/content/{document.content_hash}",
+            content=document.canonical_bytes,
+            headers={**extension_headers, "Content-Type": "application/json"},
+        )
+        document_id = uploaded.json()["document_id"]
+        await client.post(
+            "/api/history/sync",
+            json={
+                "records": [
+                    _capture(
+                        "qa",
+                        "https://qa.example.com/private",
+                        document.content_hash,
+                    )
+                ]
+            },
+            headers=extension_headers,
+        )
+        assert await session.scalar(select(func.count()).select_from(Conversation)) == 0
+        response = await client.post(
+            f"/api/history/documents/{document_id}/qa/stream",
+            json={"content": "What does the saved page say?"},
+            headers=users.auth(user),
+        )
+
+    assert response.status_code == 200
+    assert '"type": "done"' in response.text
+    conversation = await session.scalar(select(Conversation))
+    assert conversation.history_document_id == document_id
+    assert await session.scalar(select(func.count()).select_from(Message)) == 2
+    assert usage_features == ["history_qa"]
 
 
 async def test_owner_scoped_content_status_upload_and_private_dedup(

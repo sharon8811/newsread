@@ -2,6 +2,7 @@ from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 
 from app.models import (
     BrowserHistoryDocument,
@@ -86,3 +87,39 @@ async def test_deleting_document_cascades_dependents_and_clears_current_page(ses
         Conversation,
     ):
         assert await session.scalar(select(func.count()).select_from(model)) == 0
+
+
+@pytest.mark.asyncio
+async def test_summary_status_constraint_matches_worker_state_machine(session, users):
+    """Runs against the Alembic-upgraded test schema, not just ORM validation."""
+    user = await users.create()
+    document = BrowserHistoryDocument(
+        user_id=user.id,
+        content_hash="e" * 64,
+        object_key=f"users/{user.id}/history/documents/sha256/ee/{'e' * 64}",
+        storage_status="ready",
+        byte_size=100,
+        character_count=80,
+        extraction_version="history-dom-v2",
+    )
+    session.add(document)
+    await session.flush()
+    summary = BrowserHistorySummary(
+        document_id=document.id,
+        model="test-summary",
+        prompt_version="v1",
+        input_hash="f" * 64,
+        status="queued",
+        citations=[],
+    )
+    session.add(summary)
+    await session.commit()
+
+    for status in ("running", "ready", "error", "too_short", "queued"):
+        summary.status = status
+        await session.commit()
+
+    summary.status = "generating"
+    with pytest.raises(IntegrityError):
+        await session.commit()
+    await session.rollback()

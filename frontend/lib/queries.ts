@@ -11,6 +11,9 @@ import {
   type ArticleProjectStatus,
   type BrowserConnection,
   type BrowserHistoryDomainRule,
+  type BrowserHistoryDocumentContent,
+  type BrowserHistoryDocumentDetail,
+  type BrowserHistoryDocumentSummary,
   type BrowserHistoryExtension,
   type BrowserHistoryListItem,
   type BrowserHistorySettings,
@@ -143,6 +146,28 @@ export const useHistorySystemRules = (enabled = true) =>
   useSWR<BrowserHistorySystemRule[]>(
     enabled ? keys.historySystemRules : null,
     fetcher,
+  );
+
+export const useHistoryDocument = (id: number | string | null) =>
+  useSWR<BrowserHistoryDocumentDetail>(
+    id === null ? null : keys.historyDocument(id),
+    fetcher,
+  );
+
+export const useHistoryDocumentContent = (id: number | string | null) =>
+  useSWR<BrowserHistoryDocumentContent>(
+    id === null ? null : keys.historyDocumentContent(id),
+    fetcher,
+  );
+
+export const useHistoryDocumentSummary = (id: number | string | null) =>
+  useSWR<BrowserHistoryDocumentSummary>(
+    id === null ? null : keys.historyDocumentSummary(id),
+    fetcher,
+    {
+      refreshInterval: (data) =>
+        data?.state === "queued" || data?.state === "running" ? 1500 : 0,
+    },
   );
 
 export const useHistory = (

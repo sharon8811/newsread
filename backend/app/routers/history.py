@@ -15,7 +15,7 @@ from pydantic import ValidationError
 from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from .. import history_search, queue
+from .. import crypto, history_embeddings, history_search, llm, queue
 from ..config import settings
 from ..deps import CurrentUser, DbSession
 from ..history_auth import (
@@ -25,6 +25,7 @@ from ..history_auth import (
     require_browser_history_enabled,
 )
 from ..history_content import HistoryContentError, decompress_history_document
+from ..history_documents import load_history_document, owned_history_document
 from ..history_ingest import (
     HISTORY_CONTENT_CAPABILITY_REVISION as CONTENT_CAPABILITY_REVISION,
 )
@@ -35,6 +36,7 @@ from ..history_ingest import (
     get_optional_history_ingest_service,
 )
 from ..history_policy import normalize_history_hostname, sanitize_capture_text
+from ..history_summaries import HISTORY_SUMMARY_PROMPT_VERSION
 from ..history_sync import SyncRejection, persist_capture
 from ..history_system_policy import (
     HISTORY_SYSTEM_POLICY_REVISION,
@@ -45,12 +47,14 @@ from ..models import (
     BrowserConnection,
     BrowserHistoryDeletion,
     BrowserHistoryDocument,
+    BrowserHistoryDocumentEmbedding,
     BrowserHistoryDomainRule,
     BrowserHistoryImage,
     BrowserHistoryPage,
     BrowserHistoryPageConnection,
     BrowserHistoryPageDocument,
     BrowserHistorySettings,
+    BrowserHistorySummary,
     BrowserHistorySystemRuleOverride,
     User,
 )
@@ -63,9 +67,13 @@ from ..schemas import (
     BrowserHistoryContentStatusIn,
     BrowserHistoryContentStatusOut,
     BrowserHistoryDeletionOut,
+    BrowserHistoryDocumentContentOut,
+    BrowserHistoryDocumentDetailOut,
     BrowserHistoryDocumentLocationOut,
     BrowserHistoryDocumentSearchOut,
+    BrowserHistoryDocumentSummaryOut,
     BrowserHistoryDocumentUploadOut,
+    BrowserHistoryDocumentVersionOut,
     BrowserHistoryDomainRuleIn,
     BrowserHistoryDomainRuleOut,
     BrowserHistoryExtensionOut,
@@ -608,6 +616,369 @@ async def history_summary(user: CurrentUser, session: DbSession):
     )
 
 
+async def _document_locations(
+    session: DbSession,
+    *,
+    user_id: int,
+    document_id: int,
+) -> list[BrowserHistoryDocumentLocationOut]:
+    rows = (
+        await session.execute(
+            select(BrowserHistoryPageDocument, BrowserHistoryPage)
+            .join(BrowserHistoryPage, BrowserHistoryPage.id == BrowserHistoryPageDocument.page_id)
+            .where(
+                BrowserHistoryPageDocument.document_id == document_id,
+                BrowserHistoryPage.user_id == user_id,
+            )
+            .order_by(
+                BrowserHistoryPageDocument.last_seen_at.desc(),
+                BrowserHistoryPageDocument.id.desc(),
+            )
+        )
+    ).all()
+    sources = await _history_source_names(session, [page.id for _, page in rows])
+    return [
+        BrowserHistoryDocumentLocationOut(
+            page_id=page.id,
+            url=page.url,
+            title=page.title,
+            hostname=page.hostname,
+            first_seen_at=link.first_seen_at,
+            last_seen_at=link.last_seen_at,
+            visit_count=page.visit_count,
+            source_browsers=sources.get(page.id, []),
+            favicon_image_id=page.favicon_image_id,
+        )
+        for link, page in rows
+    ]
+
+
+async def _document_versions(
+    session: DbSession,
+    *,
+    user_id: int,
+    document_id: int,
+    page_ids: list[int],
+) -> list[BrowserHistoryDocumentVersionOut]:
+    if not page_ids:
+        return []
+    rows = (
+        await session.execute(
+            select(BrowserHistoryPageDocument, BrowserHistoryPage)
+            .join(BrowserHistoryPage, BrowserHistoryPage.id == BrowserHistoryPageDocument.page_id)
+            .join(
+                BrowserHistoryDocument,
+                BrowserHistoryDocument.id == BrowserHistoryPageDocument.document_id,
+            )
+            .where(
+                BrowserHistoryPage.user_id == user_id,
+                BrowserHistoryDocument.user_id == user_id,
+                BrowserHistoryDocument.storage_status == "ready",
+                BrowserHistoryPageDocument.page_id.in_(page_ids),
+                BrowserHistoryPageDocument.document_id != document_id,
+            )
+            .order_by(BrowserHistoryPageDocument.last_seen_at.desc())
+        )
+    ).all()
+    versions: dict[int, BrowserHistoryDocumentVersionOut] = {}
+    for link, page in rows:
+        existing = versions.get(link.document_id)
+        is_current = page.current_document_id == link.document_id
+        if existing is None:
+            versions[link.document_id] = BrowserHistoryDocumentVersionOut(
+                document_id=link.document_id,
+                first_seen_at=link.first_seen_at,
+                last_seen_at=link.last_seen_at,
+                is_current=is_current,
+            )
+        else:
+            existing.first_seen_at = min(existing.first_seen_at, link.first_seen_at)
+            existing.last_seen_at = max(existing.last_seen_at, link.last_seen_at)
+            existing.is_current = existing.is_current or is_current
+    return sorted(versions.values(), key=lambda item: item.last_seen_at, reverse=True)
+
+
+async def _summary_row_for_read(
+    session: DbSession,
+    document_id: int,
+) -> BrowserHistorySummary | None:
+    return await session.scalar(
+        select(BrowserHistorySummary)
+        .where(BrowserHistorySummary.document_id == document_id)
+        .order_by(BrowserHistorySummary.updated_at.desc(), BrowserHistorySummary.id.desc())
+        .limit(1)
+    )
+
+
+async def _document_summary_out(
+    session: DbSession,
+    *,
+    user_id: int,
+    document_id: int,
+    row: BrowserHistorySummary | None,
+) -> BrowserHistoryDocumentSummaryOut:
+    if row is None:
+        return BrowserHistoryDocumentSummaryOut(state="not_requested")
+    locations = await _document_locations(
+        session,
+        user_id=user_id,
+        document_id=document_id,
+    )
+    source = locations[0] if locations else None
+    citations = [
+        {
+            "label": index,
+            "block_id": citation["block_id"],
+            "quote": citation["quote"],
+            "prefix": citation.get("prefix"),
+            "suffix": citation.get("suffix"),
+            "source_document_id": document_id,
+            "source_page_id": source.page_id if source else None,
+            "url": source.url if source else None,
+        }
+        for index, citation in enumerate(row.citations or [], start=1)
+    ]
+    return BrowserHistoryDocumentSummaryOut(
+        state=row.status,
+        markdown=row.markdown or None,
+        model=row.model,
+        generated_at=row.generated_at,
+        error_code=row.error_code,
+        citations=citations,
+    )
+
+
+@router.get(
+    "/documents/{document_id}",
+    response_model=BrowserHistoryDocumentDetailOut,
+    dependencies=[Depends(require_browser_history_content_enabled)],
+)
+async def history_document_detail(
+    document_id: int,
+    user: CurrentUser,
+    session: DbSession,
+):
+    document = await owned_history_document(
+        session,
+        user_id=user.id,
+        document_id=document_id,
+    )
+    if document is None:
+        raise HTTPException(status_code=404, detail="History document not found")
+    locations = await _document_locations(
+        session,
+        user_id=user.id,
+        document_id=document.id,
+    )
+    embedded = await session.scalar(
+        select(BrowserHistoryDocumentEmbedding.id)
+        .where(
+            BrowserHistoryDocumentEmbedding.document_id == document.id,
+            BrowserHistoryDocumentEmbedding.model == settings.openai_embedding_model,
+            BrowserHistoryDocumentEmbedding.input_hash == document.content_hash,
+        )
+        .limit(1)
+    )
+    if embedded is not None:
+        embedding_state = "ready"
+    elif history_embeddings.is_configured() and history_embeddings.document_is_eligible(document):
+        embedding_state = "pending"
+    else:
+        embedding_state = "unavailable"
+    summary = await _summary_row_for_read(session, document.id)
+    return BrowserHistoryDocumentDetailOut(
+        document_id=document.id,
+        text_excerpt=document.text_excerpt,
+        character_count=document.character_count,
+        extraction_version=document.extraction_version,
+        lead_image_id=document.lead_image_id,
+        locations=locations,
+        other_versions=await _document_versions(
+            session,
+            user_id=user.id,
+            document_id=document.id,
+            page_ids=[location.page_id for location in locations],
+        ),
+        embedding_state=embedding_state,
+        summary_state=summary.status if summary else "not_requested",
+    )
+
+
+@router.get(
+    "/documents/{document_id}/content",
+    response_model=BrowserHistoryDocumentContentOut,
+    dependencies=[Depends(require_browser_history_content_enabled)],
+)
+async def history_document_content(
+    document_id: int,
+    user: CurrentUser,
+    session: DbSession,
+    ingest: HistoryIngestService = Depends(get_history_ingest_service),
+):
+    document = await owned_history_document(
+        session,
+        user_id=user.id,
+        document_id=document_id,
+    )
+    if document is None:
+        raise HTTPException(status_code=404, detail="History document not found")
+    canonical = await load_history_document(session, document, storage=ingest.storage)
+    return BrowserHistoryDocumentContentOut(
+        document_id=document.id,
+        content_type=canonical.value["content_type"],
+        language=canonical.value["language"],
+        blocks=canonical.value["blocks"],
+    )
+
+
+@router.get(
+    "/images/{image_id}",
+    dependencies=[Depends(require_browser_history_content_enabled)],
+)
+async def history_image(
+    image_id: int,
+    user: CurrentUser,
+    session: DbSession,
+    ingest: HistoryIngestService = Depends(get_history_ingest_service),
+):
+    image = await session.scalar(
+        select(BrowserHistoryImage).where(
+            BrowserHistoryImage.id == image_id,
+            BrowserHistoryImage.user_id == user.id,
+            BrowserHistoryImage.storage_status == "ready",
+        )
+    )
+    if image is None:
+        raise HTTPException(status_code=404, detail="History image not found")
+    payload = await ingest.storage.get(
+        session,
+        user_id=user.id,
+        object_type="image",
+        object_hash=image.image_hash,
+        object_key=image.object_key,
+    )
+    return Response(
+        content=payload,
+        media_type={"png": "image/png", "jpeg": "image/jpeg", "webp": "image/webp"}[image.format],
+        headers={"Cache-Control": "private, max-age=86400"},
+    )
+
+
+@router.get(
+    "/documents/{document_id}/summary",
+    response_model=BrowserHistoryDocumentSummaryOut,
+    dependencies=[Depends(require_browser_history_content_enabled)],
+)
+async def get_history_document_summary(
+    document_id: int,
+    user: CurrentUser,
+    session: DbSession,
+):
+    document = await owned_history_document(
+        session,
+        user_id=user.id,
+        document_id=document_id,
+    )
+    if document is None:
+        raise HTTPException(status_code=404, detail="History document not found")
+    return await _document_summary_out(
+        session,
+        user_id=user.id,
+        document_id=document.id,
+        row=await _summary_row_for_read(session, document.id),
+    )
+
+
+@router.post(
+    "/documents/{document_id}/summarize",
+    response_model=BrowserHistoryDocumentSummaryOut,
+    dependencies=[Depends(require_browser_history_content_enabled)],
+)
+async def summarize_history_document(
+    document_id: int,
+    user: CurrentUser,
+    session: DbSession,
+    force: bool = False,
+):
+    document = await owned_history_document(
+        session,
+        user_id=user.id,
+        document_id=document_id,
+    )
+    if document is None:
+        raise HTTPException(status_code=404, detail="History document not found")
+    if not history_embeddings.document_is_eligible(document):
+        raise HTTPException(
+            status_code=422,
+            detail="Legacy history content cannot be summarized",
+        )
+    try:
+        config = await llm.resolve_config(session, user.id)
+    except crypto.TokenCryptoError:
+        config = None
+    if config is None:
+        raise HTTPException(status_code=503, detail="No LLM is configured")
+
+    created_id = await session.scalar(
+        pg_insert(BrowserHistorySummary)
+        .values(
+            document_id=document.id,
+            model=config.model,
+            prompt_version=HISTORY_SUMMARY_PROMPT_VERSION,
+            input_hash=document.content_hash,
+            status="queued",
+            citations=[],
+        )
+        .on_conflict_do_nothing(
+            index_elements=[
+                "document_id",
+                "model",
+                "prompt_version",
+                "input_hash",
+            ]
+        )
+        .returning(BrowserHistorySummary.id)
+    )
+    row = await session.scalar(
+        select(BrowserHistorySummary)
+        .where(
+            BrowserHistorySummary.document_id == document.id,
+            BrowserHistorySummary.model == config.model,
+            BrowserHistorySummary.prompt_version == HISTORY_SUMMARY_PROMPT_VERSION,
+            BrowserHistorySummary.input_hash == document.content_hash,
+        )
+        .with_for_update()
+    )
+    if row is not None and (
+        row.status in {"queued", "running", "too_short"} or (row.status == "ready" and not force)
+    ):
+        if created_id is not None:
+            await session.commit()
+            await queue.enqueue("generate_history_summary", row.id)
+        return await _document_summary_out(
+            session,
+            user_id=user.id,
+            document_id=document.id,
+            row=row,
+        )
+    if row is None:  # pragma: no cover - protected by the insert/select transaction
+        raise HTTPException(status_code=503, detail="Could not queue the history summary")
+    row.status = "queued"
+    row.markdown = ""
+    row.citations = []
+    row.error_code = None
+    row.generated_at = None
+    await session.commit()
+    await session.refresh(row)
+    await queue.enqueue("generate_history_summary", row.id)
+    return await _document_summary_out(
+        session,
+        user_id=user.id,
+        document_id=document.id,
+        row=row,
+    )
+
+
 async def _history_source_names(
     session: DbSession,
     page_ids: list[int],
@@ -640,6 +1011,8 @@ def _history_page_out(
         title=page.title,
         hostname=page.hostname,
         text_excerpt=page.text_excerpt,
+        current_document_id=page.current_document_id,
+        favicon_image_id=page.favicon_image_id,
         first_visited_at=page.first_visited_at,
         last_visited_at=page.last_visited_at,
         visit_count=page.visit_count,
@@ -730,6 +1103,7 @@ async def _history_search_results(
                 last_seen_at=link.last_seen_at,
                 visit_count=page.visit_count,
                 source_browsers=sources.get(page.id, []),
+                favicon_image_id=page.favicon_image_id,
             )
         )
     page_by_id = {page.id: page for page in pages}

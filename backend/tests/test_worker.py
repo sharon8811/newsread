@@ -598,10 +598,11 @@ def test_worker_settings_shape():
     assert worker.WorkerSettings.functions == [
         worker.enrich_feed,
         worker.embed_history_document,
+        worker.history_summaries.generate_history_summary,
         worker.send_share_push,
         worker.send_project_pin_push,
     ]
-    assert len(worker.WorkerSettings.cron_jobs) == 4
+    assert len(worker.WorkerSettings.cron_jobs) == 5
 
 
 # --- send_share_push ---

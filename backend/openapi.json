@@ -1190,6 +1190,82 @@
         "title": "BrowserConnectionOut",
         "type": "object"
       },
+      "BrowserHistoryCitationOut": {
+        "properties": {
+          "block_id": {
+            "title": "Block Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "integer"
+          },
+          "prefix": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prefix"
+          },
+          "quote": {
+            "title": "Quote",
+            "type": "string"
+          },
+          "source_document_id": {
+            "title": "Source Document Id",
+            "type": "integer"
+          },
+          "source_page_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Page Id"
+          },
+          "suffix": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suffix"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          }
+        },
+        "required": [
+          "label",
+          "block_id",
+          "quote",
+          "prefix",
+          "suffix",
+          "source_document_id",
+          "source_page_id",
+          "url"
+        ],
+        "title": "BrowserHistoryCitationOut",
+        "type": "object"
+      },
       "BrowserHistoryClearIn": {
         "properties": {
           "confirm": {
@@ -1214,6 +1290,36 @@
           "confirm"
         ],
         "title": "BrowserHistoryClearIn",
+        "type": "object"
+      },
+      "BrowserHistoryContentBlockOut": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "heading",
+              "paragraph",
+              "list_item",
+              "quote",
+              "code"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "text"
+        ],
+        "title": "BrowserHistoryContentBlockOut",
         "type": "object"
       },
       "BrowserHistoryContentStatusIn": {
@@ -1311,8 +1417,134 @@
         "title": "BrowserHistoryDeletionOut",
         "type": "object"
       },
+      "BrowserHistoryDocumentContentOut": {
+        "properties": {
+          "blocks": {
+            "items": {
+              "$ref": "#/components/schemas/BrowserHistoryContentBlockOut"
+            },
+            "title": "Blocks",
+            "type": "array"
+          },
+          "content_type": {
+            "enum": [
+              "article",
+              "page",
+              "legacy"
+            ],
+            "title": "Content Type",
+            "type": "string"
+          },
+          "document_id": {
+            "title": "Document Id",
+            "type": "integer"
+          },
+          "language": {
+            "title": "Language",
+            "type": "string"
+          }
+        },
+        "required": [
+          "document_id",
+          "content_type",
+          "language",
+          "blocks"
+        ],
+        "title": "BrowserHistoryDocumentContentOut",
+        "type": "object"
+      },
+      "BrowserHistoryDocumentDetailOut": {
+        "properties": {
+          "character_count": {
+            "title": "Character Count",
+            "type": "integer"
+          },
+          "document_id": {
+            "title": "Document Id",
+            "type": "integer"
+          },
+          "embedding_state": {
+            "enum": [
+              "ready",
+              "pending",
+              "unavailable"
+            ],
+            "title": "Embedding State",
+            "type": "string"
+          },
+          "extraction_version": {
+            "title": "Extraction Version",
+            "type": "string"
+          },
+          "lead_image_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lead Image Id"
+          },
+          "locations": {
+            "items": {
+              "$ref": "#/components/schemas/BrowserHistoryDocumentLocationOut"
+            },
+            "title": "Locations",
+            "type": "array"
+          },
+          "other_versions": {
+            "items": {
+              "$ref": "#/components/schemas/BrowserHistoryDocumentVersionOut"
+            },
+            "title": "Other Versions",
+            "type": "array"
+          },
+          "summary_state": {
+            "enum": [
+              "not_requested",
+              "queued",
+              "running",
+              "ready",
+              "too_short",
+              "error"
+            ],
+            "title": "Summary State",
+            "type": "string"
+          },
+          "text_excerpt": {
+            "title": "Text Excerpt",
+            "type": "string"
+          }
+        },
+        "required": [
+          "document_id",
+          "text_excerpt",
+          "character_count",
+          "extraction_version",
+          "lead_image_id",
+          "locations",
+          "other_versions",
+          "embedding_state",
+          "summary_state"
+        ],
+        "title": "BrowserHistoryDocumentDetailOut",
+        "type": "object"
+      },
       "BrowserHistoryDocumentLocationOut": {
         "properties": {
+          "favicon_image_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Favicon Image Id"
+          },
           "first_seen_at": {
             "format": "date-time",
             "title": "First Seen At",
@@ -1396,6 +1628,79 @@
         "title": "BrowserHistoryDocumentSearchOut",
         "type": "object"
       },
+      "BrowserHistoryDocumentSummaryOut": {
+        "properties": {
+          "citations": {
+            "items": {
+              "$ref": "#/components/schemas/BrowserHistoryCitationOut"
+            },
+            "title": "Citations",
+            "type": "array"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "generated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generated At"
+          },
+          "markdown": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Markdown"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "state": {
+            "enum": [
+              "not_requested",
+              "queued",
+              "running",
+              "ready",
+              "too_short",
+              "error"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state"
+        ],
+        "title": "BrowserHistoryDocumentSummaryOut",
+        "type": "object"
+      },
       "BrowserHistoryDocumentUploadOut": {
         "properties": {
           "content_hash": {
@@ -1417,6 +1722,36 @@
           "storage_status"
         ],
         "title": "BrowserHistoryDocumentUploadOut",
+        "type": "object"
+      },
+      "BrowserHistoryDocumentVersionOut": {
+        "properties": {
+          "document_id": {
+            "title": "Document Id",
+            "type": "integer"
+          },
+          "first_seen_at": {
+            "format": "date-time",
+            "title": "First Seen At",
+            "type": "string"
+          },
+          "is_current": {
+            "title": "Is Current",
+            "type": "boolean"
+          },
+          "last_seen_at": {
+            "format": "date-time",
+            "title": "Last Seen At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "document_id",
+          "first_seen_at",
+          "last_seen_at",
+          "is_current"
+        ],
+        "title": "BrowserHistoryDocumentVersionOut",
         "type": "object"
       },
       "BrowserHistoryDomainRuleIn": {
@@ -1559,6 +1894,28 @@
             ],
             "title": "Captured At"
           },
+          "current_document_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Document Id"
+          },
+          "favicon_image_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Favicon Image Id"
+          },
           "first_visited_at": {
             "format": "date-time",
             "title": "First Visited At",
@@ -1629,6 +1986,28 @@
               }
             ],
             "title": "Captured At"
+          },
+          "current_document_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Document Id"
+          },
+          "favicon_image_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Favicon Image Id"
           },
           "first_visited_at": {
             "format": "date-time",
@@ -7407,6 +7786,311 @@
         ]
       }
     },
+    "/api/history/documents/{document_id}": {
+      "get": {
+        "operationId": "history_document_detail_api_history_documents__document_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "title": "Document Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserHistoryDocumentDetailOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "History Document Detail",
+        "tags": [
+          "browser-history"
+        ]
+      }
+    },
+    "/api/history/documents/{document_id}/content": {
+      "get": {
+        "operationId": "history_document_content_api_history_documents__document_id__content_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "title": "Document Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserHistoryDocumentContentOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "History Document Content",
+        "tags": [
+          "browser-history"
+        ]
+      }
+    },
+    "/api/history/documents/{document_id}/qa": {
+      "get": {
+        "operationId": "get_history_conversation_api_history_documents__document_id__qa_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "title": "Document Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MessageOut"
+                  },
+                  "title": "Response Get History Conversation Api History Documents  Document Id  Qa Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get History Conversation",
+        "tags": [
+          "ai"
+        ]
+      }
+    },
+    "/api/history/documents/{document_id}/qa/stream": {
+      "post": {
+        "description": "Answer only after the user explicitly opens Q&A and submits a question.",
+        "operationId": "ask_history_stream_api_history_documents__document_id__qa_stream_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "title": "Document Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AskIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Ask History Stream",
+        "tags": [
+          "ai"
+        ]
+      }
+    },
+    "/api/history/documents/{document_id}/summarize": {
+      "post": {
+        "operationId": "summarize_history_document_api_history_documents__document_id__summarize_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "title": "Document Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "force",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Force",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserHistoryDocumentSummaryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Summarize History Document",
+        "tags": [
+          "browser-history"
+        ]
+      }
+    },
+    "/api/history/documents/{document_id}/summary": {
+      "get": {
+        "operationId": "get_history_document_summary_api_history_documents__document_id__summary_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "title": "Document Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserHistoryDocumentSummaryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get History Document Summary",
+        "tags": [
+          "browser-history"
+        ]
+      }
+    },
     "/api/history/domain-rules": {
       "get": {
         "operationId": "list_domain_rules_api_history_domain_rules_get",
@@ -7566,6 +8250,51 @@
           }
         ],
         "summary": "Download Extension Package",
+        "tags": [
+          "browser-history"
+        ]
+      }
+    },
+    "/api/history/images/{image_id}": {
+      "get": {
+        "operationId": "history_image_api_history_images__image_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "image_id",
+            "required": true,
+            "schema": {
+              "title": "Image Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "History Image",
         "tags": [
           "browser-history"
         ]
