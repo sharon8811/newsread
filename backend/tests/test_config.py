@@ -3,6 +3,8 @@ from pydantic import ValidationError
 
 from app.config import DeploymentMode, Settings
 
+HISTORY_MASTER_KEY = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
+
 
 def _clear_deployment_env(monkeypatch):
     """conftest pins these for the suite; derivation tests need them unset."""
@@ -105,3 +107,43 @@ def test_openai_alias_standard_name(monkeypatch):
 def test_extra_env_ignored(monkeypatch):
     monkeypatch.setenv("NEWSREAD_TOTALLY_UNKNOWN", "x")
     Settings(_env_file=None)  # extra="ignore" -> no error
+
+
+def test_history_content_storage_requires_complete_configuration():
+    with pytest.raises(ValidationError, match="NEWSREAD_OBJECT_STORE_ENDPOINT"):
+        Settings(_env_file=None, browser_history_content_enabled=True)
+
+
+def test_history_content_storage_accepts_valid_configuration():
+    configured = Settings(
+        _env_file=None,
+        browser_history_content_enabled=True,
+        object_store_endpoint="http://seaweedfs:8333",
+        object_store_access_key="access",
+        object_store_secret_key="secret",
+        object_store_bucket="newsread-history",
+        history_encryption_master_key=HISTORY_MASTER_KEY,
+    )
+    assert configured.browser_history_content_enabled is True
+
+
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        ({"history_encryption_master_key": "not-base64"}, "valid base64"),
+        ({"history_encryption_wrapping_key_version": 0}, "positive integer"),
+        ({"history_object_max_bytes": 0}, "byte limits must be positive"),
+    ],
+)
+def test_history_content_storage_rejects_invalid_configuration(overrides, message):
+    values = {
+        "browser_history_content_enabled": True,
+        "object_store_endpoint": "http://seaweedfs:8333",
+        "object_store_access_key": "access",
+        "object_store_secret_key": "secret",
+        "object_store_bucket": "newsread-history",
+        "history_encryption_master_key": HISTORY_MASTER_KEY,
+        **overrides,
+    }
+    with pytest.raises(ValidationError, match=message):
+        Settings(_env_file=None, **values)

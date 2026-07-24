@@ -1,0 +1,88 @@
+from datetime import UTC, datetime
+
+import pytest
+from sqlalchemy import func, select
+
+from app.models import (
+    BrowserHistoryDocument,
+    BrowserHistoryDocumentEmbedding,
+    BrowserHistoryPage,
+    BrowserHistoryPageDocument,
+    BrowserHistorySummary,
+    Conversation,
+)
+
+
+@pytest.mark.asyncio
+async def test_deleting_document_cascades_dependents_and_clears_current_page(session, users):
+    user = await users.create()
+    document = BrowserHistoryDocument(
+        user_id=user.id,
+        content_hash="a" * 64,
+        object_key=f"users/{user.id}/history/documents/sha256/aa/{'a' * 64}",
+        storage_status="ready",
+        byte_size=100,
+        character_count=80,
+        extraction_version="history-dom-v2",
+    )
+    session.add(document)
+    await session.flush()
+
+    now = datetime.now(UTC)
+    page = BrowserHistoryPage(
+        user_id=user.id,
+        url_hash="b" * 64,
+        url="https://example.com/article",
+        hostname="example.com",
+        current_document_id=document.id,
+        first_visited_at=now,
+        last_visited_at=now,
+        visit_count=1,
+    )
+    session.add(page)
+    await session.flush()
+    session.add_all(
+        [
+            BrowserHistoryPageDocument(
+                page_id=page.id,
+                document_id=document.id,
+                first_seen_at=now,
+                last_seen_at=now,
+            ),
+            BrowserHistoryDocumentEmbedding(
+                document_id=document.id,
+                chunk_index=0,
+                model="test-embedding",
+                embedding=[0.1, 0.2],
+                input_hash="c" * 64,
+            ),
+            BrowserHistorySummary(
+                document_id=document.id,
+                model="test-summary",
+                prompt_version="v1",
+                input_hash="d" * 64,
+                status="ready",
+                markdown="Summary",
+                citations=[],
+            ),
+            Conversation(
+                history_document_id=document.id,
+                user_id=user.id,
+                kind="history",
+            ),
+        ]
+    )
+    await session.commit()
+
+    await session.delete(document)
+    await session.commit()
+
+    await session.refresh(page)
+    assert page.current_document_id is None
+    for model in (
+        BrowserHistoryPageDocument,
+        BrowserHistoryDocumentEmbedding,
+        BrowserHistorySummary,
+        Conversation,
+    ):
+        assert await session.scalar(select(func.count()).select_from(model)) == 0
