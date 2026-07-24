@@ -5,6 +5,7 @@ import { useState, useSyncExternalStore } from "react";
 import { toast } from "sonner";
 import {
   api,
+  apiDownload,
   type BrowserConnection,
   type BrowserConnectionCreated,
   type BrowserHistoryDeletion,
@@ -15,11 +16,20 @@ import {
   mutateBrowserHistory,
   mutateBrowserHistorySettings,
   useHistoryConnections,
+  useHistoryExtension,
   useHistoryRules,
   useHistorySettings,
   useHistorySummary,
 } from "@/lib/queries";
-import { CheckIcon, CopyIcon, ListIcon, PlusIcon, TrashIcon, XIcon } from "./icons";
+import {
+  CheckIcon,
+  CopyIcon,
+  DownloadIcon,
+  ListIcon,
+  PlusIcon,
+  TrashIcon,
+  XIcon,
+} from "./icons";
 import ConfirmButton from "./ui/ConfirmButton";
 import ErrorText from "./ui/ErrorText";
 import Skeleton from "./ui/Skeleton";
@@ -44,7 +54,9 @@ export default function BrowserHistorySettingsSection() {
   const { data: settings } = useHistorySettings();
   const { data: summary } = useHistorySummary();
   const { data: rules } = useHistoryRules();
+  const { data: extension } = useHistoryExtension();
   const [name, setName] = useState("");
+  const [downloading, setDownloading] = useState(false);
   const [created, setCreated] = useState<BrowserConnectionCreated | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -122,6 +134,24 @@ export default function BrowserHistorySettingsSection() {
     }
   }
 
+  async function downloadExtension() {
+    setDownloading(true);
+    try {
+      // Content-Disposition isn't CORS-exposed in split-origin dev, so build
+      // the versioned fallback from metadata we already have.
+      await apiDownload(
+        "/history/extension/download",
+        `newsread-history-extension${extension?.version ? `-${extension.version}` : ""}.zip`,
+      );
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Could not download the extension",
+      );
+    } finally {
+      setDownloading(false);
+    }
+  }
+
   async function copyToken() {
     if (!created) return;
     try {
@@ -162,6 +192,49 @@ export default function BrowserHistorySettingsSection() {
 
       <div
         className="mt-4 rounded-lg border p-4"
+        style={{ background: "var(--bg-raised)", borderColor: "var(--line)" }}
+      >
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-body-lg font-medium">Install the extension</p>
+            <p className="mt-0.5 text-body-sm" style={{ color: "var(--ink-faint)" }}>
+              {extension?.available
+                ? `Download the packaged extension${
+                    extension.version ? ` (v${extension.version})` : ""
+                  } and load it into Chrome once.`
+                : "The packaged extension is not available on this server; build it from the repository's extension/ directory (npm install && npm run build)."}
+            </p>
+          </div>
+          {extension?.available && (
+            <button
+              className="btn btn-accent shrink-0"
+              onClick={downloadExtension}
+              disabled={downloading}
+            >
+              <DownloadIcon size={13} />
+              {downloading ? "Downloading…" : "Download extension"}
+            </button>
+          )}
+        </div>
+        <ol
+          className="mt-3 list-decimal space-y-1 pl-5 text-body-sm"
+          style={{ color: "var(--ink-dim)" }}
+        >
+          <li>
+            {extension?.available
+              ? "Download and unzip the extension."
+              : "Build the extension, or unzip a copy you already have."}
+          </li>
+          <li>
+            Open <code>chrome://extensions</code> and turn on Developer mode.
+          </li>
+          <li>Choose “Load unpacked” and select the unzipped folder.</li>
+          <li>Create a pairing token below and paste it into the extension.</li>
+        </ol>
+      </div>
+
+      <div
+        className="mt-3 rounded-lg border p-4"
         style={{ background: "var(--bg-raised)", borderColor: "var(--line)" }}
       >
         <div className="flex flex-wrap items-center justify-between gap-2">

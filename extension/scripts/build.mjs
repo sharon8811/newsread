@@ -1,4 +1,5 @@
-import { cp, mkdir, readFile, writeFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
+import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -25,3 +26,15 @@ manifest.version = JSON.parse(
   await readFile(resolve(root, "package.json"), "utf8"),
 ).version;
 await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+
+// Package dist/ contents (not the directory) into the zip the backend serves
+// from Settings → Browser history. Uses the system `zip` so the extension
+// toolchain stays dependency-free; skipping only costs the in-app download.
+const packagePath = resolve(root, "newsread-history-extension.zip");
+try {
+  await rm(packagePath, { force: true });
+  execFileSync("zip", ["-r", "-X", "-q", packagePath, "."], { cwd: dist });
+  console.log(`packaged ${packagePath}`);
+} catch (error) {
+  console.warn(`zip packaging skipped: ${error.message}`);
+}

@@ -1312,6 +1312,31 @@
         "title": "BrowserHistoryDomainRuleOut",
         "type": "object"
       },
+      "BrowserHistoryExtensionOut": {
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          }
+        },
+        "required": [
+          "available",
+          "version"
+        ],
+        "title": "BrowserHistoryExtensionOut",
+        "type": "object"
+      },
       "BrowserHistoryPageOut": {
         "properties": {
           "captured_at": {
@@ -7096,6 +7121,56 @@
           }
         ],
         "summary": "Delete Domain Rule",
+        "tags": [
+          "browser-history"
+        ]
+      }
+    },
+    "/api/history/extension": {
+      "get": {
+        "operationId": "extension_package_status_api_history_extension_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserHistoryExtensionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Extension Package Status",
+        "tags": [
+          "browser-history"
+        ]
+      }
+    },
+    "/api/history/extension/download": {
+      "get": {
+        "operationId": "download_extension_package_api_history_extension_download_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Download Extension Package",
         "tags": [
           "browser-history"
         ]

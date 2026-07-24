@@ -11,6 +11,7 @@ import {
   type ArticleProjectStatus,
   type BrowserConnection,
   type BrowserHistoryDomainRule,
+  type BrowserHistoryExtension,
   type BrowserHistoryPage,
   type BrowserHistorySettings,
   type BrowserHistorySort,
@@ -127,6 +128,9 @@ export const useHistorySummary = (enabled = true) =>
 
 export const useHistoryConnections = (enabled = true) =>
   useSWR<BrowserConnection[]>(enabled ? keys.historyConnections : null, fetcher);
+
+export const useHistoryExtension = (enabled = true) =>
+  useSWR<BrowserHistoryExtension>(enabled ? keys.historyExtension : null, fetcher);
 
 export const useHistorySettings = (enabled = true) =>
   useSWR<BrowserHistorySettings>(enabled ? keys.historySettings : null, fetcher);

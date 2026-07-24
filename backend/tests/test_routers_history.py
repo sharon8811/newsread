@@ -255,3 +255,65 @@ async def test_connection_revoked_timestamp_is_timezone_aware(client, users, ses
     )
     connection = await session.get(BrowserConnection, connection_id)
     assert connection.revoked_at >= before
+
+
+def _write_extension_zip(path, version="9.9.9"):
+    import zipfile
+
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr("manifest.json", f'{{"version": "{version}"}}')
+        archive.writestr("background.js", "// packaged")
+    return path
+
+
+async def test_extension_package_unavailable(client, users, monkeypatch, tmp_path):
+    from app.config import settings as app_settings
+
+    monkeypatch.setattr(app_settings, "extension_package", str(tmp_path / "missing.zip"))
+    user = await users.create()
+    status = await client.get("/api/history/extension", headers=users.auth(user))
+    assert status.json() == {"available": False, "version": None}
+    download = await client.get("/api/history/extension/download", headers=users.auth(user))
+    assert download.status_code == 404
+
+
+async def test_extension_package_download_and_version_cache(client, users, monkeypatch, tmp_path):
+    import os
+
+    from app.config import settings as app_settings
+
+    package = _write_extension_zip(tmp_path / "newsread-history-extension.zip")
+    monkeypatch.setattr(app_settings, "extension_package", str(package))
+    user = await users.create()
+    headers = users.auth(user)
+
+    status = await client.get("/api/history/extension", headers=headers)
+    assert status.json() == {"available": True, "version": "9.9.9"}
+
+    download = await client.get("/api/history/extension/download", headers=headers)
+    assert download.status_code == 200
+    assert download.headers["content-type"] == "application/zip"
+    assert "newsread-history-extension-9.9.9.zip" in download.headers["content-disposition"]
+    assert download.content == package.read_bytes()
+
+    # A rebuilt package (new mtime) invalidates the cached version.
+    _write_extension_zip(package, version="10.0.0")
+    os.utime(package, (package.stat().st_atime, package.stat().st_mtime + 5))
+    rebuilt = await client.get("/api/history/extension", headers=headers)
+    assert rebuilt.json() == {"available": True, "version": "10.0.0"}
+
+    # A corrupt zip is reported available without a version, not a 500.
+    package.write_bytes(b"not a zip")
+    os.utime(package, (package.stat().st_atime, package.stat().st_mtime + 10))
+    corrupt = await client.get("/api/history/extension", headers=headers)
+    assert corrupt.json() == {"available": True, "version": None}
+
+
+async def test_extension_package_requires_session_auth(client, users):
+    user = await users.create()
+    created = await _create_connection(client, users, user)
+    token = created.json()["token"]
+    for path in ("/api/history/extension", "/api/history/extension/download"):
+        anonymous = await client.get(path)
+        extension_token = await client.get(path, headers={"Authorization": f"Bearer {token}"})
+        assert anonymous.status_code == extension_token.status_code == 401

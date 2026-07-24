@@ -33,6 +33,11 @@ class Settings(BaseSettings):
     # Browser history remains opt-in while its privacy and extension surfaces
     # are completed. Self-hosters can enable the backend foundation explicitly.
     browser_history_enabled: bool = False  # NEWSREAD_BROWSER_HISTORY_ENABLED
+    # Packaged Chrome extension served from Settings → Browser history. Empty
+    # means the in-repo default (extension/newsread-history-extension.zip,
+    # produced by `npm run build` there); the download link hides when the
+    # file is absent. Docker mounts ./extension and points this inside it.
+    extension_package: str = ""  # NEWSREAD_EXTENSION_PACKAGE
 
     database_url: str = "postgresql+asyncpg://newsread:newsread@localhost:5433/newsread"
     redis_url: str = "redis://localhost:6380/0"

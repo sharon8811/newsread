@@ -48,8 +48,20 @@ pause/exclusion rules before queueing, and never logs page text or tokens.
 - Reload the service worker from `chrome://extensions` and confirm there are no
   unhandled errors.
 
+## Privacy
+
+What the extension captures, what is always excluded, permission-by-permission
+explanations, retention, and deletion guarantees are documented in
+[docs/browser-history-privacy.md](../docs/browser-history-privacy.md). Keep that
+document in sync with any capture-behavior change.
+
 ## Packaging
 
-Update `package.json`'s version, run `npm test && npm run build`, then zip the
-contents of `dist/` (not the `dist` directory itself). The build copies the
-NewsRead license and required Smart History Apache attribution into the package.
+Update `package.json`'s version, then run `npm test && npm run build`. The
+build copies the NewsRead license and required Smart History Apache attribution
+into `dist/` and packages its contents (not the `dist` directory itself) into
+`newsread-history-extension.zip`, which the backend serves from
+Settings → Browser history as the in-app "Download extension" button
+(`NEWSREAD_EXTENSION_PACKAGE` overrides the path; docker-compose mounts
+`./extension` for this). Zipping uses the system `zip` binary and is skipped
+with a warning when it is unavailable.

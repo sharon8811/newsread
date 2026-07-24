@@ -50,6 +50,12 @@ services:
       # but inside the compose network the instance lives at searxng:8080 —
       # rewrite it. Set NEWSREAD_SEARXNG_BASE_URL to use an external instance.
       NEWSREAD_SEARXNG_BASE_URL: ${NEWSREAD_SEARXNG_BASE_URL:-${SEARXNG_BASE_URL:+http://searxng:8080}}
+      # Settings → Browser history serves the packaged Chrome extension from
+      # the mounted repo directory (built there by `npm run build`). The
+      # download link simply hides while the zip is absent.
+      NEWSREAD_EXTENSION_PACKAGE: /extension/newsread-history-extension.zip
+    volumes:
+      - ./extension:/extension:ro
     ports:
       - "8000:8000"
     depends_on:

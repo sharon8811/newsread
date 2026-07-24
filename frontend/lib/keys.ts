@@ -47,6 +47,7 @@ export const keys = {
   smartFeeds: "/catalog/smart",
 
   historySummary: "/history/summary",
+  historyExtension: "/history/extension",
   historyConnections: "/history/connections",
   historySettings: "/history/settings",
   historyRules: "/history/domain-rules",

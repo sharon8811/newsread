@@ -308,6 +308,11 @@ class BrowserHistoryDeletionOut(BaseModel):
     sync_revision: int
 
 
+class BrowserHistoryExtensionOut(BaseModel):
+    available: bool
+    version: str | None
+
+
 # --- Feeds ---
 
 

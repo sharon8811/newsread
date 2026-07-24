@@ -851,6 +851,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/history/extension": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Extension Package Status */
+        get: operations["extension_package_status_api_history_extension_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/history/extension/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download Extension Package */
+        get: operations["download_extension_package_api_history_extension_download_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/history/settings": {
         parameters: {
             query?: never;
@@ -2119,6 +2153,13 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+        };
+        /** BrowserHistoryExtensionOut */
+        BrowserHistoryExtensionOut: {
+            /** Available */
+            available: boolean;
+            /** Version */
+            version: string | null;
         };
         /** BrowserHistoryPageOut */
         BrowserHistoryPageOut: {
@@ -4864,6 +4905,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    extension_package_status_api_history_extension_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrowserHistoryExtensionOut"];
+                };
+            };
+        };
+    };
+    download_extension_package_api_history_extension_download_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
         };

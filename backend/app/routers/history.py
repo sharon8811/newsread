@@ -4,15 +4,19 @@ import base64
 import hashlib
 import json
 import math
+import zipfile
 from datetime import UTC, date, datetime, timedelta
+from pathlib import Path
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response
+from fastapi.responses import FileResponse
 from pydantic import ValidationError
 from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from .. import history_search
+from ..config import settings
 from ..deps import CurrentUser, DbSession
 from ..history_auth import (
     BrowserConnectionAuth,
@@ -39,6 +43,7 @@ from ..schemas import (
     BrowserHistoryDeletionOut,
     BrowserHistoryDomainRuleIn,
     BrowserHistoryDomainRuleOut,
+    BrowserHistoryExtensionOut,
     BrowserHistoryPageOut,
     BrowserHistorySettingsIn,
     BrowserHistorySettingsOut,
@@ -394,6 +399,54 @@ async def delete_domain_rule(
     history_settings.sync_revision += 1
     await session.delete(rule)
     await session.commit()
+
+
+def _extension_package_path() -> Path:
+    if settings.extension_package:
+        return Path(settings.extension_package)
+    return Path(__file__).resolve().parents[3] / "extension" / "newsread-history-extension.zip"
+
+
+# Version cache keyed by (path, mtime) so each build is read once.
+_extension_version_cache: dict[tuple[str, float], str | None] = {}
+
+
+def _extension_package_info() -> tuple[Path | None, str | None]:
+    path = _extension_package_path()
+    try:
+        mtime = path.stat().st_mtime
+    except OSError:
+        return None, None
+    key = (str(path), mtime)
+    if key not in _extension_version_cache:
+        try:
+            with zipfile.ZipFile(path) as archive:
+                manifest = json.loads(archive.read("manifest.json"))
+            version = manifest.get("version")
+        except (zipfile.BadZipFile, KeyError, ValueError, OSError):
+            version = None
+        _extension_version_cache.clear()
+        _extension_version_cache[key] = version if isinstance(version, str) else None
+    return path, _extension_version_cache[key]
+
+
+@router.get("/extension", response_model=BrowserHistoryExtensionOut)
+async def extension_package_status(user: CurrentUser):
+    path, version = _extension_package_info()
+    return BrowserHistoryExtensionOut(available=path is not None, version=version)
+
+
+@router.get("/extension/download")
+async def download_extension_package(user: CurrentUser):
+    path, version = _extension_package_info()
+    if path is None:
+        raise HTTPException(status_code=404, detail="Extension package is not available")
+    suffix = f"-{version}" if version else ""
+    return FileResponse(
+        path,
+        media_type="application/zip",
+        filename=f"newsread-history-extension{suffix}.zip",
+    )
 
 
 @router.get("/summary", response_model=BrowserHistorySummaryOut)

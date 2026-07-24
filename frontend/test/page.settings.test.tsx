@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import SettingsPage from "@/app/(app)/settings/page";
 import { makeIntegration, makeShareTarget } from "./fixtures";
@@ -65,6 +65,7 @@ function mockSWRData({
     has_history: false,
   } as unknown,
   historyRules = [] as unknown[],
+  historyExtension = { available: true, version: "0.1.0" } as unknown,
 } = {}) {
   // The picker's bound mutate writes back into the holder; the re-render
   // caused by the component's own setState picks the new value up.
@@ -79,6 +80,7 @@ function mockSWRData({
     if (key === "/history/settings") return { data: historySettings };
     if (key === "/history/summary") return { data: historySummary };
     if (key === "/history/domain-rules") return { data: historyRules };
+    if (key === "/history/extension") return { data: historyExtension };
     if (typeof key === "string" && key.includes("/targets?q=")) {
       if (holder.options instanceof Error) return { error: holder.options };
       return {
@@ -353,6 +355,84 @@ describe("SettingsPage", () => {
     );
     expect(screen.getByText("blocked.example")).toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: "Revoke" })).toHaveLength(1);
+  });
+
+  it("downloads the packaged extension with its versioned filename", async () => {
+    mockSWRData({
+      serverConfig: {
+        allow_signup: true,
+        messaging_enabled: false,
+        browser_history_enabled: true,
+      },
+      historyExtension: { available: true, version: "1.2.3" },
+    });
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      headers: new Headers({
+        "content-disposition": 'attachment; filename="newsread-history-extension-1.2.3.zip"',
+      }),
+      blob: async () => new Blob(["zip-bytes"]),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const createObjectURL = vi.fn(() => "blob:extension");
+    const revokeObjectURL = vi.fn();
+    vi.stubGlobal("URL", Object.assign(URL, { createObjectURL, revokeObjectURL }));
+    const clicked: string[] = [];
+    const originalClick = HTMLAnchorElement.prototype.click;
+    HTMLAnchorElement.prototype.click = function () {
+      clicked.push(this.download);
+    };
+    try {
+      render(<SettingsPage />);
+      expect(screen.getByText(/\(v1\.2\.3\)/)).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: /Download extension/ }));
+      await waitFor(() => expect(clicked).toEqual(["newsread-history-extension-1.2.3.zip"]));
+      expect(fetchMock.mock.calls[0][0]).toContain("/history/extension/download");
+      expect(revokeObjectURL).toHaveBeenCalledWith("blob:extension");
+    } finally {
+      HTMLAnchorElement.prototype.click = originalClick;
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("reports a failed extension download and falls back when unavailable", async () => {
+    mockSWRData({
+      serverConfig: {
+        allow_signup: true,
+        messaging_enabled: false,
+        browser_history_enabled: true,
+      },
+      historyExtension: { available: true, version: null },
+    });
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 404,
+      statusText: "Not Found",
+      json: async () => ({ detail: "Extension package is not available" }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      render(<SettingsPage />);
+      fireEvent.click(screen.getByRole("button", { name: /Download extension/ }));
+      await waitFor(() =>
+        expect(toastErrorMock).toHaveBeenCalledWith("Extension package is not available"),
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+
+    cleanup();
+    mockSWRData({
+      serverConfig: {
+        allow_signup: true,
+        messaging_enabled: false,
+        browser_history_enabled: true,
+      },
+      historyExtension: { available: false, version: null },
+    });
+    render(<SettingsPage />);
+    expect(screen.getByText(/build it from the repository/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Download extension/ })).toBeNull();
   });
 
   it("surfaces browser-history management failures", async () => {
