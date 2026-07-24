@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>NewsRead History settings</title>
+    <link rel="stylesheet" href="options.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <p class="product">NewsRead History</p>
+        <h1>Browser capture settings</h1>
+        <p>Control what enters the local outbox before anything reaches NewsRead.</p>
+      </header>
+
+      <section>
+        <h2>Excluded domains</h2>
+        <p>Pages on these domains and their subdomains are never queued.</p>
+        <form id="exclude-form">
+          <label>
+            Domain
+            <input id="domain" placeholder="private.example.com" required />
+          </label>
+          <button type="submit">Add exclusion</button>
+        </form>
+        <ul id="domains"></ul>
+      </section>
+
+      <section>
+        <h2>Existing Chrome history</h2>
+        <p>Optionally import up to 20,000 recent titles and URLs. Page text is not available for past visits.</p>
+        <div class="actions">
+          <button id="import" type="button">Import metadata</button>
+          <button id="cancel-import" type="button" disabled>Cancel</button>
+        </div>
+        <p id="import-progress" aria-live="polite"></p>
+      </section>
+
+      <section>
+        <h2>Local outbox</h2>
+        <p>Queued captures remain on this device until they sync or reach the 30-day queue limit.</p>
+        <div class="actions">
+          <button id="clear-queue" type="button">Clear local queue</button>
+          <button id="disconnect" class="danger" type="button">Disconnect browser</button>
+        </div>
+      </section>
+
+      <p id="notice" role="status"></p>
+    </main>
+    <script type="module" src="options.js"></script>
+  </body>
+</html>

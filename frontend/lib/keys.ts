@@ -46,6 +46,37 @@ export const keys = {
   catalogCategories: "/catalog/categories",
   smartFeeds: "/catalog/smart",
 
+  historySummary: "/history/summary",
+  historyExtension: "/history/extension",
+  historyConnections: "/history/connections",
+  historySettings: "/history/settings",
+  historyRules: "/history/domain-rules",
+  history: ({
+    q,
+    hostname,
+    dateFrom,
+    dateTo,
+    sort,
+    cursor,
+  }: {
+    q?: string;
+    hostname?: string;
+    dateFrom?: string;
+    dateTo?: string;
+    sort?: "recent" | "relevance";
+    cursor?: string;
+  }) => {
+    const params = new URLSearchParams();
+    if (q) params.set("q", q);
+    if (hostname) params.set("hostname", hostname);
+    if (dateFrom) params.set("date_from", dateFrom);
+    if (dateTo) params.set("date_to", dateTo);
+    if (sort && sort !== "recent") params.set("sort", sort);
+    if (cursor) params.set("cursor", cursor);
+    const qs = params.toString();
+    return qs ? `/history?${qs}` : "/history";
+  },
+
   userSearch: (q: string) => `/users/search?q=${encodeURIComponent(q)}`,
 
   usageSummary: (range: string) => `/usage/summary?range=${range}`,

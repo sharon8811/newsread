@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "NewsRead History",
+  "version": "0.1.0",
+  "description": "Privately sync searchable browser history to your NewsRead server.",
+  "permissions": ["activeTab", "alarms", "storage"],
+  "optional_permissions": ["history"],
+  "optional_host_permissions": ["http://*/*", "https://*/*"],
+  "incognito": "not_allowed",
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_title": "NewsRead History"
+  },
+  "options_page": "options/options.html",
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

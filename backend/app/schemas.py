@@ -1,8 +1,27 @@
 import json
+import unicodedata
 from datetime import date, datetime
-from typing import Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    EmailStr,
+    Field,
+    WithJsonSchema,
+    field_validator,
+    model_validator,
+)
+
+from .history_policy import (
+    MAX_HISTORY_EXCERPT_CHARS,
+    MAX_HISTORY_TEXT_CHARS,
+    MAX_HISTORY_TITLE_CHARS,
+    MAX_HISTORY_URL_CHARS,
+    MAX_HISTORY_VISIT_COUNT,
+    normalize_history_hostname,
+    sanitize_capture_text,
+    validate_normalized_history_url,
+)
 
 ViewMode = Literal["cards", "list", "stories"]
 SortOrder = Literal["newest", "oldest"]
@@ -83,6 +102,215 @@ class DeviceOut(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+# --- Browser history ---
+
+
+def _clean_single_line(value: str) -> str:
+    value = " ".join(value.split())
+    if any(unicodedata.category(char).startswith("C") for char in value):
+        raise ValueError("must not contain control or formatting characters")
+    return value
+
+
+class BrowserConnectionCreateIn(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+
+    @field_validator("name")
+    @classmethod
+    def clean_name(cls, value: str) -> str:
+        value = _clean_single_line(value)
+        if not value:
+            raise ValueError("must not be empty")
+        return value
+
+
+class BrowserConnectionOut(BaseModel):
+    id: int
+    name: str
+    token_prefix: str
+    created_at: datetime
+    last_seen_at: datetime | None
+    revoked_at: datetime | None
+
+    model_config = {"from_attributes": True}
+
+
+class BrowserConnectionCreatedOut(BrowserConnectionOut):
+    token: str
+
+
+HistoryRetentionDays = Literal[30, 90, 365]
+
+
+class BrowserHistorySettingsOut(BaseModel):
+    retention_days: HistoryRetentionDays | None
+    sync_revision: int
+
+
+class BrowserHistorySettingsIn(BaseModel):
+    retention_days: HistoryRetentionDays | None = None
+
+
+DomainRuleMode = Literal["exclude", "metadata_only"]
+
+
+def _normalize_hostname(value: str) -> str:
+    return normalize_history_hostname(value)
+
+
+class BrowserHistoryDomainRuleIn(BaseModel):
+    hostname: str = Field(min_length=1, max_length=253)
+    match_subdomains: bool = False
+    mode: DomainRuleMode
+    delete_existing: bool = False
+
+    @field_validator("hostname")
+    @classmethod
+    def normalize_hostname(cls, value: str) -> str:
+        return _normalize_hostname(value)
+
+
+class BrowserHistoryDomainRuleOut(BaseModel):
+    id: int
+    hostname: str
+    match_subdomains: bool
+    mode: DomainRuleMode
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class BrowserHistorySyncStatusOut(BaseModel):
+    connection: BrowserConnectionOut
+    user_name: str
+    settings: BrowserHistorySettingsOut
+    domain_rules: list[BrowserHistoryDomainRuleOut]
+
+
+class BrowserHistoryCaptureIn(BaseModel):
+    record_id: str = Field(min_length=1, max_length=128)
+    url: str = Field(min_length=1, max_length=MAX_HISTORY_URL_CHARS)
+    title: str = Field(default="", max_length=MAX_HISTORY_TITLE_CHARS)
+    text: str = Field(default="", max_length=MAX_HISTORY_TEXT_CHARS)
+    text_excerpt: str = Field(default="", max_length=MAX_HISTORY_EXCERPT_CHARS)
+    first_visited_at: datetime
+    last_visited_at: datetime
+    visit_count: int = Field(ge=1)
+    captured_at: datetime | None = None
+    known_revision: int = Field(default=0, ge=0, le=2_147_483_647)
+
+    @field_validator("record_id")
+    @classmethod
+    def clean_record_id(cls, value: str) -> str:
+        value = _clean_single_line(value)
+        if not value:
+            raise ValueError("must not be empty")
+        return value
+
+    @field_validator("url")
+    @classmethod
+    def validate_url(cls, value: str) -> str:
+        validate_normalized_history_url(value)
+        return value
+
+    @field_validator("title", "text", "text_excerpt", mode="before")
+    @classmethod
+    def sanitize_page_text(cls, value: Any) -> Any:
+        return sanitize_capture_text(value) if isinstance(value, str) else value
+
+    @field_validator("visit_count")
+    @classmethod
+    def cap_visit_count(cls, value: int) -> int:
+        return min(value, MAX_HISTORY_VISIT_COUNT)
+
+    @model_validator(mode="after")
+    def validate_timestamps(self):
+        timestamps = (
+            self.first_visited_at,
+            self.last_visited_at,
+            self.captured_at,
+        )
+        if any(value is not None and value.utcoffset() is None for value in timestamps):
+            raise ValueError("timestamps must include a timezone")
+        if self.last_visited_at < self.first_visited_at:
+            raise ValueError("last_visited_at must not precede first_visited_at")
+        return self
+
+
+BrowserHistoryCapturePayload = Annotated[
+    Any,
+    WithJsonSchema(BrowserHistoryCaptureIn.model_json_schema()),
+]
+
+
+class BrowserHistorySyncIn(BaseModel):
+    # Runtime validation remains per-item so one hostile record cannot reject a
+    # good batch; WithJsonSchema keeps the extension's generated contract exact.
+    records: list[BrowserHistoryCapturePayload] = Field(min_length=1, max_length=100)
+
+
+class BrowserHistorySyncAcceptedOut(BaseModel):
+    record_id: str
+    page_id: int
+    url_hash: str
+
+
+class BrowserHistorySyncRejectedOut(BaseModel):
+    record_id: str
+    code: Literal["invalid", "excluded", "stale_revision"]
+    detail: str
+
+
+class BrowserHistorySyncOut(BaseModel):
+    accepted: list[BrowserHistorySyncAcceptedOut]
+    rejected: list[BrowserHistorySyncRejectedOut]
+    sync_revision: int
+    domain_rules: list[BrowserHistoryDomainRuleOut]
+    server_time: datetime
+
+
+class BrowserHistorySummaryOut(BaseModel):
+    active_connection_count: int
+    total_connection_count: int
+    history_count: int
+    has_active_connection: bool
+    has_history: bool
+
+
+class BrowserHistoryPageOut(BaseModel):
+    id: int
+    url: str
+    title: str
+    hostname: str
+    text_excerpt: str
+    first_visited_at: datetime
+    last_visited_at: datetime
+    visit_count: int
+    captured_at: datetime | None
+    source_browsers: list[str]
+
+
+class BrowserHistoryClearIn(BaseModel):
+    confirm: Literal["DELETE"]
+    hostname: str | None = Field(default=None, max_length=253)
+
+    @field_validator("hostname")
+    @classmethod
+    def normalize_optional_hostname(cls, value: str | None) -> str | None:
+        return normalize_history_hostname(value) if value is not None else None
+
+
+class BrowserHistoryDeletionOut(BaseModel):
+    deleted_count: int
+    sync_revision: int
+
+
+class BrowserHistoryExtensionOut(BaseModel):
+    available: bool
+    version: str | None
 
 
 # --- Feeds ---
@@ -519,6 +747,7 @@ class ServerConfigOut(BaseModel):
 
     allow_signup: bool
     messaging_enabled: bool
+    browser_history_enabled: bool
 
 
 class IntegrationStatusOut(BaseModel):

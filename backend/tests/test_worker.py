@@ -583,7 +583,7 @@ def test_worker_settings_shape():
         worker.send_share_push,
         worker.send_project_pin_push,
     ]
-    assert len(worker.WorkerSettings.cron_jobs) == 3
+    assert len(worker.WorkerSettings.cron_jobs) == 4
 
 
 # --- send_share_push ---

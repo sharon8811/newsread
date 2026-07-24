@@ -82,6 +82,26 @@ export async function api<T>(
 
 export const fetcher = <T,>(path: string) => api<T>(path);
 
+// Authenticated file download: a plain <a href> can't carry the Authorization
+// header, so fetch the bytes and hand them to the browser via an object URL.
+export async function apiDownload(path: string, fallbackName: string): Promise<void> {
+  const res = await fetch(`${API_URL}/api${path}`, { headers: authHeaders() });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throwApiError(res, data);
+  }
+  const blob = await res.blob();
+  const match = /filename="?([^";]+)"?/.exec(res.headers.get("content-disposition") ?? "");
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = match?.[1] ?? fallbackName;
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
 // Like api(), but hands back response headers too — article list pagination
 // travels in X-Next-Cursor / X-Prev-Cursor / X-Unread-Count / X-New-Above-Count.
 export async function apiWithHeaders<T>(
@@ -282,6 +302,18 @@ export type DislikeOptionEntity = Schemas["DislikeOptionEntity"];
 export type DislikeOptions = Schemas["DislikeOptionsOut"];
 export type DislikeRuleCreate = Schemas["DislikeRuleIn"];
 export type DislikeRuleCreated = Schemas["DislikeRuleCreateOut"];
+
+// ——— Browser history ———
+
+export type BrowserConnection = Schemas["BrowserConnectionOut"];
+export type BrowserConnectionCreated = Schemas["BrowserConnectionCreatedOut"];
+export type BrowserHistorySettings = Schemas["BrowserHistorySettingsOut"];
+export type BrowserHistoryDomainRule = Schemas["BrowserHistoryDomainRuleOut"];
+export type BrowserHistorySummary = Schemas["BrowserHistorySummaryOut"];
+export type BrowserHistoryPage = Schemas["BrowserHistoryPageOut"];
+export type BrowserHistoryDeletion = Schemas["BrowserHistoryDeletionOut"];
+export type BrowserHistoryExtension = Schemas["BrowserHistoryExtensionOut"];
+export type BrowserHistorySort = "recent" | "relevance";
 
 export type AiStatus = Schemas["AiStatusOut"];
 

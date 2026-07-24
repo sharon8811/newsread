@@ -13,7 +13,16 @@ from arq.connections import RedisSettings
 from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.orm import selectinload
 
-from . import catalog_embeddings, db, embeddings, llm, ner, push, suppressions
+from . import (
+    catalog_embeddings,
+    db,
+    embeddings,
+    history_embeddings,
+    llm,
+    ner,
+    push,
+    suppressions,
+)
 from .config import settings
 from .db import init_db
 from .enrichers.pipeline import extract_entities, refresh_stale_entities
@@ -22,6 +31,9 @@ from .fetcher import refresh_feed
 from .models import (
     Article,
     ArticleEmbedding,
+    BrowserHistoryEmbedding,
+    BrowserHistoryPage,
+    BrowserHistorySettings,
     Feed,
     Project,
     ProjectArticle,
@@ -36,6 +48,7 @@ logger = logging.getLogger(__name__)
 ENRICH_BATCH = 20
 SUMMARIZE_BATCH = 10
 EMBED_BATCH = 50
+HISTORY_EMBED_BATCH = 50
 NER_BATCH = 10
 ENRICH_CONCURRENCY = 4
 SUMMARIZE_CONCURRENCY = 2
@@ -135,15 +148,18 @@ async def enrich_and_summarize(ctx: dict | None = None, feed_id: int | None = No
 
     tagged = await extract_named_entities_batch(feed_id=feed_id)
     embedded = await embed_articles_batch(feed_id=feed_id)
+    history_embedded = await embed_history_pages_batch()
     suppressed = await suppress_articles_batch(feed_id=feed_id)
 
-    if enrich_ids or summarize_ids or tagged or embedded or suppressed:
+    if enrich_ids or summarize_ids or tagged or embedded or history_embedded or suppressed:
         logger.info(
-            "Enriched %d articles, summarized up to %d, tagged %d, embedded %d, suppressed %d",
+            "Enriched %d articles, summarized up to %d, tagged %d, "
+            "embedded %d articles and %d history pages, suppressed %d",
             len(enrich_ids),
             len(summarize_ids),
             tagged,
             embedded,
+            history_embedded,
             suppressed,
         )
 
@@ -230,6 +246,71 @@ async def embed_articles_batch(feed_id: int | None = None) -> int:
         except Exception as exc:
             logger.warning("Embedding stage failed: %s", exc)
             return 0
+
+
+async def embed_history_pages_batch() -> int:
+    """Embed a bounded batch of new, changed, or old-model history pages.
+
+    Failures are isolated from feed processing and leave every page available
+    to PostgreSQL keyword search for retry on the next worker cycle.
+    """
+    if not history_embeddings.is_configured():
+        return 0
+    async with db.SessionLocal() as session:
+        query = (
+            select(BrowserHistoryPage)
+            .outerjoin(
+                BrowserHistoryEmbedding,
+                BrowserHistoryEmbedding.page_id == BrowserHistoryPage.id,
+            )
+            .where(
+                or_(
+                    BrowserHistoryEmbedding.page_id.is_(None),
+                    BrowserHistoryEmbedding.model != settings.openai_embedding_model,
+                    history_embeddings.stale_input(),
+                )
+            )
+            .order_by(BrowserHistoryPage.id.desc())
+            .limit(HISTORY_EMBED_BATCH)
+        )
+        pages = list(await session.scalars(query))
+        try:
+            return await history_embeddings.embed_pages(session, pages)
+        except Exception as exc:
+            logger.warning("History embedding stage failed: %s", exc)
+            await session.rollback()
+            return 0
+
+
+async def cleanup_history_retention(
+    ctx: dict | None = None,
+    *,
+    now: datetime | None = None,
+) -> int:
+    """Delete expired private history; FK cascades remove vectors and aggregates."""
+    now = now or datetime.now(UTC)
+    async with db.SessionLocal() as session:
+        policies = (
+            await session.execute(
+                select(
+                    BrowserHistorySettings.user_id,
+                    BrowserHistorySettings.retention_days,
+                ).where(BrowserHistorySettings.retention_days.is_not(None))
+            )
+        ).all()
+        deleted = 0
+        for user_id, retention_days in policies:
+            result = await session.execute(
+                delete(BrowserHistoryPage).where(
+                    BrowserHistoryPage.user_id == user_id,
+                    BrowserHistoryPage.last_visited_at < now - timedelta(days=retention_days),
+                )
+            )
+            deleted += result.rowcount
+        await session.commit()
+    if deleted:
+        logger.info("Deleted %d browser-history pages past retention", deleted)
+    return deleted
 
 
 async def suppress_articles_batch(feed_id: int | None = None) -> int:
@@ -390,4 +471,5 @@ class WorkerSettings:
         cron(poll_feeds, minute=set(range(0, 60, 3)), run_at_startup=True),
         cron(refresh_entities, minute={7, 37}),
         cron(refresh_catalog_embeddings, minute=17, run_at_startup=True),
+        cron(cleanup_history_retention, hour=3, minute=11),
     ]

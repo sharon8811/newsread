@@ -8,7 +8,9 @@ import {
   mutateFeeds,
   useAiSettings,
   useFeeds,
+  useHistorySummary,
   useProjects,
+  useServerConfig,
   useUnseenShareCount,
 } from "@/lib/queries";
 import { useMutation } from "@/lib/useMutation";
@@ -24,6 +26,7 @@ import {
   GearIcon,
   InboxIcon,
   LinkIcon,
+  ListIcon,
   LogoutIcon,
   MuteIcon,
   PlusIcon,
@@ -92,6 +95,9 @@ export default function Sidebar() {
   // AI usage is only tracked for calls on the user's own key, so the page is
   // only offered once they've saved one.
   const { data: aiSettings } = useAiSettings();
+  const { data: config } = useServerConfig();
+  const historyEnabled = config?.browser_history_enabled === true;
+  const { data: historySummary } = useHistorySummary(historyEnabled);
 
   const [adding, setAdding] = useState(false);
   const [newUrl, setNewUrl] = useState("");
@@ -169,6 +175,15 @@ export default function Sidebar() {
           icon={<LinkIcon />}
           label="Imported"
         />
+        {historyEnabled &&
+          (historySummary?.has_active_connection || historySummary?.has_history) && (
+            <NavLink
+              href="/history"
+              active={pathname === "/history"}
+              icon={<ListIcon />}
+              label="History"
+            />
+          )}
         <NavLink
           href="/catalog"
           active={pathname === "/catalog"}

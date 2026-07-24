@@ -1,0 +1,49 @@
+:root {
+  color-scheme: light dark;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #18201f;
+  background: #f7f8f7;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; width: 360px; }
+main { padding: 18px; }
+header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+h1 { margin: 0; font-size: 18px; letter-spacing: -0.02em; }
+p { margin: 5px 0 0; color: #65706e; font-size: 12px; }
+#status-dot { width: 9px; height: 9px; margin-top: 5px; border-radius: 999px; background: #9aa3a1; }
+#status-dot[data-state="paired"] { background: #2f766d; }
+#status-dot[data-state="error"], #status-dot[data-state="revoked"] { background: #b42318; }
+form, section { display: grid; gap: 13px; margin-top: 18px; }
+label { display: grid; gap: 6px; color: #4c5755; font-size: 12px; font-weight: 600; }
+input, select, button, .link-button {
+  min-height: 38px;
+  border: 1px solid #cfd5d3;
+  border-radius: 8px;
+  background: #fff;
+  color: #18201f;
+  font: inherit;
+}
+input, select { width: 100%; padding: 8px 10px; }
+button { padding: 8px 11px; cursor: pointer; }
+button:active, .link-button:active { transform: translateY(1px); }
+.primary { border-color: #315d58; background: #315d58; color: #fff; font-weight: 650; }
+.metric, .switch-row { display: flex; align-items: center; justify-content: space-between; }
+.metric { border-bottom: 1px solid #dfe3e2; padding-bottom: 12px; font-size: 13px; }
+.switch-row { grid-template-columns: 1fr auto; }
+.switch-row input { width: auto; }
+.actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.link-button { display: grid; place-items: center; text-decoration: none; }
+#error { min-height: 15px; color: #b42318; }
+footer { margin-top: 10px; border-top: 1px solid #dfe3e2; padding-top: 10px; }
+.text-button { min-height: 30px; border: 0; background: transparent; color: #315d58; padding: 3px 0; }
+[hidden] { display: none !important; }
+
+@media (prefers-color-scheme: dark) {
+  :root { color: #eef2f1; background: #151a19; }
+  p, label { color: #aab4b2; }
+  input, select, button, .link-button { border-color: #3b4543; background: #202725; color: #eef2f1; }
+  .primary { border-color: #72a49d; background: #72a49d; color: #10201e; }
+  .metric, footer { border-color: #303936; }
+  .text-button { color: #9dc8c2; }
+}
