@@ -96,7 +96,7 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const handle = async () => {
-    if (!isAllowedMessageSender(message?.type, sender)) {
+    if (!isAllowedMessageSender(message?.type, sender, chrome.runtime.id)) {
       throw new Error("Extension action rejected from a content script");
     }
     switch (message?.type) {
