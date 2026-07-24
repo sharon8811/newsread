@@ -580,7 +580,8 @@ The extension already has a content script on captured pages. Add a narrowly sco
 flow from the exact paired NewsRead origin:
 
 - a citation click sends the target URL and validated anchor to the extension;
-- the background opens the tab and records a short-lived pending anchor for that tab;
+- the background opens the tab and records a 15-second pending anchor keyed to that tab in
+  extension session storage;
 - the target content script finds the normalized exact quote, scrolls it into view, and
   applies a temporary highlight;
 - messages from any origin other than the paired NewsRead origin are rejected;
@@ -589,9 +590,15 @@ flow from the exact paired NewsRead origin:
 The fallback should use DOM `Range`/safe text APIs from an isolated content script, never
 `innerHTML`. Chrome documents that
 [content scripts can read and modify page DOM in an isolated world](https://developer.chrome.com/docs/extensions/develop/concepts/content-scripts).
+The paired-page content script emits this message only from a trusted click with active
+user activation. The background revalidates bounded URLs and anchors, requires the
+highlight URL to identify the same HTTP(S) document, and lets only the newly opened target
+tab claim the pending anchor once. The target uses the CSS Custom Highlight API and removes
+its temporary style/highlight after eight seconds; an observer retries for late SPA content
+for at most ten seconds.
 
-Ship Level 1 first. Level 2 is useful for client-rendered pages and sites where native text
-fragments are unreliable, but is not required for the initial cited-summary release.
+Level 2 is included with Level 1 because it stays inside the extension's existing
+content-script permissions and adds no backend fetch path or page-origin traffic.
 
 ## SeaweedFS and configuration
 
@@ -695,10 +702,10 @@ asking a question is the only path that invokes the agent.
 
 ### Phase 5 — citation navigation
 
-- [ ] Generate and test native Text Fragment links, including prefix/suffix encoding.
-- [ ] Show the captured citation passage in a tooltip/popover before navigation.
-- [ ] Add the optional extension-assisted fallback with paired-origin and sender checks.
-- [ ] Test changed pages, repeated phrases, SPAs, iframes, RTL text, and no-match behavior.
+- [x] Generate and test native Text Fragment links, including prefix/suffix encoding.
+- [x] Show the captured citation passage in a tooltip/popover before navigation.
+- [x] Add the extension-assisted fallback with paired-origin and sender checks.
+- [x] Test changed pages, repeated phrases, SPAs, iframes, RTL text, and no-match behavior.
 
 Acceptance: supported pages scroll to and highlight the cited text; all failure cases still
 open the correct original URL safely.

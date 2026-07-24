@@ -9,10 +9,19 @@ async function loadContentScript(html: string) {
       return this.textContent ?? "";
     },
   });
-  const sendMessage = vi.fn().mockResolvedValue(undefined);
+  const sendMessage = vi.fn().mockImplementation((message: { type: string }) =>
+    Promise.resolve(
+      message.type === "GET_PENDING_CITATION"
+        ? { ok: true, value: null }
+        : undefined,
+    ),
+  );
   vi.stubGlobal("document", dom.window.document);
   vi.stubGlobal("location", dom.window.location);
   vi.stubGlobal("Node", dom.window.Node);
+  vi.stubGlobal("NodeFilter", dom.window.NodeFilter);
+  vi.stubGlobal("Element", dom.window.Element);
+  vi.stubGlobal("MutationObserver", dom.window.MutationObserver);
   vi.stubGlobal(
     "getComputedStyle",
     dom.window.getComputedStyle.bind(dom.window),
@@ -25,7 +34,11 @@ async function loadContentScript(html: string) {
   });
   vi.resetModules();
   await import("./content.js");
-  await vi.waitFor(() => expect(sendMessage).toHaveBeenCalledOnce());
+  await vi.waitFor(() =>
+    expect(sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "CAPTURE_PAGE" }),
+    ),
+  );
   return sendMessage;
 }
 

@@ -1,12 +1,38 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { api, type BrowserHistoryDocumentSummary } from "@/lib/api";
+import {
+  api,
+  type BrowserHistoryCitation,
+  type BrowserHistoryDocumentSummary,
+} from "@/lib/api";
 import { useHistoryDocumentSummary } from "@/lib/queries";
+import { buildTextFragmentUrl } from "@/lib/textFragments";
 import { ExternalIcon, RefreshIcon, SparkleIcon } from "./icons";
 import ErrorText from "./ui/ErrorText";
+
+const CITATION_LINK_PREFIX = "#newsread-citation-";
+
+function citationNavigationData(citation: BrowserHistoryCitation): string {
+  return JSON.stringify({
+    version: 1,
+    url: citation.url,
+    anchor: {
+      quote: citation.quote,
+      prefix: citation.prefix,
+      suffix: citation.suffix,
+    },
+  });
+}
+
+function citedMarkdown(markdown: string): string {
+  return markdown.replace(
+    /\[(\d+)\](?!\()/g,
+    (_match, label: string) => `[${label}](${CITATION_LINK_PREFIX}${label})`,
+  );
+}
 
 export default function HistoryDocumentSummary({
   documentId,
@@ -17,6 +43,23 @@ export default function HistoryDocumentSummary({
     useHistoryDocumentSummary(documentId);
   const [requesting, setRequesting] = useState(false);
   const [requestError, setRequestError] = useState<string | null>(null);
+  const [selectedCitationLabel, setSelectedCitationLabel] = useState<
+    number | null
+  >(null);
+  const citationsByLabel = useMemo(
+    () =>
+      new Map(
+        (summary?.citations ?? []).map((citation) => [
+          citation.label,
+          citation,
+        ]),
+      ),
+    [summary?.citations],
+  );
+  const selectedCitation =
+    selectedCitationLabel === null
+      ? null
+      : (citationsByLabel.get(selectedCitationLabel) ?? null);
 
   async function generate(force = false) {
     setRequesting(true);
@@ -102,10 +145,46 @@ export default function HistoryDocumentSummary({
       ) : summary?.state === "ready" && summary.markdown ? (
         <>
           <div className="summary-md mt-4">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-              {summary.markdown}
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              components={{
+                a: ({ href, children, ...props }) => {
+                  if (href?.startsWith(CITATION_LINK_PREFIX)) {
+                    const label = Number(href.slice(CITATION_LINK_PREFIX.length));
+                    const citation = citationsByLabel.get(label);
+                    if (citation) {
+                      return (
+                        <button
+                          type="button"
+                          className="font-mono-nr underline decoration-dotted underline-offset-2"
+                          style={{ color: "var(--accent)" }}
+                          aria-label={`[${label}]`}
+                          aria-expanded={selectedCitationLabel === label}
+                          aria-controls="history-citation-preview"
+                          onClick={() => setSelectedCitationLabel(label)}
+                        >
+                          [{label}]
+                        </button>
+                      );
+                    }
+                  }
+                  return (
+                    <a href={href} {...props}>
+                      {children}
+                    </a>
+                  );
+                },
+              }}
+            >
+              {citedMarkdown(summary.markdown)}
             </ReactMarkdown>
           </div>
+          {selectedCitation && (
+            <CitationPreview
+              citation={selectedCitation}
+              onClose={() => setSelectedCitationLabel(null)}
+            />
+          )}
           {(summary.citations?.length ?? 0) > 0 && (
             <ol
               className="mt-5 space-y-2 border-t pt-4"
@@ -117,19 +196,21 @@ export default function HistoryDocumentSummary({
                   className="flex gap-2 text-body-sm leading-relaxed"
                   style={{ color: "var(--ink-dim)" }}
                 >
-                  <span className="font-mono-nr shrink-0">[{citation.label}]</span>
-                  <span className="line-clamp-2">“{citation.quote}”</span>
-                  {citation.url && (
-                    <a
-                      className="ml-auto shrink-0"
-                      href={citation.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      title="Open source page"
-                    >
-                      <ExternalIcon size={12} />
-                    </a>
-                  )}
+                  <button
+                    type="button"
+                    className="flex min-w-0 flex-1 gap-2 text-left"
+                    aria-expanded={selectedCitationLabel === citation.label}
+                    aria-controls="history-citation-preview"
+                    onClick={() => setSelectedCitationLabel(citation.label)}
+                  >
+                    <span className="font-mono-nr shrink-0">
+                      [{citation.label}]
+                    </span>
+                    <span className="line-clamp-2">“{citation.quote}”</span>
+                    {citation.url && (
+                      <ExternalIcon className="ml-auto shrink-0" size={12} />
+                    )}
+                  </button>
                 </li>
               ))}
             </ol>
@@ -152,5 +233,69 @@ export default function HistoryDocumentSummary({
         </div>
       )}
     </section>
+  );
+}
+
+function CitationPreview({
+  citation,
+  onClose,
+}: {
+  citation: BrowserHistoryCitation;
+  onClose: () => void;
+}) {
+  const highlightedUrl = buildTextFragmentUrl(citation.url, citation);
+
+  return (
+    <aside
+      id="history-citation-preview"
+      className="mt-4 rounded-md border p-4"
+      style={{
+        borderColor: "var(--accent-border)",
+        background: "var(--paper)",
+      }}
+      aria-label={`Citation ${citation.label}`}
+    >
+      <div className="flex items-start gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="mono-label" style={{ color: "var(--ink-faint)" }}>
+            Source [{citation.label}]
+          </p>
+          <blockquote
+            className="mt-2 text-body-sm leading-relaxed"
+            style={{ color: "var(--ink)" }}
+          >
+            “{citation.quote}”
+          </blockquote>
+        </div>
+        <button
+          type="button"
+          className="font-mono-nr text-label"
+          style={{ color: "var(--ink-faint)" }}
+          onClick={onClose}
+          aria-label="Close citation preview"
+        >
+          Close
+        </button>
+      </div>
+      {highlightedUrl ? (
+        <a
+          className="btn btn-accent mt-4"
+          href={highlightedUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          data-newsread-citation={citationNavigationData(citation)}
+        >
+          Open highlighted source
+          <ExternalIcon size={12} />
+        </a>
+      ) : (
+        <p
+          className="font-mono-nr mt-3 text-label"
+          style={{ color: "var(--ink-faint)" }}
+        >
+          This saved version no longer has an active page location.
+        </p>
+      )}
+    </aside>
   );
 }

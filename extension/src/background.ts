@@ -1,5 +1,9 @@
 import { DEFAULT_SETTINGS, SYNC_ALARM } from "./config.js";
 import {
+  claimPendingCitation,
+  openCitation,
+} from "./citation-navigation.js";
+import {
   clearConnectionData,
   clearQueued,
   countQueued,
@@ -98,6 +102,12 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const handle = async () => {
+    if (message?.type === "OPEN_CITATION") {
+      return openCitation(message.citation, sender);
+    }
+    if (message?.type === "GET_PENDING_CITATION") {
+      return claimPendingCitation(sender);
+    }
     if (!isAllowedMessageSender(message?.type, sender, chrome.runtime.id)) {
       throw new Error("Extension action rejected from a content script");
     }

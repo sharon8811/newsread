@@ -63,6 +63,25 @@ export interface CapturedImage {
   height: number;
 }
 
+export interface CitationAnchor {
+  quote: string;
+  prefix: string | null;
+  suffix: string | null;
+}
+
+export interface CitationNavigation {
+  version: 1;
+  url: string;
+  highlightUrl: string;
+  anchor: CitationAnchor;
+}
+
+export interface PendingCitation {
+  targetUrl: string;
+  anchor: CitationAnchor;
+  expiresAt: number;
+}
+
 export interface CaptureCandidate {
   url: string;
   title: string;

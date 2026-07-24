@@ -35,6 +35,9 @@ pause/exclusion rules before queueing, and never logs page text or tokens.
 - Visit an HTTP(S) article and confirm the badge shows queued work, then clears
   after sync.
 - Search for the captured title and visible text in NewsRead History.
+- Generate a cited summary, preview a citation, and confirm its source opens at
+  the exact passage; repeat after changing/removing the passage and confirm the
+  page still opens without persistent injected markup.
 - Pause capture, visit another page, and confirm it is not queued.
 - Add a domain exclusion, visit that domain, and confirm it is not queued.
 - Switch to metadata-only mode and confirm visible text is absent after sync.

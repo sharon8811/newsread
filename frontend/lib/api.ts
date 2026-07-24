@@ -351,6 +351,7 @@ export type BrowserHistoryDocumentContent =
   Schemas["BrowserHistoryDocumentContentOut"];
 export type BrowserHistoryDocumentSummary =
   Schemas["BrowserHistoryDocumentSummaryOut"];
+export type BrowserHistoryCitation = Schemas["BrowserHistoryCitationOut"];
 
 export type AiStatus = Schemas["AiStatusOut"];
 

@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { isAllowedMessageSender } from "./message-sender.js";
+import {
+  isAllowedCitationSourceSender,
+  isAllowedCitationTargetSender,
+  isAllowedMessageSender,
+} from "./message-sender.js";
 
 const privilegedMessageTypes = [
   "GET_STATUS",
@@ -76,6 +80,66 @@ describe("extension message sender policy", () => {
           id: "other-extension",
           tab: {},
           url: "chrome-extension://other-extension/options.html",
+        },
+        extensionId,
+      ),
+    ).toBe(false);
+  });
+
+  it("allows citation opens only from the exact paired web origin", () => {
+    const pairedUrl = "https://newsread.example.com/api";
+    expect(
+      isAllowedCitationSourceSender(
+        {
+          id: extensionId,
+          tab: { id: 4 },
+          url: "https://newsread.example.com/history/documents/12",
+        },
+        extensionId,
+        pairedUrl,
+      ),
+    ).toBe(true);
+    expect(
+      isAllowedCitationSourceSender(
+        {
+          id: extensionId,
+          tab: { id: 4 },
+          url: "https://newsread.example.com.evil.test/history",
+        },
+        extensionId,
+        pairedUrl,
+      ),
+    ).toBe(false);
+    expect(
+      isAllowedCitationSourceSender(
+        {
+          id: extensionId,
+          tab: { id: 4 },
+          url: "http://newsread.example.com/history",
+        },
+        extensionId,
+        pairedUrl,
+      ),
+    ).toBe(false);
+  });
+
+  it("requires a real http(s) tab for pending citation claims", () => {
+    expect(
+      isAllowedCitationTargetSender(
+        {
+          id: extensionId,
+          tab: { id: 9 },
+          url: "https://article.example.com/",
+        },
+        extensionId,
+      ),
+    ).toBe(true);
+    expect(
+      isAllowedCitationTargetSender(
+        {
+          id: extensionId,
+          tab: { id: 9 },
+          url: `chrome-extension://${extensionId}/options/options.html`,
         },
         extensionId,
       ),
