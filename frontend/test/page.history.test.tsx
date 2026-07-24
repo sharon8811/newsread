@@ -116,6 +116,45 @@ describe("HistoryPage", () => {
     expect(screen.getByText("Work Chrome")).toBeInTheDocument();
   });
 
+  it("renders a document search result once and exposes its location count", () => {
+    state.pages = [
+      {
+        type: "document",
+        document_id: 77,
+        text_excerpt: "One captured body shared by mirrors.",
+        locations: [
+          {
+            page_id: 41,
+            url: "https://example.com/story",
+            title: "Canonical story",
+            hostname: "example.com",
+            first_seen_at: "2026-07-23T09:00:00Z",
+            last_seen_at: "2026-07-24T09:00:00Z",
+            visit_count: 3,
+            source_browsers: ["Work Chrome"],
+          },
+          {
+            page_id: 42,
+            url: "https://mirror.example.net/story",
+            title: "Mirrored story",
+            hostname: "mirror.example.net",
+            first_seen_at: "2026-07-22T09:00:00Z",
+            last_seen_at: "2026-07-23T09:00:00Z",
+            visit_count: 1,
+            source_browsers: ["Home Chrome"],
+          },
+        ],
+      },
+    ];
+
+    render(<HistoryPage />);
+
+    expect(screen.getByText("Canonical story")).toBeInTheDocument();
+    expect(screen.getByText("One captured body shared by mirrors.")).toBeInTheDocument();
+    expect(screen.getByText("2 locations")).toBeInTheDocument();
+    expect(screen.queryByText("Mirrored story")).not.toBeInTheDocument();
+  });
+
   it("renders singular visits, blank-title fallback, and no source browser", () => {
     state.summary.history_count = 2;
     state.pages = [

@@ -31,8 +31,11 @@ from .fetcher import refresh_feed
 from .models import (
     Article,
     ArticleEmbedding,
+    BrowserHistoryDocument,
+    BrowserHistoryDocumentEmbedding,
     BrowserHistoryEmbedding,
     BrowserHistoryPage,
+    BrowserHistoryPageDocument,
     BrowserHistorySettings,
     Feed,
     Project,
@@ -148,18 +151,29 @@ async def enrich_and_summarize(ctx: dict | None = None, feed_id: int | None = No
 
     tagged = await extract_named_entities_batch(feed_id=feed_id)
     embedded = await embed_articles_batch(feed_id=feed_id)
-    history_embedded = await embed_history_pages_batch()
+    history_pages_embedded = await embed_history_pages_batch()
+    history_documents_embedded = await embed_history_documents_batch()
     suppressed = await suppress_articles_batch(feed_id=feed_id)
 
-    if enrich_ids or summarize_ids or tagged or embedded or history_embedded or suppressed:
+    if (
+        enrich_ids
+        or summarize_ids
+        or tagged
+        or embedded
+        or history_pages_embedded
+        or history_documents_embedded
+        or suppressed
+    ):
         logger.info(
             "Enriched %d articles, summarized up to %d, tagged %d, "
-            "embedded %d articles and %d history pages, suppressed %d",
+            "embedded %d articles, %d legacy history pages, and %d history "
+            "documents, suppressed %d",
             len(enrich_ids),
             len(summarize_ids),
             tagged,
             embedded,
-            history_embedded,
+            history_pages_embedded,
+            history_documents_embedded,
             suppressed,
         )
 
@@ -249,10 +263,11 @@ async def embed_articles_batch(feed_id: int | None = None) -> int:
 
 
 async def embed_history_pages_batch() -> int:
-    """Embed a bounded batch of new, changed, or old-model history pages.
+    """Embed a bounded batch of legacy body-bearing history pages.
 
-    Failures are isolated from feed processing and leave every page available
-    to PostgreSQL keyword search for retry on the next worker cycle.
+    V2 documents have their own vectors, while metadata-only pages remain
+    keyword-only. Failures leave legacy pages available to PostgreSQL keyword
+    search for retry on the next worker cycle.
     """
     if not history_embeddings.is_configured():
         return 0
@@ -264,11 +279,13 @@ async def embed_history_pages_batch() -> int:
                 BrowserHistoryEmbedding.page_id == BrowserHistoryPage.id,
             )
             .where(
+                BrowserHistoryPage.current_document_id.is_(None),
+                BrowserHistoryPage.text != "",
                 or_(
                     BrowserHistoryEmbedding.page_id.is_(None),
                     BrowserHistoryEmbedding.model != settings.openai_embedding_model,
                     history_embeddings.stale_input(),
-                )
+                ),
             )
             .order_by(BrowserHistoryPage.id.desc())
             .limit(HISTORY_EMBED_BATCH)
@@ -280,6 +297,58 @@ async def embed_history_pages_batch() -> int:
             logger.warning("History embedding stage failed: %s", exc)
             await session.rollback()
             return 0
+
+
+async def embed_history_document(ctx: dict | None, document_id: int) -> int:
+    """Embed one newly linked document; cron retries transient failures."""
+    try:
+        return await history_embeddings.embed_document(document_id)
+    except Exception as exc:
+        logger.warning("History document %s embedding failed: %s", document_id, exc)
+        return 0
+
+
+async def embed_history_documents_batch() -> int:
+    """Embed a bounded batch of linked, missing/stale v2 documents."""
+    if not history_embeddings.is_configured():
+        return 0
+    async with db.SessionLocal() as session:
+        current_embedding = (
+            select(BrowserHistoryDocumentEmbedding.id)
+            .where(
+                BrowserHistoryDocumentEmbedding.document_id == BrowserHistoryDocument.id,
+                BrowserHistoryDocumentEmbedding.model == settings.openai_embedding_model,
+                BrowserHistoryDocumentEmbedding.input_hash == BrowserHistoryDocument.content_hash,
+            )
+            .exists()
+        )
+        linked = (
+            select(BrowserHistoryPageDocument.id)
+            .where(BrowserHistoryPageDocument.document_id == BrowserHistoryDocument.id)
+            .exists()
+        )
+        document_ids = list(
+            await session.scalars(
+                select(BrowserHistoryDocument.id)
+                .where(
+                    BrowserHistoryDocument.storage_status == "ready",
+                    BrowserHistoryDocument.extraction_version
+                    == history_embeddings.DOCUMENT_EXTRACTION_VERSION,
+                    linked,
+                    ~current_embedding,
+                )
+                .order_by(BrowserHistoryDocument.id.desc())
+                .limit(HISTORY_EMBED_BATCH)
+            )
+        )
+
+    embedded = 0
+    for document_id in document_ids:
+        try:
+            embedded += await history_embeddings.embed_document(document_id)
+        except Exception as exc:
+            logger.warning("History document %s catch-up failed: %s", document_id, exc)
+    return embedded
 
 
 async def cleanup_history_retention(
@@ -466,7 +535,12 @@ async def startup(ctx: dict) -> None:
 class WorkerSettings:
     redis_settings = RedisSettings.from_dsn(settings.redis_url)
     on_startup = startup
-    functions = [enrich_feed, send_share_push, send_project_pin_push]
+    functions = [
+        enrich_feed,
+        embed_history_document,
+        send_share_push,
+        send_project_pin_push,
+    ]
     cron_jobs = [
         cron(poll_feeds, minute=set(range(0, 60, 3)), run_at_startup=True),
         cron(refresh_entities, minute={7, 37}),

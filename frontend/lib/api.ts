@@ -312,6 +312,15 @@ export type BrowserHistoryDomainRule = Schemas["BrowserHistoryDomainRuleOut"];
 export type BrowserHistorySystemRule = Schemas["BrowserHistorySystemRuleOut"];
 export type BrowserHistorySummary = Schemas["BrowserHistorySummaryOut"];
 export type BrowserHistoryPage = Schemas["BrowserHistoryPageOut"];
+export type BrowserHistoryDocumentSearch =
+  Schemas["BrowserHistoryDocumentSearchOut"];
+export type BrowserHistoryPageSearch = Schemas["BrowserHistoryPageSearchOut"];
+export type BrowserHistorySearchItem =
+  | BrowserHistoryDocumentSearch
+  | BrowserHistoryPageSearch;
+export type BrowserHistoryListItem =
+  | BrowserHistoryPage
+  | BrowserHistorySearchItem;
 export type BrowserHistoryDeletion = Schemas["BrowserHistoryDeletionOut"];
 export type BrowserHistoryExtension = Schemas["BrowserHistoryExtensionOut"];
 export type BrowserHistorySort = "recent" | "relevance";

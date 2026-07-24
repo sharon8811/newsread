@@ -7,9 +7,12 @@ from app.config import settings
 from app.history_policy import MAX_HISTORY_VISIT_COUNT, validate_normalized_history_url
 from app.models import (
     BrowserHistoryDeletion,
+    BrowserHistoryDocument,
+    BrowserHistoryDocumentEmbedding,
     BrowserHistoryEmbedding,
     BrowserHistoryPage,
     BrowserHistoryPageConnection,
+    BrowserHistoryPageDocument,
     BrowserHistorySettings,
 )
 from app.routers import history as history_router
@@ -95,15 +98,13 @@ async def test_sync_stores_sanitized_capture_and_clamps_future_timestamps(client
     assert len(page.content_hash) == 64
 
 
-async def test_phase_two_capability_gate_keeps_legacy_body_search_intact(
+async def test_disabled_content_feature_keeps_legacy_body_search_intact(
     client,
     users,
     session,
-    monkeypatch,
 ):
     user = await users.create()
     pairing = await _pair(client, users, user)
-    monkeypatch.setattr(settings, "browser_history_content_enabled", True)
 
     response = await _sync(
         client,
@@ -116,6 +117,41 @@ async def test_phase_two_capability_gate_keeps_legacy_body_search_intact(
     page = await session.scalar(select(BrowserHistoryPage))
     assert page.text == "Legacy searchable body"
     assert page.current_document_id is None
+
+
+async def test_flag_off_extension_negotiates_legacy_mode_and_syncs_v2_style_metadata(
+    client,
+    users,
+    session,
+):
+    user = await users.create()
+    pairing = await _pair(client, users, user)
+    token_headers = {"Authorization": f"Bearer {pairing['token']}"}
+
+    status = await client.get("/api/history/sync/status", headers=token_headers)
+    assert status.status_code == 200
+    assert status.json()["content_capability_revision"] == 0
+
+    capture = _capture(
+        text="",
+        text_excerpt="",
+    )
+    capture["content_hash"] = "a" * 64
+    response = await _sync(client, pairing["token"], [capture])
+
+    assert response.status_code == 200
+    assert response.json()["content_capability_revision"] == 0
+    assert [item["record_id"] for item in response.json()["accepted"]] == ["capture-1"]
+    page = await session.scalar(select(BrowserHistoryPage))
+    assert page.text == ""
+    assert page.current_document_id is None
+
+    content_status = await client.post(
+        "/api/history/sync/content-status",
+        json={"documents": ["a" * 64], "images": []},
+        headers=token_headers,
+    )
+    assert content_status.status_code == 404
 
 
 async def test_sync_returns_per_item_validation_errors_without_losing_valid_items(
@@ -441,6 +477,113 @@ async def test_history_search_uses_tsvector_and_current_model_vectors(
         headers=users.auth(alice),
     )
     assert [page["id"] for page in hybrid.json()] == [second_id, first_id]
+
+
+async def test_document_vector_search_is_owner_scoped(
+    client,
+    users,
+    session,
+    monkeypatch,
+):
+    alice = await users.create(username="doc-alice")
+    bob = await users.create(username="doc-bob")
+    alice_pairing = await _pair(client, users, alice)
+    bob_pairing = await _pair(client, users, bob)
+    alice_page_id = (
+        await _sync(
+            client,
+            alice_pairing["token"],
+            [_capture("alice", url="https://alice.example.com/article")],
+        )
+    ).json()["accepted"][0]["page_id"]
+    bob_page_id = (
+        await _sync(
+            client,
+            bob_pairing["token"],
+            [_capture("bob", url="https://bob.example.com/article")],
+        )
+    ).json()["accepted"][0]["page_id"]
+    now = datetime.now(UTC)
+    alice_document = BrowserHistoryDocument(
+        user_id=alice.id,
+        content_hash="a" * 64,
+        object_key=f"users/{alice.id}/history/documents/sha256/aa/{'a' * 64}",
+        storage_status="ready",
+        byte_size=100,
+        character_count=100,
+        text_excerpt="Alice document",
+        extraction_version="history-dom-v2",
+    )
+    bob_document = BrowserHistoryDocument(
+        user_id=bob.id,
+        content_hash="b" * 64,
+        object_key=f"users/{bob.id}/history/documents/sha256/bb/{'b' * 64}",
+        storage_status="ready",
+        byte_size=100,
+        character_count=100,
+        text_excerpt="Bob document",
+        extraction_version="history-dom-v2",
+    )
+    session.add_all([alice_document, bob_document])
+    await session.flush()
+    alice_page = await session.get(BrowserHistoryPage, alice_page_id)
+    bob_page = await session.get(BrowserHistoryPage, bob_page_id)
+    alice_page.current_document_id = alice_document.id
+    bob_page.current_document_id = bob_document.id
+    session.add_all(
+        [
+            BrowserHistoryPageDocument(
+                page_id=alice_page_id,
+                document_id=alice_document.id,
+                first_seen_at=now,
+                last_seen_at=now,
+                captured_at=now,
+            ),
+            BrowserHistoryPageDocument(
+                page_id=bob_page_id,
+                document_id=bob_document.id,
+                first_seen_at=now,
+                last_seen_at=now,
+                captured_at=now,
+            ),
+            BrowserHistoryDocumentEmbedding(
+                document_id=alice_document.id,
+                chunk_index=0,
+                model=settings.openai_embedding_model,
+                embedding=[1.0, 0.0],
+                input_hash=alice_document.content_hash,
+                block_start_id="b0001",
+                block_end_id="b0001",
+            ),
+            BrowserHistoryDocumentEmbedding(
+                document_id=bob_document.id,
+                chunk_index=0,
+                model=settings.openai_embedding_model,
+                embedding=[1.0, 0.0],
+                input_hash=bob_document.content_hash,
+                block_start_id="b0001",
+                block_end_id="b0001",
+            ),
+        ]
+    )
+    await session.commit()
+
+    async def fake_embed_query(query):
+        assert query == "semantic-only concept"
+        return [1.0, 0.0]
+
+    monkeypatch.setattr(history_embeddings, "is_configured", lambda: True)
+    monkeypatch.setattr(embeddings, "embed_query", fake_embed_query)
+    response = await client.get(
+        "/api/history",
+        params={"q": "semantic-only concept", "sort": "relevance"},
+        headers=users.auth(alice),
+    )
+
+    assert response.status_code == 200
+    assert [(item["type"], item["document_id"]) for item in response.json()] == [
+        ("document", alice_document.id)
+    ]
 
 
 async def test_history_recent_and_ranked_cursor_pagination(client, users):

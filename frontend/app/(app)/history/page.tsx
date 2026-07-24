@@ -6,6 +6,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import {
   api,
+  type BrowserHistoryListItem,
   type BrowserHistoryPage,
   type BrowserHistorySort,
 } from "@/lib/api";
@@ -58,9 +59,31 @@ function visitLabel(count: number) {
   return count === 1 ? "1 visit" : `${count} visits`;
 }
 
-function HistoryRow({ page }: { page: BrowserHistoryPage }) {
+function pageForHistoryRow(item: BrowserHistoryListItem): BrowserHistoryPage {
+  if ("type" in item && item.type === "document") {
+    const location = item.locations[0];
+    return {
+      id: location.page_id,
+      url: location.url,
+      title: location.title,
+      hostname: location.hostname,
+      text_excerpt: item.text_excerpt,
+      first_visited_at: location.first_seen_at,
+      last_visited_at: location.last_seen_at,
+      visit_count: location.visit_count,
+      captured_at: location.last_seen_at,
+      source_browsers: location.source_browsers,
+    };
+  }
+  return item;
+}
+
+function HistoryRow({ item }: { item: BrowserHistoryListItem }) {
+  const page = pageForHistoryRow(item);
   const [busy, setBusy] = useState<"delete" | "exclude" | null>(null);
   const href = safePageUrl(page.url);
+  const locationCount =
+    "type" in item && item.type === "document" ? item.locations.length : 1;
 
   async function deletePage() {
     setBusy("delete");
@@ -142,6 +165,12 @@ function HistoryRow({ page }: { page: BrowserHistoryPage }) {
             <span>{timeAgo(page.last_visited_at)}</span>
             <span aria-hidden="true">·</span>
             <span>{visitLabel(page.visit_count)}</span>
+            {locationCount > 1 && (
+              <>
+                <span aria-hidden="true">·</span>
+                <span>{locationCount} locations</span>
+              </>
+            )}
             {page.source_browsers.length > 0 && (
               <>
                 <span aria-hidden="true">·</span>
@@ -213,7 +242,7 @@ export default function HistoryPage() {
     },
     shouldLoadHistory,
   );
-  const pages = historyPage?.items;
+  const items = historyPage?.items;
 
   function resetPagination() {
     setCursorStack([undefined]);
@@ -402,13 +431,13 @@ export default function HistoryPage() {
                     Try again
                   </button>
                 </div>
-              ) : isLoading && !pages ? (
+              ) : isLoading && !items ? (
                 <div className="space-y-5">
                   <Skeleton className="h-24" />
                   <Skeleton className="h-24" />
                   <Skeleton className="h-24" />
                 </div>
-              ) : !summary?.has_history || pages?.length === 0 ? (
+              ) : !summary?.has_history || items?.length === 0 ? (
                 <div className="py-12 text-center">
                   <p className="text-body-lg font-medium">
                     {filtered ? "Nothing matched those filters." : "No pages synced yet."}
@@ -421,8 +450,15 @@ export default function HistoryPage() {
                 </div>
               ) : (
                 <>
-                  {pages?.map((page) => (
-                    <HistoryRow key={page.id} page={page} />
+                  {items?.map((item) => (
+                    <HistoryRow
+                      key={
+                        "type" in item && item.type === "document"
+                          ? `document-${item.document_id}`
+                          : `page-${item.id}`
+                      }
+                      item={item}
+                    />
                   ))}
                   {(pageIndex > 0 || historyPage?.nextCursor) && (
                     <nav

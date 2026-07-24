@@ -337,6 +337,135 @@ async def test_same_url_versions_are_linked_once_and_out_of_order_sync_keeps_new
     assert await session.scalar(select(func.count()).select_from(BrowserHistoryPageDocument)) == 2
 
 
+async def test_first_document_link_enqueues_embedding_once_for_duplicate_locations(
+    client,
+    users,
+    session,
+    monkeypatch,
+):
+    user = await users.create()
+    pairing = await _pair(client, users, user)
+    headers = {"Authorization": f"Bearer {pairing['token']}"}
+    document = _document("Shared article text for two canonical locations.")
+    enqueued: list[tuple[str, int]] = []
+
+    async def record(job_name, document_id):
+        enqueued.append((job_name, document_id))
+
+    monkeypatch.setattr("app.queue.enqueue", record)
+    with _content_enabled(monkeypatch):
+        upload = await client.put(
+            f"/api/history/sync/content/{document.content_hash}",
+            content=document.canonical_bytes,
+            headers={**headers, "Content-Type": "application/json"},
+        )
+        document_id = upload.json()["document_id"]
+        response = await client.post(
+            "/api/history/sync",
+            json={
+                "records": [
+                    _capture(
+                        "first-location",
+                        "https://example.com/article",
+                        document.content_hash,
+                    ),
+                    _capture(
+                        "second-location",
+                        "https://example.net/syndicated",
+                        document.content_hash,
+                    ),
+                ]
+            },
+            headers=headers,
+        )
+        assert response.status_code == 200
+        assert enqueued == [("embed_history_document", document_id)]
+
+        await client.post(
+            "/api/history/sync",
+            json={
+                "records": [
+                    _capture(
+                        "repeat-location",
+                        "https://example.com/article",
+                        document.content_hash,
+                    )
+                ]
+            },
+            headers=headers,
+        )
+
+    assert enqueued == [("embed_history_document", document_id)]
+    assert await session.scalar(select(func.count()).select_from(BrowserHistoryPageDocument)) == 2
+
+
+async def test_history_search_returns_one_document_with_all_locations_and_page_fallback(
+    client,
+    users,
+    monkeypatch,
+):
+    user = await users.create()
+    pairing = await _pair(client, users, user)
+    auth = users.auth(user)
+    headers = {"Authorization": f"Bearer {pairing['token']}"}
+    document = _document("Quasiparticle retrieval appears only in the captured body.")
+
+    with _content_enabled(monkeypatch):
+        await client.put(
+            f"/api/history/sync/content/{document.content_hash}",
+            content=document.canonical_bytes,
+            headers={**headers, "Content-Type": "application/json"},
+        )
+        metadata = _capture(
+            "metadata",
+            "https://metadata.example.org/home",
+        )
+        metadata["title"] = "Metadata control panel"
+        response = await client.post(
+            "/api/history/sync",
+            json={
+                "records": [
+                    _capture(
+                        "canonical",
+                        "https://example.com/article",
+                        document.content_hash,
+                    ),
+                    _capture(
+                        "syndicated",
+                        "https://example.net/copy",
+                        document.content_hash,
+                    ),
+                    metadata,
+                ]
+            },
+            headers=headers,
+        )
+        assert response.status_code == 200
+
+    body_search = await client.get(
+        "/api/history",
+        params={"q": "quasiparticle retrieval", "sort": "relevance"},
+        headers=auth,
+    )
+    assert body_search.status_code == 200
+    assert len(body_search.json()) == 1
+    result = body_search.json()[0]
+    assert result["type"] == "document"
+    assert result["text_excerpt"].startswith("Quasiparticle retrieval")
+    assert {location["hostname"] for location in result["locations"]} == {
+        "example.com",
+        "example.net",
+    }
+
+    metadata_search = await client.get(
+        "/api/history",
+        params={"q": "control panel", "sort": "relevance"},
+        headers=auth,
+    )
+    assert metadata_search.json()[0]["type"] == "page"
+    assert metadata_search.json()[0]["hostname"] == "metadata.example.org"
+
+
 async def test_image_upload_is_verified_and_owner_scoped(
     client,
     users,

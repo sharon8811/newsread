@@ -171,15 +171,32 @@ async def test_enrich_and_summarize_full_pipeline(session, monkeypatch):
     async def fake_embed(feed_id=None):
         return 3
 
+    history_calls = []
+
+    async def fake_embed_history_pages():
+        history_calls.append("pages")
+        return 1
+
+    async def fake_embed_history_documents():
+        history_calls.append("documents")
+        return 2
+
     monkeypatch.setattr(worker, "enrich_article", fake_enrich)
     monkeypatch.setattr(worker, "extract_entities", fake_extract)
     monkeypatch.setattr(worker, "generate_summaries", fake_summarize)
     monkeypatch.setattr(worker, "embed_articles_batch", fake_embed)
+    monkeypatch.setattr(worker, "embed_history_pages_batch", fake_embed_history_pages)
+    monkeypatch.setattr(
+        worker,
+        "embed_history_documents_batch",
+        fake_embed_history_documents,
+    )
     monkeypatch.setattr(worker.llm, "is_configured", lambda: True)
 
     await worker.enrich_and_summarize(feed_id=feed.id)
     assert summarized == [art.id]
     assert skipped.id not in summarized
+    assert history_calls == ["pages", "documents"]
 
 
 async def test_enrich_and_summarize_scoped_to_feed(session, monkeypatch):
@@ -580,6 +597,7 @@ async def test_startup(monkeypatch):
 def test_worker_settings_shape():
     assert worker.WorkerSettings.functions == [
         worker.enrich_feed,
+        worker.embed_history_document,
         worker.send_share_push,
         worker.send_project_pin_push,
     ]

@@ -9,6 +9,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .config import settings
+from .history_embeddings import document_is_eligible as document_is_embedding_eligible
 from .history_ingest import HistoryIngestService
 from .history_policy import (
     NormalizedHistoryUrl,
@@ -98,6 +99,7 @@ async def persist_capture(
     ingest: HistoryIngestService | None = None,
     content_pipeline_enabled: bool = False,
     legacy_inline_content_enabled: bool = True,
+    newly_linked_document_ids: set[int] | None = None,
     now: datetime,
 ) -> tuple[BrowserHistoryPage, NormalizedHistoryUrl]:
     normalized = validate_normalized_history_url(capture.url)
@@ -249,6 +251,22 @@ async def persist_capture(
                 page.content_hash = history_content_hash(page.title, page.hostname, page.text)
 
     if document is not None:
+        # Serialize first-link creation for this immutable document. Without
+        # the row lock, concurrent captures at different URLs could both
+        # observe zero links and spend embedding quota twice.
+        await session.scalar(
+            select(BrowserHistoryDocument.id)
+            .where(BrowserHistoryDocument.id == document.id)
+            .with_for_update()
+        )
+        already_linked = (
+            await session.scalar(
+                select(BrowserHistoryPageDocument.id)
+                .where(BrowserHistoryPageDocument.document_id == document.id)
+                .limit(1)
+            )
+            is not None
+        )
         page_document = pg_insert(BrowserHistoryPageDocument).values(
             page_id=page.id,
             document_id=document.id,
@@ -256,26 +274,39 @@ async def persist_capture(
             last_seen_at=last_visited_at,
             captured_at=captured_at or last_visited_at,
         )
-        await session.execute(
-            page_document.on_conflict_do_update(
+        link_id = await session.scalar(
+            page_document.on_conflict_do_nothing(
                 index_elements=["page_id", "document_id"],
-                set_={
-                    "first_seen_at": func.least(
-                        BrowserHistoryPageDocument.first_seen_at,
-                        page_document.excluded.first_seen_at,
-                    ),
-                    "last_seen_at": func.greatest(
-                        BrowserHistoryPageDocument.last_seen_at,
-                        page_document.excluded.last_seen_at,
-                    ),
-                    "captured_at": func.greatest(
-                        BrowserHistoryPageDocument.captured_at,
-                        page_document.excluded.captured_at,
-                    ),
-                    "updated_at": func.now(),
-                },
-            )
+            ).returning(BrowserHistoryPageDocument.id)
         )
+        if link_id is not None:
+            if (
+                not already_linked
+                and newly_linked_document_ids is not None
+                and document_is_embedding_eligible(document)
+            ):
+                newly_linked_document_ids.add(document.id)
+        else:
+            await session.execute(
+                page_document.on_conflict_do_update(
+                    index_elements=["page_id", "document_id"],
+                    set_={
+                        "first_seen_at": func.least(
+                            BrowserHistoryPageDocument.first_seen_at,
+                            page_document.excluded.first_seen_at,
+                        ),
+                        "last_seen_at": func.greatest(
+                            BrowserHistoryPageDocument.last_seen_at,
+                            page_document.excluded.last_seen_at,
+                        ),
+                        "captured_at": func.greatest(
+                            BrowserHistoryPageDocument.captured_at,
+                            page_document.excluded.captured_at,
+                        ),
+                        "updated_at": func.now(),
+                    },
+                )
+            )
 
     aggregate_insert = pg_insert(BrowserHistoryPageConnection).values(
         page_id=page.id,

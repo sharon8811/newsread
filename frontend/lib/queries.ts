@@ -12,7 +12,7 @@ import {
   type BrowserConnection,
   type BrowserHistoryDomainRule,
   type BrowserHistoryExtension,
-  type BrowserHistoryPage,
+  type BrowserHistoryListItem,
   type BrowserHistorySettings,
   type BrowserHistorySort,
   type BrowserHistorySummary,
@@ -156,10 +156,10 @@ export const useHistory = (
   },
   enabled = true,
 ) =>
-  useSWR<{ items: BrowserHistoryPage[]; nextCursor: string | null }>(
+  useSWR<{ items: BrowserHistoryListItem[]; nextCursor: string | null }>(
     enabled ? keys.history(filters) : null,
     async (path: string) => {
-      const page = await apiWithHeaders<BrowserHistoryPage[]>(path);
+      const page = await apiWithHeaders<BrowserHistoryListItem[]>(path);
       return {
         items: page.data,
         nextCursor: page.headers.get("X-Next-Cursor"),

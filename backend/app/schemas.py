@@ -359,6 +359,28 @@ class BrowserHistoryPageOut(BaseModel):
     source_browsers: list[str]
 
 
+class BrowserHistoryDocumentLocationOut(BaseModel):
+    page_id: int
+    url: str
+    title: str
+    hostname: str
+    first_seen_at: datetime
+    last_seen_at: datetime
+    visit_count: int
+    source_browsers: list[str]
+
+
+class BrowserHistoryDocumentSearchOut(BaseModel):
+    type: Literal["document"] = "document"
+    document_id: int
+    text_excerpt: str
+    locations: list[BrowserHistoryDocumentLocationOut]
+
+
+class BrowserHistoryPageSearchOut(BrowserHistoryPageOut):
+    type: Literal["page"] = "page"
+
+
 class BrowserHistoryClearIn(BaseModel):
     confirm: Literal["DELETE"]
     hostname: str | None = Field(default=None, max_length=253)

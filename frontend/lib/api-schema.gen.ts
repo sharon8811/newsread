@@ -2223,6 +2223,46 @@ export interface components {
             /** Sync Revision */
             sync_revision: number;
         };
+        /** BrowserHistoryDocumentLocationOut */
+        BrowserHistoryDocumentLocationOut: {
+            /**
+             * First Seen At
+             * Format: date-time
+             */
+            first_seen_at: string;
+            /** Hostname */
+            hostname: string;
+            /**
+             * Last Seen At
+             * Format: date-time
+             */
+            last_seen_at: string;
+            /** Page Id */
+            page_id: number;
+            /** Source Browsers */
+            source_browsers: string[];
+            /** Title */
+            title: string;
+            /** Url */
+            url: string;
+            /** Visit Count */
+            visit_count: number;
+        };
+        /** BrowserHistoryDocumentSearchOut */
+        BrowserHistoryDocumentSearchOut: {
+            /** Document Id */
+            document_id: number;
+            /** Locations */
+            locations: components["schemas"]["BrowserHistoryDocumentLocationOut"][];
+            /** Text Excerpt */
+            text_excerpt: string;
+            /**
+             * Type
+             * @default document
+             * @constant
+             */
+            type: "document";
+        };
         /** BrowserHistoryDocumentUploadOut */
         BrowserHistoryDocumentUploadOut: {
             /** Content Hash */
@@ -2316,6 +2356,41 @@ export interface components {
             text_excerpt: string;
             /** Title */
             title: string;
+            /** Url */
+            url: string;
+            /** Visit Count */
+            visit_count: number;
+        };
+        /** BrowserHistoryPageSearchOut */
+        BrowserHistoryPageSearchOut: {
+            /** Captured At */
+            captured_at: string | null;
+            /**
+             * First Visited At
+             * Format: date-time
+             */
+            first_visited_at: string;
+            /** Hostname */
+            hostname: string;
+            /** Id */
+            id: number;
+            /**
+             * Last Visited At
+             * Format: date-time
+             */
+            last_visited_at: string;
+            /** Source Browsers */
+            source_browsers: string[];
+            /** Text Excerpt */
+            text_excerpt: string;
+            /** Title */
+            title: string;
+            /**
+             * Type
+             * @default page
+             * @constant
+             */
+            type: "page";
             /** Url */
             url: string;
             /** Visit Count */
@@ -4866,7 +4941,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["BrowserHistoryPageOut"][];
+                    "application/json": (components["schemas"]["BrowserHistoryPageOut"] | components["schemas"]["BrowserHistoryDocumentSearchOut"] | components["schemas"]["BrowserHistoryPageSearchOut"])[];
                 };
             };
             /** @description Validation Error */

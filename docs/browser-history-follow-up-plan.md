@@ -1,6 +1,6 @@
 # Browser History follow-up plan: stored page content, semantic indexing, and cited summaries
 
-> **Status:** Phase 2 implemented and awaiting review
+> **Status:** Phase 3 implemented and awaiting review
 >
 > **Depends on:** PR #78 (Browser History) and PR #80 (deployment-mode default)
 >
@@ -659,13 +659,14 @@ document, one stored object, and distinct URL/visit links.
 
 ### Phase 3 — eager embedding and document-centric search
 
-- [ ] Enqueue an embedding job when a new document becomes ready.
-- [ ] Chunk by captured block boundaries and store document-level vectors.
-- [ ] Switch keyword search to the document `search_tsv` materialized at ingest in
+- [x] Enqueue an embedding job when a ready document receives its first page–document
+      link; ready-but-unlinked uploads remain inert.
+- [x] Chunk by captured block boundaries and store document-level vectors.
+- [x] Switch keyword search to the document `search_tsv` materialized at ingest in
       Phase 2; no full body persists in Postgres.
-- [ ] Update hybrid search to return documents with locations and owner scope on every leg.
-- [ ] Preserve scheduled stale/missing-vector catch-up.
-- [ ] No backfill of legacy captures (decided): pre-v2 pages stay on the legacy path and
+- [x] Update hybrid search to return documents with locations and owner scope on every leg.
+- [x] Preserve scheduled stale/missing-vector catch-up.
+- [x] No backfill of legacy captures (decided): pre-v2 pages stay on the legacy path and
       enter the pipeline only when revisited.
 
 Acceptance: every eligible ready document is queued without a summary click; duplicate URLs

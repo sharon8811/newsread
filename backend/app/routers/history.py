@@ -15,7 +15,7 @@ from pydantic import ValidationError
 from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from .. import history_search
+from .. import history_search, queue
 from ..config import settings
 from ..deps import CurrentUser, DbSession
 from ..history_auth import (
@@ -49,6 +49,7 @@ from ..models import (
     BrowserHistoryImage,
     BrowserHistoryPage,
     BrowserHistoryPageConnection,
+    BrowserHistoryPageDocument,
     BrowserHistorySettings,
     BrowserHistorySystemRuleOverride,
     User,
@@ -62,12 +63,15 @@ from ..schemas import (
     BrowserHistoryContentStatusIn,
     BrowserHistoryContentStatusOut,
     BrowserHistoryDeletionOut,
+    BrowserHistoryDocumentLocationOut,
+    BrowserHistoryDocumentSearchOut,
     BrowserHistoryDocumentUploadOut,
     BrowserHistoryDomainRuleIn,
     BrowserHistoryDomainRuleOut,
     BrowserHistoryExtensionOut,
     BrowserHistoryImageUploadOut,
     BrowserHistoryPageOut,
+    BrowserHistoryPageSearchOut,
     BrowserHistorySettingsIn,
     BrowserHistorySettingsOut,
     BrowserHistorySummaryOut,
@@ -101,6 +105,10 @@ SYNC_REQUEST_OPENAPI = {
         },
     }
 }
+
+
+def _content_capability_revision() -> int:
+    return CONTENT_CAPABILITY_REVISION if settings.browser_history_content_enabled else 0
 
 
 async def _settings_for(session: DbSession, user_id: int) -> BrowserHistorySettings:
@@ -600,7 +608,170 @@ async def history_summary(user: CurrentUser, session: DbSession):
     )
 
 
-@router.get("", response_model=list[BrowserHistoryPageOut])
+async def _history_source_names(
+    session: DbSession,
+    page_ids: list[int],
+) -> dict[int, list[str]]:
+    sources: dict[int, list[str]] = {page_id: [] for page_id in page_ids}
+    if not sources:
+        return sources
+    rows = await session.execute(
+        select(BrowserHistoryPageConnection.page_id, BrowserConnection.name)
+        .join(
+            BrowserConnection,
+            BrowserConnection.id == BrowserHistoryPageConnection.connection_id,
+        )
+        .where(BrowserHistoryPageConnection.page_id.in_(sources))
+        .order_by(BrowserConnection.name)
+    )
+    for page_id, name in rows:
+        if name not in sources[page_id]:
+            sources[page_id].append(name)
+    return sources
+
+
+def _history_page_out(
+    page: BrowserHistoryPage,
+    source_browsers: list[str],
+) -> BrowserHistoryPageOut:
+    return BrowserHistoryPageOut(
+        id=page.id,
+        url=page.url,
+        title=page.title,
+        hostname=page.hostname,
+        text_excerpt=page.text_excerpt,
+        first_visited_at=page.first_visited_at,
+        last_visited_at=page.last_visited_at,
+        visit_count=page.visit_count,
+        captured_at=page.captured_at,
+        source_browsers=source_browsers,
+    )
+
+
+async def _history_search_results(
+    session: DbSession,
+    *,
+    user_id: int,
+    hits: list[history_search.HistorySearchHit],
+) -> list[BrowserHistoryDocumentSearchOut | BrowserHistoryPageSearchOut]:
+    document_ids = [hit.id for hit in hits if hit.type == "document"]
+    page_ids = [hit.id for hit in hits if hit.type == "page"]
+    location_rows = (
+        (
+            await session.execute(
+                select(
+                    BrowserHistoryPageDocument.document_id,
+                    BrowserHistoryPageDocument,
+                    BrowserHistoryPage,
+                )
+                .join(
+                    BrowserHistoryPage,
+                    BrowserHistoryPage.id == BrowserHistoryPageDocument.page_id,
+                )
+                .join(
+                    BrowserHistoryDocument,
+                    BrowserHistoryDocument.id == BrowserHistoryPageDocument.document_id,
+                )
+                .where(
+                    BrowserHistoryDocument.user_id == user_id,
+                    BrowserHistoryPage.user_id == user_id,
+                    BrowserHistoryPageDocument.document_id.in_(document_ids),
+                )
+                .order_by(
+                    BrowserHistoryPageDocument.document_id,
+                    BrowserHistoryPageDocument.last_seen_at.desc(),
+                    BrowserHistoryPageDocument.id.desc(),
+                )
+            )
+        ).all()
+        if document_ids
+        else []
+    )
+    pages = (
+        list(
+            await session.scalars(
+                select(BrowserHistoryPage).where(
+                    BrowserHistoryPage.user_id == user_id,
+                    BrowserHistoryPage.id.in_(page_ids),
+                )
+            )
+        )
+        if page_ids
+        else []
+    )
+    all_page_ids = [page.id for page in pages]
+    all_page_ids.extend(page.id for _, _, page in location_rows)
+    sources = await _history_source_names(session, all_page_ids)
+
+    documents = (
+        {
+            document.id: document
+            for document in await session.scalars(
+                select(BrowserHistoryDocument).where(
+                    BrowserHistoryDocument.user_id == user_id,
+                    BrowserHistoryDocument.id.in_(document_ids),
+                )
+            )
+        }
+        if document_ids
+        else {}
+    )
+    locations: dict[int, list[BrowserHistoryDocumentLocationOut]] = {
+        document_id: [] for document_id in document_ids
+    }
+    for document_id, link, page in location_rows:
+        locations[document_id].append(
+            BrowserHistoryDocumentLocationOut(
+                page_id=page.id,
+                url=page.url,
+                title=page.title,
+                hostname=page.hostname,
+                first_seen_at=link.first_seen_at,
+                last_seen_at=link.last_seen_at,
+                visit_count=page.visit_count,
+                source_browsers=sources.get(page.id, []),
+            )
+        )
+    page_by_id = {page.id: page for page in pages}
+    output: list[BrowserHistoryDocumentSearchOut | BrowserHistoryPageSearchOut] = []
+    for hit in hits:
+        if hit.type == "document":
+            document = documents.get(hit.id)
+            document_locations = locations.get(hit.id, [])
+            if document is None or not document_locations:
+                continue
+            output.append(
+                BrowserHistoryDocumentSearchOut(
+                    document_id=document.id,
+                    text_excerpt=document.text_excerpt,
+                    locations=document_locations,
+                )
+            )
+        else:
+            page = page_by_id.get(hit.id)
+            if page is not None:
+                output.append(
+                    BrowserHistoryPageSearchOut(
+                        **_history_page_out(page, sources.get(page.id, [])).model_dump()
+                    )
+                )
+    return output
+
+
+def _history_search_last_seen(
+    item: BrowserHistoryDocumentSearchOut | BrowserHistoryPageSearchOut,
+) -> tuple[datetime, int]:
+    if isinstance(item, BrowserHistoryDocumentSearchOut):
+        return item.locations[0].last_seen_at, item.document_id
+    return item.last_visited_at, item.id
+
+
+@router.get(
+    "",
+    response_model=list[
+        BrowserHistoryPageOut | BrowserHistoryDocumentSearchOut | BrowserHistoryPageSearchOut
+    ],
+)
 async def list_history(
     response: Response,
     user: CurrentUser,
@@ -629,9 +800,8 @@ async def list_history(
     )
     payload = _decode_history_cursor(cursor, signature) if cursor else None
 
-    ranked_ids: list[int] | None = None
     if query:
-        ranked_ids = await history_search.hybrid_search_ids(
+        hits = await history_search.hybrid_search(
             session,
             user_id=user.id,
             query=query,
@@ -639,10 +809,8 @@ async def list_history(
             date_from=date_from,
             date_to=date_to,
         )
-        if not ranked_ids:
+        if not hits:
             return []
-
-    if sort == "relevance" and ranked_ids is not None:
         offset = 0
         if payload:
             if payload.get("mode") != "ranked" or not isinstance(payload.get("offset"), int):
@@ -650,19 +818,16 @@ async def list_history(
             offset = payload["offset"]
             if offset < 0 or offset > history_search.HISTORY_SEARCH_POOL:
                 raise HTTPException(status_code=422, detail="Invalid history cursor")
-        page_ids = ranked_ids[offset : offset + limit + 1]
-        has_more = len(page_ids) > limit
-        page_ids = page_ids[:limit]
-        unordered = list(
-            await session.scalars(
-                select(BrowserHistoryPage).where(
-                    BrowserHistoryPage.user_id == user.id,
-                    BrowserHistoryPage.id.in_(page_ids),
-                )
-            )
+        results = await _history_search_results(
+            session,
+            user_id=user.id,
+            hits=hits,
         )
-        by_id = {page.id: page for page in unordered}
-        pages = [by_id[page_id] for page_id in page_ids if page_id in by_id]
+        if sort == "recent":
+            results.sort(key=_history_search_last_seen, reverse=True)
+        page_results = results[offset : offset + limit + 1]
+        has_more = len(page_results) > limit
+        page_results = page_results[:limit]
         if has_more:
             response.headers["X-Next-Cursor"] = _encode_history_cursor(
                 {
@@ -671,88 +836,61 @@ async def list_history(
                     "signature": signature,
                 }
             )
-    else:
-        statement = history_search.scoped_pages(
-            user.id,
-            hostname=normalized_hostname,
-            date_from=date_from,
-            date_to=date_to,
-        )
-        if ranked_ids is not None:
-            statement = statement.where(BrowserHistoryPage.id.in_(ranked_ids))
-        if payload:
-            if (
-                payload.get("mode") != "recent"
-                or not isinstance(payload.get("last_visited_at"), str)
-                or not isinstance(payload.get("id"), int)
-            ):
-                raise HTTPException(status_code=422, detail="Invalid history cursor")
-            try:
-                cursor_time = datetime.fromisoformat(payload["last_visited_at"])
-                if cursor_time.utcoffset() is None:
-                    raise ValueError
-            except ValueError:
-                raise HTTPException(
-                    status_code=422,
-                    detail="Invalid history cursor",
-                ) from None
-            statement = statement.where(
-                or_(
-                    BrowserHistoryPage.last_visited_at < cursor_time,
-                    and_(
-                        BrowserHistoryPage.last_visited_at == cursor_time,
-                        BrowserHistoryPage.id < payload["id"],
-                    ),
-                )
+        return page_results
+
+    statement = history_search.scoped_pages(
+        user.id,
+        hostname=normalized_hostname,
+        date_from=date_from,
+        date_to=date_to,
+    )
+    if payload:
+        if (
+            payload.get("mode") != "recent"
+            or not isinstance(payload.get("last_visited_at"), str)
+            or not isinstance(payload.get("id"), int)
+        ):
+            raise HTTPException(status_code=422, detail="Invalid history cursor")
+        try:
+            cursor_time = datetime.fromisoformat(payload["last_visited_at"])
+            if cursor_time.utcoffset() is None:
+                raise ValueError
+        except ValueError:
+            raise HTTPException(
+                status_code=422,
+                detail="Invalid history cursor",
+            ) from None
+        statement = statement.where(
+            or_(
+                BrowserHistoryPage.last_visited_at < cursor_time,
+                and_(
+                    BrowserHistoryPage.last_visited_at == cursor_time,
+                    BrowserHistoryPage.id < payload["id"],
+                ),
             )
-        statement = statement.order_by(
-            BrowserHistoryPage.last_visited_at.desc(),
-            BrowserHistoryPage.id.desc(),
         )
-        pages = list(await session.scalars(statement.limit(limit + 1)))
-        has_more = len(pages) > limit
-        pages = pages[:limit]
-        if has_more:
-            last_page = pages[-1]
-            response.headers["X-Next-Cursor"] = _encode_history_cursor(
-                {
-                    "mode": "recent",
-                    "last_visited_at": last_page.last_visited_at.isoformat(),
-                    "id": last_page.id,
-                    "signature": signature,
-                }
-            )
+    statement = statement.order_by(
+        BrowserHistoryPage.last_visited_at.desc(),
+        BrowserHistoryPage.id.desc(),
+    )
+    pages = list(await session.scalars(statement.limit(limit + 1)))
+    has_more = len(pages) > limit
+    pages = pages[:limit]
+    if has_more:
+        last_page = pages[-1]
+        response.headers["X-Next-Cursor"] = _encode_history_cursor(
+            {
+                "mode": "recent",
+                "last_visited_at": last_page.last_visited_at.isoformat(),
+                "id": last_page.id,
+                "signature": signature,
+            }
+        )
     if not pages:
         return []
 
-    sources: dict[int, list[str]] = {page.id: [] for page in pages}
-    source_rows = await session.execute(
-        select(BrowserHistoryPageConnection.page_id, BrowserConnection.name)
-        .join(
-            BrowserConnection,
-            BrowserConnection.id == BrowserHistoryPageConnection.connection_id,
-        )
-        .where(BrowserHistoryPageConnection.page_id.in_(sources))
-        .order_by(BrowserConnection.name)
-    )
-    for page_id, name in source_rows:
-        if name not in sources[page_id]:
-            sources[page_id].append(name)
-    return [
-        BrowserHistoryPageOut(
-            id=page.id,
-            url=page.url,
-            title=page.title,
-            hostname=page.hostname,
-            text_excerpt=page.text_excerpt,
-            first_visited_at=page.first_visited_at,
-            last_visited_at=page.last_visited_at,
-            visit_count=page.visit_count,
-            captured_at=page.captured_at,
-            source_browsers=sources[page.id],
-        )
-        for page in pages
-    ]
+    sources = await _history_source_names(session, [page.id for page in pages])
+    return [_history_page_out(page, sources[page.id]) for page in pages]
 
 
 @router.delete("/{page_id}", status_code=204)
@@ -860,7 +998,7 @@ async def history_content_status(
         domain_rules=[BrowserHistoryDomainRuleOut.model_validate(rule) for rule in domain_rules],
         system_policy_revision=HISTORY_SYSTEM_POLICY_REVISION,
         system_rules=system_rules,
-        content_capability_revision=CONTENT_CAPABILITY_REVISION,
+        content_capability_revision=_content_capability_revision(),
     )
 
 
@@ -1000,6 +1138,7 @@ async def sync_history(
     )
     accepted: list[BrowserHistorySyncAcceptedOut] = []
     rejected: list[BrowserHistorySyncRejectedOut] = []
+    newly_linked_document_ids: set[int] = set()
     now = datetime.now(UTC)
 
     for index, raw in enumerate(body.records):
@@ -1024,10 +1163,9 @@ async def sync_history(
                 deletions=deletions,
                 disabled_system_rule_ids=disabled_system_rule_ids,
                 ingest=ingest,
-                content_pipeline_enabled=(
-                    settings.browser_history_content_enabled and CONTENT_CAPABILITY_REVISION >= 2
-                ),
+                content_pipeline_enabled=_content_capability_revision() >= 2,
                 legacy_inline_content_enabled=settings.browser_history_legacy_inline_enabled,
+                newly_linked_document_ids=newly_linked_document_ids,
                 now=now,
             )
         except SyncRejection as exc:
@@ -1049,6 +1187,8 @@ async def sync_history(
 
     connection.last_seen_at = now
     await session.commit()
+    for document_id in sorted(newly_linked_document_ids):
+        await queue.enqueue("embed_history_document", document_id)
     return BrowserHistorySyncOut(
         accepted=accepted,
         rejected=rejected,
@@ -1056,7 +1196,7 @@ async def sync_history(
         domain_rules=[BrowserHistoryDomainRuleOut.model_validate(rule) for rule in rules],
         system_policy_revision=HISTORY_SYSTEM_POLICY_REVISION,
         system_rules=system_rules,
-        content_capability_revision=CONTENT_CAPABILITY_REVISION,
+        content_capability_revision=_content_capability_revision(),
         server_time=now,
     )
 
@@ -1089,5 +1229,5 @@ async def sync_status(
         domain_rules=[BrowserHistoryDomainRuleOut.model_validate(rule) for rule in rules],
         system_policy_revision=HISTORY_SYSTEM_POLICY_REVISION,
         system_rules=system_rules,
-        content_capability_revision=CONTENT_CAPABILITY_REVISION,
+        content_capability_revision=_content_capability_revision(),
     )

@@ -24,9 +24,9 @@ from .history_storage import (
 )
 from .models import BrowserHistoryDocument, BrowserHistoryImage
 
-# Phase 3 bumps this to 2 when document search and eager embedding are ready.
-# Until then, clients stay on the legacy path and Phase 2 code remains dormant.
-HISTORY_CONTENT_CAPABILITY_REVISION = 0
+# Extraction v2 is enabled only with its eager embedding and document-search
+# consumers present, so a client can never upload content the UI cannot find.
+HISTORY_CONTENT_CAPABILITY_REVISION = 2
 
 
 class HistoryIngestError(ValueError):
