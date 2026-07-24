@@ -1,11 +1,12 @@
 # Browser History — what is collected and how to control it
 
-NewsRead's Browser History feature is **off by default on every deployment**.
-Nothing on this page applies until the server operator sets
-`NEWSREAD_BROWSER_HISTORY_ENABLED=true` *and* you pair the Chrome extension
-yourself. For a self-hosted instance you administer, that one environment
-variable is the only switch; on shared or public instances the operator should
-review the abuse limits and this document before enabling it.
+NewsRead's Browser History feature captures nothing until **you** pair the
+Chrome extension — server availability alone collects no data. Whether the
+feature is *available* follows the deployment mode: on for prod/staging
+instances (whose operators run them deliberately and should review this
+document plus the operator notes below), off for self_hosted until the
+operator sets `NEWSREAD_BROWSER_HISTORY_ENABLED=true`. The environment
+variable overrides the mode default in either direction.
 
 ## What the extension captures
 

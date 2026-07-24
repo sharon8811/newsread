@@ -30,9 +30,10 @@ class Settings(BaseSettings):
     # Slack/Teams sharing. Off for self_hosted (a single-user instance showing
     # workspace-integration UI is noise); still requires credentials when on.
     messaging_enabled: bool | None = None  # NEWSREAD_MESSAGING_ENABLED
-    # Browser history remains opt-in while its privacy and extension surfaces
-    # are completed. Self-hosters can enable the backend foundation explicitly.
-    browser_history_enabled: bool = False  # NEWSREAD_BROWSER_HISTORY_ENABLED
+    # Browser history follows the deployment mode: on for prod/staging (the
+    # operator has read the privacy doc and runs the instance deliberately),
+    # off for self_hosted until explicitly enabled. Explicit env var wins.
+    browser_history_enabled: bool | None = None  # NEWSREAD_BROWSER_HISTORY_ENABLED
     # Packaged Chrome extension served from Settings → Browser history. Empty
     # means the in-repo default (extension/newsread-history-extension.zip,
     # produced by `npm run build` there); the download link hides when the
@@ -155,6 +156,8 @@ class Settings(BaseSettings):
             self.allow_signup = not is_self_hosted
         if self.messaging_enabled is None:
             self.messaging_enabled = not is_self_hosted
+        if self.browser_history_enabled is None:
+            self.browser_history_enabled = not is_self_hosted
         if not is_self_hosted and self.jwt_secret == "dev-secret-change-me":
             raise ValueError(
                 f"NEWSREAD_DEPLOYMENT={self.deployment.value} requires a real "

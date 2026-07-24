@@ -30,7 +30,7 @@ def test_prod_defaults_open_signup_and_messaging(monkeypatch):
     s = Settings(_env_file=None, deployment="prod", jwt_secret="real-secret")
     assert s.allow_signup is True
     assert s.messaging_enabled is True
-    assert s.browser_history_enabled is False
+    assert s.browser_history_enabled is True
 
 
 def test_staging_matches_prod_defaults(monkeypatch):
@@ -38,7 +38,7 @@ def test_staging_matches_prod_defaults(monkeypatch):
     s = Settings(_env_file=None, deployment="staging", jwt_secret="real-secret")
     assert s.allow_signup is True
     assert s.messaging_enabled is True
-    assert s.browser_history_enabled is False
+    assert s.browser_history_enabled is True
 
 
 def test_explicit_flag_beats_mode_default(monkeypatch):
@@ -49,11 +49,19 @@ def test_explicit_flag_beats_mode_default(monkeypatch):
         jwt_secret="real-secret",
         allow_signup=False,
         messaging_enabled=False,
+        browser_history_enabled=False,
     )
     assert s.allow_signup is False
     assert s.messaging_enabled is False
-    hosted = Settings(_env_file=None, allow_signup=True, messaging_enabled=True)
+    assert s.browser_history_enabled is False
+    hosted = Settings(
+        _env_file=None,
+        allow_signup=True,
+        messaging_enabled=True,
+        browser_history_enabled=True,
+    )
     assert hosted.allow_signup is True
+    assert hosted.browser_history_enabled is True
     assert hosted.messaging_enabled is True
 
 
