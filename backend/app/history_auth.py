@@ -23,6 +23,12 @@ def require_browser_history_enabled() -> None:
         raise HTTPException(status_code=404, detail="Browser history is not enabled")
 
 
+def require_browser_history_content_enabled() -> None:
+    require_browser_history_enabled()
+    if not settings.browser_history_content_enabled:
+        raise HTTPException(status_code=404, detail="Browser history content is not enabled")
+
+
 def generate_browser_token() -> tuple[str, str, str]:
     """Return (raw token, lookup prefix, SHA-256 digest)."""
     prefix = f"{TOKEN_PREFIX}{secrets.token_urlsafe(9)}"

@@ -7,9 +7,11 @@ from app.config import settings
 from app.history_policy import MAX_HISTORY_VISIT_COUNT, validate_normalized_history_url
 from app.models import (
     BrowserHistoryDeletion,
-    BrowserHistoryEmbedding,
+    BrowserHistoryDocument,
+    BrowserHistoryDocumentEmbedding,
     BrowserHistoryPage,
     BrowserHistoryPageConnection,
+    BrowserHistoryPageDocument,
     BrowserHistorySettings,
 )
 from app.routers import history as history_router
@@ -64,7 +66,11 @@ async def _sync(client, token, records):
     )
 
 
-async def test_sync_stores_sanitized_capture_and_clamps_future_timestamps(client, users, session):
+async def test_sync_stores_sanitized_metadata_and_clamps_future_timestamps(
+    client,
+    users,
+    session,
+):
     user = await users.create()
     pairing = await _pair(client, users, user)
     future = datetime.now(UTC) + timedelta(days=10)
@@ -88,11 +94,70 @@ async def test_sync_stores_sanitized_capture_and_clamps_future_timestamps(client
     assert len(response.json()["accepted"]) == 1
     page = await session.scalar(select(BrowserHistoryPage))
     assert page.title == "A <script>alert(1)</script>"
-    assert page.text == "hello world"
-    assert page.text_excerpt == "hello world"
     assert page.visit_count == MAX_HISTORY_VISIT_COUNT
     assert page.last_visited_at <= datetime.now(UTC)
-    assert len(page.content_hash) == 64
+    assert page.current_document_id is None
+    assert page.captured_at is None
+
+
+async def test_disabled_content_feature_accepts_inline_capture_as_metadata_only(
+    client,
+    users,
+    session,
+):
+    user = await users.create()
+    pairing = await _pair(client, users, user)
+
+    response = await _sync(
+        client,
+        pairing["token"],
+        [_capture(text="Legacy searchable body")],
+    )
+
+    assert response.status_code == 200
+    assert response.json()["content_capability_revision"] == 0
+    page = await session.scalar(select(BrowserHistoryPage))
+    assert page.current_document_id is None
+    search = await client.get(
+        "/api/history",
+        params={"q": "Legacy searchable body"},
+        headers=users.auth(user),
+    )
+    assert search.json() == []
+
+
+async def test_flag_off_extension_negotiates_legacy_mode_and_syncs_v2_style_metadata(
+    client,
+    users,
+    session,
+):
+    user = await users.create()
+    pairing = await _pair(client, users, user)
+    token_headers = {"Authorization": f"Bearer {pairing['token']}"}
+
+    status = await client.get("/api/history/sync/status", headers=token_headers)
+    assert status.status_code == 200
+    assert status.json()["content_capability_revision"] == 0
+
+    capture = _capture(
+        text="",
+        text_excerpt="",
+    )
+    capture["content_hash"] = "a" * 64
+    response = await _sync(client, pairing["token"], [capture])
+
+    assert response.status_code == 200
+    assert response.json()["content_capability_revision"] == 0
+    assert [item["record_id"] for item in response.json()["accepted"]] == ["capture-1"]
+    page = await session.scalar(select(BrowserHistoryPage))
+    assert page.current_document_id is None
+
+    content_status = await client.post(
+        "/api/history/sync/content-status",
+        json={"documents": ["a" * 64], "images": []},
+        headers=token_headers,
+    )
+    assert content_status.status_code == 404
 
 
 async def test_sync_returns_per_item_validation_errors_without_losing_valid_items(
@@ -154,7 +219,6 @@ async def test_sync_retry_out_of_order_and_counter_regression_are_idempotent(
     assert page.visit_count == aggregate.visit_count == 5
     assert page.first_visited_at == base
     assert page.last_visited_at == base + timedelta(hours=5)
-    assert page.text == "new content"
 
 
 async def test_two_connections_contribute_absolute_counts(client, users, session):
@@ -206,7 +270,6 @@ async def test_sync_enforces_exclude_and_metadata_only_domain_rules(client, user
     assert body["accepted"][0]["record_id"] == "metadata"
     page = await session.scalar(select(BrowserHistoryPage))
     assert page.hostname == "mail.example.com"
-    assert page.text == ""
 
 
 async def test_deletion_revision_rejects_stale_queue_but_allows_acknowledged_revisit(
@@ -337,16 +400,12 @@ async def test_history_summary_list_search_filters_and_sources(client, users):
     assert empty.json() == []
 
 
-async def test_history_search_uses_tsvector_and_current_model_vectors(
+async def test_metadata_only_search_uses_title_and_hostname_not_body(
     client,
     users,
-    session,
-    monkeypatch,
 ):
     alice = await users.create(username="alice")
-    bob = await users.create(username="bob")
     alice_pairing = await _pair(client, users, alice)
-    bob_pairing = await _pair(client, users, bob)
     first = _capture(
         "first",
         url="https://alpha.example.com/page",
@@ -359,65 +418,134 @@ async def test_history_search_uses_tsvector_and_current_model_vectors(
         title="Rendering notes",
         text="Component update lifecycle",
     )
-    alice_sync = await _sync(client, alice_pairing["token"], [first, second])
-    bob_sync = await _sync(
-        client,
-        bob_pairing["token"],
-        [_capture("bob", url="https://private.example.net/page")],
+    sync = await _sync(client, alice_pairing["token"], [first, second])
+    first_id, second_id = [item["page_id"] for item in sync.json()["accepted"]]
+
+    title = await client.get(
+        "/api/history",
+        params={"q": "Database indexing", "sort": "relevance"},
+        headers=users.auth(alice),
     )
-    first_id, second_id = [item["page_id"] for item in alice_sync.json()["accepted"]]
-    bob_id = bob_sync.json()["accepted"][0]["page_id"]
+    assert [page["id"] for page in title.json()] == [first_id]
+    hostname = await client.get(
+        "/api/history",
+        params={"q": "beta.example.com", "sort": "relevance"},
+        headers=users.auth(alice),
+    )
+    assert [page["id"] for page in hostname.json()] == [second_id]
+    body = await client.get(
+        "/api/history",
+        params={"q": "weighted document retrieval", "sort": "relevance"},
+        headers=users.auth(alice),
+    )
+    assert body.json() == []
+
+
+async def test_document_vector_search_is_owner_scoped(
+    client,
+    users,
+    session,
+    monkeypatch,
+):
+    alice = await users.create(username="doc-alice")
+    bob = await users.create(username="doc-bob")
+    alice_pairing = await _pair(client, users, alice)
+    bob_pairing = await _pair(client, users, bob)
+    alice_page_id = (
+        await _sync(
+            client,
+            alice_pairing["token"],
+            [_capture("alice", url="https://alice.example.com/article")],
+        )
+    ).json()["accepted"][0]["page_id"]
+    bob_page_id = (
+        await _sync(
+            client,
+            bob_pairing["token"],
+            [_capture("bob", url="https://bob.example.com/article")],
+        )
+    ).json()["accepted"][0]["page_id"]
+    now = datetime.now(UTC)
+    alice_document = BrowserHistoryDocument(
+        user_id=alice.id,
+        content_hash="a" * 64,
+        object_key=f"users/{alice.id}/history/documents/sha256/aa/{'a' * 64}",
+        storage_status="ready",
+        byte_size=100,
+        character_count=100,
+        text_excerpt="Alice document",
+        extraction_version="history-dom-v2",
+    )
+    bob_document = BrowserHistoryDocument(
+        user_id=bob.id,
+        content_hash="b" * 64,
+        object_key=f"users/{bob.id}/history/documents/sha256/bb/{'b' * 64}",
+        storage_status="ready",
+        byte_size=100,
+        character_count=100,
+        text_excerpt="Bob document",
+        extraction_version="history-dom-v2",
+    )
+    session.add_all([alice_document, bob_document])
+    await session.flush()
+    alice_page = await session.get(BrowserHistoryPage, alice_page_id)
+    bob_page = await session.get(BrowserHistoryPage, bob_page_id)
+    alice_page.current_document_id = alice_document.id
+    bob_page.current_document_id = bob_document.id
     session.add_all(
         [
-            BrowserHistoryEmbedding(
-                page_id=first_id,
+            BrowserHistoryPageDocument(
+                page_id=alice_page_id,
+                document_id=alice_document.id,
+                first_seen_at=now,
+                last_seen_at=now,
+                captured_at=now,
+            ),
+            BrowserHistoryPageDocument(
+                page_id=bob_page_id,
+                document_id=bob_document.id,
+                first_seen_at=now,
+                last_seen_at=now,
+                captured_at=now,
+            ),
+            BrowserHistoryDocumentEmbedding(
+                document_id=alice_document.id,
+                chunk_index=0,
                 model=settings.openai_embedding_model,
                 embedding=[1.0, 0.0],
-                input_hash="first",
+                input_hash=alice_document.content_hash,
+                block_start_id="b0001",
+                block_end_id="b0001",
             ),
-            BrowserHistoryEmbedding(
-                page_id=second_id,
-                model=settings.openai_embedding_model,
-                embedding=[0.0, 1.0],
-                input_hash="second",
-            ),
-            BrowserHistoryEmbedding(
-                page_id=bob_id,
+            BrowserHistoryDocumentEmbedding(
+                document_id=bob_document.id,
+                chunk_index=0,
                 model=settings.openai_embedding_model,
                 embedding=[1.0, 0.0],
-                input_hash="bob",
+                input_hash=bob_document.content_hash,
+                block_start_id="b0001",
+                block_end_id="b0001",
             ),
         ]
     )
     await session.commit()
 
-    keyword = await client.get(
-        "/api/history",
-        params={"q": "weighted retrieval", "sort": "relevance"},
-        headers=users.auth(alice),
-    )
-    assert [page["id"] for page in keyword.json()] == [first_id]
-
     async def fake_embed_query(query):
-        assert query in {"concept without keywords", "component lifecycle"}
+        assert query == "semantic-only concept"
         return [1.0, 0.0]
 
     monkeypatch.setattr(history_embeddings, "is_configured", lambda: True)
     monkeypatch.setattr(embeddings, "embed_query", fake_embed_query)
-    semantic = await client.get(
+    response = await client.get(
         "/api/history",
-        params={"q": "concept without keywords", "sort": "relevance"},
+        params={"q": "semantic-only concept", "sort": "relevance"},
         headers=users.auth(alice),
     )
-    assert [page["id"] for page in semantic.json()] == [first_id, second_id]
-    assert bob_id not in {page["id"] for page in semantic.json()}
 
-    hybrid = await client.get(
-        "/api/history",
-        params={"q": "component lifecycle", "sort": "relevance"},
-        headers=users.auth(alice),
-    )
-    assert [page["id"] for page in hybrid.json()] == [second_id, first_id]
+    assert response.status_code == 200
+    assert [(item["type"], item["document_id"]) for item in response.json()] == [
+        ("document", alice_document.id)
+    ]
 
 
 async def test_history_recent_and_ranked_cursor_pagination(client, users):
@@ -428,7 +556,7 @@ async def test_history_recent_and_ranked_cursor_pagination(client, users):
         _capture(
             f"page-{index}",
             url=f"https://page{index}.example.com/item",
-            title=f"Cursor result {index}",
+            title=f"Cursor pagination result {index}",
             text="cursor pagination",
             first=now - timedelta(days=index + 1),
             last=now - timedelta(hours=index),
@@ -481,7 +609,7 @@ async def test_history_recent_and_ranked_cursor_pagination(client, users):
 async def test_sync_rate_limit_returns_retry_after(client, users, monkeypatch):
     user = await users.create()
     pairing = await _pair(client, users, user)
-    monkeypatch.setattr(history_router, "SYNC_RATE_LIMIT", 1)
+    monkeypatch.setattr(history_router, "EXTENSION_RATE_LIMIT", 1)
     assert (await _sync(client, pairing["token"], [_capture("first")])).status_code == 200
     limited = await _sync(client, pairing["token"], [_capture("second")])
     assert limited.status_code == 429

@@ -6,6 +6,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import {
   api,
+  type BrowserHistoryListItem,
   type BrowserHistoryPage,
   type BrowserHistorySort,
 } from "@/lib/api";
@@ -28,6 +29,7 @@ import {
 import ConfirmButton from "@/components/ui/ConfirmButton";
 import ErrorText from "@/components/ui/ErrorText";
 import Skeleton from "@/components/ui/Skeleton";
+import PrivateHistoryImage from "@/components/PrivateHistoryImage";
 
 function safePageUrl(value: string): string | null {
   try {
@@ -58,9 +60,37 @@ function visitLabel(count: number) {
   return count === 1 ? "1 visit" : `${count} visits`;
 }
 
-function HistoryRow({ page }: { page: BrowserHistoryPage }) {
+function pageForHistoryRow(item: BrowserHistoryListItem): BrowserHistoryPage {
+  if ("type" in item && item.type === "document") {
+    const location = item.locations[0];
+    return {
+      id: location.page_id,
+      url: location.url,
+      title: location.title,
+      hostname: location.hostname,
+      text_excerpt: item.text_excerpt,
+      current_document_id: item.document_id,
+      favicon_image_id: location.favicon_image_id,
+      first_visited_at: location.first_seen_at,
+      last_visited_at: location.last_seen_at,
+      visit_count: location.visit_count,
+      captured_at: location.last_seen_at,
+      source_browsers: location.source_browsers,
+    };
+  }
+  return item;
+}
+
+function HistoryRow({ item }: { item: BrowserHistoryListItem }) {
+  const page = pageForHistoryRow(item);
   const [busy, setBusy] = useState<"delete" | "exclude" | null>(null);
   const href = safePageUrl(page.url);
+  const documentId =
+    "type" in item && item.type === "document"
+      ? item.document_id
+      : page.current_document_id;
+  const locationCount =
+    "type" in item && item.type === "document" ? item.locations.length : 1;
 
   async function deletePage() {
     setBusy("delete");
@@ -107,8 +137,27 @@ function HistoryRow({ page }: { page: BrowserHistoryPage }) {
       style={{ borderColor: "var(--line-soft)" }}
     >
       <div className="flex items-start gap-4">
+        {page.favicon_image_id && (
+          <span
+            className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-md border"
+            style={{ borderColor: "var(--line-soft)", background: "var(--paper-raised)" }}
+          >
+            <PrivateHistoryImage
+              imageId={page.favicon_image_id}
+              alt=""
+              className="h-5 w-5 object-contain"
+            />
+          </span>
+        )}
         <div className="min-w-0 flex-1">
-          {href ? (
+          {documentId ? (
+            <Link
+              href={`/history/documents/${documentId}`}
+              className="inline-flex max-w-full items-start text-lead font-medium leading-snug hover:underline"
+            >
+              <span className="min-w-0 break-words">{title}</span>
+            </Link>
+          ) : href ? (
             <a
               href={href}
               target="_blank"
@@ -126,6 +175,17 @@ function HistoryRow({ page }: { page: BrowserHistoryPage }) {
             style={{ color: "var(--accent)" }}
           >
             {page.hostname}
+            {href && documentId && (
+              <a
+                href={href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="ml-2 inline-flex align-middle hover:opacity-70"
+                title="Open current page"
+              >
+                <ExternalIcon size={12} />
+              </a>
+            )}
           </p>
           {page.text_excerpt && (
             <p
@@ -142,6 +202,12 @@ function HistoryRow({ page }: { page: BrowserHistoryPage }) {
             <span>{timeAgo(page.last_visited_at)}</span>
             <span aria-hidden="true">·</span>
             <span>{visitLabel(page.visit_count)}</span>
+            {locationCount > 1 && (
+              <>
+                <span aria-hidden="true">·</span>
+                <span>{locationCount} locations</span>
+              </>
+            )}
             {page.source_browsers.length > 0 && (
               <>
                 <span aria-hidden="true">·</span>
@@ -213,7 +279,7 @@ export default function HistoryPage() {
     },
     shouldLoadHistory,
   );
-  const pages = historyPage?.items;
+  const items = historyPage?.items;
 
   function resetPagination() {
     setCursorStack([undefined]);
@@ -402,13 +468,13 @@ export default function HistoryPage() {
                     Try again
                   </button>
                 </div>
-              ) : isLoading && !pages ? (
+              ) : isLoading && !items ? (
                 <div className="space-y-5">
                   <Skeleton className="h-24" />
                   <Skeleton className="h-24" />
                   <Skeleton className="h-24" />
                 </div>
-              ) : !summary?.has_history || pages?.length === 0 ? (
+              ) : !summary?.has_history || items?.length === 0 ? (
                 <div className="py-12 text-center">
                   <p className="text-body-lg font-medium">
                     {filtered ? "Nothing matched those filters." : "No pages synced yet."}
@@ -421,8 +487,15 @@ export default function HistoryPage() {
                 </div>
               ) : (
                 <>
-                  {pages?.map((page) => (
-                    <HistoryRow key={page.id} page={page} />
+                  {items?.map((item) => (
+                    <HistoryRow
+                      key={
+                        "type" in item && item.type === "document"
+                          ? `document-${item.document_id}`
+                          : `page-${item.id}`
+                      }
+                      item={item}
+                    />
                   ))}
                   {(pageIndex > 0 || historyPage?.nextCursor) && (
                     <nav

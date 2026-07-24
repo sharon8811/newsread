@@ -39,6 +39,44 @@ class Settings(BaseSettings):
     # produced by `npm run build` there); the download link hides when the
     # file is absent. Docker mounts ./extension and points this inside it.
     extension_package: str = ""  # NEWSREAD_EXTENSION_PACKAGE
+    # V2 history content storage remains a separate rollout capability while
+    # Phase 1 lays its schema and storage foundation. Enabling it requires a
+    # complete object-store and encryption configuration below.
+    browser_history_content_enabled: bool = False
+    # Phase 6 cutover. When enabled the server advertises capability revision
+    # 3 and pre-v2 inline bodies are accepted as metadata only.
+    browser_history_finalize_enabled: bool = False
+    # Temporary compatibility window for zip-distributed pre-v2 extensions.
+    # Disable after the announced window to accept their visits as metadata only.
+    browser_history_legacy_inline_enabled: bool = True
+
+    # Private S3-compatible storage for encrypted browser-history objects.
+    # Keeping this contract provider-neutral lets local Compose use SeaweedFS while
+    # hosted deployments use any maintained S3-compatible service.
+    object_store_endpoint: str = ""
+    object_store_access_key: str = ""
+    object_store_secret_key: str = ""
+    object_store_bucket: str = "newsread-history"
+    object_store_region: str = "us-east-1"
+    object_store_secure: bool = False
+    history_object_max_bytes: int = 1024 * 1024
+    history_object_compressed_max_bytes: int = 512 * 1024
+    history_image_max_bytes: int = 200 * 1024
+    history_user_storage_max_bytes: int = 512 * 1024 * 1024
+    history_embedding_daily_limit: int = 1_000
+    history_object_gc_grace_hours: int = 24
+    history_object_gc_scan_limit: int = 10_000
+    history_object_delete_batch: int = 200
+    history_embedding_backlog_alert_hours: int = 6
+    history_deletion_backlog_alert_hours: int = 1
+    history_storage_alert_ratio: float = 0.9
+
+    # AES-256 key-encryption key wrapping per-user history data keys. The
+    # current version is used for new/rewrapped rows; previous versions are a
+    # JSON object {"version": "base64-key"} kept only during rotation.
+    history_encryption_master_key: str = ""
+    history_encryption_wrapping_key_version: int = 1
+    history_encryption_previous_master_keys: str = ""
 
     database_url: str = "postgresql+asyncpg://newsread:newsread@localhost:5433/newsread"
     redis_url: str = "redis://localhost:6380/0"
@@ -158,6 +196,51 @@ class Settings(BaseSettings):
             self.messaging_enabled = not is_self_hosted
         if self.browser_history_enabled is None:
             self.browser_history_enabled = not is_self_hosted
+        if self.browser_history_content_enabled:
+            required = {
+                "NEWSREAD_OBJECT_STORE_ENDPOINT": self.object_store_endpoint,
+                "NEWSREAD_OBJECT_STORE_ACCESS_KEY": self.object_store_access_key,
+                "NEWSREAD_OBJECT_STORE_SECRET_KEY": self.object_store_secret_key,
+                "NEWSREAD_OBJECT_STORE_BUCKET": self.object_store_bucket,
+                "NEWSREAD_HISTORY_ENCRYPTION_MASTER_KEY": self.history_encryption_master_key,
+            }
+            missing = [name for name, value in required.items() if not value]
+            if missing:
+                raise ValueError(
+                    "NEWSREAD_BROWSER_HISTORY_CONTENT_ENABLED requires " + ", ".join(missing)
+                )
+            from .history_crypto import HistoryCryptoError, MasterKeyring
+
+            try:
+                MasterKeyring.from_config(
+                    current_key=self.history_encryption_master_key,
+                    current_version=self.history_encryption_wrapping_key_version,
+                    previous_keys_json=self.history_encryption_previous_master_keys,
+                )
+            except HistoryCryptoError as exc:
+                raise ValueError(f"invalid history encryption configuration: {exc}") from exc
+        if self.browser_history_finalize_enabled and not self.browser_history_content_enabled:
+            raise ValueError(
+                "NEWSREAD_BROWSER_HISTORY_FINALIZE_ENABLED requires "
+                "NEWSREAD_BROWSER_HISTORY_CONTENT_ENABLED"
+            )
+        if (
+            self.history_object_max_bytes < 1
+            or self.history_object_compressed_max_bytes < 1
+            or self.history_image_max_bytes < 1
+            or self.history_user_storage_max_bytes < 1
+        ):
+            raise ValueError("history object, image, and storage byte limits must be positive")
+        if (
+            self.history_embedding_daily_limit < 1
+            or self.history_object_gc_grace_hours < 0
+            or self.history_object_gc_scan_limit < 1
+            or self.history_object_delete_batch < 1
+            or self.history_embedding_backlog_alert_hours < 1
+            or self.history_deletion_backlog_alert_hours < 1
+            or not 0 < self.history_storage_alert_ratio <= 1
+        ):
+            raise ValueError("history quota and operations limits are invalid")
         if not is_self_hosted and self.jwt_secret == "dev-secret-change-me":
             raise ValueError(
                 f"NEWSREAD_DEPLOYMENT={self.deployment.value} requires a real "

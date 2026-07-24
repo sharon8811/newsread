@@ -11,11 +11,16 @@ import {
   type ArticleProjectStatus,
   type BrowserConnection,
   type BrowserHistoryDomainRule,
+  type BrowserHistoryDocumentContent,
+  type BrowserHistoryDocumentDetail,
+  type BrowserHistoryDocumentSummary,
   type BrowserHistoryExtension,
-  type BrowserHistoryPage,
+  type BrowserHistoryListItem,
+  type BrowserHistoryOperations,
   type BrowserHistorySettings,
   type BrowserHistorySort,
   type BrowserHistorySummary,
+  type BrowserHistorySystemRule,
   type CatalogCategory,
   type CatalogEntry,
   type DislikeOptions,
@@ -135,8 +140,42 @@ export const useHistoryExtension = (enabled = true) =>
 export const useHistorySettings = (enabled = true) =>
   useSWR<BrowserHistorySettings>(enabled ? keys.historySettings : null, fetcher);
 
+export const useHistoryOperations = (enabled = true) =>
+  useSWR<BrowserHistoryOperations>(
+    enabled ? keys.historyOperations : null,
+    fetcher,
+  );
+
 export const useHistoryRules = (enabled = true) =>
   useSWR<BrowserHistoryDomainRule[]>(enabled ? keys.historyRules : null, fetcher);
+
+export const useHistorySystemRules = (enabled = true) =>
+  useSWR<BrowserHistorySystemRule[]>(
+    enabled ? keys.historySystemRules : null,
+    fetcher,
+  );
+
+export const useHistoryDocument = (id: number | string | null) =>
+  useSWR<BrowserHistoryDocumentDetail>(
+    id === null ? null : keys.historyDocument(id),
+    fetcher,
+  );
+
+export const useHistoryDocumentContent = (id: number | string | null) =>
+  useSWR<BrowserHistoryDocumentContent>(
+    id === null ? null : keys.historyDocumentContent(id),
+    fetcher,
+  );
+
+export const useHistoryDocumentSummary = (id: number | string | null) =>
+  useSWR<BrowserHistoryDocumentSummary>(
+    id === null ? null : keys.historyDocumentSummary(id),
+    fetcher,
+    {
+      refreshInterval: (data) =>
+        data?.state === "queued" || data?.state === "running" ? 1500 : 0,
+    },
+  );
 
 export const useHistory = (
   filters: {
@@ -149,10 +188,10 @@ export const useHistory = (
   },
   enabled = true,
 ) =>
-  useSWR<{ items: BrowserHistoryPage[]; nextCursor: string | null }>(
+  useSWR<{ items: BrowserHistoryListItem[]; nextCursor: string | null }>(
     enabled ? keys.history(filters) : null,
     async (path: string) => {
-      const page = await apiWithHeaders<BrowserHistoryPage[]>(path);
+      const page = await apiWithHeaders<BrowserHistoryListItem[]>(path);
       return {
         items: page.data,
         nextCursor: page.headers.get("X-Next-Cursor"),
@@ -212,11 +251,14 @@ export function mutateBrowserHistory() {
     (key) => typeof key === "string" && (key === "/history" || key.startsWith("/history?")),
   );
   mutate(keys.historySummary);
+  mutate(keys.historyOperations);
 }
 
 export function mutateBrowserHistorySettings() {
   mutate(keys.historyConnections);
   mutate(keys.historySettings);
+  mutate(keys.historyOperations);
   mutate(keys.historyRules);
+  mutate(keys.historySystemRules);
   mutate(keys.historySummary);
 }

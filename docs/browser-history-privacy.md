@@ -1,89 +1,105 @@
 # Browser History — what is collected and how to control it
 
-NewsRead's Browser History feature captures nothing until **you** pair the
-Chrome extension — server availability alone collects no data. Whether the
-feature is *available* follows the deployment mode: on for prod/staging
-instances (whose operators run them deliberately and should review this
-document plus the operator notes below), off for self_hosted until the
-operator sets `NEWSREAD_BROWSER_HISTORY_ENABLED=true`. The environment
-variable overrides the mode default in either direction.
+NewsRead captures nothing until you pair the Chrome extension. Availability
+follows the deployment mode, but self-hosted operators must explicitly enable
+the feature with `NEWSREAD_BROWSER_HISTORY_ENABLED=true`.
 
 ## What the extension captures
 
-When you pair the NewsRead History extension and capture is on, each ordinary
-page you finish loading in Chrome contributes:
+For an ordinary HTML page you finish loading, the extension can collect:
 
-- the page **title** and a cleaned, openable **URL** (see exclusions below);
-- the page's **hostname** and visit times/counts;
-- up to **6,000 characters of visible text** (what you could read on the page —
-  never form fields, passwords, page storage, or raw HTML).
+- the title, hostname, cleaned URL, visit times, and URL-level visit count;
+- up to 200,000 characters of structured, visible page text, split into
+  bounded headings, paragraphs, lists, and quotes;
+- a bounded lead image and favicon when Chrome permits canvas re-encoding.
 
-Everything is stored **only on the NewsRead server you paired with**, scoped to
-your account. Other users of the same server can never see your pages, domains,
-counts, or connection names. Captured text is used for search on your History
-page and, if the server has an embedding model configured, for private semantic
-search vectors. It is never fed to summaries, image generation, recommendations,
-sharing, or any LLM feature.
+Extraction happens in the browser. The backend never fetches or scrapes the
+visited URL. Short, non-HTML, or not-yet-rendered pages still contribute
+metadata without content.
+
+The extension canonicalizes the document and computes its SHA-256 digest
+locally. NewsRead recomputes the digest before accepting the upload and
+deduplicates unchanged content only inside your account. The same digest from
+another account is an independent encrypted object and database row.
+
+Structured content is embedded automatically for private semantic search.
+Summaries and page Q&A are different: neither runs until you explicitly click
+the corresponding action. Generated summaries include citations back to
+captured passages.
 
 ## What is never captured
 
-- Incognito windows — the extension is disabled there by the manifest.
-- Non-web pages: browser UI, other extensions, file downloads, PDFs viewers.
-- Localhost, private-network, and reserved hostnames (`.internal`, `.local`,
-  `.test`, single-label intranet names, private IPs).
-- Your NewsRead server's own pages.
-- URL fragments, tracking parameters (`utm_*`, `fbclid`, `gclid`, …) and query
-  parameters whose names suggest secrets (`token`, `session`, `code`, `key`,
-  `password`, …) — stripped in the browser *before* anything is queued.
-- Anything while capture is **paused**, and any domain you exclude.
+- Incognito windows; the extension is disabled there.
+- Browser UI, other extensions, file URLs, and non-HTML/PDF viewer pages.
+- Localhost, private-network, reserved, and single-label intranet hosts.
+- Your paired NewsRead server itself.
+- Form values, passwords, page storage, cookies, or raw HTML.
+- URL fragments, tracking parameters, and query parameters whose names suggest
+  secrets; these are stripped before queueing.
+- Anything while capture is paused or on an excluded domain.
 
-Domains you mark **metadata-only** contribute title/URL/times but no page text.
-Exclusions and metadata-only rules are enforced twice: in the extension before
-queueing, and again on the server on every sync.
+Metadata-only domains contribute title, URL, and times but no document or
+image. Exclusions are enforced in both the extension and the server.
 
 ## Chrome permissions, explained
 
 | Permission | Why the extension needs it |
 |---|---|
-| Read data on websites you visit | Reading the visible text of a loaded page is the product; the warning text is Chrome's standard phrasing for any content script. Nothing is sent anywhere except your paired NewsRead server. |
-| Storage | Local settings and the offline sync queue. |
-| Alarms | Waking up to retry syncing in the background. |
-| Access to your NewsRead server (asked at pairing) | Granted only for the exact origin you type in — the extension can talk to no other site. |
-| Browsing history (optional, asked on demand) | Only if you start the one-time "import existing history" step, which imports titles/URLs/times (no page text — Chrome does not keep old page bodies). Decline it and everything else still works. |
+| Read data on websites you visit | Extract visible text and eligible images from loaded HTTP(S) pages. Content is sent only to the paired NewsRead origin. |
+| Storage | Keep settings, the bounded offline queue, and content awaiting upload. Citation anchors use memory-only session storage and disappear on browser restart. |
+| Alarms | Retry offline synchronization in the background. |
+| Access to your NewsRead server | Requested for only the exact origin entered during pairing. |
+| Browsing history (optional) | Used only for a user-started metadata import. Chrome has no old page bodies to import. |
+
+Citation navigation first uses Chrome's native Text Fragment support. When the
+paired extension assists, it validates the NewsRead sender and highlights a
+temporary `Range` through the CSS Custom Highlight API; it does not rewrite the
+page DOM.
+
+## Storage and encryption
+
+Document and image bytes are encrypted before they reach SeaweedFS or another
+S3-compatible store. NewsRead uses a per-user AES-256 data key, wrapped by the
+operator's versioned master key. Ciphertext authentication binds the object
+type, user ID, and content hash, preventing an object from being replayed as
+another user's content or as a different object type.
+
+PostgreSQL stores metadata, short excerpts, keyword indexes, semantic vectors,
+and generated summaries/citations. It does not store the captured document
+body after the finalized migration. These derived values remain sensitive and
+must be protected by database access controls and encrypted backups.
+
+Server logs do not include page text, titles, URLs, search queries, tokens, or
+summary/Q&A content.
 
 ## Retention and deletion
 
-- Captured pages are kept for **90 days by default**; you can choose 30/90/365
-  days or forever in Settings → Browser history. Cleanup runs daily on the
-  server.
-- **Delete one page**, **exclude-and-delete a domain**, or **clear all
-  history** from NewsRead at any time. Deletions write server-side tombstones,
-  so a browser that was offline when you deleted cannot re-upload stale copies
-  of the deleted pages later.
-- One caveat of that protection: pages you genuinely revisit *while the
-  extension is offline shortly after a deletion* may not be recorded until the
-  extension reconnects and learns about the deletion.
-- **Revoking a browser** in Settings takes effect on its next sync. Revoking
-  stops future uploads; it does not delete already-synced pages unless you also
-  delete them.
-- Deleting your NewsRead account deletes every history row and connection.
+- Pages are kept for 90 days by default; Settings offers 30, 90, 365 days, or
+  forever.
+- Retention applies to each page–document version link. If the current version
+  expires, the newest surviving version becomes current; otherwise the page
+  becomes metadata-only.
+- Delete one page, exclude-and-delete a domain, or clear all history at any
+  time. Deletion tombstones stop an offline browser from restoring stale rows.
+- Unlinked document and image rows are removed after a grace period. A durable
+  deletion outbox then removes their encrypted objects, including objects
+  reached through account deletion.
+- Revoking a browser stops future uploads but does not delete existing history.
+- Deleting your account cascades every history row and queues every private
+  object for deletion.
 
-## Pairing tokens
+Storage use and indexing/deletion backlogs are visible under Settings →
+Browser history.
 
-Pairing uses a one-time token created in Settings → Browser history. The server
-stores only a hash; the token is shown once and cannot be recovered — revoke
-and re-pair instead. The token authenticates *only* the history sync endpoints:
-it cannot read your feeds, articles, projects, or anything else on your
-account, and it never doubles as a login.
+## Operator notes
 
-## Operator notes (self-hosted / public)
+Content capture requires both
+`NEWSREAD_BROWSER_HISTORY_CONTENT_ENABLED=true` and a private object store plus
+a valid encryption master key. Run the dual-read search audit before enabling
+the final capability flag and applying the destructive legacy-body migration.
 
-- Enable with `NEWSREAD_BROWSER_HISTORY_ENABLED=true`. The flag is deliberately
-  opt-in in **every** deployment mode because captured page text is sensitive.
-- Sync is rate-limited per paired browser (60 requests/minute, 100 records and
-  1 MiB per request) and tokens are revocable instantly.
-- Page text is stored in plaintext in PostgreSQL. For a public, multi-user
-  deployment, review access to the database and backups before enabling, and
-  treat encrypted-at-rest page text as a prerequisite (see the feature plan's
-  privacy checklist).
-- Server logs never include page text, titles, URLs, search queries, or tokens.
+Use TLS for any non-local object-store connection, least-privilege bucket
+credentials, coordinated PostgreSQL/object-store backups, and external backup
+of the encryption master key. Losing any one of the database, bucket, or
+master key can make a restore incomplete or unreadable. See
+[Browser History operations](browser-history-operations.md).

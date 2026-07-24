@@ -3,6 +3,7 @@ from datetime import date, datetime
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     Date,
     DateTime,
     Float,
@@ -16,7 +17,7 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .db import Base
@@ -175,6 +176,93 @@ class BrowserHistoryDomainRule(Base):
     )
 
 
+class BrowserHistorySystemRuleOverride(Base):
+    """A user's explicit enable/disable choice for one built-in rule."""
+
+    __tablename__ = "browser_history_system_rule_overrides"
+
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    rule_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class BrowserHistoryUserKey(Base):
+    """Versioned per-user data key, wrapped by a server master key."""
+
+    __tablename__ = "browser_history_user_keys"
+
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    data_key_version: Mapped[int] = mapped_column(Integer, primary_key=True)
+    wrapped_data_key: Mapped[bytes] = mapped_column(LargeBinary)
+    wrap_alg: Mapped[str] = mapped_column(String(32))
+    wrapping_key_version: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    retired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class BrowserHistoryImage(Base):
+    """One private, encrypted, content-addressed raster per user."""
+
+    __tablename__ = "browser_history_images"
+    __table_args__ = (
+        UniqueConstraint("user_id", "image_hash"),
+        UniqueConstraint("object_key"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    image_hash: Mapped[str] = mapped_column(String(64))
+    object_key: Mapped[str] = mapped_column(String(1024))
+    storage_status: Mapped[str] = mapped_column(String(16), default="pending")
+    format: Mapped[str] = mapped_column(String(16))
+    width: Mapped[int] = mapped_column(Integer)
+    height: Mapped[int] = mapped_column(Integer)
+    byte_size: Mapped[int] = mapped_column(Integer)
+    source_host: Mapped[str | None] = mapped_column(String(253))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class BrowserHistoryDocument(Base):
+    """One encrypted extracted content version, deduplicated within a user."""
+
+    __tablename__ = "browser_history_documents"
+    __table_args__ = (
+        UniqueConstraint("user_id", "content_hash"),
+        UniqueConstraint("object_key"),
+        Index("ix_browser_history_documents_user_status", "user_id", "storage_status"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    content_hash: Mapped[str] = mapped_column(String(64))
+    object_key: Mapped[str] = mapped_column(String(1024))
+    storage_status: Mapped[str] = mapped_column(String(16), default="pending")
+    byte_size: Mapped[int] = mapped_column(Integer)
+    character_count: Mapped[int] = mapped_column(Integer)
+    text_excerpt: Mapped[str] = mapped_column(Text, default="", server_default="")
+    search_tsv: Mapped[str | None] = mapped_column(TSVECTOR)
+    extraction_version: Mapped[str] = mapped_column(String(64))
+    lead_image_id: Mapped[int | None] = mapped_column(
+        ForeignKey("browser_history_images.id", ondelete="SET NULL"),
+        index=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 class BrowserHistoryPage(Base):
     """One private page per user and normalized URL."""
 
@@ -191,12 +279,46 @@ class BrowserHistoryPage(Base):
     url: Mapped[str] = mapped_column(String(2048))
     title: Mapped[str] = mapped_column(Text, default="", server_default="")
     hostname: Mapped[str] = mapped_column(String(253))
-    text: Mapped[str] = mapped_column(Text, default="", server_default="")
-    text_excerpt: Mapped[str] = mapped_column(Text, default="", server_default="")
-    content_hash: Mapped[str | None] = mapped_column(String(64))
+    current_document_id: Mapped[int | None] = mapped_column(
+        ForeignKey("browser_history_documents.id", ondelete="SET NULL"),
+        index=True,
+    )
+    favicon_image_id: Mapped[int | None] = mapped_column(
+        ForeignKey("browser_history_images.id", ondelete="SET NULL"),
+        index=True,
+    )
     first_visited_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     last_visited_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     visit_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    captured_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class BrowserHistoryPageDocument(Base):
+    """A URL's observed relationship to one content version."""
+
+    __tablename__ = "browser_history_page_documents"
+    __table_args__ = (
+        UniqueConstraint("page_id", "document_id"),
+        Index(
+            "ix_browser_history_page_documents_document_last_seen",
+            "document_id",
+            "last_seen_at",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    page_id: Mapped[int] = mapped_column(
+        ForeignKey("browser_history_pages.id", ondelete="CASCADE"), index=True
+    )
+    document_id: Mapped[int] = mapped_column(
+        ForeignKey("browser_history_documents.id", ondelete="CASCADE"), index=True
+    )
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     captured_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
@@ -225,19 +347,113 @@ class BrowserHistoryPageConnection(Base):
     )
 
 
-class BrowserHistoryEmbedding(Base):
-    """Current-model vector for one private history page."""
+class BrowserHistoryDocumentEmbedding(Base):
+    """One semantic-search chunk for a private history document."""
 
-    __tablename__ = "browser_history_embeddings"
-
-    page_id: Mapped[int] = mapped_column(
-        ForeignKey("browser_history_pages.id", ondelete="CASCADE"), primary_key=True
+    __tablename__ = "browser_history_document_embeddings"
+    __table_args__ = (
+        UniqueConstraint("document_id", "chunk_index", "model"),
+        Index("ix_browser_history_document_embeddings_document", "document_id"),
     )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    document_id: Mapped[int] = mapped_column(
+        ForeignKey("browser_history_documents.id", ondelete="CASCADE")
+    )
+    chunk_index: Mapped[int] = mapped_column(Integer)
     model: Mapped[str] = mapped_column(String(120))
     embedding: Mapped[list] = mapped_column(Vector())
     input_hash: Mapped[str] = mapped_column(String(64))
+    block_start_id: Mapped[str | None] = mapped_column(String(32))
+    block_end_id: Mapped[str | None] = mapped_column(String(32))
     embedded_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class BrowserHistoryEmbeddingUsage(Base):
+    """Per-user daily reservation counter for automatic history embeddings."""
+
+    __tablename__ = "browser_history_embedding_usage"
+    __table_args__ = (
+        CheckConstraint(
+            "document_count >= 0",
+            name="ck_browser_history_embedding_usage_count",
+        ),
+    )
+
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    period_start: Mapped[date] = mapped_column(Date, primary_key=True)
+    document_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class BrowserHistorySummary(Base):
+    """Optional, explicitly requested cited summary for one content version."""
+
+    __tablename__ = "browser_history_summaries"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('queued', 'running', 'ready', 'error', 'too_short')",
+            name="ck_browser_history_summary_status",
+        ),
+        UniqueConstraint(
+            "document_id",
+            "model",
+            "prompt_version",
+            "input_hash",
+        ),
+        Index("ix_browser_history_summaries_document", "document_id"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    document_id: Mapped[int] = mapped_column(
+        ForeignKey("browser_history_documents.id", ondelete="CASCADE")
+    )
+    model: Mapped[str] = mapped_column(String(120))
+    prompt_version: Mapped[str] = mapped_column(String(32))
+    input_hash: Mapped[str] = mapped_column(String(64))
+    status: Mapped[str] = mapped_column(String(16), default="queued")
+    markdown: Mapped[str] = mapped_column(Text, default="", server_default="")
+    citations: Mapped[list] = mapped_column(JSONB, default=list)
+    error_code: Mapped[str | None] = mapped_column(String(64))
+    generated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class BrowserHistoryObjectDeletion(Base):
+    """Durable outbox for object deletes that must survive account deletion."""
+
+    __tablename__ = "browser_history_object_deletions"
+    __table_args__ = (UniqueConstraint("object_key"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    owner_user_id: Mapped[int] = mapped_column(Integer, index=True)
+    object_type: Mapped[str] = mapped_column(String(16))
+    object_hash: Mapped[str] = mapped_column(String(64))
+    object_key: Mapped[str] = mapped_column(String(1024))
+    attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    last_error: Mapped[str | None] = mapped_column(Text)
+    queued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+
+
+class BrowserHistoryGcState(Base):
+    """Durable pagination state for bounded object-store sweeps."""
+
+    __tablename__ = "browser_history_gc_state"
+
+    name: Mapped[str] = mapped_column(String(64), primary_key=True)
+    cursor: Mapped[str | None] = mapped_column(Text)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
 
 
@@ -707,6 +923,13 @@ class Conversation(Base):
             unique=True,
             postgresql_where=text("project_id IS NOT NULL"),
         ),
+        Index(
+            "uq_conversations_history_document_user",
+            "history_document_id",
+            "user_id",
+            unique=True,
+            postgresql_where=text("history_document_id IS NOT NULL"),
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -715,6 +938,11 @@ class Conversation(Base):
     )
     project_id: Mapped[int | None] = mapped_column(
         ForeignKey("projects.id", ondelete="CASCADE"), index=True, nullable=True
+    )
+    history_document_id: Mapped[int | None] = mapped_column(
+        ForeignKey("browser_history_documents.id", ondelete="CASCADE"),
+        index=True,
+        nullable=True,
     )
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     kind: Mapped[str] = mapped_column(String(16), default="article", server_default="article")

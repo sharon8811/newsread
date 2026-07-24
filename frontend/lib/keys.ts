@@ -50,7 +50,16 @@ export const keys = {
   historyExtension: "/history/extension",
   historyConnections: "/history/connections",
   historySettings: "/history/settings",
+  historyOperations: "/history/operations",
   historyRules: "/history/domain-rules",
+  historySystemRules: "/history/system-rules",
+  historyDocument: (id: number | string) => `/history/documents/${id}`,
+  historyDocumentContent: (id: number | string) =>
+    `/history/documents/${id}/content`,
+  historyDocumentSummary: (id: number | string) =>
+    `/history/documents/${id}/summary`,
+  historyDocumentQa: (id: number | string) =>
+    `/history/documents/${id}/qa`,
   history: ({
     q,
     hostname,

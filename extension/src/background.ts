@@ -1,5 +1,10 @@
-import { SYNC_ALARM } from "./config.js";
+import { DEFAULT_SETTINGS, SYNC_ALARM } from "./config.js";
 import {
+  claimPendingCitation,
+  openCitation,
+} from "./citation-navigation.js";
+import {
+  clearConnectionData,
   clearQueued,
   countQueued,
   enqueueCapture,
@@ -97,6 +102,12 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const handle = async () => {
+    if (message?.type === "OPEN_CITATION") {
+      return openCitation(message.citation, sender);
+    }
+    if (message?.type === "GET_PENDING_CITATION") {
+      return claimPendingCitation(sender);
+    }
     if (!isAllowedMessageSender(message?.type, sender, chrome.runtime.id)) {
       throw new Error("Extension action rejected from a content script");
     }
@@ -127,14 +138,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         await updateBadge();
         return status();
       case "DISCONNECT":
+        await clearConnectionData();
         await saveSettings({
           serverUrl: "",
           token: "",
           connectionStatus: "unpaired",
           connectionName: "",
+          connectionId: null,
           userName: "",
           domainRules: [],
+          systemPolicyRevision: DEFAULT_SETTINGS.systemPolicyRevision,
+          systemRules: DEFAULT_SETTINGS.systemRules,
+          contentCapabilityRevision: 0,
           knownRevision: 0,
+          lastSyncAt: null,
         });
         return status();
       case "SAVE_EXCLUSIONS": {

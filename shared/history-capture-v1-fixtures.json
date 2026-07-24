@@ -1,0 +1,15 @@
+{
+  "hash_prefix": "newsread-history-content-v1\u0000",
+  "cases": [
+    {
+      "name": "english-article",
+      "canonical_json": "{\"schema_version\":1,\"extraction_version\":\"history-dom-v2\",\"content_type\":\"article\",\"language\":\"en\",\"blocks\":[{\"id\":\"b0001\",\"kind\":\"heading\",\"text\":\"Example heading\"},{\"id\":\"b0002\",\"kind\":\"paragraph\",\"text\":\"Exact visible paragraph text.\"}]}",
+      "sha256": "f3aee46d04e73ca591b35dbac7e3db6d27ec893debea90a334311aeddf173ecc"
+    },
+    {
+      "name": "unicode-and-code",
+      "canonical_json": "{\"schema_version\":1,\"extraction_version\":\"history-dom-v2\",\"content_type\":\"page\",\"language\":\"he\",\"blocks\":[{\"id\":\"b0001\",\"kind\":\"paragraph\",\"text\":\"שלום עולם — טקסט בעברית\"},{\"id\":\"b0002\",\"kind\":\"code\",\"text\":\"const answer = 42;\"}]}",
+      "sha256": "4154bb9a8a41fb956ea94d7774c88c046b8d98efde845f119377b47f5879e138"
+    }
+  ]
+}

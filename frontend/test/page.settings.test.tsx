@@ -57,6 +57,16 @@ function mockSWRData({
   historyConnections = [] as unknown,
   historyConnectionsLoading = false,
   historySettings = { retention_days: 90, sync_revision: 0 } as unknown,
+  historyOperations = {
+    storage_used_bytes: 1_572_864,
+    storage_quota_bytes: 536_870_912,
+    document_count: 12,
+    image_count: 4,
+    embedding_backlog_count: 2,
+    embedding_backlog_oldest_at: "2026-07-24T09:00:00Z",
+    deletion_backlog_count: 0,
+    deletion_backlog_oldest_at: null,
+  } as unknown,
   historySummary = {
     active_connection_count: 0,
     total_connection_count: 0,
@@ -65,6 +75,7 @@ function mockSWRData({
     has_history: false,
   } as unknown,
   historyRules = [] as unknown[],
+  historySystemRules = [] as unknown[],
   historyExtension = { available: true, version: "0.1.0" } as unknown,
 } = {}) {
   // The picker's bound mutate writes back into the holder; the re-render
@@ -78,8 +89,10 @@ function mockSWRData({
       return { data: historyConnections, isLoading: historyConnectionsLoading };
     }
     if (key === "/history/settings") return { data: historySettings };
+    if (key === "/history/operations") return { data: historyOperations };
     if (key === "/history/summary") return { data: historySummary };
     if (key === "/history/domain-rules") return { data: historyRules };
+    if (key === "/history/system-rules") return { data: historySystemRules };
     if (key === "/history/extension") return { data: historyExtension };
     if (typeof key === "string" && key.includes("/targets?q=")) {
       if (holder.options instanceof Error) return { error: holder.options };
@@ -274,6 +287,59 @@ describe("SettingsPage", () => {
     expect(mutateMock).toHaveBeenCalledWith("/history/summary");
   });
 
+  it("shows and individually overrides default history protections", async () => {
+    mockSWRData({
+      serverConfig: {
+        allow_signup: true,
+        messaging_enabled: false,
+        browser_history_enabled: true,
+      },
+      historySystemRules: [
+        {
+          id: "google-search",
+          label: "Google search results",
+          description: "Skip Google result pages.",
+          hosts: ["google.com", "www.google.com"],
+          path_match: "exact",
+          path: "/search",
+          enabled: true,
+        },
+      ],
+    });
+    const fetchMock = vi.fn().mockResolvedValue({
+      status: 200,
+      ok: true,
+      json: async () => ({
+        id: "google-search",
+        label: "Google search results",
+        description: "Skip Google result pages.",
+        hosts: ["google.com", "www.google.com"],
+        path_match: "exact",
+        path: "/search",
+        enabled: false,
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<SettingsPage />);
+
+    const toggle = screen.getByRole("checkbox", {
+      name: /Google search results/,
+    });
+    expect(toggle).toBeChecked();
+    await userEvent.click(toggle);
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining("/history/system-rules/google-search"),
+        expect.objectContaining({
+          method: "PATCH",
+          body: JSON.stringify({ enabled: false }),
+        }),
+      ),
+    );
+    expect(mutateMock).toHaveBeenCalledWith("/history/system-rules");
+  });
+
   it("renders loading, connection health, rules, and forever retention states", () => {
     const enabledConfig = {
       allow_signup: true,
@@ -355,6 +421,40 @@ describe("SettingsPage", () => {
     );
     expect(screen.getByText("blocked.example")).toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: "Revoke" })).toHaveLength(1);
+    expect(screen.getByText("Private content storage")).toBeInTheDocument();
+    expect(screen.getByText("1.5 MB of 512 MB used")).toBeInTheDocument();
+    expect(screen.getByText("2 waiting")).toBeInTheDocument();
+    expect(
+      screen.getByRole("progressbar", { name: "Browser history storage used" }),
+    ).toHaveAttribute("aria-valuenow", "0");
+  });
+
+  it("renders zero-quota byte storage and both empty and pending operation states", () => {
+    mockSWRData({
+      serverConfig: {
+        allow_signup: true,
+        messaging_enabled: false,
+        browser_history_enabled: true,
+      },
+      historyOperations: {
+        storage_used_bytes: 512,
+        storage_quota_bytes: 0,
+        document_count: 0,
+        image_count: 0,
+        embedding_backlog_count: 0,
+        embedding_backlog_oldest_at: null,
+        deletion_backlog_count: 3,
+        deletion_backlog_oldest_at: "2026-07-24T09:00:00Z",
+      },
+    });
+    render(<SettingsPage />);
+
+    expect(screen.getByText("512 B of 0 B used")).toBeInTheDocument();
+    expect(screen.getByText("3 waiting")).toBeInTheDocument();
+    expect(screen.getByText("Up to date")).toBeInTheDocument();
+    expect(
+      screen.getByRole("progressbar", { name: "Browser history storage used" }),
+    ).toHaveAttribute("aria-valuenow", "0");
   });
 
   it("downloads the packaged extension with its versioned filename", async () => {

@@ -29,6 +29,26 @@ services:
       timeout: 3s
       retries: 20
 
+  # Apache-2.0 S3-compatible storage for encrypted browser-history bodies.
+  # `weed mini` runs a complete single-node cluster and creates the private
+  # bucket at startup. Only the S3 endpoint is bound to the host.
+  seaweedfs:
+    image: chrislusf/seaweedfs:4.29
+    command: ["mini", "-dir=/data"]
+    environment:
+      AWS_ACCESS_KEY_ID: ${SEAWEEDFS_ACCESS_KEY:-newsread-seaweedfs}
+      AWS_SECRET_ACCESS_KEY: ${SEAWEEDFS_SECRET_KEY:-newsread-seaweedfs-dev-secret}
+      S3_BUCKET: ${SEAWEEDFS_BUCKET:-newsread-history}
+    ports:
+      - "127.0.0.1:8333:8333"
+    volumes:
+      - seaweeddata:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9333/cluster/status"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
   backend:
     build: ./backend
     env_file:
@@ -54,6 +74,12 @@ services:
       # the mounted repo directory (built there by `npm run build`). The
       # download link simply hides while the zip is absent.
       NEWSREAD_EXTENSION_PACKAGE: /extension/newsread-history-extension.zip
+      NEWSREAD_BROWSER_HISTORY_CONTENT_ENABLED: ${NEWSREAD_BROWSER_HISTORY_CONTENT_ENABLED:-false}
+      NEWSREAD_OBJECT_STORE_ENDPOINT: http://seaweedfs:8333
+      NEWSREAD_OBJECT_STORE_ACCESS_KEY: ${SEAWEEDFS_ACCESS_KEY:-newsread-seaweedfs}
+      NEWSREAD_OBJECT_STORE_SECRET_KEY: ${SEAWEEDFS_SECRET_KEY:-newsread-seaweedfs-dev-secret}
+      NEWSREAD_OBJECT_STORE_BUCKET: ${SEAWEEDFS_BUCKET:-newsread-history}
+      NEWSREAD_HISTORY_ENCRYPTION_MASTER_KEY: ${NEWSREAD_HISTORY_ENCRYPTION_MASTER_KEY:-}
     volumes:
       - ./extension:/extension:ro
     ports:
@@ -62,6 +88,8 @@ services:
       db:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      seaweedfs:
         condition: service_healthy
 
   worker:
@@ -75,10 +103,18 @@ services:
     environment:
       NEWSREAD_DATABASE_URL: postgresql+asyncpg://newsread:newsread@db:5432/newsread
       NEWSREAD_REDIS_URL: redis://redis:6379/0
+      NEWSREAD_BROWSER_HISTORY_CONTENT_ENABLED: ${NEWSREAD_BROWSER_HISTORY_CONTENT_ENABLED:-false}
+      NEWSREAD_OBJECT_STORE_ENDPOINT: http://seaweedfs:8333
+      NEWSREAD_OBJECT_STORE_ACCESS_KEY: ${SEAWEEDFS_ACCESS_KEY:-newsread-seaweedfs}
+      NEWSREAD_OBJECT_STORE_SECRET_KEY: ${SEAWEEDFS_SECRET_KEY:-newsread-seaweedfs-dev-secret}
+      NEWSREAD_OBJECT_STORE_BUCKET: ${SEAWEEDFS_BUCKET:-newsread-history}
+      NEWSREAD_HISTORY_ENCRYPTION_MASTER_KEY: ${NEWSREAD_HISTORY_ENCRYPTION_MASTER_KEY:-}
     depends_on:
       db:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      seaweedfs:
         condition: service_healthy
 
   # Self-hosted web search for the Q&A agent (local alternative to Tavily).
@@ -109,3 +145,4 @@ services:
 
 volumes:
   pgdata:
+  seaweeddata:

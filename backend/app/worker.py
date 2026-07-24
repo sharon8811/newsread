@@ -18,6 +18,9 @@ from . import (
     db,
     embeddings,
     history_embeddings,
+    history_gc,
+    history_operations,
+    history_summaries,
     llm,
     ner,
     push,
@@ -28,12 +31,13 @@ from .db import init_db
 from .enrichers.pipeline import extract_entities, refresh_stale_entities
 from .extractor import enrich_article
 from .fetcher import refresh_feed
+from .history_ingest import get_history_ingest_service
 from .models import (
     Article,
     ArticleEmbedding,
-    BrowserHistoryEmbedding,
-    BrowserHistoryPage,
-    BrowserHistorySettings,
+    BrowserHistoryDocument,
+    BrowserHistoryDocumentEmbedding,
+    BrowserHistoryPageDocument,
     Feed,
     Project,
     ProjectArticle,
@@ -148,18 +152,25 @@ async def enrich_and_summarize(ctx: dict | None = None, feed_id: int | None = No
 
     tagged = await extract_named_entities_batch(feed_id=feed_id)
     embedded = await embed_articles_batch(feed_id=feed_id)
-    history_embedded = await embed_history_pages_batch()
+    history_documents_embedded = await embed_history_documents_batch()
     suppressed = await suppress_articles_batch(feed_id=feed_id)
 
-    if enrich_ids or summarize_ids or tagged or embedded or history_embedded or suppressed:
+    if (
+        enrich_ids
+        or summarize_ids
+        or tagged
+        or embedded
+        or history_documents_embedded
+        or suppressed
+    ):
         logger.info(
             "Enriched %d articles, summarized up to %d, tagged %d, "
-            "embedded %d articles and %d history pages, suppressed %d",
+            "embedded %d articles and %d history documents, suppressed %d",
             len(enrich_ids),
             len(summarize_ids),
             tagged,
             embedded,
-            history_embedded,
+            history_documents_embedded,
             suppressed,
         )
 
@@ -248,38 +259,56 @@ async def embed_articles_batch(feed_id: int | None = None) -> int:
             return 0
 
 
-async def embed_history_pages_batch() -> int:
-    """Embed a bounded batch of new, changed, or old-model history pages.
+async def embed_history_document(ctx: dict | None, document_id: int) -> int:
+    """Embed one newly linked document; cron retries transient failures."""
+    try:
+        return await history_embeddings.embed_document(document_id)
+    except Exception as exc:
+        logger.warning("History document %s embedding failed: %s", document_id, exc)
+        return 0
 
-    Failures are isolated from feed processing and leave every page available
-    to PostgreSQL keyword search for retry on the next worker cycle.
-    """
+
+async def embed_history_documents_batch() -> int:
+    """Embed a bounded batch of linked, missing/stale v2 documents."""
     if not history_embeddings.is_configured():
         return 0
     async with db.SessionLocal() as session:
-        query = (
-            select(BrowserHistoryPage)
-            .outerjoin(
-                BrowserHistoryEmbedding,
-                BrowserHistoryEmbedding.page_id == BrowserHistoryPage.id,
-            )
+        current_embedding = (
+            select(BrowserHistoryDocumentEmbedding.id)
             .where(
-                or_(
-                    BrowserHistoryEmbedding.page_id.is_(None),
-                    BrowserHistoryEmbedding.model != settings.openai_embedding_model,
-                    history_embeddings.stale_input(),
-                )
+                BrowserHistoryDocumentEmbedding.document_id == BrowserHistoryDocument.id,
+                BrowserHistoryDocumentEmbedding.model == settings.openai_embedding_model,
+                BrowserHistoryDocumentEmbedding.input_hash == BrowserHistoryDocument.content_hash,
             )
-            .order_by(BrowserHistoryPage.id.desc())
-            .limit(HISTORY_EMBED_BATCH)
+            .exists()
         )
-        pages = list(await session.scalars(query))
+        linked = (
+            select(BrowserHistoryPageDocument.id)
+            .where(BrowserHistoryPageDocument.document_id == BrowserHistoryDocument.id)
+            .exists()
+        )
+        document_ids = list(
+            await session.scalars(
+                select(BrowserHistoryDocument.id)
+                .where(
+                    BrowserHistoryDocument.storage_status == "ready",
+                    BrowserHistoryDocument.extraction_version
+                    == history_embeddings.DOCUMENT_EXTRACTION_VERSION,
+                    linked,
+                    ~current_embedding,
+                )
+                .order_by(BrowserHistoryDocument.id.desc())
+                .limit(HISTORY_EMBED_BATCH)
+            )
+        )
+
+    embedded = 0
+    for document_id in document_ids:
         try:
-            return await history_embeddings.embed_pages(session, pages)
+            embedded += await history_embeddings.embed_document(document_id)
         except Exception as exc:
-            logger.warning("History embedding stage failed: %s", exc)
-            await session.rollback()
-            return 0
+            logger.warning("History document %s catch-up failed: %s", document_id, exc)
+    return embedded
 
 
 async def cleanup_history_retention(
@@ -287,30 +316,95 @@ async def cleanup_history_retention(
     *,
     now: datetime | None = None,
 ) -> int:
-    """Delete expired private history; FK cascades remove vectors and aggregates."""
-    now = now or datetime.now(UTC)
+    """Delete expired history pages and version links, repairing current versions."""
     async with db.SessionLocal() as session:
-        policies = (
-            await session.execute(
-                select(
-                    BrowserHistorySettings.user_id,
-                    BrowserHistorySettings.retention_days,
-                ).where(BrowserHistorySettings.retention_days.is_not(None))
-            )
-        ).all()
-        deleted = 0
-        for user_id, retention_days in policies:
-            result = await session.execute(
-                delete(BrowserHistoryPage).where(
-                    BrowserHistoryPage.user_id == user_id,
-                    BrowserHistoryPage.last_visited_at < now - timedelta(days=retention_days),
-                )
-            )
-            deleted += result.rowcount
-        await session.commit()
-    if deleted:
-        logger.info("Deleted %d browser-history pages past retention", deleted)
-    return deleted
+        result = await history_gc.apply_history_retention(session, now=now)
+    if result.pages_deleted or result.version_links_deleted:
+        logger.info(
+            "History retention deleted %d pages and %d version links",
+            result.pages_deleted,
+            result.version_links_deleted,
+        )
+    return result.pages_deleted
+
+
+async def cleanup_history_objects(
+    ctx: dict | None = None,
+    *,
+    now: datetime | None = None,
+) -> int:
+    """Collect unreferenced rows, deletion-outbox work, and orphaned objects."""
+    storage = (
+        get_history_ingest_service().storage if settings.browser_history_content_enabled else None
+    )
+    async with db.SessionLocal() as session:
+        result = await history_gc.collect_history_garbage(
+            session,
+            storage=storage,
+            now=now,
+        )
+    total = (
+        result.documents_deleted
+        + result.images_deleted
+        + result.outbox_completed
+        + result.orphan_objects_deleted
+    )
+    if total:
+        logger.info(
+            "History GC deleted %d document rows, %d image rows, "
+            "%d queued objects, and %d orphan objects",
+            result.documents_deleted,
+            result.images_deleted,
+            result.outbox_completed,
+            result.orphan_objects_deleted,
+        )
+    return total
+
+
+async def audit_history_operations(ctx: dict | None = None) -> int:
+    """Emit aggregate pipeline metrics and warnings for operator alerting."""
+    now = datetime.now(UTC)
+    async with db.SessionLocal() as session:
+        metrics = await history_operations.operator_history_operations(session)
+    logger.info(
+        "History operations: stored_bytes=%d embedding_backlog=%d "
+        "deletion_backlog=%d users_near_quota=%d",
+        metrics.stored_bytes,
+        metrics.embedding_backlog_count,
+        metrics.deletion_backlog_count,
+        metrics.users_near_storage_quota,
+    )
+    alerts = 0
+    if (
+        metrics.embedding_backlog_oldest_at is not None
+        and now - metrics.embedding_backlog_oldest_at
+        >= timedelta(hours=settings.history_embedding_backlog_alert_hours)
+    ):
+        alerts += 1
+        logger.warning(
+            "History embedding backlog is stale: count=%d oldest=%s",
+            metrics.embedding_backlog_count,
+            metrics.embedding_backlog_oldest_at.isoformat(),
+        )
+    if (
+        metrics.deletion_backlog_oldest_at is not None
+        and now - metrics.deletion_backlog_oldest_at
+        >= timedelta(hours=settings.history_deletion_backlog_alert_hours)
+    ):
+        alerts += 1
+        logger.warning(
+            "History object-deletion backlog is stale: count=%d oldest=%s",
+            metrics.deletion_backlog_count,
+            metrics.deletion_backlog_oldest_at.isoformat(),
+        )
+    if metrics.users_near_storage_quota:
+        alerts += 1
+        logger.warning(
+            "%d history users are at or above %.0f%% of storage quota",
+            metrics.users_near_storage_quota,
+            settings.history_storage_alert_ratio * 100,
+        )
+    return alerts
 
 
 async def suppress_articles_batch(feed_id: int | None = None) -> int:
@@ -466,10 +560,19 @@ async def startup(ctx: dict) -> None:
 class WorkerSettings:
     redis_settings = RedisSettings.from_dsn(settings.redis_url)
     on_startup = startup
-    functions = [enrich_feed, send_share_push, send_project_pin_push]
+    functions = [
+        enrich_feed,
+        embed_history_document,
+        history_summaries.generate_history_summary,
+        send_share_push,
+        send_project_pin_push,
+    ]
     cron_jobs = [
         cron(poll_feeds, minute=set(range(0, 60, 3)), run_at_startup=True),
         cron(refresh_entities, minute={7, 37}),
         cron(refresh_catalog_embeddings, minute=17, run_at_startup=True),
+        cron(history_summaries.generate_history_summaries_batch, minute=None),
+        cron(cleanup_history_objects, minute=set(range(0, 60, 10))),
+        cron(audit_history_operations, minute={5, 20, 35, 50}),
         cron(cleanup_history_retention, hour=3, minute=11),
     ]

@@ -53,6 +53,12 @@ for _var in (
     "NEWSREAD_SLACK_SIGNING_SECRET",
     "NEWSREAD_TEAMS_CLIENT_ID",
     "NEWSREAD_TEAMS_CLIENT_SECRET",
+    "NEWSREAD_OBJECT_STORE_ENDPOINT",
+    "NEWSREAD_OBJECT_STORE_ACCESS_KEY",
+    "NEWSREAD_OBJECT_STORE_SECRET_KEY",
+    "NEWSREAD_OBJECT_STORE_BUCKET",
+    "NEWSREAD_HISTORY_ENCRYPTION_MASTER_KEY",
+    "NEWSREAD_HISTORY_ENCRYPTION_PREVIOUS_MASTER_KEYS",
 ):
     os.environ[_var] = ""
 
@@ -63,6 +69,7 @@ os.environ["NEWSREAD_DEPLOYMENT"] = "self_hosted"
 os.environ["NEWSREAD_ALLOW_SIGNUP"] = "true"
 os.environ["NEWSREAD_MESSAGING_ENABLED"] = "true"
 os.environ["NEWSREAD_BROWSER_HISTORY_ENABLED"] = "true"
+os.environ["NEWSREAD_BROWSER_HISTORY_CONTENT_ENABLED"] = "false"
 
 # Messaging-integration tests need deterministic values regardless of .env:
 # a fixed (valid) Fernet key and known callback/frontend origins.
