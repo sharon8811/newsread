@@ -79,7 +79,7 @@ async def _keyword_ids(
     return list(await session.scalars(statement))
 
 
-def _location_filters(
+def location_filters(
     user_id: int,
     *,
     hostname: str | None,
@@ -122,7 +122,7 @@ def _scoped_document_ids(
             BrowserHistoryPage.id == BrowserHistoryPageDocument.page_id,
         )
         .where(
-            *_location_filters(
+            *location_filters(
                 user_id,
                 hostname=hostname,
                 date_from=date_from,

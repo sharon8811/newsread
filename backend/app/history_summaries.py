@@ -85,7 +85,7 @@ def parse_history_summary(raw: str, blocks: list[dict[str, str]]) -> tuple[str, 
     return markdown.strip(), citations
 
 
-async def generate_history_summary(summary_id: int) -> None:
+async def generate_history_summary(ctx: dict | None, summary_id: int) -> None:
     """ARQ entry point. An atomic state transition makes duplicate jobs no-op."""
     now = datetime.now(UTC)
     stale_before = now - HISTORY_SUMMARY_STALE_AFTER
@@ -192,5 +192,5 @@ async def generate_history_summaries_batch(ctx: dict | None = None) -> int:
             )
         )
     for summary_id in ids:
-        await generate_history_summary(summary_id)
+        await generate_history_summary(None, summary_id)
     return len(ids)

@@ -997,3 +997,71 @@ async def test_legacy_inline_capture_becomes_metadata_only_after_compatibility_w
     page = await session.scalar(select(BrowserHistoryPage))
     assert page.current_document_id is None
     assert await session.scalar(select(BrowserHistoryDocument.id)) is None
+
+
+async def test_search_locations_honor_active_hostname_filter(
+    client,
+    users,
+    session,
+    monkeypatch,
+):
+    """A hostname-filtered search must not surface out-of-filter locations,
+    or row actions would target pages outside the filtered view."""
+    user = await users.create()
+    pairing = await _pair(client, users, user)
+    headers = {"Authorization": f"Bearer {pairing['token']}"}
+    document = _document("Shared filtered article body about database indexing.")
+
+    with _content_enabled(monkeypatch):
+        response = await client.put(
+            f"/api/history/sync/content/{document.content_hash}",
+            content=document.canonical_bytes,
+            headers={**headers, "Content-Type": "application/json"},
+        )
+        assert response.status_code == 200
+        sync = await client.post(
+            "/api/history/sync",
+            json={
+                "records": [
+                    _capture(
+                        "alpha",
+                        "https://alpha.example.com/article",
+                        document.content_hash,
+                    ),
+                    _capture(
+                        "beta",
+                        "https://beta.example.net/article",
+                        document.content_hash,
+                    ),
+                ]
+            },
+            headers=headers,
+        )
+        assert sync.status_code == 200
+
+        unfiltered = await client.get(
+            "/api/history",
+            params={"q": "database indexing", "sort": "relevance"},
+            headers=users.auth(user),
+        )
+        assert unfiltered.status_code == 200
+        [result] = unfiltered.json()
+        assert result["type"] == "document"
+        assert {location["hostname"] for location in result["locations"]} == {
+            "alpha.example.com",
+            "beta.example.net",
+        }
+
+        filtered = await client.get(
+            "/api/history",
+            params={
+                "q": "database indexing",
+                "sort": "relevance",
+                "hostname": "alpha.example.com",
+            },
+            headers=users.auth(user),
+        )
+        assert filtered.status_code == 200
+        [result] = filtered.json()
+        assert result["type"] == "document"
+        assert [location["hostname"] for location in result["locations"]] == ["alpha.example.com"]

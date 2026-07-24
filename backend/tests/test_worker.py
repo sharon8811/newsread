@@ -611,6 +611,20 @@ async def test_startup(monkeypatch):
     assert called["init"]
 
 
+def test_arq_jobs_accept_worker_context_first():
+    """ARQ invokes every registered function and cron with ctx as the first
+    positional argument; a job missing it raises TypeError on every run."""
+    import inspect
+
+    coroutines = [
+        *worker.WorkerSettings.functions,
+        *(job.coroutine for job in worker.WorkerSettings.cron_jobs),
+    ]
+    for coroutine in coroutines:
+        first = next(iter(inspect.signature(coroutine).parameters.values()))
+        assert first.name == "ctx", coroutine.__qualname__
+
+
 def test_worker_settings_shape():
     assert worker.WorkerSettings.functions == [
         worker.enrich_feed,

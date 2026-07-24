@@ -1094,6 +1094,9 @@ async def _history_search_results(
     *,
     user_id: int,
     hits: list[history_search.HistorySearchHit],
+    hostname: str | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
 ) -> list[BrowserHistoryDocumentSearchOut | BrowserHistoryPageSearchOut]:
     document_ids = [hit.id for hit in hits if hit.type == "document"]
     page_ids = [hit.id for hit in hits if hit.type == "page"]
@@ -1114,8 +1117,15 @@ async def _history_search_results(
                     BrowserHistoryDocument.id == BrowserHistoryPageDocument.document_id,
                 )
                 .where(
-                    BrowserHistoryDocument.user_id == user_id,
-                    BrowserHistoryPage.user_id == user_id,
+                    # The active search filters scope which locations are
+                    # shown, so row actions can never target a page outside
+                    # the filtered view.
+                    *history_search.location_filters(
+                        user_id,
+                        hostname=hostname,
+                        date_from=date_from,
+                        date_to=date_to,
+                    ),
                     BrowserHistoryPageDocument.document_id.in_(document_ids),
                 )
                 .order_by(
@@ -1264,6 +1274,9 @@ async def list_history(
             session,
             user_id=user.id,
             hits=hits,
+            hostname=normalized_hostname,
+            date_from=date_from,
+            date_to=date_to,
         )
         if sort == "recent":
             results.sort(key=_history_search_last_seen, reverse=True)
