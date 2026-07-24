@@ -2,9 +2,29 @@ import { execFileSync } from "node:child_process";
 import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { build } from "vite";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const dist = resolve(root, "dist");
+
+// Content scripts execute as classic scripts even in a module-based extension.
+// Bundle this one entry so its shared extraction/image modules do not leak ESM
+// imports into Chrome's content-script loader.
+await build({
+  configFile: false,
+  logLevel: "warn",
+  build: {
+    emptyOutDir: false,
+    lib: {
+      entry: resolve(root, "src/content.ts"),
+      formats: ["iife"],
+      name: "NewsReadHistoryContent",
+      fileName: () => "content.js",
+    },
+    outDir: dist,
+    minify: false,
+  },
+});
 
 await mkdir(resolve(dist, "popup"), { recursive: true });
 await mkdir(resolve(dist, "options"), { recursive: true });

@@ -133,6 +133,7 @@ def test_history_content_storage_accepts_valid_configuration():
         ({"history_encryption_master_key": "not-base64"}, "valid base64"),
         ({"history_encryption_wrapping_key_version": 0}, "positive integer"),
         ({"history_object_max_bytes": 0}, "byte limits must be positive"),
+        ({"history_object_compressed_max_bytes": 0}, "byte limits must be positive"),
     ],
 )
 def test_history_content_storage_rejects_invalid_configuration(overrides, message):

@@ -65,6 +65,7 @@ function mockSWRData({
     has_history: false,
   } as unknown,
   historyRules = [] as unknown[],
+  historySystemRules = [] as unknown[],
   historyExtension = { available: true, version: "0.1.0" } as unknown,
 } = {}) {
   // The picker's bound mutate writes back into the holder; the re-render
@@ -80,6 +81,7 @@ function mockSWRData({
     if (key === "/history/settings") return { data: historySettings };
     if (key === "/history/summary") return { data: historySummary };
     if (key === "/history/domain-rules") return { data: historyRules };
+    if (key === "/history/system-rules") return { data: historySystemRules };
     if (key === "/history/extension") return { data: historyExtension };
     if (typeof key === "string" && key.includes("/targets?q=")) {
       if (holder.options instanceof Error) return { error: holder.options };
@@ -272,6 +274,59 @@ describe("SettingsPage", () => {
       ).toBe(true),
     );
     expect(mutateMock).toHaveBeenCalledWith("/history/summary");
+  });
+
+  it("shows and individually overrides default history protections", async () => {
+    mockSWRData({
+      serverConfig: {
+        allow_signup: true,
+        messaging_enabled: false,
+        browser_history_enabled: true,
+      },
+      historySystemRules: [
+        {
+          id: "google-search",
+          label: "Google search results",
+          description: "Skip Google result pages.",
+          hosts: ["google.com", "www.google.com"],
+          path_match: "exact",
+          path: "/search",
+          enabled: true,
+        },
+      ],
+    });
+    const fetchMock = vi.fn().mockResolvedValue({
+      status: 200,
+      ok: true,
+      json: async () => ({
+        id: "google-search",
+        label: "Google search results",
+        description: "Skip Google result pages.",
+        hosts: ["google.com", "www.google.com"],
+        path_match: "exact",
+        path: "/search",
+        enabled: false,
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<SettingsPage />);
+
+    const toggle = screen.getByRole("checkbox", {
+      name: /Google search results/,
+    });
+    expect(toggle).toBeChecked();
+    await userEvent.click(toggle);
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining("/history/system-rules/google-search"),
+        expect.objectContaining({
+          method: "PATCH",
+          body: JSON.stringify({ enabled: false }),
+        }),
+      ),
+    );
+    expect(mutateMock).toHaveBeenCalledWith("/history/system-rules");
   });
 
   it("renders loading, connection health, rules, and forever retention states", () => {

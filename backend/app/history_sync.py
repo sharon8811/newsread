@@ -9,6 +9,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .config import settings
+from .history_ingest import HistoryIngestService
 from .history_policy import (
     NormalizedHistoryUrl,
     clamp_history_timestamp,
@@ -16,12 +17,16 @@ from .history_policy import (
     history_content_hash,
     validate_normalized_history_url,
 )
+from .history_system_policy import matching_system_rule
 from .models import (
     BrowserConnection,
     BrowserHistoryDeletion,
+    BrowserHistoryDocument,
     BrowserHistoryDomainRule,
+    BrowserHistoryImage,
     BrowserHistoryPage,
     BrowserHistoryPageConnection,
+    BrowserHistoryPageDocument,
 )
 from .schemas import BrowserHistoryCaptureIn
 
@@ -89,11 +94,21 @@ async def persist_capture(
     *,
     rules: list[BrowserHistoryDomainRule],
     deletions: list[BrowserHistoryDeletion],
+    disabled_system_rule_ids: set[str] | None = None,
+    ingest: HistoryIngestService | None = None,
+    content_pipeline_enabled: bool = False,
+    legacy_inline_content_enabled: bool = True,
     now: datetime,
 ) -> tuple[BrowserHistoryPage, NormalizedHistoryUrl]:
     normalized = validate_normalized_history_url(capture.url)
     if normalized.hostname in _configured_newsread_hosts():
         raise SyncRejection("excluded", "NewsRead pages are not captured")
+    system_rule = matching_system_rule(
+        normalized,
+        disabled_rule_ids=disabled_system_rule_ids or set(),
+    )
+    if system_rule is not None:
+        raise SyncRejection("excluded", f"excluded by built-in rule: {system_rule.label}")
 
     mode = _capture_mode(normalized, rules)
     if mode == "exclude":
@@ -107,15 +122,71 @@ async def persist_capture(
     first_visited_at = clamp_history_timestamp(capture.first_visited_at, now)
     last_visited_at = clamp_history_timestamp(capture.last_visited_at, now)
     captured_at = clamp_history_timestamp(capture.captured_at, now) if capture.captured_at else None
-    incoming_text = "" if mode == "metadata_only" else capture.text
-    incoming_excerpt = "" if mode == "metadata_only" else capture.text_excerpt
+    document: BrowserHistoryDocument | None = None
+    lead_image: BrowserHistoryImage | None = None
+    favicon_image: BrowserHistoryImage | None = None
+    if mode != "metadata_only" and content_pipeline_enabled:
+        if capture.content_hash:
+            document = await session.scalar(
+                select(BrowserHistoryDocument).where(
+                    BrowserHistoryDocument.user_id == connection.user_id,
+                    BrowserHistoryDocument.content_hash == capture.content_hash,
+                    BrowserHistoryDocument.storage_status == "ready",
+                )
+            )
+            if document is None:
+                raise SyncRejection("content_missing", "document must be uploaded before sync")
+        elif capture.text and legacy_inline_content_enabled:
+            if ingest is None:
+                raise RuntimeError("history content ingest service is unavailable")
+            document = await ingest.ingest_legacy_document(
+                session,
+                user_id=connection.user_id,
+                text=capture.text,
+            )
+        image_hashes = {
+            value for value in (capture.lead_image_hash, capture.favicon_image_hash) if value
+        }
+        images_by_hash = {
+            image.image_hash: image
+            for image in await session.scalars(
+                select(BrowserHistoryImage).where(
+                    BrowserHistoryImage.user_id == connection.user_id,
+                    BrowserHistoryImage.image_hash.in_(image_hashes),
+                    BrowserHistoryImage.storage_status == "ready",
+                )
+            )
+        }
+        if image_hashes - images_by_hash.keys():
+            raise SyncRejection("content_missing", "images must be uploaded before sync")
+        lead_image = images_by_hash.get(capture.lead_image_hash or "")
+        favicon_image = images_by_hash.get(capture.favicon_image_hash or "")
+
+    stores_inline_text = mode != "metadata_only" and not content_pipeline_enabled
+    incoming_text = capture.text if stores_inline_text else ""
+    incoming_excerpt = (
+        capture.text_excerpt
+        if stores_inline_text
+        else document.text_excerpt
+        if document is not None
+        else ""
+    )
     if incoming_text and not incoming_excerpt:
         incoming_excerpt = incoming_text[:400]
-    content_hash = history_content_hash(
-        capture.title,
-        normalized.hostname,
-        incoming_text,
+    content_hash = (
+        history_content_hash(capture.title, normalized.hostname, incoming_text)
+        if stores_inline_text
+        else None
     )
+    if lead_image is not None:
+        if document is None:
+            raise SyncRejection("invalid", "lead images require captured document content")
+        if document.lead_image_id is None:
+            document.lead_image_id = lead_image.id
+        if lead_image.source_host is None:
+            lead_image.source_host = normalized.hostname
+    if favicon_image is not None and favicon_image.source_host is None:
+        favicon_image.source_host = normalized.hostname
 
     insert_page = (
         pg_insert(BrowserHistoryPage)
@@ -128,10 +199,12 @@ async def persist_capture(
             text=incoming_text,
             text_excerpt=incoming_excerpt,
             content_hash=content_hash,
+            current_document_id=document.id if document is not None else None,
+            favicon_image_id=favicon_image.id if favicon_image is not None else None,
             first_visited_at=first_visited_at,
             last_visited_at=last_visited_at,
             visit_count=0,
-            captured_at=captured_at if incoming_text else None,
+            captured_at=captured_at if incoming_text or document is not None else None,
         )
         .on_conflict_do_nothing(index_elements=["user_id", "url_hash"])
         .returning(BrowserHistoryPage.id)
@@ -163,8 +236,46 @@ async def persist_capture(
             page.text_excerpt = incoming_excerpt
             page.captured_at = incoming_content_at
             changed = True
+        if document is not None and (page.current_document_id is None or newer):
+            page.current_document_id = document.id
+            page.text_excerpt = document.text_excerpt
+            page.captured_at = incoming_content_at
+            changed = True
+        if favicon_image is not None and (page.favicon_image_id is None or newer):
+            page.favicon_image_id = favicon_image.id
+            changed = True
         if changed:
-            page.content_hash = history_content_hash(page.title, page.hostname, page.text)
+            if document is None and stores_inline_text:
+                page.content_hash = history_content_hash(page.title, page.hostname, page.text)
+
+    if document is not None:
+        page_document = pg_insert(BrowserHistoryPageDocument).values(
+            page_id=page.id,
+            document_id=document.id,
+            first_seen_at=first_visited_at,
+            last_seen_at=last_visited_at,
+            captured_at=captured_at or last_visited_at,
+        )
+        await session.execute(
+            page_document.on_conflict_do_update(
+                index_elements=["page_id", "document_id"],
+                set_={
+                    "first_seen_at": func.least(
+                        BrowserHistoryPageDocument.first_seen_at,
+                        page_document.excluded.first_seen_at,
+                    ),
+                    "last_seen_at": func.greatest(
+                        BrowserHistoryPageDocument.last_seen_at,
+                        page_document.excluded.last_seen_at,
+                    ),
+                    "captured_at": func.greatest(
+                        BrowserHistoryPageDocument.captured_at,
+                        page_document.excluded.captured_at,
+                    ),
+                    "updated_at": func.now(),
+                },
+            )
+        )
 
     aggregate_insert = pg_insert(BrowserHistoryPageConnection).values(
         page_id=page.id,

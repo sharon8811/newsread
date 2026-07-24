@@ -43,6 +43,9 @@ class Settings(BaseSettings):
     # Phase 1 lays its schema and storage foundation. Enabling it requires a
     # complete object-store and encryption configuration below.
     browser_history_content_enabled: bool = False
+    # Temporary compatibility window for zip-distributed pre-v2 extensions.
+    # Disable after the announced window to accept their visits as metadata only.
+    browser_history_legacy_inline_enabled: bool = True
 
     # Private S3-compatible storage for encrypted browser-history objects.
     # Keeping this contract provider-neutral lets local Compose use SeaweedFS while
@@ -53,7 +56,8 @@ class Settings(BaseSettings):
     object_store_bucket: str = "newsread-history"
     object_store_region: str = "us-east-1"
     object_store_secure: bool = False
-    history_object_max_bytes: int = 512 * 1024
+    history_object_max_bytes: int = 1024 * 1024
+    history_object_compressed_max_bytes: int = 512 * 1024
     history_image_max_bytes: int = 200 * 1024
 
     # AES-256 key-encryption key wrapping per-user history data keys. The
@@ -204,7 +208,11 @@ class Settings(BaseSettings):
                 )
             except HistoryCryptoError as exc:
                 raise ValueError(f"invalid history encryption configuration: {exc}") from exc
-            if self.history_object_max_bytes < 1 or self.history_image_max_bytes < 1:
+            if (
+                self.history_object_max_bytes < 1
+                or self.history_object_compressed_max_bytes < 1
+                or self.history_image_max_bytes < 1
+            ):
                 raise ValueError("history object and image byte limits must be positive")
         if not is_self_hosted and self.jwt_secret == "dev-secret-change-me":
             raise ValueError(

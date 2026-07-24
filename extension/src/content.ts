@@ -1,23 +1,40 @@
+import {
+  canonicalizeCaptureDocument,
+  extractCaptureDocument,
+  hasHistoryCaptureOptOut,
+} from "./capture-document.js";
+import { capturePageImages } from "./image-capture.js";
+
 (() => {
-  function capture() {
+  async function capture() {
     if (!["http:", "https:"].includes(location.protocol)) return;
+    if (hasHistoryCaptureOptOut()) return;
     const root =
       document.querySelector<HTMLElement>("article") ??
       document.querySelector<HTMLElement>("main") ??
       document.body;
-    const text = (root?.innerText ?? "").replace(/\s+/g, " ").trim().slice(0, 6000);
+    const capturedDocument = extractCaptureDocument();
+    const text = capturedDocument
+      ? canonicalizeCaptureDocument(capturedDocument).text
+      : "";
     const description =
       document
         .querySelector<HTMLMetaElement>('meta[name="description"]')
         ?.content.replace(/\s+/g, " ")
         .trim() ?? "";
-    void chrome.runtime
+    const images =
+      capturedDocument && root
+        ? await capturePageImages(root)
+        : { leadImage: null, favicon: null };
+    await chrome.runtime
       .sendMessage({
         type: "CAPTURE_PAGE",
         candidate: {
           url: location.href,
           title: document.title,
-          text,
+          document: capturedDocument,
+          leadImage: images.leadImage,
+          favicon: images.favicon,
           textExcerpt: (description || text).slice(0, 500),
           capturedAt: new Date().toISOString(),
         },
@@ -26,7 +43,7 @@
   }
 
   chrome.runtime.onMessage.addListener((message) => {
-    if (message?.type === "CAPTURE_NOW") capture();
+    if (message?.type === "CAPTURE_NOW") void capture();
   });
-  capture();
+  void capture();
 })();

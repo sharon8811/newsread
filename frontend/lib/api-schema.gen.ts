@@ -937,6 +937,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/history/sync/content-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** History Content Status */
+        post: operations["history_content_status_api_history_sync_content_status_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/history/sync/content/{content_hash}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Upload History Content */
+        put: operations["upload_history_content_api_history_sync_content__content_hash__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/history/sync/image/{image_hash}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Upload History Image */
+        put: operations["upload_history_image_api_history_sync_image__image_hash__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/history/sync/status": {
         parameters: {
             query?: never;
@@ -952,6 +1003,40 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/history/system-rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List System Rules */
+        get: operations["list_system_rules_api_history_system_rules_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/history/system-rules/{rule_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update System Rule */
+        patch: operations["update_system_rule_api_history_system_rules__rule_id__patch"];
         trace?: never;
     };
     "/api/history/{page_id}": {
@@ -2103,12 +2188,49 @@ export interface components {
             /** Hostname */
             hostname?: string | null;
         };
+        /** BrowserHistoryContentStatusIn */
+        BrowserHistoryContentStatusIn: {
+            /** Documents */
+            documents?: string[];
+            /** Images */
+            images?: string[];
+        };
+        /** BrowserHistoryContentStatusOut */
+        BrowserHistoryContentStatusOut: {
+            /** Content Capability Revision */
+            content_capability_revision: number;
+            /** Documents */
+            documents: {
+                [key: string]: boolean;
+            };
+            /** Domain Rules */
+            domain_rules: components["schemas"]["BrowserHistoryDomainRuleOut"][];
+            /** Images */
+            images: {
+                [key: string]: boolean;
+            };
+            /** Sync Revision */
+            sync_revision: number;
+            /** System Policy Revision */
+            system_policy_revision: number;
+            /** System Rules */
+            system_rules: components["schemas"]["BrowserHistorySystemRuleOut"][];
+        };
         /** BrowserHistoryDeletionOut */
         BrowserHistoryDeletionOut: {
             /** Deleted Count */
             deleted_count: number;
             /** Sync Revision */
             sync_revision: number;
+        };
+        /** BrowserHistoryDocumentUploadOut */
+        BrowserHistoryDocumentUploadOut: {
+            /** Content Hash */
+            content_hash: string;
+            /** Document Id */
+            document_id: number;
+            /** Storage Status */
+            storage_status: string;
         };
         /** BrowserHistoryDomainRuleIn */
         BrowserHistoryDomainRuleIn: {
@@ -2160,6 +2282,15 @@ export interface components {
             available: boolean;
             /** Version */
             version: string | null;
+        };
+        /** BrowserHistoryImageUploadOut */
+        BrowserHistoryImageUploadOut: {
+            /** Image Hash */
+            image_hash: string;
+            /** Image Id */
+            image_id: number;
+            /** Storage Status */
+            storage_status: string;
         };
         /** BrowserHistoryPageOut */
         BrowserHistoryPageOut: {
@@ -2228,6 +2359,8 @@ export interface components {
         BrowserHistorySyncOut: {
             /** Accepted */
             accepted: components["schemas"]["BrowserHistorySyncAcceptedOut"][];
+            /** Content Capability Revision */
+            content_capability_revision: number;
             /** Domain Rules */
             domain_rules: components["schemas"]["BrowserHistoryDomainRuleOut"][];
             /** Rejected */
@@ -2239,6 +2372,10 @@ export interface components {
             server_time: string;
             /** Sync Revision */
             sync_revision: number;
+            /** System Policy Revision */
+            system_policy_revision: number;
+            /** System Rules */
+            system_rules: components["schemas"]["BrowserHistorySystemRuleOut"][];
         };
         /** BrowserHistorySyncRejectedOut */
         BrowserHistorySyncRejectedOut: {
@@ -2246,7 +2383,7 @@ export interface components {
              * Code
              * @enum {string}
              */
-            code: "invalid" | "excluded" | "stale_revision";
+            code: "invalid" | "excluded" | "stale_revision" | "content_missing";
             /** Detail */
             detail: string;
             /** Record Id */
@@ -2255,11 +2392,42 @@ export interface components {
         /** BrowserHistorySyncStatusOut */
         BrowserHistorySyncStatusOut: {
             connection: components["schemas"]["BrowserConnectionOut"];
+            /** Content Capability Revision */
+            content_capability_revision: number;
             /** Domain Rules */
             domain_rules: components["schemas"]["BrowserHistoryDomainRuleOut"][];
             settings: components["schemas"]["BrowserHistorySettingsOut"];
+            /** System Policy Revision */
+            system_policy_revision: number;
+            /** System Rules */
+            system_rules: components["schemas"]["BrowserHistorySystemRuleOut"][];
             /** User Name */
             user_name: string;
+        };
+        /** BrowserHistorySystemRuleIn */
+        BrowserHistorySystemRuleIn: {
+            /** Enabled */
+            enabled: boolean;
+        };
+        /** BrowserHistorySystemRuleOut */
+        BrowserHistorySystemRuleOut: {
+            /** Description */
+            description: string;
+            /** Enabled */
+            enabled: boolean;
+            /** Hosts */
+            hosts: string[];
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /** Path */
+            path: string;
+            /**
+             * Path Match
+             * @enum {string}
+             */
+            path_match: "exact" | "prefix";
         };
         /** CatalogCategoryOut */
         CatalogCategoryOut: {
@@ -5038,6 +5206,10 @@ export interface operations {
                     records: {
                         /** Captured At */
                         captured_at?: string | null;
+                        /** Content Hash */
+                        content_hash?: string | null;
+                        /** Favicon Image Hash */
+                        favicon_image_hash?: string | null;
                         /**
                          * First Visited At
                          * Format: date-time
@@ -5053,6 +5225,8 @@ export interface operations {
                          * Format: date-time
                          */
                         last_visited_at: string;
+                        /** Lead Image Hash */
+                        lead_image_hash?: string | null;
                         /** Record Id */
                         record_id: string;
                         /**
@@ -5099,6 +5273,101 @@ export interface operations {
             };
         };
     };
+    history_content_status_api_history_sync_content_status_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BrowserHistoryContentStatusIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrowserHistoryContentStatusOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_history_content_api_history_sync_content__content_hash__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                content_hash: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrowserHistoryDocumentUploadOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_history_image_api_history_sync_image__image_hash__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                image_hash: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrowserHistoryImageUploadOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     sync_status_api_history_sync_status_get: {
         parameters: {
             query?: never;
@@ -5115,6 +5384,61 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BrowserHistorySyncStatusOut"];
+                };
+            };
+        };
+    };
+    list_system_rules_api_history_system_rules_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrowserHistorySystemRuleOut"][];
+                };
+            };
+        };
+    };
+    update_system_rule_api_history_system_rules__rule_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BrowserHistorySystemRuleIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrowserHistorySystemRuleOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

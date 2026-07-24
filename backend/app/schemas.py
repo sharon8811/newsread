@@ -1,4 +1,5 @@
 import json
+import re
 import unicodedata
 from datetime import date, datetime
 from typing import Annotated, Any, Literal
@@ -183,11 +184,28 @@ class BrowserHistoryDomainRuleOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class BrowserHistorySystemRuleOut(BaseModel):
+    id: str
+    label: str
+    description: str
+    hosts: list[str]
+    path_match: Literal["exact", "prefix"]
+    path: str
+    enabled: bool
+
+
+class BrowserHistorySystemRuleIn(BaseModel):
+    enabled: bool
+
+
 class BrowserHistorySyncStatusOut(BaseModel):
     connection: BrowserConnectionOut
     user_name: str
     settings: BrowserHistorySettingsOut
     domain_rules: list[BrowserHistoryDomainRuleOut]
+    system_policy_revision: int
+    system_rules: list[BrowserHistorySystemRuleOut]
+    content_capability_revision: int
 
 
 class BrowserHistoryCaptureIn(BaseModel):
@@ -201,6 +219,9 @@ class BrowserHistoryCaptureIn(BaseModel):
     visit_count: int = Field(ge=1)
     captured_at: datetime | None = None
     known_revision: int = Field(default=0, ge=0, le=2_147_483_647)
+    content_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    lead_image_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    favicon_image_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
 
     @field_validator("record_id")
     @classmethod
@@ -237,6 +258,8 @@ class BrowserHistoryCaptureIn(BaseModel):
             raise ValueError("timestamps must include a timezone")
         if self.last_visited_at < self.first_visited_at:
             raise ValueError("last_visited_at must not precede first_visited_at")
+        if self.content_hash and self.text:
+            raise ValueError("content_hash and inline text are mutually exclusive")
         return self
 
 
@@ -260,7 +283,7 @@ class BrowserHistorySyncAcceptedOut(BaseModel):
 
 class BrowserHistorySyncRejectedOut(BaseModel):
     record_id: str
-    code: Literal["invalid", "excluded", "stale_revision"]
+    code: Literal["invalid", "excluded", "stale_revision", "content_missing"]
     detail: str
 
 
@@ -269,7 +292,50 @@ class BrowserHistorySyncOut(BaseModel):
     rejected: list[BrowserHistorySyncRejectedOut]
     sync_revision: int
     domain_rules: list[BrowserHistoryDomainRuleOut]
+    system_policy_revision: int
+    system_rules: list[BrowserHistorySystemRuleOut]
+    content_capability_revision: int
     server_time: datetime
+
+
+class BrowserHistoryContentStatusIn(BaseModel):
+    documents: list[str] = Field(default_factory=list, max_length=100)
+    images: list[str] = Field(default_factory=list, max_length=100)
+
+    @field_validator("documents", "images")
+    @classmethod
+    def validate_hashes(cls, values: list[str]) -> list[str]:
+        if any(not re.fullmatch(r"[0-9a-f]{64}", value) for value in values):
+            raise ValueError("hashes must be 64 lowercase hex characters")
+        return list(dict.fromkeys(values))
+
+    @model_validator(mode="after")
+    def require_hash(self):
+        if not self.documents and not self.images:
+            raise ValueError("at least one document or image hash is required")
+        return self
+
+
+class BrowserHistoryContentStatusOut(BaseModel):
+    documents: dict[str, bool]
+    images: dict[str, bool]
+    sync_revision: int
+    domain_rules: list[BrowserHistoryDomainRuleOut]
+    system_policy_revision: int
+    system_rules: list[BrowserHistorySystemRuleOut]
+    content_capability_revision: int
+
+
+class BrowserHistoryDocumentUploadOut(BaseModel):
+    document_id: int
+    content_hash: str
+    storage_status: str
+
+
+class BrowserHistoryImageUploadOut(BaseModel):
+    image_id: int
+    image_hash: str
+    storage_status: str
 
 
 class BrowserHistorySummaryOut(BaseModel):

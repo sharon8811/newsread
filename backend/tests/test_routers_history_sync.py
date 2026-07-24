@@ -95,6 +95,29 @@ async def test_sync_stores_sanitized_capture_and_clamps_future_timestamps(client
     assert len(page.content_hash) == 64
 
 
+async def test_phase_two_capability_gate_keeps_legacy_body_search_intact(
+    client,
+    users,
+    session,
+    monkeypatch,
+):
+    user = await users.create()
+    pairing = await _pair(client, users, user)
+    monkeypatch.setattr(settings, "browser_history_content_enabled", True)
+
+    response = await _sync(
+        client,
+        pairing["token"],
+        [_capture(text="Legacy searchable body")],
+    )
+
+    assert response.status_code == 200
+    assert response.json()["content_capability_revision"] == 0
+    page = await session.scalar(select(BrowserHistoryPage))
+    assert page.text == "Legacy searchable body"
+    assert page.current_document_id is None
+
+
 async def test_sync_returns_per_item_validation_errors_without_losing_valid_items(
     client, users, session
 ):

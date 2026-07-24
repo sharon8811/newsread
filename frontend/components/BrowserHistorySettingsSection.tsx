@@ -10,6 +10,7 @@ import {
   type BrowserConnectionCreated,
   type BrowserHistoryDeletion,
   type BrowserHistorySettings,
+  type BrowserHistorySystemRule,
 } from "@/lib/api";
 import { timeAgo } from "@/lib/format";
 import {
@@ -20,6 +21,7 @@ import {
   useHistoryRules,
   useHistorySettings,
   useHistorySummary,
+  useHistorySystemRules,
 } from "@/lib/queries";
 import {
   CheckIcon,
@@ -54,11 +56,13 @@ export default function BrowserHistorySettingsSection() {
   const { data: settings } = useHistorySettings();
   const { data: summary } = useHistorySummary();
   const { data: rules } = useHistoryRules();
+  const { data: systemRules } = useHistorySystemRules();
   const { data: extension } = useHistoryExtension();
   const [name, setName] = useState("");
   const [downloading, setDownloading] = useState(false);
   const [created, setCreated] = useState<BrowserConnectionCreated | null>(null);
   const [busy, setBusy] = useState(false);
+  const [updatingSystemRule, setUpdatingSystemRule] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const isChromium = useIsChromium();
 
@@ -131,6 +135,24 @@ export default function BrowserHistorySettingsSection() {
       mutateBrowserHistorySettings();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Could not remove the rule");
+    }
+  }
+
+  async function updateSystemRule(rule: BrowserHistorySystemRule) {
+    if (updatingSystemRule) return;
+    setUpdatingSystemRule(rule.id);
+    try {
+      await api(`/history/system-rules/${encodeURIComponent(rule.id)}`, {
+        method: "PATCH",
+        body: { enabled: !rule.enabled },
+      });
+      mutateBrowserHistorySettings();
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Could not update the default protection",
+      );
+    } finally {
+      setUpdatingSystemRule(null);
     }
   }
 
@@ -390,6 +412,38 @@ export default function BrowserHistorySettingsSection() {
             <option value="forever">Keep forever</option>
           </select>
         </div>
+
+        {systemRules && systemRules.length > 0 && (
+          <div className="mt-4 border-t pt-4" style={{ borderColor: "var(--line-soft)" }}>
+            <p className="text-body font-medium">Default protections</p>
+            <p className="mt-0.5 text-body-sm" style={{ color: "var(--ink-faint)" }}>
+              Low-value and sign-in pages are skipped before they enter your history.
+              You can override each default.
+            </p>
+            <div className="mt-3 flex flex-col gap-2.5">
+              {systemRules.map((rule) => (
+                <label
+                  key={rule.id}
+                  className="flex cursor-pointer items-start gap-3 text-body-sm"
+                >
+                  <input
+                    className="mt-0.5"
+                    type="checkbox"
+                    checked={rule.enabled}
+                    disabled={updatingSystemRule !== null}
+                    onChange={() => updateSystemRule(rule)}
+                  />
+                  <span className="min-w-0">
+                    <span className="block font-medium">{rule.label}</span>
+                    <span className="mt-0.5 block" style={{ color: "var(--ink-faint)" }}>
+                      {rule.description}
+                    </span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
 
         {rules && rules.length > 0 && (
           <div className="mt-4 border-t pt-4" style={{ borderColor: "var(--line-soft)" }}>

@@ -1,0 +1,59 @@
+{
+  "revision": 1,
+  "rules": [
+    {
+      "id": "google-home",
+      "hosts": ["google.com", "www.google.com"],
+      "path_match": "exact",
+      "path": "/"
+    },
+    {
+      "id": "google-search",
+      "hosts": ["google.com", "www.google.com"],
+      "path_match": "exact",
+      "path": "/search"
+    },
+    {
+      "id": "bing-home",
+      "hosts": ["bing.com", "www.bing.com"],
+      "path_match": "exact",
+      "path": "/"
+    },
+    {
+      "id": "bing-search",
+      "hosts": ["bing.com", "www.bing.com"],
+      "path_match": "exact",
+      "path": "/search"
+    },
+    {
+      "id": "duckduckgo-search",
+      "hosts": ["duckduckgo.com", "www.duckduckgo.com"],
+      "path_match": "exact",
+      "path": "/"
+    },
+    {
+      "id": "google-account",
+      "hosts": ["accounts.google.com"],
+      "path_match": "prefix",
+      "path": "/"
+    },
+    {
+      "id": "microsoft-account",
+      "hosts": ["login.microsoftonline.com"],
+      "path_match": "prefix",
+      "path": "/"
+    },
+    {
+      "id": "apple-account",
+      "hosts": ["appleid.apple.com"],
+      "path_match": "prefix",
+      "path": "/"
+    },
+    {
+      "id": "github-login",
+      "hosts": ["github.com"],
+      "path_match": "exact",
+      "path": "/login"
+    }
+  ]
+}

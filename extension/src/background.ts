@@ -1,5 +1,6 @@
-import { SYNC_ALARM } from "./config.js";
+import { DEFAULT_SETTINGS, SYNC_ALARM } from "./config.js";
 import {
+  clearConnectionData,
   clearQueued,
   countQueued,
   enqueueCapture,
@@ -127,14 +128,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         await updateBadge();
         return status();
       case "DISCONNECT":
+        await clearConnectionData();
         await saveSettings({
           serverUrl: "",
           token: "",
           connectionStatus: "unpaired",
           connectionName: "",
+          connectionId: null,
           userName: "",
           domainRules: [],
+          systemPolicyRevision: DEFAULT_SETTINGS.systemPolicyRevision,
+          systemRules: DEFAULT_SETTINGS.systemRules,
+          contentCapabilityRevision: 0,
           knownRevision: 0,
+          lastSyncAt: null,
         });
         return status();
       case "SAVE_EXCLUSIONS": {

@@ -309,6 +309,7 @@ export type BrowserConnection = Schemas["BrowserConnectionOut"];
 export type BrowserConnectionCreated = Schemas["BrowserConnectionCreatedOut"];
 export type BrowserHistorySettings = Schemas["BrowserHistorySettingsOut"];
 export type BrowserHistoryDomainRule = Schemas["BrowserHistoryDomainRuleOut"];
+export type BrowserHistorySystemRule = Schemas["BrowserHistorySystemRuleOut"];
 export type BrowserHistorySummary = Schemas["BrowserHistorySummaryOut"];
 export type BrowserHistoryPage = Schemas["BrowserHistoryPageOut"];
 export type BrowserHistoryDeletion = Schemas["BrowserHistoryDeletionOut"];

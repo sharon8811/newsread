@@ -175,6 +175,22 @@ class BrowserHistoryDomainRule(Base):
     )
 
 
+class BrowserHistorySystemRuleOverride(Base):
+    """A user's explicit enable/disable choice for one built-in rule."""
+
+    __tablename__ = "browser_history_system_rule_overrides"
+
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    rule_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 class BrowserHistoryUserKey(Base):
     """Versioned per-user data key, wrapped by a server master key."""
 

@@ -1,6 +1,6 @@
 # Browser History follow-up plan: stored page content, semantic indexing, and cited summaries
 
-> **Status:** Proposed
+> **Status:** Phase 2 implemented and awaiting review
 >
 > **Depends on:** PR #78 (Browser History) and PR #80 (deployment-mode default)
 >
@@ -638,20 +638,20 @@ Use a dual-read/capability migration rather than one destructive cutover.
 
 ### Phase 2 — extension extraction v2 and owner-scoped dedup
 
-- [ ] Extract structured visible text blocks in the browser with a larger bounded body.
-- [ ] Add exact-path/path-prefix built-in exclusions and low-value-page heuristics.
-- [ ] Add versioned canonicalization and local SHA-256.
-- [ ] Add IndexedDB object records and the content-status/upload retry state machine.
-- [ ] Capture, canvas-re-encode, and upload bounded lead images and favicons with
+- [x] Extract structured visible text blocks in the browser with a larger bounded body.
+- [x] Add exact-path/path-prefix built-in exclusions and low-value-page heuristics.
+- [x] Add versioned canonicalization and local SHA-256.
+- [x] Add IndexedDB object records and the content-status/upload retry state machine.
+- [x] Capture, canvas-re-encode, and upload bounded lead images and favicons with
       taint/CORS fallbacks; validate rasters and caps on the backend.
-- [ ] Recompute and verify every digest on the backend.
-- [ ] V2 captures write encrypted documents only and never populate
+- [x] Recompute and verify every digest on the backend.
+- [x] V2 captures write encrypted documents only and never populate
       `browser_history_pages.text`; the legacy column is frozen read-only for pre-v2 rows.
-- [ ] Convert old-extension inline text server-side into an encrypted single-block
+- [x] Convert old-extension inline text server-side into an encrypted single-block
       legacy-extraction document (summaries/Q&A/citations disabled, like other legacy
       documents) for one compatibility window; after the window, old clients become
       metadata-only.
-- [ ] Materialize document `search_tsv` at ingest, and roll Phases 2–3 out behind the
+- [x] Materialize document `search_tsv` at ingest, and roll Phases 2–3 out behind the
       same server capability revision so new captures never lose body keyword search.
 
 Acceptance: repeated unchanged visits and identical content at two URLs produce one private

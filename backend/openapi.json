@@ -1216,6 +1216,83 @@
         "title": "BrowserHistoryClearIn",
         "type": "object"
       },
+      "BrowserHistoryContentStatusIn": {
+        "properties": {
+          "documents": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Documents",
+            "type": "array"
+          },
+          "images": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Images",
+            "type": "array"
+          }
+        },
+        "title": "BrowserHistoryContentStatusIn",
+        "type": "object"
+      },
+      "BrowserHistoryContentStatusOut": {
+        "properties": {
+          "content_capability_revision": {
+            "title": "Content Capability Revision",
+            "type": "integer"
+          },
+          "documents": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "title": "Documents",
+            "type": "object"
+          },
+          "domain_rules": {
+            "items": {
+              "$ref": "#/components/schemas/BrowserHistoryDomainRuleOut"
+            },
+            "title": "Domain Rules",
+            "type": "array"
+          },
+          "images": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "title": "Images",
+            "type": "object"
+          },
+          "sync_revision": {
+            "title": "Sync Revision",
+            "type": "integer"
+          },
+          "system_policy_revision": {
+            "title": "System Policy Revision",
+            "type": "integer"
+          },
+          "system_rules": {
+            "items": {
+              "$ref": "#/components/schemas/BrowserHistorySystemRuleOut"
+            },
+            "title": "System Rules",
+            "type": "array"
+          }
+        },
+        "required": [
+          "documents",
+          "images",
+          "sync_revision",
+          "domain_rules",
+          "system_policy_revision",
+          "system_rules",
+          "content_capability_revision"
+        ],
+        "title": "BrowserHistoryContentStatusOut",
+        "type": "object"
+      },
       "BrowserHistoryDeletionOut": {
         "properties": {
           "deleted_count": {
@@ -1232,6 +1309,29 @@
           "sync_revision"
         ],
         "title": "BrowserHistoryDeletionOut",
+        "type": "object"
+      },
+      "BrowserHistoryDocumentUploadOut": {
+        "properties": {
+          "content_hash": {
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "document_id": {
+            "title": "Document Id",
+            "type": "integer"
+          },
+          "storage_status": {
+            "title": "Storage Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "document_id",
+          "content_hash",
+          "storage_status"
+        ],
+        "title": "BrowserHistoryDocumentUploadOut",
         "type": "object"
       },
       "BrowserHistoryDomainRuleIn": {
@@ -1335,6 +1435,29 @@
           "version"
         ],
         "title": "BrowserHistoryExtensionOut",
+        "type": "object"
+      },
+      "BrowserHistoryImageUploadOut": {
+        "properties": {
+          "image_hash": {
+            "title": "Image Hash",
+            "type": "string"
+          },
+          "image_id": {
+            "title": "Image Id",
+            "type": "integer"
+          },
+          "storage_status": {
+            "title": "Storage Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "image_id",
+          "image_hash",
+          "storage_status"
+        ],
+        "title": "BrowserHistoryImageUploadOut",
         "type": "object"
       },
       "BrowserHistoryPageOut": {
@@ -1525,6 +1648,10 @@
             "title": "Accepted",
             "type": "array"
           },
+          "content_capability_revision": {
+            "title": "Content Capability Revision",
+            "type": "integer"
+          },
           "domain_rules": {
             "items": {
               "$ref": "#/components/schemas/BrowserHistoryDomainRuleOut"
@@ -1547,6 +1674,17 @@
           "sync_revision": {
             "title": "Sync Revision",
             "type": "integer"
+          },
+          "system_policy_revision": {
+            "title": "System Policy Revision",
+            "type": "integer"
+          },
+          "system_rules": {
+            "items": {
+              "$ref": "#/components/schemas/BrowserHistorySystemRuleOut"
+            },
+            "title": "System Rules",
+            "type": "array"
           }
         },
         "required": [
@@ -1554,6 +1692,9 @@
           "rejected",
           "sync_revision",
           "domain_rules",
+          "system_policy_revision",
+          "system_rules",
+          "content_capability_revision",
           "server_time"
         ],
         "title": "BrowserHistorySyncOut",
@@ -1565,7 +1706,8 @@
             "enum": [
               "invalid",
               "excluded",
-              "stale_revision"
+              "stale_revision",
+              "content_missing"
             ],
             "title": "Code",
             "type": "string"
@@ -1592,6 +1734,10 @@
           "connection": {
             "$ref": "#/components/schemas/BrowserConnectionOut"
           },
+          "content_capability_revision": {
+            "title": "Content Capability Revision",
+            "type": "integer"
+          },
           "domain_rules": {
             "items": {
               "$ref": "#/components/schemas/BrowserHistoryDomainRuleOut"
@@ -1602,6 +1748,17 @@
           "settings": {
             "$ref": "#/components/schemas/BrowserHistorySettingsOut"
           },
+          "system_policy_revision": {
+            "title": "System Policy Revision",
+            "type": "integer"
+          },
+          "system_rules": {
+            "items": {
+              "$ref": "#/components/schemas/BrowserHistorySystemRuleOut"
+            },
+            "title": "System Rules",
+            "type": "array"
+          },
           "user_name": {
             "title": "User Name",
             "type": "string"
@@ -1611,9 +1768,75 @@
           "connection",
           "user_name",
           "settings",
-          "domain_rules"
+          "domain_rules",
+          "system_policy_revision",
+          "system_rules",
+          "content_capability_revision"
         ],
         "title": "BrowserHistorySyncStatusOut",
+        "type": "object"
+      },
+      "BrowserHistorySystemRuleIn": {
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "title": "BrowserHistorySystemRuleIn",
+        "type": "object"
+      },
+      "BrowserHistorySystemRuleOut": {
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "hosts": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Hosts",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "path_match": {
+            "enum": [
+              "exact",
+              "prefix"
+            ],
+            "title": "Path Match",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "description",
+          "hosts",
+          "path_match",
+          "path",
+          "enabled"
+        ],
+        "title": "BrowserHistorySystemRuleOut",
         "type": "object"
       },
       "CatalogCategoryOut": {
@@ -7313,6 +7536,30 @@
                           ],
                           "title": "Captured At"
                         },
+                        "content_hash": {
+                          "anyOf": [
+                            {
+                              "pattern": "^[0-9a-f]{64}$",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "title": "Content Hash"
+                        },
+                        "favicon_image_hash": {
+                          "anyOf": [
+                            {
+                              "pattern": "^[0-9a-f]{64}$",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "title": "Favicon Image Hash"
+                        },
                         "first_visited_at": {
                           "format": "date-time",
                           "title": "First Visited At",
@@ -7329,6 +7576,18 @@
                           "format": "date-time",
                           "title": "Last Visited At",
                           "type": "string"
+                        },
+                        "lead_image_hash": {
+                          "anyOf": [
+                            {
+                              "pattern": "^[0-9a-f]{64}$",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "title": "Lead Image Hash"
                         },
                         "record_id": {
                           "maxLength": 128,
@@ -7425,6 +7684,146 @@
         ]
       }
     },
+    "/api/history/sync/content-status": {
+      "post": {
+        "operationId": "history_content_status_api_history_sync_content_status_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BrowserHistoryContentStatusIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserHistoryContentStatusOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BrowserHistoryToken": []
+          }
+        ],
+        "summary": "History Content Status",
+        "tags": [
+          "browser-history"
+        ]
+      }
+    },
+    "/api/history/sync/content/{content_hash}": {
+      "put": {
+        "operationId": "upload_history_content_api_history_sync_content__content_hash__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "content_hash",
+            "required": true,
+            "schema": {
+              "title": "Content Hash",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserHistoryDocumentUploadOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BrowserHistoryToken": []
+          }
+        ],
+        "summary": "Upload History Content",
+        "tags": [
+          "browser-history"
+        ]
+      }
+    },
+    "/api/history/sync/image/{image_hash}": {
+      "put": {
+        "operationId": "upload_history_image_api_history_sync_image__image_hash__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "image_hash",
+            "required": true,
+            "schema": {
+              "title": "Image Hash",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserHistoryImageUploadOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BrowserHistoryToken": []
+          }
+        ],
+        "summary": "Upload History Image",
+        "tags": [
+          "browser-history"
+        ]
+      }
+    },
     "/api/history/sync/status": {
       "get": {
         "operationId": "sync_status_api_history_sync_status_get",
@@ -7446,6 +7845,93 @@
           }
         ],
         "summary": "Sync Status",
+        "tags": [
+          "browser-history"
+        ]
+      }
+    },
+    "/api/history/system-rules": {
+      "get": {
+        "operationId": "list_system_rules_api_history_system_rules_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/BrowserHistorySystemRuleOut"
+                  },
+                  "title": "Response List System Rules Api History System Rules Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List System Rules",
+        "tags": [
+          "browser-history"
+        ]
+      }
+    },
+    "/api/history/system-rules/{rule_id}": {
+      "patch": {
+        "operationId": "update_system_rule_api_history_system_rules__rule_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "rule_id",
+            "required": true,
+            "schema": {
+              "title": "Rule Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BrowserHistorySystemRuleIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserHistorySystemRuleOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update System Rule",
         "tags": [
           "browser-history"
         ]

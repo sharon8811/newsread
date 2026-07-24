@@ -96,6 +96,9 @@ async def test_extension_status_authenticates_only_scoped_raw_token(client, user
     assert response.json()["user_name"] == "Test User"
     assert response.json()["settings"] == {"retention_days": 90, "sync_revision": 0}
     assert response.json()["domain_rules"] == []
+    assert response.json()["system_policy_revision"] == 1
+    assert response.json()["content_capability_revision"] == 0
+    assert response.json()["system_rules"][0]["id"] == "google-home"
 
     connection = await session.get(BrowserConnection, created.json()["id"])
     assert connection.last_seen_at is not None
@@ -225,6 +228,49 @@ async def test_domain_rules_are_owner_scoped(client, users):
         headers=users.auth(bob),
     )
     assert deleted.status_code == 404
+
+
+async def test_system_rule_overrides_are_visible_owner_scoped_and_revisioned(
+    client,
+    users,
+    session,
+):
+    alice = await users.create(username="alice")
+    bob = await users.create(username="bob")
+    alice_headers = users.auth(alice)
+
+    listed = await client.get("/api/history/system-rules", headers=alice_headers)
+    google = next(rule for rule in listed.json() if rule["id"] == "google-search")
+    assert google == {
+        "id": "google-search",
+        "label": "Google search results",
+        "description": ("Skip Google result pages while retaining other Google-hosted content."),
+        "hosts": ["google.com", "www.google.com"],
+        "path_match": "exact",
+        "path": "/search",
+        "enabled": True,
+    }
+
+    updated = await client.patch(
+        "/api/history/system-rules/google-search",
+        json={"enabled": False},
+        headers=alice_headers,
+    )
+    assert updated.status_code == 200
+    assert updated.json()["enabled"] is False
+    assert (await session.get(BrowserHistorySettings, alice.id)).sync_revision == 1
+
+    alice_rules = (await client.get("/api/history/system-rules", headers=alice_headers)).json()
+    bob_rules = (await client.get("/api/history/system-rules", headers=users.auth(bob))).json()
+    assert next(rule for rule in alice_rules if rule["id"] == "google-search")["enabled"] is False
+    assert next(rule for rule in bob_rules if rule["id"] == "google-search")["enabled"] is True
+
+    missing = await client.patch(
+        "/api/history/system-rules/not-a-rule",
+        json={"enabled": False},
+        headers=alice_headers,
+    )
+    assert missing.status_code == 404
 
 
 async def test_feature_flag_hides_history_surface(client, users, monkeypatch):

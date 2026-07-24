@@ -16,6 +16,7 @@ import {
   type BrowserHistorySettings,
   type BrowserHistorySort,
   type BrowserHistorySummary,
+  type BrowserHistorySystemRule,
   type CatalogCategory,
   type CatalogEntry,
   type DislikeOptions,
@@ -138,6 +139,12 @@ export const useHistorySettings = (enabled = true) =>
 export const useHistoryRules = (enabled = true) =>
   useSWR<BrowserHistoryDomainRule[]>(enabled ? keys.historyRules : null, fetcher);
 
+export const useHistorySystemRules = (enabled = true) =>
+  useSWR<BrowserHistorySystemRule[]>(
+    enabled ? keys.historySystemRules : null,
+    fetcher,
+  );
+
 export const useHistory = (
   filters: {
     q?: string;
@@ -218,5 +225,6 @@ export function mutateBrowserHistorySettings() {
   mutate(keys.historyConnections);
   mutate(keys.historySettings);
   mutate(keys.historyRules);
+  mutate(keys.historySystemRules);
   mutate(keys.historySummary);
 }

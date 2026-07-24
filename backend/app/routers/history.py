@@ -21,17 +21,36 @@ from ..deps import CurrentUser, DbSession
 from ..history_auth import (
     BrowserConnectionAuth,
     generate_browser_token,
+    require_browser_history_content_enabled,
     require_browser_history_enabled,
+)
+from ..history_content import HistoryContentError, decompress_history_document
+from ..history_ingest import (
+    HISTORY_CONTENT_CAPABILITY_REVISION as CONTENT_CAPABILITY_REVISION,
+)
+from ..history_ingest import (
+    HistoryIngestError,
+    HistoryIngestService,
+    get_history_ingest_service,
+    get_optional_history_ingest_service,
 )
 from ..history_policy import normalize_history_hostname, sanitize_capture_text
 from ..history_sync import SyncRejection, persist_capture
+from ..history_system_policy import (
+    HISTORY_SYSTEM_POLICY_REVISION,
+    HISTORY_SYSTEM_RULES,
+    HISTORY_SYSTEM_RULES_BY_ID,
+)
 from ..models import (
     BrowserConnection,
     BrowserHistoryDeletion,
+    BrowserHistoryDocument,
     BrowserHistoryDomainRule,
+    BrowserHistoryImage,
     BrowserHistoryPage,
     BrowserHistoryPageConnection,
     BrowserHistorySettings,
+    BrowserHistorySystemRuleOverride,
     User,
 )
 from ..schemas import (
@@ -40,10 +59,14 @@ from ..schemas import (
     BrowserConnectionOut,
     BrowserHistoryCaptureIn,
     BrowserHistoryClearIn,
+    BrowserHistoryContentStatusIn,
+    BrowserHistoryContentStatusOut,
     BrowserHistoryDeletionOut,
+    BrowserHistoryDocumentUploadOut,
     BrowserHistoryDomainRuleIn,
     BrowserHistoryDomainRuleOut,
     BrowserHistoryExtensionOut,
+    BrowserHistoryImageUploadOut,
     BrowserHistoryPageOut,
     BrowserHistorySettingsIn,
     BrowserHistorySettingsOut,
@@ -53,6 +76,8 @@ from ..schemas import (
     BrowserHistorySyncOut,
     BrowserHistorySyncRejectedOut,
     BrowserHistorySyncStatusOut,
+    BrowserHistorySystemRuleIn,
+    BrowserHistorySystemRuleOut,
 )
 
 router = APIRouter(
@@ -96,6 +121,52 @@ def _settings_out(history_settings: BrowserHistorySettings) -> BrowserHistorySet
         retention_days=history_settings.retention_days,
         sync_revision=history_settings.sync_revision,
     )
+
+
+async def _system_rule_state(
+    session: DbSession,
+    user_id: int,
+) -> tuple[set[str], list[BrowserHistorySystemRuleOut]]:
+    overrides = {
+        row.rule_id: row.enabled
+        for row in await session.scalars(
+            select(BrowserHistorySystemRuleOverride).where(
+                BrowserHistorySystemRuleOverride.user_id == user_id
+            )
+        )
+    }
+    disabled = {rule_id for rule_id, enabled in overrides.items() if not enabled}
+    return disabled, [
+        BrowserHistorySystemRuleOut(
+            id=rule.id,
+            label=rule.label,
+            description=rule.description,
+            hosts=list(rule.hosts),
+            path_match=rule.path_match,
+            path=rule.path,
+            enabled=overrides.get(rule.id, True),
+        )
+        for rule in HISTORY_SYSTEM_RULES
+    ]
+
+
+async def _read_bounded_body(request: Request, max_bytes: int, *, label: str) -> bytes:
+    content_length = request.headers.get("Content-Length")
+    if content_length:
+        try:
+            declared = int(content_length)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid Content-Length") from None
+        if declared < 0 or declared > max_bytes:
+            raise HTTPException(status_code=413, detail=f"{label} exceeds its byte limit")
+    chunks: list[bytes] = []
+    size = 0
+    async for chunk in request.stream():
+        size += len(chunk)
+        if size > max_bytes:
+            raise HTTPException(status_code=413, detail=f"{label} exceeds its byte limit")
+        chunks.append(chunk)
+    return b"".join(chunks)
 
 
 def _record_id(raw: object, index: int) -> str:
@@ -408,6 +479,50 @@ async def delete_domain_rule(
     await session.commit()
 
 
+@router.get("/system-rules", response_model=list[BrowserHistorySystemRuleOut])
+async def list_system_rules(user: CurrentUser, session: DbSession):
+    _, rules = await _system_rule_state(session, user.id)
+    return rules
+
+
+@router.patch(
+    "/system-rules/{rule_id}",
+    response_model=BrowserHistorySystemRuleOut,
+)
+async def update_system_rule(
+    rule_id: str,
+    body: BrowserHistorySystemRuleIn,
+    user: CurrentUser,
+    session: DbSession,
+):
+    definition = HISTORY_SYSTEM_RULES_BY_ID.get(rule_id)
+    if definition is None:
+        raise HTTPException(status_code=404, detail="Built-in history rule not found")
+    statement = pg_insert(BrowserHistorySystemRuleOverride).values(
+        user_id=user.id,
+        rule_id=rule_id,
+        enabled=body.enabled,
+    )
+    await session.execute(
+        statement.on_conflict_do_update(
+            index_elements=["user_id", "rule_id"],
+            set_={"enabled": statement.excluded.enabled, "updated_at": func.now()},
+        )
+    )
+    history_settings = await _settings_for(session, user.id)
+    history_settings.sync_revision += 1
+    await session.commit()
+    return BrowserHistorySystemRuleOut(
+        id=definition.id,
+        label=definition.label,
+        description=definition.description,
+        hosts=list(definition.hosts),
+        path_match=definition.path_match,
+        path=definition.path,
+        enabled=body.enabled,
+    )
+
+
 def _extension_package_path() -> Path:
     if settings.extension_package:
         return Path(settings.extension_package)
@@ -699,6 +814,144 @@ async def clear_history(
 
 
 @router.post(
+    "/sync/content-status",
+    response_model=BrowserHistoryContentStatusOut,
+    dependencies=[Depends(require_browser_history_content_enabled)],
+)
+async def history_content_status(
+    body: BrowserHistoryContentStatusIn,
+    connection: BrowserConnectionAuth,
+    session: DbSession,
+):
+    history_settings = await _settings_for(session, connection.user_id)
+    domain_rules = list(
+        await session.scalars(
+            select(BrowserHistoryDomainRule)
+            .where(BrowserHistoryDomainRule.user_id == connection.user_id)
+            .order_by(
+                BrowserHistoryDomainRule.hostname,
+                BrowserHistoryDomainRule.match_subdomains,
+            )
+        )
+    )
+    _, system_rules = await _system_rule_state(session, connection.user_id)
+    document_hashes = set(
+        await session.scalars(
+            select(BrowserHistoryDocument.content_hash).where(
+                BrowserHistoryDocument.user_id == connection.user_id,
+                BrowserHistoryDocument.storage_status == "ready",
+                BrowserHistoryDocument.content_hash.in_(body.documents),
+            )
+        )
+    )
+    image_hashes = set(
+        await session.scalars(
+            select(BrowserHistoryImage.image_hash).where(
+                BrowserHistoryImage.user_id == connection.user_id,
+                BrowserHistoryImage.storage_status == "ready",
+                BrowserHistoryImage.image_hash.in_(body.images),
+            )
+        )
+    )
+    return BrowserHistoryContentStatusOut(
+        documents={value: value in document_hashes for value in body.documents},
+        images={value: value in image_hashes for value in body.images},
+        sync_revision=history_settings.sync_revision,
+        domain_rules=[BrowserHistoryDomainRuleOut.model_validate(rule) for rule in domain_rules],
+        system_policy_revision=HISTORY_SYSTEM_POLICY_REVISION,
+        system_rules=system_rules,
+        content_capability_revision=CONTENT_CAPABILITY_REVISION,
+    )
+
+
+@router.put(
+    "/sync/content/{content_hash}",
+    response_model=BrowserHistoryDocumentUploadOut,
+    dependencies=[Depends(require_browser_history_content_enabled)],
+)
+async def upload_history_content(
+    content_hash: str,
+    request: Request,
+    connection: BrowserConnectionAuth,
+    session: DbSession,
+    ingest: Annotated[HistoryIngestService, Depends(get_history_ingest_service)],
+):
+    content_encoding = request.headers.get("Content-Encoding", "").strip().casefold()
+    if content_encoding not in {"", "identity", "gzip"}:
+        raise HTTPException(status_code=415, detail="Unsupported history content encoding")
+    payload = await _read_bounded_body(
+        request,
+        (
+            settings.history_object_compressed_max_bytes
+            if content_encoding == "gzip"
+            else settings.history_object_max_bytes
+        ),
+        label="History document",
+    )
+    if content_encoding == "gzip":
+        try:
+            payload = decompress_history_document(
+                payload,
+                max_bytes=settings.history_object_max_bytes,
+            )
+        except HistoryContentError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+    try:
+        document = await ingest.ingest_document(
+            session,
+            user_id=connection.user_id,
+            claimed_hash=content_hash,
+            payload=payload,
+        )
+    except HistoryIngestError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    connection.last_seen_at = datetime.now(UTC)
+    await session.commit()
+    return BrowserHistoryDocumentUploadOut(
+        document_id=document.id,
+        content_hash=document.content_hash,
+        storage_status=document.storage_status,
+    )
+
+
+@router.put(
+    "/sync/image/{image_hash}",
+    response_model=BrowserHistoryImageUploadOut,
+    dependencies=[Depends(require_browser_history_content_enabled)],
+)
+async def upload_history_image(
+    image_hash: str,
+    request: Request,
+    connection: BrowserConnectionAuth,
+    session: DbSession,
+    ingest: Annotated[HistoryIngestService, Depends(get_history_ingest_service)],
+):
+    payload = await _read_bounded_body(
+        request,
+        settings.history_image_max_bytes,
+        label="History image",
+    )
+    try:
+        image = await ingest.ingest_image(
+            session,
+            user_id=connection.user_id,
+            claimed_hash=image_hash,
+            payload=payload,
+        )
+    except HistoryIngestError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    connection.last_seen_at = datetime.now(UTC)
+    await session.commit()
+    return BrowserHistoryImageUploadOut(
+        image_id=image.id,
+        image_hash=image.image_hash,
+        storage_status=image.storage_status,
+    )
+
+
+@router.post(
     "/sync",
     response_model=BrowserHistorySyncOut,
     dependencies=[Depends(require_sync_content_length)],
@@ -708,6 +961,10 @@ async def sync_history(
     request: Request,
     connection: BrowserConnectionAuth,
     session: DbSession,
+    ingest: Annotated[
+        HistoryIngestService | None,
+        Depends(get_optional_history_ingest_service),
+    ],
 ):
     await _enforce_sync_rate_limit(session, connection)
     raw_body = await request.body()
@@ -737,6 +994,10 @@ async def sync_history(
             )
         )
     )
+    disabled_system_rule_ids, system_rules = await _system_rule_state(
+        session,
+        connection.user_id,
+    )
     accepted: list[BrowserHistorySyncAcceptedOut] = []
     rejected: list[BrowserHistorySyncRejectedOut] = []
     now = datetime.now(UTC)
@@ -761,6 +1022,12 @@ async def sync_history(
                 capture,
                 rules=rules,
                 deletions=deletions,
+                disabled_system_rule_ids=disabled_system_rule_ids,
+                ingest=ingest,
+                content_pipeline_enabled=(
+                    settings.browser_history_content_enabled and CONTENT_CAPABILITY_REVISION >= 2
+                ),
+                legacy_inline_content_enabled=settings.browser_history_legacy_inline_enabled,
                 now=now,
             )
         except SyncRejection as exc:
@@ -787,6 +1054,9 @@ async def sync_history(
         rejected=rejected,
         sync_revision=history_settings.sync_revision,
         domain_rules=[BrowserHistoryDomainRuleOut.model_validate(rule) for rule in rules],
+        system_policy_revision=HISTORY_SYSTEM_POLICY_REVISION,
+        system_rules=system_rules,
+        content_capability_revision=CONTENT_CAPABILITY_REVISION,
         server_time=now,
     )
 
@@ -808,6 +1078,7 @@ async def sync_status(
             )
         )
     ).all()
+    _, system_rules = await _system_rule_state(session, connection.user_id)
     connection.last_seen_at = datetime.now(UTC)
     await session.commit()
     await session.refresh(connection)
@@ -816,4 +1087,7 @@ async def sync_status(
         user_name=user_name,
         settings=_settings_out(history_settings),
         domain_rules=[BrowserHistoryDomainRuleOut.model_validate(rule) for rule in rules],
+        system_policy_revision=HISTORY_SYSTEM_POLICY_REVISION,
+        system_rules=system_rules,
+        content_capability_revision=CONTENT_CAPABILITY_REVISION,
     )

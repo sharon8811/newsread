@@ -1,0 +1,27 @@
+{
+  "input": {
+    "schema_version": 1,
+    "extraction_version": "history-dom-v2",
+    "content_type": "article",
+    "language": "EN-US",
+    "blocks": [
+      {
+        "id": "b0001",
+        "kind": "heading",
+        "text": "  Café ‮ Guide "
+      },
+      {
+        "id": "b0002",
+        "kind": "paragraph",
+        "text": "Line  one\n line two"
+      },
+      {
+        "id": "b0003",
+        "kind": "code",
+        "text": "\n  let  x = 1;\n\n"
+      }
+    ]
+  },
+  "canonical_json": "{\"schema_version\":1,\"extraction_version\":\"history-dom-v2\",\"content_type\":\"article\",\"language\":\"en-us\",\"blocks\":[{\"id\":\"b0001\",\"kind\":\"heading\",\"text\":\"Café Guide\"},{\"id\":\"b0002\",\"kind\":\"paragraph\",\"text\":\"Line one line two\"},{\"id\":\"b0003\",\"kind\":\"code\",\"text\":\"let x = 1;\"}]}",
+  "content_hash": "c7b03294c585feb2c8667e2b697ce136610c5438cb9d6fb0bc0c28d785ad4289"
+}

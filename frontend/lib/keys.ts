@@ -51,6 +51,7 @@ export const keys = {
   historyConnections: "/history/connections",
   historySettings: "/history/settings",
   historyRules: "/history/domain-rules",
+  historySystemRules: "/history/system-rules",
   history: ({
     q,
     hostname,
