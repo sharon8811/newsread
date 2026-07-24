@@ -5,6 +5,7 @@ import {
   enqueueCapture,
   enqueueHistoryMetadata,
 } from "./outbox.js";
+import { isAllowedMessageSender } from "./message-sender.js";
 import { getSettings, getSyncState, saveSettings } from "./settings.js";
 import { checkConnection, syncNow } from "./sync.js";
 import type { CaptureCandidate, ExtensionStatus } from "./types.js";
@@ -93,8 +94,11 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   void syncNow().finally(updateBadge);
 });
 
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const handle = async () => {
+    if (!isAllowedMessageSender(message?.type, sender)) {
+      throw new Error("Extension action rejected from a content script");
+    }
     switch (message?.type) {
       case "CAPTURE_PAGE":
         return { queued: await captureCandidate(message.candidate) };
