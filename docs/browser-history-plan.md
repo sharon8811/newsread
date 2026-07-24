@@ -632,12 +632,14 @@ Merge gate:
       growth on a realistic corpus.
 - [x] Add user-facing privacy documentation and extension permission explanations
       (`docs/browser-history-privacy.md`, linked from both READMEs).
-- [x] Rollout decided: the flag stays **deliberately opt-in in every deployment
-      mode** (amending this item's original "enable for self-hosted by default")
-      because captured page text is sensitive; self-hosted enablement is one
-      documented env var, and public deployments now have verified per-connection
-      rate limits plus the operator notes in the privacy document. Revisit an
-      on-by-default self-hosted setting only alongside encrypted-at-rest text.
+- [x] Rollout (amended July 24, 2026 by owner decision after Phase 5 shipped):
+      the flag is **deployment-derived** like `allow_signup`/`messaging_enabled`
+      — default on for prod/staging, off for self_hosted, explicit env var wins
+      either way. Rationale: prod/staging operators run their instance
+      deliberately, rate limits are verified, and capture still requires each
+      user to pair a browser; self-hosted stays opt-in. The privacy document's
+      operator notes (plaintext-at-rest caveat) still gate what a public
+      operator should review.
 
 Phase 5 verification evidence (2026-07-24):
 

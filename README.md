@@ -104,9 +104,10 @@ Overrides: `NEWSREAD_ALLOW_SIGNUP` (with signups closed, registration still
 works while the server has zero accounts, so the owner can sign up normally),
 `NEWSREAD_MESSAGING_ENABLED` (integrations additionally need the Slack or Teams
 credentials from `.env.example`), and `NEWSREAD_BROWSER_HISTORY_ENABLED`
-(privacy-sensitive and deliberately opt-in in every deployment mode — see
+(privacy-sensitive: defaults on for prod/staging and off for self_hosted; the
+env var overrides either way — see
 [docs/browser-history-privacy.md](docs/browser-history-privacy.md) for what is
-captured, the permission explanations, and operator notes before enabling).
+captured, the permission explanations, and operator notes).
 
 Public deployments must set `NEWSREAD_DEPLOYMENT=prod` **and** a real
 `NEWSREAD_JWT_SECRET` — prod and staging refuse to start with the dev default.
