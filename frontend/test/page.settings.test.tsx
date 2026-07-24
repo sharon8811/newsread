@@ -429,6 +429,34 @@ describe("SettingsPage", () => {
     ).toHaveAttribute("aria-valuenow", "0");
   });
 
+  it("renders zero-quota byte storage and both empty and pending operation states", () => {
+    mockSWRData({
+      serverConfig: {
+        allow_signup: true,
+        messaging_enabled: false,
+        browser_history_enabled: true,
+      },
+      historyOperations: {
+        storage_used_bytes: 512,
+        storage_quota_bytes: 0,
+        document_count: 0,
+        image_count: 0,
+        embedding_backlog_count: 0,
+        embedding_backlog_oldest_at: null,
+        deletion_backlog_count: 3,
+        deletion_backlog_oldest_at: "2026-07-24T09:00:00Z",
+      },
+    });
+    render(<SettingsPage />);
+
+    expect(screen.getByText("512 B of 0 B used")).toBeInTheDocument();
+    expect(screen.getByText("3 waiting")).toBeInTheDocument();
+    expect(screen.getByText("Up to date")).toBeInTheDocument();
+    expect(
+      screen.getByRole("progressbar", { name: "Browser history storage used" }),
+    ).toHaveAttribute("aria-valuenow", "0");
+  });
+
   it("downloads the packaged extension with its versioned filename", async () => {
     mockSWRData({
       serverConfig: {
