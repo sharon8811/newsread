@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import io
+from bisect import bisect_right
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from functools import partial
 from typing import Protocol
 
@@ -46,6 +48,14 @@ class ObjectStore(Protocol):
     async def get(self, key: str) -> bytes: ...
 
     async def delete(self, key: str) -> None: ...
+
+    async def list_objects(
+        self,
+        prefix: str,
+        *,
+        limit: int,
+        cursor: str | None = None,
+    ) -> StoredObjectPage: ...
 
 
 class S3ObjectStore:
@@ -169,12 +179,57 @@ class S3ObjectStore:
                 f"could not delete history object: {_error_code(exc)}"
             ) from exc
 
+    async def list_objects(
+        self,
+        prefix: str,
+        *,
+        limit: int,
+        cursor: str | None = None,
+    ) -> StoredObjectPage:
+        def collect() -> StoredObjectPage:
+            kwargs: dict[str, object] = {
+                "Bucket": self.bucket,
+                "Prefix": prefix,
+                "MaxKeys": limit,
+            }
+            if cursor:
+                # StartAfter is stable even if this page's orphan keys are
+                # deleted before the next sweep; continuation tokens need not
+                # remain valid across mutations on every S3-compatible store.
+                kwargs["StartAfter"] = cursor
+            page = self._client.list_objects_v2(**kwargs)
+            output: list[StoredObjectInfo] = []
+            for item in page.get("Contents", []):
+                modified_at = item["LastModified"]
+                if modified_at.tzinfo is None:
+                    modified_at = modified_at.replace(tzinfo=UTC)
+                output.append(
+                    StoredObjectInfo(
+                        key=item["Key"],
+                        byte_size=int(item.get("Size", 0)),
+                        modified_at=modified_at,
+                    )
+                )
+            return StoredObjectPage(
+                objects=output,
+                next_cursor=(output[-1].key if page.get("IsTruncated") and output else None),
+            )
+
+        try:
+            return await anyio.to_thread.run_sync(collect)
+        except ClientError as exc:
+            raise HistoryStorageError(
+                f"could not list history objects: {_error_code(exc)}"
+            ) from exc
+
 
 class InMemoryObjectStore:
     """Deterministic object-store fake shared by unit and service tests."""
 
     def __init__(self, initial: Mapping[str, bytes] | None = None):
         self.objects = dict(initial or {})
+        now = datetime.now(UTC)
+        self.modified_at = {key: now for key in self.objects}
         self._lock = anyio.Lock()
 
     async def ensure_bucket(self) -> None:
@@ -188,6 +243,7 @@ class InMemoryObjectStore:
             if key in self.objects:
                 return False
             self.objects[key] = bytes(data)
+            self.modified_at[key] = datetime.now(UTC)
             return True
 
     async def get(self, key: str) -> bytes:
@@ -198,6 +254,44 @@ class InMemoryObjectStore:
 
     async def delete(self, key: str) -> None:
         self.objects.pop(key, None)
+        self.modified_at.pop(key, None)
+
+    async def list_objects(
+        self,
+        prefix: str,
+        *,
+        limit: int,
+        cursor: str | None = None,
+    ) -> StoredObjectPage:
+        now = datetime.now(UTC)
+        keys = [key for key in sorted(self.objects) if key.startswith(prefix)]
+        start = bisect_right(keys, cursor) if cursor else 0
+        selected = keys[start : start + limit]
+        objects = [
+            StoredObjectInfo(
+                key=key,
+                byte_size=len(self.objects[key]),
+                modified_at=self.modified_at.get(key, now),
+            )
+            for key in selected
+        ]
+        return StoredObjectPage(
+            objects=objects,
+            next_cursor=selected[-1] if start + len(selected) < len(keys) else None,
+        )
+
+
+@dataclass(frozen=True)
+class StoredObjectInfo:
+    key: str
+    byte_size: int
+    modified_at: datetime
+
+
+@dataclass(frozen=True)
+class StoredObjectPage:
+    objects: list[StoredObjectInfo]
+    next_cursor: str | None
 
 
 @dataclass(frozen=True)
@@ -268,6 +362,38 @@ class HistoryKeyService:
         if row is None:
             raise HistoryStorageError("history data key is unavailable")
         return self._unwrap(row)
+
+    async def rewrap_data_keys(
+        self,
+        session: AsyncSession,
+        *,
+        batch_size: int = 500,
+    ) -> int:
+        """Rewrap one locked batch without rewriting encrypted objects."""
+        if batch_size < 1:
+            raise ValueError("batch_size must be positive")
+        rows = list(
+            await session.scalars(
+                select(BrowserHistoryUserKey)
+                .where(BrowserHistoryUserKey.wrapping_key_version != self.keyring.current_version)
+                .order_by(
+                    BrowserHistoryUserKey.user_id,
+                    BrowserHistoryUserKey.data_key_version,
+                )
+                .with_for_update(skip_locked=True)
+                .limit(batch_size)
+            )
+        )
+        for row in rows:
+            data_key = self._unwrap(row)
+            wrapped, wrapping_version = self.keyring.wrap_data_key(
+                data_key,
+                user_id=row.user_id,
+                data_key_version=row.data_key_version,
+            )
+            row.wrapped_data_key = wrapped
+            row.wrapping_key_version = wrapping_version
+        return len(rows)
 
     def _unwrap(self, row: BrowserHistoryUserKey) -> bytes:
         if row.wrap_alg != "AES-256-GCM":

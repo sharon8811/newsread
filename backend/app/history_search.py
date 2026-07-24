@@ -4,7 +4,7 @@ import logging
 from dataclasses import dataclass
 from datetime import date
 
-from sqlalchemy import case, func, literal_column, or_, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import embeddings, history_embeddings, ranking
@@ -12,7 +12,6 @@ from .config import settings
 from .models import (
     BrowserHistoryDocument,
     BrowserHistoryDocumentEmbedding,
-    BrowserHistoryEmbedding,
     BrowserHistoryPage,
     BrowserHistoryPageDocument,
 )
@@ -59,84 +58,25 @@ async def _keyword_ids(
     base,
     query: str,
 ) -> list[int]:
-    tsquery = func.websearch_to_tsquery("english", query)
-    useful = "%" not in query and "_" not in query
-    if useful:
-        useful = bool(await session.scalar(select(func.numnode(tsquery))))
-    if useful:
-        search_tsv = literal_column("browser_history_pages.search_tsv")
-        statement = (
-            base.with_only_columns(BrowserHistoryPage.id, maintain_column_froms=True)
-            .where(search_tsv.op("@@")(tsquery))
-            .order_by(
-                func.ts_rank(search_tsv, tsquery).desc(),
-                BrowserHistoryPage.last_visited_at.desc(),
-                BrowserHistoryPage.id.desc(),
-            )
-            .limit(HISTORY_SEARCH_POOL)
-        )
-    else:
-        pattern = f"%{_escape_ilike(query)}%"
-        title_match = BrowserHistoryPage.title.ilike(pattern, escape="\\")
-        hostname_match = BrowserHistoryPage.hostname.ilike(pattern, escape="\\")
-        text_match = BrowserHistoryPage.text.ilike(pattern, escape="\\")
-        relevance = case(
-            (title_match, 3),
-            (hostname_match, 2),
-            else_=1,
-        )
-        statement = (
-            base.with_only_columns(BrowserHistoryPage.id, maintain_column_froms=True)
-            .where(or_(title_match, hostname_match, text_match))
-            .order_by(
-                relevance.desc(),
-                BrowserHistoryPage.last_visited_at.desc(),
-                BrowserHistoryPage.id.desc(),
-            )
-            .limit(HISTORY_SEARCH_POOL)
-        )
-    return list(await session.scalars(statement))
-
-
-async def hybrid_search_ids(
-    session: AsyncSession,
-    *,
-    user_id: int,
-    query: str,
-    hostname: str | None,
-    date_from: date | None,
-    date_to: date | None,
-) -> list[int]:
-    base = scoped_pages(
-        user_id,
-        hostname=hostname,
-        date_from=date_from,
-        date_to=date_to,
+    pattern = f"%{_escape_ilike(query)}%"
+    title_match = BrowserHistoryPage.title.ilike(pattern, escape="\\")
+    hostname_match = BrowserHistoryPage.hostname.ilike(pattern, escape="\\")
+    relevance = case(
+        (title_match, 2),
+        (hostname_match, 1),
+        else_=0,
     )
-    keyword_ids = await _keyword_ids(session, base, query)
-    if not history_embeddings.is_configured():
-        return keyword_ids
-    try:
-        query_vector = await embeddings.embed_query(query)
-    except Exception as exc:
-        logger.warning(
-            "History query embedding failed, using keyword search: %s",
-            exc,
-        )
-        return keyword_ids
-
-    vector_statement = (
+    statement = (
         base.with_only_columns(BrowserHistoryPage.id, maintain_column_froms=True)
-        .join(
-            BrowserHistoryEmbedding,
-            BrowserHistoryEmbedding.page_id == BrowserHistoryPage.id,
+        .where(or_(title_match, hostname_match))
+        .order_by(
+            relevance.desc(),
+            BrowserHistoryPage.last_visited_at.desc(),
+            BrowserHistoryPage.id.desc(),
         )
-        .where(BrowserHistoryEmbedding.model == settings.openai_embedding_model)
-        .order_by(BrowserHistoryEmbedding.embedding.cosine_distance(query_vector))
         .limit(HISTORY_SEARCH_POOL)
     )
-    vector_ids = list(await session.scalars(vector_statement))
-    return ranking.rrf_fuse(vector_ids, keyword_ids)
+    return list(await session.scalars(statement))
 
 
 def _location_filters(
@@ -213,7 +153,14 @@ async def _document_keyword_ids(
     if useful:
         useful = bool(await session.scalar(select(func.numnode(tsquery))))
     if useful:
-        page_tsv = literal_column("browser_history_pages.search_tsv")
+        page_tsv = func.to_tsvector(
+            "simple",
+            func.concat_ws(
+                " ",
+                func.coalesce(BrowserHistoryPage.title, ""),
+                func.coalesce(BrowserHistoryPage.hostname, ""),
+            ),
+        )
         document_match = BrowserHistoryDocument.search_tsv.op("@@")(tsquery)
         page_match = page_tsv.op("@@")(tsquery)
         relevance = func.greatest(
@@ -276,36 +223,22 @@ async def _document_vector_ids(
     return list(await session.scalars(statement.limit(HISTORY_SEARCH_POOL)))
 
 
-async def _legacy_page_ids(
+async def _metadata_page_ids(
     session: AsyncSession,
     *,
     user_id: int,
     query: str,
-    query_vector: list[float] | None,
     hostname: str | None,
     date_from: date | None,
     date_to: date | None,
-) -> tuple[list[int], list[int]]:
+) -> list[int]:
     base = scoped_pages(
         user_id,
         hostname=hostname,
         date_from=date_from,
         date_to=date_to,
     ).where(BrowserHistoryPage.current_document_id.is_(None))
-    keyword_ids = await _keyword_ids(session, base, query)
-    if query_vector is None:
-        return keyword_ids, []
-    vector_statement = (
-        base.with_only_columns(BrowserHistoryPage.id, maintain_column_froms=True)
-        .join(
-            BrowserHistoryEmbedding,
-            BrowserHistoryEmbedding.page_id == BrowserHistoryPage.id,
-        )
-        .where(BrowserHistoryEmbedding.model == settings.openai_embedding_model)
-        .order_by(BrowserHistoryEmbedding.embedding.cosine_distance(query_vector))
-        .limit(HISTORY_SEARCH_POOL)
-    )
-    return keyword_ids, list(await session.scalars(vector_statement))
+    return await _keyword_ids(session, base, query)
 
 
 def _tag(kind: str, item_id: int) -> int:
@@ -325,7 +258,7 @@ async def hybrid_search(
     date_from: date | None,
     date_to: date | None,
 ) -> list[HistorySearchHit]:
-    """Return one hit per v2 document plus legacy/metadata-only page hits."""
+    """Return one hit per document plus metadata-only page hits."""
     document_keyword_ids = await _document_keyword_ids(
         session,
         user_id=user_id,
@@ -353,27 +286,18 @@ async def hybrid_search(
         if query_vector is not None
         else []
     )
-    page_keyword_ids, page_vector_ids = await _legacy_page_ids(
+    page_keyword_ids = await _metadata_page_ids(
         session,
         user_id=user_id,
         query=query,
-        query_vector=query_vector,
         hostname=hostname,
         date_from=date_from,
         date_to=date_to,
     )
-    # Document and legacy-page ranks come from separate SQL statements (and,
-    # for keyword search, different tsvector configurations), so their raw
-    # scores are not safely comparable. Prefer structured document hits during
-    # the bounded dual-read window while preserving each source's own rank;
-    # Phase 6 removes the legacy-page leg entirely.
     keyword_leg = [
         *(_tag("document", item_id) for item_id in document_keyword_ids),
         *(_tag("page", item_id) for item_id in page_keyword_ids),
     ]
-    vector_leg = [
-        *(_tag("document", item_id) for item_id in document_vector_ids),
-        *(_tag("page", item_id) for item_id in page_vector_ids),
-    ]
+    vector_leg = [_tag("document", item_id) for item_id in document_vector_ids]
     ranked = ranking.rrf_fuse(vector_leg, keyword_leg)
     return [_untag(value) for value in ranked[:HISTORY_SEARCH_POOL]]

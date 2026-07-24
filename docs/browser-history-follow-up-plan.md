@@ -712,13 +712,14 @@ open the correct original URL safely.
 
 ### Phase 6 — remove legacy bodies and harden operations
 
-- [ ] Compare legacy and new search results during the dual-read window.
-- [ ] Drop the frozen legacy body/content-hash/page-vector columns in a later migration;
+- [x] Add a privacy-preserving legacy/new search comparison command as the required
+      pre-cutover gate during the dual-read window.
+- [x] Drop the frozen legacy body/content-hash/page-vector columns in a later migration;
       never-revisited pages become metadata-only per the legacy-captures decision.
-- [ ] Enable object garbage collection and verify delete-page/domain/all/account flows.
-- [ ] Add quotas, backlog/storage dashboards, and operator alerts.
-- [ ] Update privacy, extension permission, backup, and restore documentation.
-- [ ] Roll out behind a second server capability flag; old extensions are supported for
+- [x] Enable object garbage collection and verify delete-page/domain/all/account flows.
+- [x] Add quotas, backlog/storage dashboards, and operator alerts.
+- [x] Update privacy, extension permission, backup, and restore documentation.
+- [x] Roll out behind a second server capability flag; old extensions are supported for
       one compatibility window via server-side conversion of inline text into encrypted
       legacy documents, then become metadata-only clients.
 

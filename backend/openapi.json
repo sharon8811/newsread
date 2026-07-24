@@ -1880,6 +1880,70 @@
         "title": "BrowserHistoryImageUploadOut",
         "type": "object"
       },
+      "BrowserHistoryOperationsOut": {
+        "properties": {
+          "deletion_backlog_count": {
+            "title": "Deletion Backlog Count",
+            "type": "integer"
+          },
+          "deletion_backlog_oldest_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deletion Backlog Oldest At"
+          },
+          "document_count": {
+            "title": "Document Count",
+            "type": "integer"
+          },
+          "embedding_backlog_count": {
+            "title": "Embedding Backlog Count",
+            "type": "integer"
+          },
+          "embedding_backlog_oldest_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Embedding Backlog Oldest At"
+          },
+          "image_count": {
+            "title": "Image Count",
+            "type": "integer"
+          },
+          "storage_quota_bytes": {
+            "title": "Storage Quota Bytes",
+            "type": "integer"
+          },
+          "storage_used_bytes": {
+            "title": "Storage Used Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "storage_used_bytes",
+          "storage_quota_bytes",
+          "document_count",
+          "image_count",
+          "embedding_backlog_count",
+          "embedding_backlog_oldest_at",
+          "deletion_backlog_count",
+          "deletion_backlog_oldest_at"
+        ],
+        "title": "BrowserHistoryOperationsOut",
+        "type": "object"
+      },
       "BrowserHistoryPageOut": {
         "properties": {
           "captured_at": {
@@ -8295,6 +8359,32 @@
           }
         ],
         "summary": "History Image",
+        "tags": [
+          "browser-history"
+        ]
+      }
+    },
+    "/api/history/operations": {
+      "get": {
+        "operationId": "get_history_operations_api_history_operations_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserHistoryOperationsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get History Operations",
         "tags": [
           "browser-history"
         ]

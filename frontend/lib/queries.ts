@@ -16,6 +16,7 @@ import {
   type BrowserHistoryDocumentSummary,
   type BrowserHistoryExtension,
   type BrowserHistoryListItem,
+  type BrowserHistoryOperations,
   type BrowserHistorySettings,
   type BrowserHistorySort,
   type BrowserHistorySummary,
@@ -139,6 +140,12 @@ export const useHistoryExtension = (enabled = true) =>
 export const useHistorySettings = (enabled = true) =>
   useSWR<BrowserHistorySettings>(enabled ? keys.historySettings : null, fetcher);
 
+export const useHistoryOperations = (enabled = true) =>
+  useSWR<BrowserHistoryOperations>(
+    enabled ? keys.historyOperations : null,
+    fetcher,
+  );
+
 export const useHistoryRules = (enabled = true) =>
   useSWR<BrowserHistoryDomainRule[]>(enabled ? keys.historyRules : null, fetcher);
 
@@ -244,11 +251,13 @@ export function mutateBrowserHistory() {
     (key) => typeof key === "string" && (key === "/history" || key.startsWith("/history?")),
   );
   mutate(keys.historySummary);
+  mutate(keys.historyOperations);
 }
 
 export function mutateBrowserHistorySettings() {
   mutate(keys.historyConnections);
   mutate(keys.historySettings);
+  mutate(keys.historyOperations);
   mutate(keys.historyRules);
   mutate(keys.historySystemRules);
   mutate(keys.historySummary);

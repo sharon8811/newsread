@@ -113,6 +113,46 @@ async def test_content_endpoints_stay_hidden_until_capability_is_enabled(
     assert response.status_code == 404
 
 
+async def test_finalized_server_advertises_revision_three_consistently(
+    client,
+    users,
+    monkeypatch,
+):
+    user = await users.create()
+    with _content_enabled(monkeypatch):
+        monkeypatch.setattr(
+            "app.routers.history.settings.browser_history_finalize_enabled",
+            True,
+        )
+        pairing = await _pair(client, users, user)
+        headers = {"Authorization": f"Bearer {pairing['token']}"}
+        sync = await client.post(
+            "/api/history/sync",
+            json={
+                "records": [
+                    _capture(
+                        "finalized",
+                        "https://finalized.example.com/article",
+                    )
+                ]
+            },
+            headers=headers,
+        )
+        status = await client.get("/api/history/sync/status", headers=headers)
+        content_status = await client.post(
+            "/api/history/sync/content-status",
+            json={"documents": ["a" * 64], "images": []},
+            headers=headers,
+        )
+
+    assert sync.status_code == 200
+    assert status.status_code == 200
+    assert content_status.status_code == 200
+    assert sync.json()["content_capability_revision"] == 3
+    assert status.json()["content_capability_revision"] == 3
+    assert content_status.json()["content_capability_revision"] == 3
+
+
 async def test_document_detail_and_content_are_owner_scoped_and_side_effect_free(
     client,
     users,
@@ -397,11 +437,93 @@ async def test_owner_scoped_content_status_upload_and_private_dedup(
     assert await session.scalar(select(func.count()).select_from(BrowserHistoryPage)) == 2
     assert await session.scalar(select(func.count()).select_from(BrowserHistoryPageDocument)) == 2
     pages = (await session.scalars(select(BrowserHistoryPage))).all()
-    assert all(page.text == "" for page in pages)
-    assert all(page.content_hash is None for page in pages)
     assert all(page.current_document_id is not None for page in pages)
     stored_document = await session.scalar(select(BrowserHistoryDocument))
     assert stored_document.search_tsv is not None
+
+
+async def test_document_upload_enforces_owner_storage_quota(
+    client,
+    users,
+    monkeypatch,
+):
+    user = await users.create()
+    pairing = await _pair(client, users, user)
+    document = _document("This content is larger than the configured quota. " * 10)
+    monkeypatch.setattr(
+        "app.history_ingest.settings.history_user_storage_max_bytes",
+        16,
+    )
+
+    with _content_enabled(monkeypatch) as (_, object_store):
+        response = await client.put(
+            f"/api/history/sync/content/{document.content_hash}",
+            content=document.canonical_bytes,
+            headers={
+                "Authorization": f"Bearer {pairing['token']}",
+                "Content-Type": "application/json",
+            },
+        )
+
+    assert response.status_code == 413
+    assert response.json()["detail"] == "browser history storage quota exceeded"
+    assert object_store.objects == {}
+
+
+async def test_history_operations_are_owner_scoped(
+    client,
+    users,
+    monkeypatch,
+):
+    owner = await users.create()
+    other = await users.create()
+    pairing = await _pair(client, users, owner)
+    document = _document("Owner-private content for operational metrics. " * 10)
+
+    with _content_enabled(monkeypatch):
+        extension_headers = {"Authorization": f"Bearer {pairing['token']}"}
+        assert (
+            await client.put(
+                f"/api/history/sync/content/{document.content_hash}",
+                content=document.canonical_bytes,
+                headers={
+                    **extension_headers,
+                    "Content-Type": "application/json",
+                },
+            )
+        ).status_code == 200
+        assert (
+            await client.post(
+                "/api/history/sync",
+                json={
+                    "records": [
+                        _capture(
+                            "metrics",
+                            "https://metrics.example.com/article",
+                            document.content_hash,
+                        )
+                    ]
+                },
+                headers=extension_headers,
+            )
+        ).status_code == 200
+
+    owner_metrics = await client.get(
+        "/api/history/operations",
+        headers=users.auth(owner),
+    )
+    other_metrics = await client.get(
+        "/api/history/operations",
+        headers=users.auth(other),
+    )
+    assert owner_metrics.status_code == 200
+    assert owner_metrics.json()["storage_used_bytes"] == len(document.canonical_bytes)
+    assert owner_metrics.json()["document_count"] == 1
+    assert owner_metrics.json()["embedding_backlog_count"] == 1
+    assert other_metrics.status_code == 200
+    assert other_metrics.json()["storage_used_bytes"] == 0
+    assert other_metrics.json()["document_count"] == 0
+    assert other_metrics.json()["embedding_backlog_count"] == 0
 
 
 async def test_content_hash_mismatch_and_cross_owner_attach_fail_safely(
@@ -788,7 +910,6 @@ async def test_legacy_inline_capture_becomes_encrypted_document_not_page_text(
 
     page = await session.scalar(select(BrowserHistoryPage))
     document = await session.scalar(select(BrowserHistoryDocument))
-    assert page.text == ""
     assert page.current_document_id == document.id
     assert document.extraction_version == "history-inline-v1"
 
@@ -804,8 +925,8 @@ async def test_legacy_inline_capture_becomes_metadata_only_after_compatibility_w
 
     with _content_enabled(monkeypatch):
         monkeypatch.setattr(
-            "app.routers.history.settings.browser_history_legacy_inline_enabled",
-            False,
+            "app.routers.history.settings.browser_history_finalize_enabled",
+            True,
         )
         response = await client.post(
             "/api/history/sync",
@@ -824,6 +945,5 @@ async def test_legacy_inline_capture_becomes_metadata_only_after_compatibility_w
         assert response.json()["accepted"][0]["record_id"] == "expired-legacy"
 
     page = await session.scalar(select(BrowserHistoryPage))
-    assert page.text == ""
     assert page.current_document_id is None
     assert await session.scalar(select(BrowserHistoryDocument.id)) is None

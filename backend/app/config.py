@@ -43,6 +43,9 @@ class Settings(BaseSettings):
     # Phase 1 lays its schema and storage foundation. Enabling it requires a
     # complete object-store and encryption configuration below.
     browser_history_content_enabled: bool = False
+    # Phase 6 cutover. When enabled the server advertises capability revision
+    # 3 and pre-v2 inline bodies are accepted as metadata only.
+    browser_history_finalize_enabled: bool = False
     # Temporary compatibility window for zip-distributed pre-v2 extensions.
     # Disable after the announced window to accept their visits as metadata only.
     browser_history_legacy_inline_enabled: bool = True
@@ -59,6 +62,14 @@ class Settings(BaseSettings):
     history_object_max_bytes: int = 1024 * 1024
     history_object_compressed_max_bytes: int = 512 * 1024
     history_image_max_bytes: int = 200 * 1024
+    history_user_storage_max_bytes: int = 512 * 1024 * 1024
+    history_embedding_daily_limit: int = 1_000
+    history_object_gc_grace_hours: int = 24
+    history_object_gc_scan_limit: int = 10_000
+    history_object_delete_batch: int = 200
+    history_embedding_backlog_alert_hours: int = 6
+    history_deletion_backlog_alert_hours: int = 1
+    history_storage_alert_ratio: float = 0.9
 
     # AES-256 key-encryption key wrapping per-user history data keys. The
     # current version is used for new/rewrapped rows; previous versions are a
@@ -208,12 +219,28 @@ class Settings(BaseSettings):
                 )
             except HistoryCryptoError as exc:
                 raise ValueError(f"invalid history encryption configuration: {exc}") from exc
-            if (
-                self.history_object_max_bytes < 1
-                or self.history_object_compressed_max_bytes < 1
-                or self.history_image_max_bytes < 1
-            ):
-                raise ValueError("history object and image byte limits must be positive")
+        if self.browser_history_finalize_enabled and not self.browser_history_content_enabled:
+            raise ValueError(
+                "NEWSREAD_BROWSER_HISTORY_FINALIZE_ENABLED requires "
+                "NEWSREAD_BROWSER_HISTORY_CONTENT_ENABLED"
+            )
+        if (
+            self.history_object_max_bytes < 1
+            or self.history_object_compressed_max_bytes < 1
+            or self.history_image_max_bytes < 1
+            or self.history_user_storage_max_bytes < 1
+        ):
+            raise ValueError("history object, image, and storage byte limits must be positive")
+        if (
+            self.history_embedding_daily_limit < 1
+            or self.history_object_gc_grace_hours < 0
+            or self.history_object_gc_scan_limit < 1
+            or self.history_object_delete_batch < 1
+            or self.history_embedding_backlog_alert_hours < 1
+            or self.history_deletion_backlog_alert_hours < 1
+            or not 0 < self.history_storage_alert_ratio <= 1
+        ):
+            raise ValueError("history quota and operations limits are invalid")
         if not is_self_hosted and self.jwt_secret == "dev-secret-change-me":
             raise ValueError(
                 f"NEWSREAD_DEPLOYMENT={self.deployment.value} requires a real "

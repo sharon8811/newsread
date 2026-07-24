@@ -1,14 +1,10 @@
-"""Embedding input and persistence for private browser-history content.
-
-Legacy page vectors remain readable during the migration window. New captures
-are embedded once per content-addressed document, in chunks aligned to the
-browser's captured block anchors.
-"""
+"""Embedding input and persistence for private browser-history documents."""
 
 import logging
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,13 +12,11 @@ from . import embeddings
 from .config import settings
 from .history_content import canonicalize_history_document, decompress_history_document
 from .history_ingest import get_history_ingest_service
-from .history_policy import history_content_hash, history_embedding_text
 from .history_storage import EncryptedHistoryStorage
 from .models import (
     BrowserHistoryDocument,
     BrowserHistoryDocumentEmbedding,
-    BrowserHistoryEmbedding,
-    BrowserHistoryPage,
+    BrowserHistoryEmbeddingUsage,
 )
 
 logger = logging.getLogger(__name__)
@@ -43,55 +37,6 @@ class HistoryDocumentChunk:
 
 def is_configured() -> bool:
     return embeddings.is_configured()
-
-
-def text_for(page: BrowserHistoryPage) -> str:
-    return history_embedding_text(page.title, page.hostname, page.text)
-
-
-def input_hash_for(page: BrowserHistoryPage) -> str:
-    return history_content_hash(page.title, page.hostname, page.text)
-
-
-def stale_input():
-    return or_(
-        BrowserHistoryEmbedding.input_hash.is_(None),
-        BrowserHistoryEmbedding.input_hash != BrowserHistoryPage.content_hash,
-    )
-
-
-async def embed_pages(
-    session: AsyncSession,
-    pages: list[BrowserHistoryPage],
-) -> int:
-    if not pages:
-        return 0
-    texts = [text_for(page) for page in pages]
-    vectors = await embeddings.embed_texts(texts)
-    statement = pg_insert(BrowserHistoryEmbedding).values(
-        [
-            {
-                "page_id": page.id,
-                "model": settings.openai_embedding_model,
-                "embedding": vector,
-                "input_hash": input_hash_for(page),
-            }
-            for page, vector in zip(pages, vectors, strict=False)
-        ]
-    )
-    await session.execute(
-        statement.on_conflict_do_update(
-            index_elements=["page_id"],
-            set_={
-                "embedding": statement.excluded.embedding,
-                "model": statement.excluded.model,
-                "input_hash": statement.excluded.input_hash,
-                "embedded_at": func.now(),
-            },
-        )
-    )
-    await session.commit()
-    return len(pages)
 
 
 def document_is_eligible(document: BrowserHistoryDocument) -> bool:
@@ -270,6 +215,31 @@ async def embed_document(
         )
         if current is not None:
             return 0
+        if not document_is_eligible(document):
+            return 0
+        period_start = datetime.now(UTC).date()
+        await session.execute(
+            pg_insert(BrowserHistoryEmbeddingUsage)
+            .values(
+                user_id=document.user_id,
+                period_start=period_start,
+                document_count=0,
+            )
+            .on_conflict_do_nothing(
+                index_elements=["user_id", "period_start"],
+            )
+        )
+        usage = await session.scalar(
+            select(BrowserHistoryEmbeddingUsage)
+            .where(
+                BrowserHistoryEmbeddingUsage.user_id == document.user_id,
+                BrowserHistoryEmbeddingUsage.period_start == period_start,
+            )
+            .with_for_update()
+        )
+        if usage.document_count >= settings.history_embedding_daily_limit:
+            return 0
+        usage.document_count += 1
         try:
             return await embed_documents(session, [document], storage=storage)
         except Exception:

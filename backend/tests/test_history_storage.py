@@ -109,6 +109,56 @@ async def test_missing_encrypted_object_is_explicit(session, users):
         )
 
 
+@pytest.mark.asyncio
+async def test_data_keys_rewrap_without_rewriting_objects(session, users):
+    user = await users.create()
+    old_key = base64.b64encode(bytes([1]) * 32).decode()
+    new_key = base64.b64encode(bytes([2]) * 32).decode()
+    store = InMemoryObjectStore()
+    old_storage = EncryptedHistoryStorage(
+        store,
+        HistoryKeyService(MasterKeyring.from_config(current_key=old_key, current_version=1)),
+    )
+    plaintext = b"private content"
+    object_hash = hashlib.sha256(plaintext).hexdigest()
+    stored = await old_storage.put(
+        session,
+        user_id=user.id,
+        object_type="document",
+        object_hash=object_hash,
+        plaintext=plaintext,
+    )
+    await session.commit()
+    ciphertext = store.objects[stored.object_key]
+
+    rotated = EncryptedHistoryStorage(
+        store,
+        HistoryKeyService(
+            MasterKeyring.from_config(
+                current_key=new_key,
+                current_version=2,
+                previous_keys_json=f'{{"1":"{old_key}"}}',
+            )
+        ),
+    )
+    assert await rotated.key_service.rewrap_data_keys(session) == 1
+    await session.commit()
+
+    key = await session.scalar(select(BrowserHistoryUserKey))
+    assert key.wrapping_key_version == 2
+    assert store.objects[stored.object_key] == ciphertext
+    assert (
+        await rotated.get(
+            session,
+            user_id=user.id,
+            object_type="document",
+            object_hash=object_hash,
+            object_key=stored.object_key,
+        )
+        == plaintext
+    )
+
+
 def test_history_object_keys_are_owner_scoped_and_strict():
     assert history_object_key(7, "image", "a" * 64) == (
         f"users/7/history/images/sha256/aa/{'a' * 64}"

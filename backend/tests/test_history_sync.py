@@ -95,7 +95,10 @@ async def test_persist_capture_excludes_configured_newsread_host(
     assert rejected.value.code == "excluded"
 
 
-async def test_persist_capture_derives_excerpt_from_text(users, session):
+async def test_persist_capture_discards_inline_body_without_content_pipeline(
+    users,
+    session,
+):
     connection = await _connection(users, session)
     page, _ = await persist_capture(
         session,
@@ -107,4 +110,5 @@ async def test_persist_capture_derives_excerpt_from_text(users, session):
     )
     await session.flush()
 
-    assert page.text_excerpt == "Body text for excerpt fallback"
+    assert page.current_document_id is None
+    assert page.captured_at is None

@@ -15,7 +15,14 @@ from pydantic import ValidationError
 from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from .. import crypto, history_embeddings, history_search, llm, queue
+from .. import (
+    crypto,
+    history_embeddings,
+    history_operations,
+    history_search,
+    llm,
+    queue,
+)
 from ..config import settings
 from ..deps import CurrentUser, DbSession
 from ..history_auth import (
@@ -32,6 +39,7 @@ from ..history_ingest import (
 from ..history_ingest import (
     HistoryIngestError,
     HistoryIngestService,
+    HistoryQuotaExceeded,
     get_history_ingest_service,
     get_optional_history_ingest_service,
 )
@@ -78,6 +86,7 @@ from ..schemas import (
     BrowserHistoryDomainRuleOut,
     BrowserHistoryExtensionOut,
     BrowserHistoryImageUploadOut,
+    BrowserHistoryOperationsOut,
     BrowserHistoryPageOut,
     BrowserHistoryPageSearchOut,
     BrowserHistorySettingsIn,
@@ -103,6 +112,7 @@ TOKEN_CREATION_WINDOW = timedelta(hours=1)
 MAX_SYNC_REQUEST_BYTES = 1024 * 1024
 SYNC_RATE_LIMIT = 60
 SYNC_RATE_WINDOW_SECONDS = 60
+FINALIZED_CONTENT_CAPABILITY_REVISION = 3
 SYNC_REQUEST_OPENAPI = {
     "requestBody": {
         "required": True,
@@ -116,7 +126,13 @@ SYNC_REQUEST_OPENAPI = {
 
 
 def _content_capability_revision() -> int:
-    return CONTENT_CAPABILITY_REVISION if settings.browser_history_content_enabled else 0
+    if not settings.browser_history_content_enabled:
+        return 0
+    return (
+        FINALIZED_CONTENT_CAPABILITY_REVISION
+        if settings.browser_history_finalize_enabled
+        else CONTENT_CAPABILITY_REVISION
+    )
 
 
 async def _settings_for(session: DbSession, user_id: int) -> BrowserHistorySettings:
@@ -401,6 +417,12 @@ async def update_history_settings(
     await session.commit()
     await session.refresh(history_settings)
     return _settings_out(history_settings)
+
+
+@router.get("/operations", response_model=BrowserHistoryOperationsOut)
+async def get_history_operations(user: CurrentUser, session: DbSession):
+    metrics = await history_operations.user_history_operations(session, user.id)
+    return BrowserHistoryOperationsOut(**metrics.__dict__)
 
 
 @router.get("/domain-rules", response_model=list[BrowserHistoryDomainRuleOut])
@@ -1004,13 +1026,15 @@ async def _history_source_names(
 def _history_page_out(
     page: BrowserHistoryPage,
     source_browsers: list[str],
+    *,
+    text_excerpt: str = "",
 ) -> BrowserHistoryPageOut:
     return BrowserHistoryPageOut(
         id=page.id,
         url=page.url,
         title=page.title,
         hostname=page.hostname,
-        text_excerpt=page.text_excerpt,
+        text_excerpt=text_excerpt,
         current_document_id=page.current_document_id,
         favicon_image_id=page.favicon_image_id,
         first_visited_at=page.first_visited_at,
@@ -1019,6 +1043,35 @@ def _history_page_out(
         captured_at=page.captured_at,
         source_browsers=source_browsers,
     )
+
+
+async def _history_page_excerpts(
+    session: DbSession,
+    pages: list[BrowserHistoryPage],
+) -> dict[int, str]:
+    document_to_pages: dict[int, list[int]] = {}
+    for page in pages:
+        if page.current_document_id is not None:
+            document_to_pages.setdefault(page.current_document_id, []).append(page.id)
+    if not document_to_pages:
+        return {}
+    excerpts = {
+        document_id: excerpt
+        for document_id, excerpt in await session.execute(
+            select(
+                BrowserHistoryDocument.id,
+                BrowserHistoryDocument.text_excerpt,
+            ).where(
+                BrowserHistoryDocument.id.in_(document_to_pages),
+                BrowserHistoryDocument.user_id == pages[0].user_id,
+            )
+        )
+    }
+    return {
+        page_id: excerpts.get(document_id, "")
+        for document_id, page_ids in document_to_pages.items()
+        for page_id in page_ids
+    }
 
 
 async def _history_search_results(
@@ -1264,7 +1317,15 @@ async def list_history(
         return []
 
     sources = await _history_source_names(session, [page.id for page in pages])
-    return [_history_page_out(page, sources[page.id]) for page in pages]
+    excerpts = await _history_page_excerpts(session, pages)
+    return [
+        _history_page_out(
+            page,
+            sources[page.id],
+            text_excerpt=excerpts.get(page.id, ""),
+        )
+        for page in pages
+    ]
 
 
 @router.delete("/{page_id}", status_code=204)
@@ -1415,6 +1476,9 @@ async def upload_history_content(
             claimed_hash=content_hash,
             payload=payload,
         )
+    except HistoryQuotaExceeded as exc:
+        await session.rollback()
+        raise HTTPException(status_code=413, detail=str(exc)) from exc
     except HistoryIngestError as exc:
         await session.rollback()
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -1451,6 +1515,9 @@ async def upload_history_image(
             claimed_hash=image_hash,
             payload=payload,
         )
+    except HistoryQuotaExceeded as exc:
+        await session.rollback()
+        raise HTTPException(status_code=413, detail=str(exc)) from exc
     except HistoryIngestError as exc:
         await session.rollback()
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -1538,7 +1605,10 @@ async def sync_history(
                 disabled_system_rule_ids=disabled_system_rule_ids,
                 ingest=ingest,
                 content_pipeline_enabled=_content_capability_revision() >= 2,
-                legacy_inline_content_enabled=settings.browser_history_legacy_inline_enabled,
+                legacy_inline_content_enabled=(
+                    settings.browser_history_legacy_inline_enabled
+                    and not settings.browser_history_finalize_enabled
+                ),
                 newly_linked_document_ids=newly_linked_document_ids,
                 now=now,
             )

@@ -1007,6 +1007,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/history/operations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get History Operations */
+        get: operations["get_history_operations_api_history_operations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/history/settings": {
         parameters: {
             query?: never;
@@ -2562,6 +2579,25 @@ export interface components {
             image_id: number;
             /** Storage Status */
             storage_status: string;
+        };
+        /** BrowserHistoryOperationsOut */
+        BrowserHistoryOperationsOut: {
+            /** Deletion Backlog Count */
+            deletion_backlog_count: number;
+            /** Deletion Backlog Oldest At */
+            deletion_backlog_oldest_at: string | null;
+            /** Document Count */
+            document_count: number;
+            /** Embedding Backlog Count */
+            embedding_backlog_count: number;
+            /** Embedding Backlog Oldest At */
+            embedding_backlog_oldest_at: string | null;
+            /** Image Count */
+            image_count: number;
+            /** Storage Quota Bytes */
+            storage_quota_bytes: number;
+            /** Storage Used Bytes */
+            storage_used_bytes: number;
         };
         /** BrowserHistoryPageOut */
         BrowserHistoryPageOut: {
@@ -5650,6 +5686,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_history_operations_api_history_operations_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrowserHistoryOperationsOut"];
                 };
             };
         };

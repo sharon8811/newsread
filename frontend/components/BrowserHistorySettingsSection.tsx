@@ -9,6 +9,7 @@ import {
   type BrowserConnection,
   type BrowserConnectionCreated,
   type BrowserHistoryDeletion,
+  type BrowserHistoryOperations,
   type BrowserHistorySettings,
   type BrowserHistorySystemRule,
 } from "@/lib/api";
@@ -18,6 +19,7 @@ import {
   mutateBrowserHistorySettings,
   useHistoryConnections,
   useHistoryExtension,
+  useHistoryOperations,
   useHistoryRules,
   useHistorySettings,
   useHistorySummary,
@@ -50,10 +52,33 @@ function useIsChromium() {
   );
 }
 
+function formatStorageBytes(value: number) {
+  if (value < 1024) return `${value} B`;
+  const units = ["KB", "MB", "GB", "TB"];
+  let amount = value;
+  let unit = -1;
+  do {
+    amount /= 1024;
+    unit += 1;
+  } while (amount >= 1024 && unit < units.length - 1);
+  return `${amount.toLocaleString(undefined, {
+    maximumFractionDigits: amount < 10 ? 1 : 0,
+  })} ${units[unit]}`;
+}
+
+function storagePercent(operations: BrowserHistoryOperations) {
+  if (operations.storage_quota_bytes <= 0) return 0;
+  return Math.min(
+    100,
+    (operations.storage_used_bytes / operations.storage_quota_bytes) * 100,
+  );
+}
+
 export default function BrowserHistorySettingsSection() {
   const { data: connections, isLoading: loadingConnections } =
     useHistoryConnections();
   const { data: settings } = useHistorySettings();
+  const { data: operations } = useHistoryOperations();
   const { data: summary } = useHistorySummary();
   const { data: rules } = useHistoryRules();
   const { data: systemRules } = useHistorySystemRules();
@@ -254,6 +279,72 @@ export default function BrowserHistorySettingsSection() {
           <li>Create a pairing token below and paste it into the extension.</li>
         </ol>
       </div>
+
+      {operations && (
+        <div
+          className="mt-3 rounded-lg border p-4"
+          style={{ background: "var(--bg-raised)", borderColor: "var(--line)" }}
+        >
+          <div className="flex items-end justify-between gap-3">
+            <div>
+              <p className="text-body font-medium">Private content storage</p>
+              <p className="mt-0.5 text-body-sm" style={{ color: "var(--ink-faint)" }}>
+                {formatStorageBytes(operations.storage_used_bytes)} of{" "}
+                {formatStorageBytes(operations.storage_quota_bytes)} used
+              </p>
+            </div>
+            <p className="text-caption" style={{ color: "var(--ink-faint)" }}>
+              Encrypted
+            </p>
+          </div>
+          <div
+            className="mt-3 h-1.5 overflow-hidden rounded-full"
+            style={{ background: "var(--bg-hover)" }}
+            role="progressbar"
+            aria-label="Browser history storage used"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round(storagePercent(operations))}
+          >
+            <div
+              className="h-full rounded-full"
+              style={{
+                background: "var(--accent)",
+                width: `${storagePercent(operations)}%`,
+              }}
+            />
+          </div>
+          <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {[
+              ["Documents", operations.document_count.toLocaleString()],
+              ["Images", operations.image_count.toLocaleString()],
+              [
+                "Search indexing",
+                operations.embedding_backlog_count
+                  ? `${operations.embedding_backlog_count.toLocaleString()} waiting`
+                  : "Up to date",
+              ],
+              [
+                "Object cleanup",
+                operations.deletion_backlog_count
+                  ? `${operations.deletion_backlog_count.toLocaleString()} waiting`
+                  : "Up to date",
+              ],
+            ].map(([label, value]) => (
+              <div
+                key={label}
+                className="rounded-md px-3 py-2.5"
+                style={{ background: "var(--bg)" }}
+              >
+                <p className="text-caption" style={{ color: "var(--ink-faint)" }}>
+                  {label}
+                </p>
+                <p className="mt-0.5 text-body-sm font-medium">{value}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div
         className="mt-3 rounded-lg border p-4"

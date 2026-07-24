@@ -127,6 +127,14 @@ def test_history_content_storage_accepts_valid_configuration():
     assert configured.browser_history_content_enabled is True
 
 
+def test_history_finalize_requires_content_pipeline():
+    with pytest.raises(
+        ValidationError,
+        match="NEWSREAD_BROWSER_HISTORY_CONTENT_ENABLED",
+    ):
+        Settings(_env_file=None, browser_history_finalize_enabled=True)
+
+
 @pytest.mark.parametrize(
     ("overrides", "message"),
     [
@@ -134,6 +142,9 @@ def test_history_content_storage_accepts_valid_configuration():
         ({"history_encryption_wrapping_key_version": 0}, "positive integer"),
         ({"history_object_max_bytes": 0}, "byte limits must be positive"),
         ({"history_object_compressed_max_bytes": 0}, "byte limits must be positive"),
+        ({"history_user_storage_max_bytes": 0}, "byte limits must be positive"),
+        ({"history_embedding_daily_limit": 0}, "operations limits are invalid"),
+        ({"history_storage_alert_ratio": 1.1}, "operations limits are invalid"),
     ],
 )
 def test_history_content_storage_rejects_invalid_configuration(overrides, message):

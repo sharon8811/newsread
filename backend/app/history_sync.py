@@ -15,7 +15,6 @@ from .history_policy import (
     NormalizedHistoryUrl,
     clamp_history_timestamp,
     domain_matches,
-    history_content_hash,
     validate_normalized_history_url,
 )
 from .history_system_policy import matching_system_rule
@@ -164,22 +163,6 @@ async def persist_capture(
         lead_image = images_by_hash.get(capture.lead_image_hash or "")
         favicon_image = images_by_hash.get(capture.favicon_image_hash or "")
 
-    stores_inline_text = mode != "metadata_only" and not content_pipeline_enabled
-    incoming_text = capture.text if stores_inline_text else ""
-    incoming_excerpt = (
-        capture.text_excerpt
-        if stores_inline_text
-        else document.text_excerpt
-        if document is not None
-        else ""
-    )
-    if incoming_text and not incoming_excerpt:
-        incoming_excerpt = incoming_text[:400]
-    content_hash = (
-        history_content_hash(capture.title, normalized.hostname, incoming_text)
-        if stores_inline_text
-        else None
-    )
     if lead_image is not None:
         if document is None:
             raise SyncRejection("invalid", "lead images require captured document content")
@@ -198,15 +181,12 @@ async def persist_capture(
             url=normalized.url,
             title=capture.title,
             hostname=normalized.hostname,
-            text=incoming_text,
-            text_excerpt=incoming_excerpt,
-            content_hash=content_hash,
             current_document_id=document.id if document is not None else None,
             favicon_image_id=favicon_image.id if favicon_image is not None else None,
             first_visited_at=first_visited_at,
             last_visited_at=last_visited_at,
             visit_count=0,
-            captured_at=captured_at if incoming_text or document is not None else None,
+            captured_at=captured_at if document is not None else None,
         )
         .on_conflict_do_nothing(index_elements=["user_id", "url_hash"])
         .returning(BrowserHistoryPage.id)
@@ -229,27 +209,13 @@ async def persist_capture(
     if not created:
         current_content_at = page.captured_at
         newer = current_content_at is None or incoming_content_at > current_content_at
-        changed = False
         if capture.title and (not page.title or newer):
             page.title = capture.title
-            changed = True
-        if incoming_text and (not page.text or newer):
-            page.text = incoming_text
-            page.text_excerpt = incoming_excerpt
-            page.captured_at = incoming_content_at
-            changed = True
         if document is not None and (page.current_document_id is None or newer):
             page.current_document_id = document.id
-            page.text_excerpt = document.text_excerpt
             page.captured_at = incoming_content_at
-            changed = True
         if favicon_image is not None and (page.favicon_image_id is None or newer):
             page.favicon_image_id = favicon_image.id
-            changed = True
-        if changed:
-            if document is None and stores_inline_text:
-                page.content_hash = history_content_hash(page.title, page.hostname, page.text)
-
     if document is not None:
         # Serialize first-link creation for this immutable document. Without
         # the row lock, concurrent captures at different URLs could both

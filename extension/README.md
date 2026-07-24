@@ -1,9 +1,11 @@
 # NewsRead History extension
 
 Manifest V3 Chrome/Chromium extension for the NewsRead browser-history feature.
-It captures one plain-text DOM representation, keeps a bounded IndexedDB
-outbox, and syncs batches to the paired NewsRead server. It does not use an
-offscreen document, local embedding model, or `SemanticEmbedder`.
+It extracts a bounded structured representation of visible page content in the
+browser, hashes it locally, keeps a bounded IndexedDB outbox, and syncs it to
+the paired NewsRead server. Short or late-rendering pages still sync metadata.
+It does not use an offscreen document, local embedding model, or
+`SemanticEmbedder`.
 
 ## Development
 
@@ -25,8 +27,15 @@ origin. The extension requests Chrome's `history` permission only if the user
 starts the optional metadata import.
 
 Automatic capture uses a declared content script on HTTP(S) pages. Incognito is
-disabled by the manifest. The service worker receives visible text only, checks
-pause/exclusion rules before queueing, and never logs page text or tokens.
+disabled by the manifest. The service worker receives extracted visible text
+and canvas-re-encoded eligible images, checks pause/exclusion rules before
+queueing, and never logs page text or tokens. It sends content only to the
+exact NewsRead origin granted during pairing.
+
+Citation navigation does not add persistent page markup. Native Text Fragments
+are preferred; the extension fallback stores a claim-once anchor in
+memory-only session storage and uses a temporary CSS Custom Highlight over a
+`Range`.
 
 ## Manual unpacked-extension checklist
 

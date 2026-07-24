@@ -154,6 +154,17 @@ class BrowserHistorySettingsIn(BaseModel):
     retention_days: HistoryRetentionDays | None = None
 
 
+class BrowserHistoryOperationsOut(BaseModel):
+    storage_used_bytes: int
+    storage_quota_bytes: int
+    document_count: int
+    image_count: int
+    embedding_backlog_count: int
+    embedding_backlog_oldest_at: datetime | None
+    deletion_backlog_count: int
+    deletion_backlog_oldest_at: datetime | None
+
+
 DomainRuleMode = Literal["exclude", "metadata_only"]
 
 

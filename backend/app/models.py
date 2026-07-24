@@ -279,9 +279,6 @@ class BrowserHistoryPage(Base):
     url: Mapped[str] = mapped_column(String(2048))
     title: Mapped[str] = mapped_column(Text, default="", server_default="")
     hostname: Mapped[str] = mapped_column(String(253))
-    text: Mapped[str] = mapped_column(Text, default="", server_default="")
-    text_excerpt: Mapped[str] = mapped_column(Text, default="", server_default="")
-    content_hash: Mapped[str | None] = mapped_column(String(64))
     current_document_id: Mapped[int | None] = mapped_column(
         ForeignKey("browser_history_documents.id", ondelete="SET NULL"),
         index=True,
@@ -350,22 +347,6 @@ class BrowserHistoryPageConnection(Base):
     )
 
 
-class BrowserHistoryEmbedding(Base):
-    """Current-model vector for one private history page."""
-
-    __tablename__ = "browser_history_embeddings"
-
-    page_id: Mapped[int] = mapped_column(
-        ForeignKey("browser_history_pages.id", ondelete="CASCADE"), primary_key=True
-    )
-    model: Mapped[str] = mapped_column(String(120))
-    embedding: Mapped[list] = mapped_column(Vector())
-    input_hash: Mapped[str] = mapped_column(String(64))
-    embedded_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
-
-
 class BrowserHistoryDocumentEmbedding(Base):
     """One semantic-search chunk for a private history document."""
 
@@ -387,6 +368,27 @@ class BrowserHistoryDocumentEmbedding(Base):
     block_end_id: Mapped[str | None] = mapped_column(String(32))
     embedded_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class BrowserHistoryEmbeddingUsage(Base):
+    """Per-user daily reservation counter for automatic history embeddings."""
+
+    __tablename__ = "browser_history_embedding_usage"
+    __table_args__ = (
+        CheckConstraint(
+            "document_count >= 0",
+            name="ck_browser_history_embedding_usage_count",
+        ),
+    )
+
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    period_start: Mapped[date] = mapped_column(Date, primary_key=True)
+    document_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
 
 
@@ -441,6 +443,18 @@ class BrowserHistoryObjectDeletion(Base):
     last_error: Mapped[str | None] = mapped_column(Text)
     queued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+
+
+class BrowserHistoryGcState(Base):
+    """Durable pagination state for bounded object-store sweeps."""
+
+    __tablename__ = "browser_history_gc_state"
+
+    name: Mapped[str] = mapped_column(String(64), primary_key=True)
+    cursor: Mapped[str | None] = mapped_column(Text)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
 
 
 class BrowserHistoryDeletion(Base):

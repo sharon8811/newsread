@@ -329,6 +329,7 @@ export type DislikeRuleCreated = Schemas["DislikeRuleCreateOut"];
 export type BrowserConnection = Schemas["BrowserConnectionOut"];
 export type BrowserConnectionCreated = Schemas["BrowserConnectionCreatedOut"];
 export type BrowserHistorySettings = Schemas["BrowserHistorySettingsOut"];
+export type BrowserHistoryOperations = Schemas["BrowserHistoryOperationsOut"];
 export type BrowserHistoryDomainRule = Schemas["BrowserHistoryDomainRuleOut"];
 export type BrowserHistorySystemRule = Schemas["BrowserHistorySystemRuleOut"];
 export type BrowserHistorySummary = Schemas["BrowserHistorySummaryOut"];

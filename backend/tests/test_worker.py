@@ -1,6 +1,7 @@
 from datetime import UTC, datetime, timedelta
 
 from app import worker
+from app.history_operations import HistoryOperatorMetrics
 from app.models import Article, ArticleEmbedding, Feed
 from app.summarizer import SummarySkipped, ThinContentError
 
@@ -41,6 +42,27 @@ async def test_for_each_article_missing_article():
         raise AssertionError("fn must not be called for a missing article")
 
     await worker._for_each_article([99999], concurrency=1, label="Enrichment", fn=fail)
+
+
+async def test_history_operations_audit_counts_stale_pipeline_alerts(monkeypatch):
+    old = datetime.now(UTC) - timedelta(days=1)
+
+    async def metrics(_session):
+        return HistoryOperatorMetrics(
+            embedding_backlog_count=4,
+            embedding_backlog_oldest_at=old,
+            deletion_backlog_count=2,
+            deletion_backlog_oldest_at=old,
+            users_near_storage_quota=1,
+            stored_bytes=1234,
+        )
+
+    monkeypatch.setattr(
+        worker.history_operations,
+        "operator_history_operations",
+        metrics,
+    )
+    assert await worker.audit_history_operations() == 3
 
 
 async def test_for_each_article_calls_fn(session):
@@ -173,10 +195,6 @@ async def test_enrich_and_summarize_full_pipeline(session, monkeypatch):
 
     history_calls = []
 
-    async def fake_embed_history_pages():
-        history_calls.append("pages")
-        return 1
-
     async def fake_embed_history_documents():
         history_calls.append("documents")
         return 2
@@ -185,7 +203,6 @@ async def test_enrich_and_summarize_full_pipeline(session, monkeypatch):
     monkeypatch.setattr(worker, "extract_entities", fake_extract)
     monkeypatch.setattr(worker, "generate_summaries", fake_summarize)
     monkeypatch.setattr(worker, "embed_articles_batch", fake_embed)
-    monkeypatch.setattr(worker, "embed_history_pages_batch", fake_embed_history_pages)
     monkeypatch.setattr(
         worker,
         "embed_history_documents_batch",
@@ -196,7 +213,7 @@ async def test_enrich_and_summarize_full_pipeline(session, monkeypatch):
     await worker.enrich_and_summarize(feed_id=feed.id)
     assert summarized == [art.id]
     assert skipped.id not in summarized
-    assert history_calls == ["pages", "documents"]
+    assert history_calls == ["documents"]
 
 
 async def test_enrich_and_summarize_scoped_to_feed(session, monkeypatch):
@@ -602,7 +619,10 @@ def test_worker_settings_shape():
         worker.send_share_push,
         worker.send_project_pin_push,
     ]
-    assert len(worker.WorkerSettings.cron_jobs) == 5
+    assert len(worker.WorkerSettings.cron_jobs) == 7
+    cron_functions = {job.coroutine for job in worker.WorkerSettings.cron_jobs}
+    assert worker.cleanup_history_objects in cron_functions
+    assert worker.audit_history_operations in cron_functions
 
 
 # --- send_share_push ---
