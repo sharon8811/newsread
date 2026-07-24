@@ -615,8 +615,8 @@ Merge gate:
 
 ### Phase 5 — End-to-end hardening and rollout (M)
 
-- [ ] Run the full backend and frontend test suites.
-- [ ] Use the repo verification workflow to launch FastAPI + Next.js and drive the
+- [x] Run the full backend and frontend test suites.
+- [x] Use the repo verification workflow to launch FastAPI + Next.js and drive the
       complete pair → visit → sync → search → delete → revoke journey.
 - [ ] Test multiple NewsRead users and two extension connections for one user.
 - [ ] Test large queues, backend downtime, expired/revoked credentials, retention,
@@ -626,6 +626,27 @@ Merge gate:
 - [ ] Add user-facing privacy documentation and extension permission explanations.
 - [ ] Enable the feature for self-hosted deployments; keep public deployment
       rollout separately controlled until abuse/rate limits are verified.
+
+Phase 5 verification evidence (2026-07-24):
+
+- Backend: 947 tests passed.
+- Frontend: 763 tests passed with 90.10% branch coverage.
+- Extension: 40 tests passed, followed by a clean TypeScript check and build.
+- The isolated `newsread_test` stack ran on FastAPI `:8010` and Next.js `:3010`
+  with a disposable Chrome-for-Testing profile and unpacked `extension/dist`.
+- The live journey created a one-time token in Settings, paired from the real
+  extension action-popup context, captured and synced deterministic visible DOM
+  text, found it through both the API and History UI, deleted it through the UI,
+  proved a stale revisit could not restore the tombstoned page, revoked the
+  connection through Settings, and proved the next capture remained queued after
+  the server rejected the revoked credential.
+- A second NewsRead user returned no history while the first user's capture
+  existed, and the extension service worker emitted no console errors.
+- Headless Chromium cannot accept its native optional-host permission bubble.
+  The isolated backend therefore allowed only the unpacked extension origin via
+  CORS while the test invoked the real popup `PAIR` message directly. The
+  production manifest and optional-host permission behavior were unchanged and
+  remain covered by the manual unpacked-extension checklist.
 
 ## Test matrix
 
