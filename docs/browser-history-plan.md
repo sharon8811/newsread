@@ -95,8 +95,14 @@ there.
 3. User creates a connection named after the browser/device, for example
    “Sharon's MacBook Chrome.”
 4. NewsRead displays a one-time pairing token.
-5. User installs the extension, enters their NewsRead server URL and token, and
-   verifies the connection.
+5. User installs the extension. Settings → Browser history carries an "Install
+   the extension" card that serves the packaged zip from the server itself
+   (`GET /api/history/extension/download`, built by the extension's
+   `npm run build` and mounted into Docker) with load-unpacked steps; the
+   download hides when the server has no package. A Chrome Web Store listing
+   remains the eventual replacement.
+6. User enters their NewsRead server URL and token, and verifies the
+   connection.
 6. User chooses whether to import existing Chrome history metadata.
 7. Extension begins capturing new page loads and syncing in the background.
 
@@ -618,14 +624,20 @@ Merge gate:
 - [x] Run the full backend and frontend test suites.
 - [x] Use the repo verification workflow to launch FastAPI + Next.js and drive the
       complete pair → visit → sync → search → delete → revoke journey.
-- [ ] Test multiple NewsRead users and two extension connections for one user.
-- [ ] Test large queues, backend downtime, expired/revoked credentials, retention,
-      server URL changes, and model changes.
-- [ ] Measure sync request size, embedding backlog, query latency, and database
+- [x] Test multiple NewsRead users and two extension connections for one user.
+- [x] Test large queues, backend downtime, expired/revoked credentials, retention,
+      server URL changes, and model changes (model-switch re-embed via the
+      backend unit suite; keyword-only operation verified live).
+- [x] Measure sync request size, embedding backlog, query latency, and database
       growth on a realistic corpus.
-- [ ] Add user-facing privacy documentation and extension permission explanations.
-- [ ] Enable the feature for self-hosted deployments; keep public deployment
-      rollout separately controlled until abuse/rate limits are verified.
+- [x] Add user-facing privacy documentation and extension permission explanations
+      (`docs/browser-history-privacy.md`, linked from both READMEs).
+- [x] Rollout decided: the flag stays **deliberately opt-in in every deployment
+      mode** (amending this item's original "enable for self-hosted by default")
+      because captured page text is sensitive; self-hosted enablement is one
+      documented env var, and public deployments now have verified per-connection
+      rate limits plus the operator notes in the privacy document. Revisit an
+      on-by-default self-hosted setting only alongside encrypted-at-rest text.
 
 Phase 5 verification evidence (2026-07-24):
 
@@ -647,6 +659,42 @@ Phase 5 verification evidence (2026-07-24):
   CORS while the test invoked the real popup `PAIR` message directly. The
   production manifest and optional-host permission behavior were unchanged and
   remain covered by the manual unpacked-extension checklist.
+
+Independent re-verification and completion evidence (2026-07-24, second run):
+
+- The full journey above was reproduced from scratch on the isolated stack
+  (`newsread_test`, FastAPI `:8010`, Next.js `:3010`, Chrome for Testing 148
+  with the unpacked `extension/dist`, host-resolver-mapped public hostnames
+  served locally): Settings-UI token reveal → real-extension pairing →
+  content-script capture of live DOM text → sync → API and `/history` UI
+  search → UI delete → tombstone rejected a stale revisit → the
+  revision-acknowledged revisit recreated the page → Settings-UI revoke →
+  next sync rejected with the queue retained. Second-user isolation returned
+  zero rows and a zero summary throughout.
+- Two connections for one user: a second connection synced absolute count 4
+  against the first browser's 3; the page aggregated to 7 visits with both
+  browser names in `source_browsers`; replaying the same batch and a regressed
+  count of 2 changed nothing.
+- Live rate limit: request 61 within a minute returned 429 with
+  `Retry-After: 60`.
+- Backend downtime: with the server stopped, a capture stayed queued with a
+  visible failure state; after restart one forced sync drained the queue and
+  the offline capture became searchable.
+- Server URL change: re-pairing the same extension to a different origin with
+  a fresh token wiped local queue/visit data (fresh connection reported
+  count 1) and appeared as a third source browser.
+- Retention: with a 30-day policy, a 45-day-old synced page was removed by
+  `cleanup_history_retention` (deleted exactly 1) while the recent page
+  survived.
+- Measurements on a 1,200-page corpus (30 hostnames, ~2.4 KB text each):
+  average sync batch 305 KB / 100 records, average ingest 545 ms (max 835 ms);
+  query latency medians — recent list 8 ms, keyword search 25 ms, filtered
+  search 23 ms, summary 7 ms; `browser_history_pages` total size 6.6 MB
+  (~5.5 KB/page including tsvector and indexes); embedding backlog equalled the
+  corpus (no embedding provider configured), and search operated keyword-only
+  as designed.
+- A console-error sweep across normal pages, a private-host page, a 404, and a
+  pause/unpause cycle recorded zero service-worker errors.
 
 ## Test matrix
 
