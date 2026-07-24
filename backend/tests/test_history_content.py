@@ -7,6 +7,7 @@ import pytest
 from PIL import Image, features
 
 from app.history_content import (
+    HISTORY_CONTENT_HASH_PREFIX,
     HistoryContentError,
     canonicalize_history_document,
     canonicalize_history_document_value,
@@ -17,13 +18,14 @@ from app.history_content import (
 SHARED = Path(__file__).resolve().parents[2] / "shared"
 
 
-def test_shared_canonicalization_fixture_matches_python_contract():
-    fixture = json.loads((SHARED / "history-canonicalization-v1.json").read_text())
+def test_shared_canonicalization_fixtures_match_python_contract():
+    fixtures = json.loads((SHARED / "history-canonicalization-v1.json").read_text())
+    assert fixtures["hash_prefix"].encode() == HISTORY_CONTENT_HASH_PREFIX
 
-    canonical = canonicalize_history_document_value(fixture["input"])
-
-    assert canonical.canonical_bytes.decode() == fixture["canonical_json"]
-    assert canonical.content_hash == fixture["content_hash"]
+    for fixture in fixtures["cases"]:
+        canonical = canonicalize_history_document(fixture["canonical_json"].encode())
+        assert canonical.canonical_bytes.decode() == fixture["canonical_json"], fixture["name"]
+        assert canonical.content_hash == fixture["content_hash"], fixture["name"]
 
 
 @pytest.mark.parametrize(

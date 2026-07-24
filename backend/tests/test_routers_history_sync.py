@@ -609,7 +609,7 @@ async def test_history_recent_and_ranked_cursor_pagination(client, users):
 async def test_sync_rate_limit_returns_retry_after(client, users, monkeypatch):
     user = await users.create()
     pairing = await _pair(client, users, user)
-    monkeypatch.setattr(history_router, "SYNC_RATE_LIMIT", 1)
+    monkeypatch.setattr(history_router, "EXTENSION_RATE_LIMIT", 1)
     assert (await _sync(client, pairing["token"], [_capture("first")])).status_code == 200
     limited = await _sync(client, pairing["token"], [_capture("second")])
     assert limited.status_code == 429

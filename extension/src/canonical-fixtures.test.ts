@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
+  CONTENT_HASH_PREFIX,
   canonicalizeCaptureDocument,
   hashCaptureDocument,
 } from "./capture-document.js";
@@ -16,6 +17,18 @@ interface FixtureCase {
 interface FixtureFile {
   hash_prefix: string;
   cases: FixtureCase[];
+}
+
+interface CanonicalizationFixtureCase {
+  name: string;
+  input: CaptureDocument;
+  canonical_json: string;
+  content_hash: string;
+}
+
+interface CanonicalizationFixtureFile {
+  hash_prefix: string;
+  cases: CanonicalizationFixtureCase[];
 }
 
 describe("canonical capture fixtures", () => {
@@ -37,22 +50,25 @@ describe("canonical capture fixtures", () => {
     }
   });
 
-  it("normalizes the shared v2 document identically to the backend", async () => {
+  it("normalizes the shared v2 corpus identically to the backend", async () => {
     const path = new URL(
       "../../shared/history-canonicalization-v1.json",
       import.meta.url,
     );
-    const fixture = JSON.parse(readFileSync(path, "utf8")) as {
-      input: CaptureDocument;
-      canonical_json: string;
-      content_hash: string;
-    };
+    const fixtures = JSON.parse(
+      readFileSync(path, "utf8"),
+    ) as CanonicalizationFixtureFile;
 
-    const canonical = canonicalizeCaptureDocument(fixture.input);
-
-    expect(canonical.canonicalJson).toBe(fixture.canonical_json);
-    expect(await hashCaptureDocument(canonical.canonicalJson)).toBe(
-      fixture.content_hash,
-    );
+    expect(fixtures.hash_prefix).toBe(CONTENT_HASH_PREFIX);
+    for (const fixture of fixtures.cases) {
+      const canonical = canonicalizeCaptureDocument(fixture.input);
+      expect(canonical.canonicalJson, fixture.name).toBe(
+        fixture.canonical_json,
+      );
+      expect(
+        await hashCaptureDocument(canonical.canonicalJson),
+        fixture.name,
+      ).toBe(fixture.content_hash);
+    }
   });
 });

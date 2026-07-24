@@ -113,6 +113,56 @@ async def test_content_endpoints_stay_hidden_until_capability_is_enabled(
     assert response.status_code == 404
 
 
+async def test_content_status_and_uploads_share_extension_rate_limit(
+    client,
+    users,
+    monkeypatch,
+):
+    user = await users.create()
+    pairing = await _pair(client, users, user)
+    headers = {"Authorization": f"Bearer {pairing['token']}"}
+    document = _document()
+
+    with _content_enabled(monkeypatch) as (_, object_store):
+        monkeypatch.setattr(
+            "app.routers.history.EXTENSION_RATE_LIMIT",
+            1,
+        )
+        first = await client.post(
+            "/api/history/sync/content-status",
+            json={"documents": [document.content_hash], "images": []},
+            headers=headers,
+        )
+        document_upload = await client.put(
+            f"/api/history/sync/content/{document.content_hash}",
+            content=document.canonical_bytes,
+            headers={**headers, "Content-Type": "application/json"},
+        )
+        image_upload = await client.put(
+            f"/api/history/sync/image/{'a' * 64}",
+            content=b"not evaluated",
+            headers={**headers, "Content-Type": "image/png"},
+        )
+        metadata_sync = await client.post(
+            "/api/history/sync",
+            json={
+                "records": [
+                    _capture(
+                        "rate-limited",
+                        "https://limited.example.com/article",
+                    )
+                ]
+            },
+            headers=headers,
+        )
+
+    assert first.status_code == 200
+    for response in (document_upload, image_upload, metadata_sync):
+        assert response.status_code == 429
+        assert int(response.headers["retry-after"]) >= 1
+    assert object_store.objects == {}
+
+
 async def test_finalized_server_advertises_revision_three_consistently(
     client,
     users,

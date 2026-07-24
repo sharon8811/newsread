@@ -1,27 +1,127 @@
 {
-  "input": {
-    "schema_version": 1,
-    "extraction_version": "history-dom-v2",
-    "content_type": "article",
-    "language": "EN-US",
-    "blocks": [
-      {
-        "id": "b0001",
-        "kind": "heading",
-        "text": "  Café ‮ Guide "
+  "hash_prefix": "newsread-history-content-v1\u0000",
+  "cases": [
+    {
+      "name": "unicode-controls-and-nfc",
+      "input": {
+        "schema_version": 1,
+        "extraction_version": "history-dom-v2",
+        "content_type": "article",
+        "language": "EN-US",
+        "blocks": [
+          {
+            "id": "source-heading",
+            "kind": "heading",
+            "text": "  Cafe\u0301 \u202e Guide "
+          },
+          {
+            "id": "source-paragraph",
+            "kind": "paragraph",
+            "text": "Line  one\n line two"
+          },
+          {
+            "id": "source-code",
+            "kind": "code",
+            "text": "\n  let  x = 1;\n\n"
+          }
+        ]
       },
-      {
-        "id": "b0002",
-        "kind": "paragraph",
-        "text": "Line  one\n line two"
+      "canonical_json": "{\"schema_version\":1,\"extraction_version\":\"history-dom-v2\",\"content_type\":\"article\",\"language\":\"en-us\",\"blocks\":[{\"id\":\"b0001\",\"kind\":\"heading\",\"text\":\"Café Guide\"},{\"id\":\"b0002\",\"kind\":\"paragraph\",\"text\":\"Line one line two\"},{\"id\":\"b0003\",\"kind\":\"code\",\"text\":\"let x = 1;\"}]}",
+      "content_hash": "c7b03294c585feb2c8667e2b697ce136610c5438cb9d6fb0bc0c28d785ad4289"
+    },
+    {
+      "name": "escaping-language-and-all-block-kinds",
+      "input": {
+        "schema_version": 1,
+        "extraction_version": "history-dom-v2",
+        "content_type": "page",
+        "language": " PT_BR ",
+        "blocks": [
+          {
+            "id": "heading",
+            "kind": "heading",
+            "text": " A heading "
+          },
+          {
+            "id": "paragraph",
+            "kind": "paragraph",
+            "text": "Quoted \"value\" \\ path\r\nnext\u0000"
+          },
+          {
+            "id": "list",
+            "kind": "list_item",
+            "text": "One\t two"
+          },
+          {
+            "id": "quote",
+            "kind": "quote",
+            "text": " « déjà vu » "
+          },
+          {
+            "id": "code",
+            "kind": "code",
+            "text": "\r\n\tconst  emoji = \"😀\";\r\n\treturn  emoji;\r\n"
+          }
+        ]
       },
-      {
-        "id": "b0003",
-        "kind": "code",
-        "text": "\n  let  x = 1;\n\n"
-      }
-    ]
-  },
-  "canonical_json": "{\"schema_version\":1,\"extraction_version\":\"history-dom-v2\",\"content_type\":\"article\",\"language\":\"en-us\",\"blocks\":[{\"id\":\"b0001\",\"kind\":\"heading\",\"text\":\"Café Guide\"},{\"id\":\"b0002\",\"kind\":\"paragraph\",\"text\":\"Line one line two\"},{\"id\":\"b0003\",\"kind\":\"code\",\"text\":\"let x = 1;\"}]}",
-  "content_hash": "c7b03294c585feb2c8667e2b697ce136610c5438cb9d6fb0bc0c28d785ad4289"
+      "canonical_json": "{\"schema_version\":1,\"extraction_version\":\"history-dom-v2\",\"content_type\":\"page\",\"language\":\"pt-br\",\"blocks\":[{\"id\":\"b0001\",\"kind\":\"heading\",\"text\":\"A heading\"},{\"id\":\"b0002\",\"kind\":\"paragraph\",\"text\":\"Quoted \\\"value\\\" \\\\ path next\"},{\"id\":\"b0003\",\"kind\":\"list_item\",\"text\":\"One two\"},{\"id\":\"b0004\",\"kind\":\"quote\",\"text\":\"« déjà vu »\"},{\"id\":\"b0005\",\"kind\":\"code\",\"text\":\"const emoji = \\\"😀\\\";\\nreturn emoji;\"}]}",
+      "content_hash": "24231d57ccd9dc08223a99b28572e5abe5d234ced82da64a63e134197517e63e"
+    },
+    {
+      "name": "empty-blocks-are-skipped-and-renumbered",
+      "input": {
+        "schema_version": 1,
+        "extraction_version": "history-dom-v2",
+        "content_type": "article",
+        "language": "not valid!",
+        "blocks": [
+          {
+            "id": "empty-control",
+            "kind": "heading",
+            "text": "\u200b\u202e"
+          },
+          {
+            "id": "first",
+            "kind": "paragraph",
+            "text": " First block "
+          },
+          {
+            "id": "empty-null",
+            "kind": "paragraph",
+            "text": "\u0000"
+          },
+          {
+            "id": "second",
+            "kind": "quote",
+            "text": " Second block "
+          }
+        ]
+      },
+      "canonical_json": "{\"schema_version\":1,\"extraction_version\":\"history-dom-v2\",\"content_type\":\"article\",\"language\":\"\",\"blocks\":[{\"id\":\"b0001\",\"kind\":\"paragraph\",\"text\":\"First block\"},{\"id\":\"b0002\",\"kind\":\"quote\",\"text\":\"Second block\"}]}",
+      "content_hash": "c00aa1b7689eda6f04365d62c162c196c0c0a62279fc1389c42068a58834001c"
+    },
+    {
+      "name": "rtl-emoji-and-unicode-separators",
+      "input": {
+        "schema_version": 1,
+        "extraction_version": "history-dom-v2",
+        "content_type": "page",
+        "language": "AR",
+        "blocks": [
+          {
+            "id": "rtl",
+            "kind": "paragraph",
+            "text": "\u202eمرحبا\u202c بالعالم 😀"
+          },
+          {
+            "id": "unicode",
+            "kind": "paragraph",
+            "text": "re\u0301sume\u0301\u2028next\u00a0line"
+          }
+        ]
+      },
+      "canonical_json": "{\"schema_version\":1,\"extraction_version\":\"history-dom-v2\",\"content_type\":\"page\",\"language\":\"ar\",\"blocks\":[{\"id\":\"b0001\",\"kind\":\"paragraph\",\"text\":\"مرحبا بالعالم 😀\"},{\"id\":\"b0002\",\"kind\":\"paragraph\",\"text\":\"résumé next line\"}]}",
+      "content_hash": "1913a83c1758781cc6dc25dfdf5e5b69564024dd441c114fa247f79443c4d5e7"
+    }
+  ]
 }

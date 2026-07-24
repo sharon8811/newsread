@@ -110,8 +110,8 @@ router = APIRouter(
 TOKEN_CREATION_LIMIT = 10
 TOKEN_CREATION_WINDOW = timedelta(hours=1)
 MAX_SYNC_REQUEST_BYTES = 1024 * 1024
-SYNC_RATE_LIMIT = 60
-SYNC_RATE_WINDOW_SECONDS = 60
+EXTENSION_RATE_LIMIT = 60
+EXTENSION_RATE_WINDOW_SECONDS = 60
 FINALIZED_CONTENT_CAPABILITY_REVISION = 3
 SYNC_REQUEST_OPENAPI = {
     "requestBody": {
@@ -286,7 +286,7 @@ def _decode_history_cursor(cursor: str, signature: str) -> dict:
         raise HTTPException(status_code=422, detail="Invalid history cursor") from None
 
 
-async def _enforce_sync_rate_limit(
+async def _enforce_extension_rate_limit(
     session: DbSession,
     connection: BrowserConnection,
 ) -> None:
@@ -294,11 +294,11 @@ async def _enforce_sync_rate_limit(
         select(BrowserConnection).where(BrowserConnection.id == connection.id).with_for_update()
     )
     now = datetime.now(UTC)
-    window = timedelta(seconds=SYNC_RATE_WINDOW_SECONDS)
+    window = timedelta(seconds=EXTENSION_RATE_WINDOW_SECONDS)
     if locked.sync_window_started_at is None or locked.sync_window_started_at + window <= now:
         locked.sync_window_started_at = now
         locked.sync_request_count = 0
-    if locked.sync_request_count >= SYNC_RATE_LIMIT:
+    if locked.sync_request_count >= EXTENSION_RATE_LIMIT:
         retry_after = max(
             1,
             math.ceil((locked.sync_window_started_at + window - now).total_seconds()),
@@ -306,11 +306,26 @@ async def _enforce_sync_rate_limit(
         await session.rollback()
         raise HTTPException(
             status_code=429,
-            detail="Too many history sync requests; retry later",
+            detail="Too many browser history requests; retry later",
             headers={"Retry-After": str(retry_after)},
         )
     locked.sync_request_count += 1
     await session.commit()
+
+
+async def _get_rate_limited_connection(
+    connection: BrowserConnectionAuth,
+    session: DbSession,
+) -> BrowserConnection:
+    """Authenticate and charge one expensive extension pipeline request."""
+    await _enforce_extension_rate_limit(session, connection)
+    return connection
+
+
+RateLimitedBrowserConnection = Annotated[
+    BrowserConnection,
+    Depends(_get_rate_limited_connection),
+]
 
 
 @router.post(
@@ -1393,7 +1408,7 @@ async def clear_history(
 )
 async def history_content_status(
     body: BrowserHistoryContentStatusIn,
-    connection: BrowserConnectionAuth,
+    connection: RateLimitedBrowserConnection,
     session: DbSession,
 ):
     history_settings = await _settings_for(session, connection.user_id)
@@ -1445,7 +1460,7 @@ async def history_content_status(
 async def upload_history_content(
     content_hash: str,
     request: Request,
-    connection: BrowserConnectionAuth,
+    connection: RateLimitedBrowserConnection,
     session: DbSession,
     ingest: Annotated[HistoryIngestService, Depends(get_history_ingest_service)],
 ):
@@ -1499,7 +1514,7 @@ async def upload_history_content(
 async def upload_history_image(
     image_hash: str,
     request: Request,
-    connection: BrowserConnectionAuth,
+    connection: RateLimitedBrowserConnection,
     session: DbSession,
     ingest: Annotated[HistoryIngestService, Depends(get_history_ingest_service)],
 ):
@@ -1538,14 +1553,13 @@ async def upload_history_image(
 )
 async def sync_history(
     request: Request,
-    connection: BrowserConnectionAuth,
+    connection: RateLimitedBrowserConnection,
     session: DbSession,
     ingest: Annotated[
         HistoryIngestService | None,
         Depends(get_optional_history_ingest_service),
     ],
 ):
-    await _enforce_sync_rate_limit(session, connection)
     raw_body = await request.body()
     if len(raw_body) > MAX_SYNC_REQUEST_BYTES:
         raise HTTPException(status_code=413, detail="History sync batch exceeds 1 MiB")

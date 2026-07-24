@@ -722,6 +722,11 @@ open the correct original URL safely.
 - [x] Roll out behind a second server capability flag; old extensions are supported for
       one compatibility window via server-side conversion of inline text into encrypted
       legacy documents, then become metadata-only clients.
+- [x] Apply the paired-connection request limit before content-status, document upload,
+      image upload, and metadata sync work.
+- [x] Expand the shared browser/backend canonicalization corpus across Unicode,
+      controls, whitespace, escaping, language normalization, block kinds, and
+      renumbering.
 
 ## Required tests
 
