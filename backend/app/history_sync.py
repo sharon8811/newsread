@@ -77,6 +77,8 @@ def _is_stale(
             deletion.scope_key,
         ):
             return True
+        if deletion.scope == "host" and normalized.hostname == deletion.scope_key:
+            return True
     return False
 
 

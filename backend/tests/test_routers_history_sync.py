@@ -579,3 +579,48 @@ async def test_exclude_rule_can_delete_existing_domain_history(client, users, se
         "example.com",
         1,
     )
+
+
+async def test_exact_host_rule_delete_existing_spares_subdomains(client, users, session):
+    user = await users.create()
+    pairing = await _pair(client, users, user)
+    await _sync(
+        client,
+        pairing["token"],
+        [
+            _capture("exact", url="https://example.net/page", text="exact host"),
+            _capture("sub", url="https://mail.example.net/inbox", text="subdomain"),
+        ],
+    )
+
+    response = await client.post(
+        "/api/history/domain-rules",
+        json={
+            "hostname": "example.net",
+            "match_subdomains": False,
+            "mode": "metadata_only",
+            "delete_existing": True,
+        },
+        headers=users.auth(user),
+    )
+    assert response.status_code == 201
+
+    remaining = list(await session.scalars(select(BrowserHistoryPage)))
+    assert [page.hostname for page in remaining] == ["mail.example.net"]
+    tombstone = await session.scalar(select(BrowserHistoryDeletion))
+    assert (tombstone.scope, tombstone.scope_key) == ("host", "example.net")
+
+    # A stale queued capture is rejected only for the exact host; the
+    # subdomain (still allowed by the rule) syncs normally.
+    retry = await _sync(
+        client,
+        pairing["token"],
+        [
+            _capture("stale-exact", url="https://example.net/page", known_revision=0),
+            _capture("fresh-sub", url="https://sub2.mail.example.net/x", known_revision=0),
+        ],
+    )
+    body = retry.json()
+    assert {item["record_id"] for item in body["rejected"]} == {"stale-exact"}
+    assert body["rejected"][0]["code"] == "stale_revision"
+    assert [item["record_id"] for item in body["accepted"]] == ["fresh-sub"]

@@ -19,6 +19,7 @@ let databasePromise: Promise<IDBDatabase> | null = null;
 
 interface VisitAggregate {
   urlHash: string;
+  hostname: string;
   firstVisitedAt: string;
   lastVisitedAt: string;
   visitCount: number;
@@ -135,6 +136,7 @@ export async function enqueueCapture(
   const now = candidate.capturedAt;
   const aggregate: VisitAggregate = {
     urlHash,
+    hostname: normalized.hostname,
     firstVisitedAt: visits?.firstVisitedAt ?? now,
     lastVisitedAt: now,
     visitCount: Math.min(1_000_000, (visits?.visitCount ?? 0) + 1),
@@ -252,6 +254,44 @@ export async function clearQueued(): Promise<void> {
 export async function clearConnectionData(): Promise<void> {
   await clearQueued();
   await withNamedStore(VISITS_STORE, "readwrite", (store) => store.clear());
+}
+
+// Server-side deletion (a stale_revision rejection) must also forget the
+// local visit aggregate, or the next genuine revisit would re-upload the
+// pre-deletion first-visit time and count.
+export async function deleteVisitAggregates(urlHashes: string[]): Promise<void> {
+  for (const urlHash of urlHashes) {
+    await withNamedStore(VISITS_STORE, "readwrite", (store) => store.delete(urlHash));
+  }
+}
+
+// Newly excluded domains must not leak already-queued captures (or their
+// counts) on the next sync; subdomains match like every exclusion rule.
+export async function purgeDomains(domains: string[]): Promise<void> {
+  if (!domains.length) return;
+  const matches = (hostname: string | undefined) =>
+    typeof hostname === "string" &&
+    domains.some((domain) => hostnameMatches(hostname, domain, true));
+  const queued = await listQueued();
+  await deleteQueued(
+    queued
+      .filter((capture) => {
+        try {
+          return matches(new URL(capture.url).hostname);
+        } catch {
+          return false;
+        }
+      })
+      .map((capture) => capture.urlHash),
+  );
+  const visits = await withNamedStore<VisitAggregate[]>(
+    VISITS_STORE,
+    "readonly",
+    (store) => store.getAll(),
+  );
+  await deleteVisitAggregates(
+    visits.filter((visit) => matches(visit.hostname)).map((visit) => visit.urlHash),
+  );
 }
 
 export async function readSyncBatch(now = Date.now()): Promise<QueuedCapture[]> {

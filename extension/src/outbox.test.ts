@@ -2,10 +2,13 @@ import "fake-indexeddb/auto";
 import { beforeEach, describe, expect, it } from "vitest";
 import { DEFAULT_SETTINGS } from "./config.js";
 import {
+  clearConnectionData,
   clearQueued,
   deleteQueued,
+  deleteVisitAggregates,
   enqueueCapture,
   listQueued,
+  purgeDomains,
   readSyncBatch,
 } from "./outbox.js";
 import type { CaptureCandidate, ExtensionSettings } from "./types.js";
@@ -104,5 +107,42 @@ describe("IndexedDB outbox", () => {
     expect(batch[0]?.known_revision).toBe(0);
     expect(batch[0]?.record_id).toBeTruthy();
     expect(batch[0]?.urlHash).toHaveLength(64);
+  });
+
+  it("purges queued captures and visit counts for an excluded domain", async () => {
+    await clearConnectionData();
+    const other = { ...candidate, url: "https://other.example.net/story" };
+    await enqueueCapture(candidate, settings);
+    await enqueueCapture(other, settings);
+
+    await purgeDomains(["example.com"]);
+    const remaining = await readSyncBatch();
+    expect(remaining.map((capture) => new URL(capture.url).hostname)).toEqual([
+      "other.example.net",
+    ]);
+
+    // The purged domain restarts from scratch: no inherited visit count.
+    await enqueueCapture(candidate, settings);
+    const requeued = (await listQueued()).find((capture) =>
+      capture.url.includes("article.example.com"),
+    );
+    expect(requeued?.visit_count).toBe(1);
+  });
+
+  it("forgets visit history for server-deleted pages", async () => {
+    await clearConnectionData();
+    await enqueueCapture(candidate, settings);
+    await enqueueCapture(candidate, settings);
+    const [queued] = await listQueued();
+    expect(queued?.visit_count).toBe(2);
+
+    // Simulate the sync layer reacting to a stale_revision rejection.
+    await deleteQueued([queued.urlHash]);
+    await deleteVisitAggregates([queued.urlHash]);
+
+    await enqueueCapture(candidate, settings);
+    const [fresh] = await listQueued();
+    expect(fresh?.visit_count).toBe(1);
+    expect(fresh?.record_id).not.toBe(queued.record_id);
   });
 });

@@ -249,7 +249,8 @@ class BrowserHistoryDeletion(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
-    scope: Mapped[str] = mapped_column(String(16))  # 'page' | 'domain' | 'all'
+    # 'domain' matches subdomains; 'host' is the exact hostname only.
+    scope: Mapped[str] = mapped_column(String(16))  # 'page' | 'domain' | 'host' | 'all'
     scope_key: Mapped[str] = mapped_column(String(253), default="", server_default="")
     revision: Mapped[int] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

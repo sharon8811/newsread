@@ -4,6 +4,7 @@ import {
   countQueued,
   enqueueCapture,
   enqueueHistoryMetadata,
+  purgeDomains,
 } from "./outbox.js";
 import { isAllowedMessageSender } from "./message-sender.js";
 import { getSettings, getSyncState, saveSettings } from "./settings.js";
@@ -136,9 +137,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           knownRevision: 0,
         });
         return status();
-      case "SAVE_EXCLUSIONS":
-        await saveSettings({ excludedDomains: message.domains });
+      case "SAVE_EXCLUSIONS": {
+        const domains = Array.isArray(message.domains)
+          ? message.domains.filter((domain: unknown) => typeof domain === "string")
+          : [];
+        await saveSettings({ excludedDomains: domains });
+        // Exclusion must hold before anything reaches the server: drop
+        // already-queued captures and visit aggregates for these domains.
+        await purgeDomains(domains);
+        await updateBadge();
         return status();
+      }
       case "IMPORT_HISTORY":
         return { imported: await importEntries(message.entries) };
       default:

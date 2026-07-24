@@ -360,20 +360,27 @@ async def upsert_domain_rule(
         rule.mode = body.mode
     history_settings.sync_revision += 1
     if body.delete_existing:
+        # Deletion breadth mirrors the rule's own matching: an exact-host rule
+        # must not purge or stale-reject subdomains it does not exclude.
         await _write_deletion(
             session,
             user_id=user.id,
-            scope="domain",
+            scope="domain" if body.match_subdomains else "host",
             scope_key=body.hostname,
             revision=history_settings.sync_revision,
+        )
+        hostname_predicate = (
+            or_(
+                BrowserHistoryPage.hostname == body.hostname,
+                BrowserHistoryPage.hostname.endswith(f".{body.hostname}"),
+            )
+            if body.match_subdomains
+            else BrowserHistoryPage.hostname == body.hostname
         )
         await session.execute(
             delete(BrowserHistoryPage).where(
                 BrowserHistoryPage.user_id == user.id,
-                or_(
-                    BrowserHistoryPage.hostname == body.hostname,
-                    BrowserHistoryPage.hostname.endswith(f".{body.hostname}"),
-                ),
+                hostname_predicate,
             )
         )
     await session.commit()

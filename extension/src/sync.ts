@@ -2,6 +2,7 @@ import { DEFAULT_SYNC_STATE } from "./config.js";
 import {
   clearConnectionData,
   deleteQueued,
+  deleteVisitAggregates,
   readSyncBatch,
   toSyncRecord,
 } from "./outbox.js";
@@ -111,6 +112,18 @@ export async function syncNow(force = false): Promise<void> {
     await deleteQueued(
       batch
         .filter((capture) => terminalIds.has(capture.record_id))
+        .map((capture) => capture.urlHash),
+    );
+    // stale_revision means the server deleted this page; drop the local visit
+    // aggregate so a later genuine revisit restarts its history from scratch.
+    const staleIds = new Set(
+      body.rejected
+        .filter((item) => item.code === "stale_revision")
+        .map((item) => item.record_id),
+    );
+    await deleteVisitAggregates(
+      batch
+        .filter((capture) => staleIds.has(capture.record_id))
         .map((capture) => capture.urlHash),
     );
     await saveSettings({

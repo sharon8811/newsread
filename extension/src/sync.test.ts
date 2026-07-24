@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   saveSyncState: vi.fn(),
   readSyncBatch: vi.fn(),
   deleteQueued: vi.fn(),
+  deleteVisitAggregates: vi.fn(),
   clearConnectionData: vi.fn(),
 }));
 
@@ -22,6 +23,7 @@ vi.mock("./settings.js", () => ({
 vi.mock("./outbox.js", () => ({
   readSyncBatch: mocks.readSyncBatch,
   deleteQueued: mocks.deleteQueued,
+  deleteVisitAggregates: mocks.deleteVisitAggregates,
   clearConnectionData: mocks.clearConnectionData,
   toSyncRecord: (capture: QueuedCapture) => ({
     record_id: capture.record_id,
@@ -84,6 +86,35 @@ describe("sync retry and revocation handling", () => {
       expect.objectContaining({ knownRevision: 4, connectionStatus: "paired" }),
     );
     expect(mocks.saveSyncState).toHaveBeenCalledWith(DEFAULT_SYNC_STATE);
+  });
+
+  it("clears visit aggregates only for stale-revision rejections", async () => {
+    const excluded: QueuedCapture = {
+      ...capture,
+      urlHash: "hash-excluded",
+      record_id: "record-2",
+    };
+    mocks.readSyncBatch.mockResolvedValue([capture, excluded]);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            accepted: [],
+            rejected: [
+              { record_id: "record-1", code: "stale_revision" },
+              { record_id: "record-2", code: "excluded" },
+            ],
+            sync_revision: 5,
+            domain_rules: [],
+          }),
+          { status: 200 },
+        ),
+      ),
+    );
+    await syncNow(true);
+    expect(mocks.deleteQueued).toHaveBeenCalledWith(["hash", "hash-excluded"]);
+    expect(mocks.deleteVisitAggregates).toHaveBeenCalledWith(["hash"]);
   });
 
   it("honors Retry-After without deleting queued work", async () => {
