@@ -76,7 +76,15 @@ async def _pending_count(client, users, user):
     return resp.json()[0]["pending_count"]
 
 
-async def test_pending_count_counts_unstamped_articles(client, users, data):
+@pytest.fixture
+def batch_llm(monkeypatch):
+    """conftest scrubs the API key, so the suite runs LLM-less by default and
+    the summarize stage is a no-op. The summary-pending cases only mean
+    anything on an install where the worker would actually summarize."""
+    monkeypatch.setattr(feeds_router.llm, "is_configured", lambda: True)
+
+
+async def test_pending_count_counts_unstamped_articles(batch_llm, client, users, data):
     user = await users.create()
     feed = await data.feed(title="Tech")
     await data.subscribe(user, feed)
@@ -97,7 +105,7 @@ async def test_pending_count_counts_unstamped_articles(client, users, data):
     assert await _pending_count(client, users, user) == 1
 
 
-async def test_pending_count_includes_articles_awaiting_a_summary(client, users, data):
+async def test_pending_count_includes_articles_awaiting_a_summary(batch_llm, client, users, data):
     """The summarize stage runs after enrichment; the indicator has to cover
     it or it reports "done" while the summaries are still being written."""
     user = await users.create()
@@ -117,7 +125,9 @@ async def test_pending_count_includes_articles_awaiting_a_summary(client, users,
     assert await _pending_count(client, users, user) == 0
 
 
-async def test_pending_count_excludes_summaries_the_worker_will_never_write(client, users, data):
+async def test_pending_count_excludes_summaries_the_worker_will_never_write(
+    batch_llm, client, users, data
+):
     """Skipped and thin-content articles are excluded by the worker's own
     summarize query, so counting them would spin the indicator forever."""
     user = await users.create()
@@ -134,7 +144,7 @@ async def test_pending_count_excludes_summaries_the_worker_will_never_write(clie
     assert await _pending_count(client, users, user) == 0
 
 
-async def test_pending_count_ignores_summaries_on_ai_disabled_feeds(client, users, data):
+async def test_pending_count_ignores_summaries_on_ai_disabled_feeds(batch_llm, client, users, data):
     user = await users.create()
     feed = await data.feed(title="Tech", ai_enabled=False)
     await data.subscribe(user, feed)
@@ -145,6 +155,26 @@ async def test_pending_count_ignores_summaries_on_ai_disabled_feeds(client, user
         full_text_fetched_at=datetime.now(UTC),
     )
 
+    assert await _pending_count(client, users, user) == 0
+
+
+async def test_pending_count_ignores_summaries_without_a_server_llm(client, users, data):
+    """Regression: `ai_enabled` defaults to True even on installs with no
+    server-wide LLM, but there the worker returns before its summarize stage.
+    Counting those articles would leave the enrichment chip spinning — and the
+    inbox polling /feeds and /articles — forever. (No `batch_llm` fixture
+    here: this is the scrubbed, LLM-less configuration.)"""
+    user = await users.create()
+    feed = await data.feed(title="Tech")
+    await data.subscribe(user, feed)
+    await data.article(
+        feed,
+        full_text="a long enough body",
+        image_url="https://x/i.png",
+        full_text_fetched_at=datetime.now(UTC),
+    )
+
+    assert feeds_router.llm.is_configured() is False
     assert await _pending_count(client, users, user) == 0
 
 

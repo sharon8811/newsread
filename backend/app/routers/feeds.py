@@ -3,10 +3,10 @@ from urllib.parse import urlsplit
 
 import httpx
 from fastapi import APIRouter, HTTPException
-from sqlalchemy import and_, exists, func, or_, select
+from sqlalchemy import and_, exists, false, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .. import queue
+from .. import llm, queue
 from ..deps import CurrentUser, DbSession
 from ..extractor import SUMMARIZABLE_FEED_HTML_CHARS
 from ..fetcher import FeedParseError, FeedRateLimited, discover_feed_url, refresh_feed
@@ -65,6 +65,12 @@ def _summary_pending():
     thin-content exclusion — so articles the worker will never summarize don't
     keep the progress indicator spinning forever.
     """
+    if not llm.is_configured():
+        # Without a server-wide LLM the worker returns before its summarize
+        # stage, so it owes nothing. `ai_enabled` still defaults to True on
+        # those installs, so without this the count could never reach zero.
+        # Per-user BYO keys drive only the on-demand path, never this batch.
+        return false()
     return and_(
         Feed.ai_enabled.is_(True),
         Article.summary_short == "",
