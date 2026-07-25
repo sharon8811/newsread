@@ -11,11 +11,33 @@ function documentView(html: string) {
   vi.stubGlobal("Node", dom.window.Node);
   vi.stubGlobal("NodeFilter", dom.window.NodeFilter);
   vi.stubGlobal("MutationObserver", dom.window.MutationObserver);
+  const scrollIntoView = vi.fn();
   Object.defineProperty(dom.window.Element.prototype, "scrollIntoView", {
     configurable: true,
-    value: vi.fn(),
+    value: scrollIntoView,
   });
-  return { document: dom.window.document, view: dom.window };
+  return { document: dom.window.document, view: dom.window, scrollIntoView };
+}
+
+/** Give the highlighter's settle debounce room to run. */
+function afterSettle(view: Window): Promise<void> {
+  return new Promise((resolve) => view.setTimeout(resolve, 400));
+}
+
+function stubHighlightApi(view: Window) {
+  const set = vi.fn();
+  const remove = vi.fn();
+  Object.defineProperty(view, "CSS", {
+    configurable: true,
+    value: { highlights: { set, delete: remove } },
+  });
+  Object.defineProperty(view, "Highlight", {
+    configurable: true,
+    value: class {
+      constructor(public range: Range) {}
+    },
+  });
+  return { set, remove };
 }
 
 afterEach(() => {
@@ -122,19 +144,9 @@ describe("temporary citation highlighting", () => {
     ).toBeNull();
   });
 
-  it("retries for a late-rendering SPA and stops after a match", async () => {
+  it("retries for a late-rendering SPA once its mutations settle", async () => {
     const { document, view } = documentView("<main>Loading…</main>");
-    const set = vi.fn();
-    Object.defineProperty(view, "CSS", {
-      configurable: true,
-      value: { highlights: { set, delete: vi.fn() } },
-    });
-    Object.defineProperty(view, "Highlight", {
-      configurable: true,
-      value: class {
-        constructor(public range: Range) {}
-      },
-    });
+    const { set } = stubHighlightApi(view);
     highlightCitationWithRetry(document, view, {
       quote: "Late exact quote",
       prefix: null,
@@ -142,7 +154,70 @@ describe("temporary citation highlighting", () => {
     });
 
     document.querySelector("main")!.textContent = "Late exact quote";
-    await new Promise((resolve) => view.setTimeout(resolve, 110));
+    await afterSettle(view);
     expect(set).toHaveBeenCalledOnce();
+  });
+
+  it("re-applies the highlight when hydration replaces the cited nodes", async () => {
+    const { document, view, scrollIntoView } = documentView(
+      "<main><p>Hydrating exact quote</p></main>",
+    );
+    const { set } = stubHighlightApi(view);
+    const anchor = {
+      quote: "Hydrating exact quote",
+      prefix: null,
+      suffix: null,
+    };
+    highlightCitationWithRetry(document, view, anchor);
+    expect(set).toHaveBeenCalledOnce();
+    const original = document.querySelector("p")!.firstChild;
+
+    // What GitHub does after readyState "complete": swap the rendered subtree
+    // for a freshly built one carrying the same text.
+    const replacement = document.createElement("p");
+    replacement.textContent = "Hydrating exact quote";
+    document.querySelector("main")!.replaceChildren(replacement);
+    await afterSettle(view);
+
+    expect(original!.isConnected).toBe(false);
+    expect(set).toHaveBeenCalledTimes(2);
+    expect(scrollIntoView).toHaveBeenCalledTimes(2);
+  });
+
+  it("stops following the citation once the reader scrolls themselves", async () => {
+    const { document, view, scrollIntoView } = documentView(
+      "<main><p>Reader owned quote</p></main>",
+    );
+    stubHighlightApi(view);
+    highlightCitationWithRetry(document, view, {
+      quote: "Reader owned quote",
+      prefix: null,
+      suffix: null,
+    });
+    expect(scrollIntoView).toHaveBeenCalledOnce();
+
+    view.dispatchEvent(new view.Event("wheel"));
+    const replacement = document.createElement("p");
+    replacement.textContent = "Reader owned quote";
+    document.querySelector("main")!.replaceChildren(replacement);
+    await afterSettle(view);
+
+    expect(scrollIntoView).toHaveBeenCalledOnce();
+  });
+
+  it("gives up watching when the retry window closes", async () => {
+    const { document, view } = documentView("<main>Loading…</main>");
+    const { set } = stubHighlightApi(view);
+    highlightCitationWithRetry(
+      document,
+      view,
+      { quote: "Never rendered quote", prefix: null, suffix: null },
+      50,
+    );
+
+    await new Promise((resolve) => view.setTimeout(resolve, 60));
+    document.querySelector("main")!.textContent = "Never rendered quote";
+    await afterSettle(view);
+    expect(set).not.toHaveBeenCalled();
   });
 });

@@ -149,14 +149,29 @@ export function extractCaptureDocument(
   }
 
   if (characters < MIN_USEFUL_CHARACTERS) {
-    const fallback = normalizeBlockText(root.innerText, "paragraph");
-    if (fallback.length < MIN_USEFUL_CHARACTERS) return null;
+    // Pages that carry their text outside p/li/blockquote — app shells, most
+    // GitHub views — used to collapse into a single block. That reads as one
+    // run-on wall of text and leaves a summary with exactly one citable
+    // source, so split on the line breaks innerText already puts at block
+    // boundaries and keep the parts that carry a sentence.
+    const fallback: CaptureBlock[] = [];
+    let fallbackCharacters = 0;
+    for (const line of root.innerText.split("\n")) {
+      const text = normalizeBlockText(line, "paragraph");
+      const remaining = MAX_DOCUMENT_CHARS - fallbackCharacters;
+      if (remaining <= 0 || fallback.length >= MAX_BLOCKS) break;
+      if (text.length < 20) continue;
+      const bounded = text.slice(0, Math.min(MAX_BLOCK_CHARS, remaining));
+      fallback.push({
+        id: `b${String(fallback.length + 1).padStart(4, "0")}`,
+        kind: "paragraph",
+        text: bounded,
+      });
+      fallbackCharacters += bounded.length;
+    }
+    if (fallbackCharacters < MIN_USEFUL_CHARACTERS) return null;
     blocks.length = 0;
-    blocks.push({
-      id: "b0001",
-      kind: "paragraph",
-      text: fallback.slice(0, MAX_DOCUMENT_CHARS),
-    });
+    blocks.push(...fallback);
   }
   return canonicalizeCaptureDocument({
     schema_version: 1,

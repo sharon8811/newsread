@@ -37,6 +37,13 @@ const EXCLUDED_SELECTOR =
 const HIGHLIGHT_NAME = "newsread-citation";
 const HIGHLIGHT_DURATION_MS = 8_000;
 const RETRY_WINDOW_MS = 10_000;
+// A hydrating page reaches readyState "complete" before it renders the cited
+// text, so an attempt made the moment the DOM changes lands mid-render: the
+// nodes we highlight are replaced again and any smooth scroll we started is
+// cancelled by the page's own scroll restoration. Wait for the mutations to
+// go quiet, and never wait longer than the cap on a page that never settles.
+const SETTLE_MS = 300;
+const MAX_SETTLE_WAIT_MS = 1_200;
 
 interface CharacterLocation {
   node: Text;
@@ -175,6 +182,171 @@ export function findCitationRange(
   return null;
 }
 
+function rangeTarget(range: Range): Element | null {
+  return range.startContainer.nodeType === Node.ELEMENT_NODE
+    ? (range.startContainer as Element)
+    : range.startContainer.parentElement;
+}
+
+/** Removing a highlighted node moves the live range's boundaries up to the
+ * surviving parent, so `isConnected` still reports true while the range no
+ * longer covers anything. Compare the text it actually spans. */
+function rangeIsLive(range: Range, anchor: CitationAnchor): boolean {
+  return (
+    range.startContainer.isConnected &&
+    normalizeText(range.toString()) === normalizeText(anchor.quote)
+  );
+}
+
+/** Whether the cited text sits outside the viewport and needs scrolling to.
+ * A layout-less environment reports an all-zero rect; treat that as "visible"
+ * so we never fight a document whose geometry we cannot measure. */
+function needsScroll(target: Element, view: Window): boolean {
+  const rect = target.getBoundingClientRect();
+  if (!rect.top && !rect.bottom && !rect.height) return false;
+  return rect.top < 0 || rect.bottom > view.innerHeight;
+}
+
+function scrollToCitation(target: Element, smooth: boolean): void {
+  // An interrupted smooth scroll leaves the reader wherever the page wanted
+  // them, so only ask for one once the document has stopped changing.
+  target.scrollIntoView({
+    behavior: smooth ? "smooth" : "auto",
+    block: "center",
+  });
+}
+
+class CitationHighlighter {
+  private readonly registry?: HighlightRegistry;
+  private readonly Highlight?: HighlightConstructor;
+  private style: HTMLStyleElement | null = null;
+  private applied: Range | null = null;
+  private settleTimer: number | null = null;
+  private deadlineTimer: number | null = null;
+  private removalTimer: number | null = null;
+  private lastMutationAt: number | null = null;
+  private userTookOver = false;
+  private stopped = false;
+  private readonly observer: MutationObserver;
+  private readonly takeOver = () => {
+    this.userTookOver = true;
+  };
+
+  constructor(
+    private readonly document: Document,
+    private readonly view: Window,
+    private readonly anchor: CitationAnchor,
+    private readonly durationMs: number,
+  ) {
+    const css = (view as Window & { CSS?: { highlights?: HighlightRegistry } })
+      .CSS;
+    this.registry = css?.highlights;
+    this.Highlight = (view as Window & { Highlight?: HighlightConstructor })
+      .Highlight;
+    this.observer = new MutationObserver(() => this.onMutation());
+  }
+
+  /** Watch for the whole window: the first match may arrive late, and a page
+   * that re-renders after we highlight would otherwise silently drop it. */
+  start(windowMs: number): void {
+    for (const type of ["wheel", "touchstart", "keydown", "mousedown"]) {
+      this.view.addEventListener(type, this.takeOver, {
+        passive: true,
+        capture: true,
+      });
+    }
+    this.evaluate();
+    this.observer.observe(this.document.documentElement, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+    });
+    this.view.setTimeout(() => this.stop(), windowMs);
+  }
+
+  private onMutation(): void {
+    if (this.stopped) return;
+    this.lastMutationAt = Date.now();
+    if (this.settleTimer !== null) this.view.clearTimeout(this.settleTimer);
+    this.settleTimer = this.view.setTimeout(() => {
+      this.settleTimer = null;
+      this.evaluate();
+    }, SETTLE_MS);
+    if (this.deadlineTimer === null) {
+      this.deadlineTimer = this.view.setTimeout(() => {
+        this.deadlineTimer = null;
+        this.evaluate();
+      }, MAX_SETTLE_WAIT_MS);
+    }
+  }
+
+  private evaluate(): void {
+    if (this.stopped) return;
+    if (this.applied && rangeIsLive(this.applied, this.anchor)) {
+      const target = rangeTarget(this.applied);
+      // The range survived but the page may have scrolled away from it.
+      if (target && !this.userTookOver && needsScroll(target, this.view)) {
+        scrollToCitation(target, this.settled());
+      }
+      return;
+    }
+    const range = findCitationRange(this.document, this.view, this.anchor);
+    if (range) this.apply(range);
+  }
+
+  private settled(): boolean {
+    return (
+      this.document.readyState === "complete" &&
+      (this.lastMutationAt === null ||
+        Date.now() - this.lastMutationAt >= SETTLE_MS)
+    );
+  }
+
+  private apply(range: Range): void {
+    if (this.registry && this.Highlight) {
+      if (!this.style) {
+        const style = this.document.createElement("style");
+        style.dataset.newsreadCitationHighlight = "true";
+        style.textContent = `::highlight(${HIGHLIGHT_NAME}) { background: #ffe08a; color: inherit; }`;
+        this.document.head?.append(style);
+        this.style = style;
+      }
+      this.registry.set(HIGHLIGHT_NAME, new this.Highlight(range));
+    }
+    this.applied = range;
+    const target = rangeTarget(range);
+    if (target && !this.userTookOver) {
+      scrollToCitation(target, this.settled());
+    }
+    // Re-applying restarts the visible window, so a highlight that had to be
+    // rebuilt after a re-render is still shown for its full duration.
+    if (this.removalTimer !== null) this.view.clearTimeout(this.removalTimer);
+    this.removalTimer = this.view.setTimeout(
+      () => this.clear(),
+      this.durationMs,
+    );
+  }
+
+  private clear(): void {
+    this.stop();
+    this.registry?.delete(HIGHLIGHT_NAME);
+    this.style?.remove();
+    this.style = null;
+    this.applied = null;
+  }
+
+  private stop(): void {
+    if (this.stopped) return;
+    this.stopped = true;
+    this.observer.disconnect();
+    if (this.settleTimer !== null) this.view.clearTimeout(this.settleTimer);
+    if (this.deadlineTimer !== null) this.view.clearTimeout(this.deadlineTimer);
+    for (const type of ["wheel", "touchstart", "keydown", "mousedown"]) {
+      this.view.removeEventListener(type, this.takeOver, { capture: true });
+    }
+  }
+}
+
 export function highlightCitationRange(
   document: Document,
   view: Window,
@@ -193,11 +365,7 @@ export function highlightCitationRange(
   if (registry && Highlight) {
     registry.set(HIGHLIGHT_NAME, new Highlight(range));
   }
-  const target =
-    range.startContainer.nodeType === Node.ELEMENT_NODE
-      ? (range.startContainer as Element)
-      : range.startContainer.parentElement;
-  target?.scrollIntoView({ behavior: "smooth", block: "center" });
+  rangeTarget(range)?.scrollIntoView({ behavior: "smooth", block: "center" });
 
   view.setTimeout(() => {
     registry?.delete(HIGHLIGHT_NAME);
@@ -221,29 +389,9 @@ export function highlightCitationWithRetry(
   view: Window,
   anchor: CitationAnchor,
   retryWindowMs = RETRY_WINDOW_MS,
+  durationMs = HIGHLIGHT_DURATION_MS,
 ): void {
-  if (highlightCitation(document, view, anchor)) return;
-
-  let retryTimer: number | null = null;
-  let stopped = false;
-  const observer = new MutationObserver(() => {
-    if (retryTimer !== null || stopped) return;
-    retryTimer = view.setTimeout(() => {
-      retryTimer = null;
-      if (highlightCitation(document, view, anchor)) {
-        stopped = true;
-        observer.disconnect();
-      }
-    }, 100);
-  });
-  observer.observe(document.documentElement, {
-    childList: true,
-    subtree: true,
-    characterData: true,
-  });
-  view.setTimeout(() => {
-    stopped = true;
-    observer.disconnect();
-    if (retryTimer !== null) view.clearTimeout(retryTimer);
-  }, retryWindowMs);
+  new CitationHighlighter(document, view, anchor, durationMs).start(
+    retryWindowMs,
+  );
 }

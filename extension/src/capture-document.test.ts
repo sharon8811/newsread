@@ -74,6 +74,29 @@ describe("structured browser extraction", () => {
     expect(extractCaptureDocument(lowValue)).toBeNull();
   });
 
+  it("splits the fallback into citable blocks instead of one wall of text", () => {
+    const source = documentFor(
+      `<body><div>
+        Nav
+        sharon8811 wants to merge 1 commit into main from perf/summarize.
+        The change raises the summarize concurrency setting from two up to eight.
+        Reviewers approved the pull request after the benchmark run had finished.
+      </div></body>`,
+    );
+
+    const captured = extractCaptureDocument(source);
+
+    expect(captured?.blocks).toHaveLength(3);
+    expect(captured?.blocks[0]?.text).toBe(
+      "sharon8811 wants to merge 1 commit into main from perf/summarize.",
+    );
+    expect(captured?.blocks.map((block) => block.id)).toEqual([
+      "b0001",
+      "b0002",
+      "b0003",
+    ]);
+  });
+
   it("ignores hidden blocks", () => {
     const source = documentFor(`
       <article>

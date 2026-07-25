@@ -19,6 +19,27 @@ import { keys } from "@/lib/keys";
 
 const QAPanel = dynamic(() => import("@/components/QAPanel"));
 
+type ContentBlock = NonNullable<
+  ReturnType<typeof useHistoryDocumentContent>["data"]
+>["blocks"][number];
+
+/** Consecutive captured list items belong to one list — rendering each in its
+ * own <ul> spaced them apart like unrelated paragraphs. */
+function groupBlocks(
+  blocks: ContentBlock[],
+): { kind: ContentBlock["kind"]; blocks: ContentBlock[] }[] {
+  const groups: { kind: ContentBlock["kind"]; blocks: ContentBlock[] }[] = [];
+  for (const block of blocks) {
+    const previous = groups[groups.length - 1];
+    if (block.kind === "list_item" && previous?.kind === "list_item") {
+      previous.blocks.push(block);
+      continue;
+    }
+    groups.push({ kind: block.kind, blocks: [block] });
+  }
+  return groups;
+}
+
 function safeUrl(value: string): string | null {
   try {
     const url = new URL(value);
@@ -138,7 +159,17 @@ export default function HistoryDocumentPage() {
         </div>
       ) : (
         <section className="reader mt-9" aria-label="Saved page content">
-          {content?.blocks.map((block) => {
+          {groupBlocks(content?.blocks ?? []).map((group) => {
+            if (group.kind === "list_item") {
+              return (
+                <ul key={group.blocks[0]!.id}>
+                  {group.blocks.map((block) => (
+                    <li key={block.id}>{block.text}</li>
+                  ))}
+                </ul>
+              );
+            }
+            const block = group.blocks[0]!;
             if (block.kind === "heading") {
               return <h2 key={block.id}>{block.text}</h2>;
             }
@@ -150,13 +181,6 @@ export default function HistoryDocumentPage() {
                 <pre key={block.id}>
                   <code>{block.text}</code>
                 </pre>
-              );
-            }
-            if (block.kind === "list_item") {
-              return (
-                <ul key={block.id}>
-                  <li>{block.text}</li>
-                </ul>
               );
             }
             return <p key={block.id}>{block.text}</p>;

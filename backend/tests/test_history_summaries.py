@@ -38,6 +38,63 @@ def test_summary_citations_are_derived_from_stored_blocks():
     ]
 
 
+def test_summary_survives_prose_and_fences_around_the_json():
+    markdown, citations = parse_history_summary(
+        'Sure! Here you go:\n```json\n{"markdown": "A claim [1].", '
+        '"block_ids": ["b0001"]}\n```\nHope that helps.',
+        BLOCKS,
+    )
+
+    assert markdown == "A claim [1]."
+    assert [citation["block_id"] for citation in citations] == ["b0001"]
+
+
+def test_summary_keeps_only_the_sources_the_model_cited():
+    markdown, citations = parse_history_summary(
+        json.dumps(
+            {
+                "markdown": "Only the second source is used [2].",
+                "block_ids": ["b0001", "b0002"],
+                "notes": "an unexpected extra key",
+            }
+        ),
+        BLOCKS,
+    )
+
+    assert markdown == "Only the second source is used [1]."
+    assert [citation["block_id"] for citation in citations] == ["b0002"]
+
+
+def test_summary_leaves_bracketed_numbers_that_are_not_citations_as_prose():
+    markdown, citations = parse_history_summary(
+        json.dumps(
+            {
+                "markdown": "Published in [2026], per the source [1].",
+                "block_ids": ["b0001"],
+            }
+        ),
+        BLOCKS,
+    )
+
+    assert markdown == "Published in [2026], per the source [1]."
+    assert len(citations) == 1
+
+
+def test_summary_drops_markers_pointing_at_unlisted_sources():
+    markdown, citations = parse_history_summary(
+        json.dumps(
+            {
+                "markdown": "A supported claim [1] and a dangling one [7].",
+                "block_ids": ["b0001"],
+            }
+        ),
+        BLOCKS,
+    )
+
+    assert markdown == "A supported claim [1] and a dangling one."
+    assert len(citations) == 1
+
+
 @pytest.mark.parametrize(
     "payload",
     [

@@ -27,10 +27,17 @@ function citationNavigationData(citation: BrowserHistoryCitation): string {
   });
 }
 
-function citedMarkdown(markdown: string): string {
-  return markdown.replace(
-    /\[(\d+)\](?!\()/g,
-    (_match, label: string) => `[${label}](${CITATION_LINK_PREFIX}${label})`,
+function citedMarkdown(
+  markdown: string,
+  labels: ReadonlySet<number>,
+): string {
+  // Only real sources become markers, so a bracketed year stays prose. The
+  // space before a marker goes with it: a superscript belongs against the
+  // claim it supports.
+  return markdown.replace(/[ \t]*\[(\d+)\](?!\()/g, (match, label: string) =>
+    labels.has(Number(label))
+      ? `[${label}](${CITATION_LINK_PREFIX}${label})`
+      : match,
   );
 }
 
@@ -46,6 +53,9 @@ export default function HistoryDocumentSummary({
   const [selectedCitationLabel, setSelectedCitationLabel] = useState<
     number | null
   >(null);
+  // The source list is reference material — a dozen quotes above the fold
+  // buried the summary itself.
+  const [sourcesOpen, setSourcesOpen] = useState(false);
   const citationsByLabel = useMemo(
     () =>
       new Map(
@@ -156,17 +166,19 @@ export default function HistoryDocumentSummary({
                       return (
                         <button
                           type="button"
-                          className="font-mono-nr underline decoration-dotted underline-offset-2"
-                          style={{ color: "var(--accent)" }}
+                          className="citation-marker"
                           aria-label={`[${label}]`}
                           aria-expanded={selectedCitationLabel === label}
                           aria-controls="history-citation-preview"
                           onClick={() => setSelectedCitationLabel(label)}
                         >
-                          [{label}]
+                          {label}
                         </button>
                       );
                     }
+                    // A bracketed number the model did not cite — a year, a
+                    // version — must not become a dead in-page link.
+                    return <>[{label}]</>;
                   }
                   return (
                     <a href={href} {...props}>
@@ -176,7 +188,7 @@ export default function HistoryDocumentSummary({
                 },
               }}
             >
-              {citedMarkdown(summary.markdown)}
+              {citedMarkdown(summary.markdown, new Set(citationsByLabel.keys()))}
             </ReactMarkdown>
           </div>
           {selectedCitation && (
@@ -186,10 +198,25 @@ export default function HistoryDocumentSummary({
             />
           )}
           {(summary.citations?.length ?? 0) > 0 && (
-            <ol
-              className="mt-5 space-y-2 border-t pt-4"
+            <div
+              className="mt-5 border-t pt-4"
               style={{ borderColor: "var(--accent-border)" }}
             >
+              <button
+                type="button"
+                className="mono-label"
+                style={{ color: "var(--ink-faint)" }}
+                aria-expanded={sourcesOpen}
+                aria-controls="history-citation-sources"
+                onClick={() => setSourcesOpen((open) => !open)}
+              >
+                {sourcesOpen ? "Hide" : "Show"} {summary.citations?.length}{" "}
+                {summary.citations?.length === 1 ? "source" : "sources"}
+              </button>
+            </div>
+          )}
+          {sourcesOpen && (summary.citations?.length ?? 0) > 0 && (
+            <ol id="history-citation-sources" className="mt-3 space-y-2">
               {(summary.citations ?? []).map((citation) => (
                 <li
                   key={`${citation.label}-${citation.block_id}`}
