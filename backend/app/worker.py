@@ -57,31 +57,48 @@ NER_BATCH = 10
 ENRICH_CONCURRENCY = 4
 # One LLM request per article (llm.summarize parses all three levels from a
 # single completion), so this is exactly how many requests are in flight
-# against the model endpoint. Kept at/below SUMMARIZE_BATCH — a higher value
-# cannot help, there are only that many articles in a cycle — and below the
-# engine's default pool (5 + 10 overflow), since _for_each_article holds one
-# session per article for the whole call.
+# against the model endpoint. Kept at/below SUMMARIZE_BATCH: a higher value
+# cannot help, there are only that many articles in a cycle.
 SUMMARIZE_CONCURRENCY = 8
 NER_CONCURRENCY = 2
 
+# Stage gates are module-level on purpose. arq runs every job in one event loop
+# in a single process, so one semaphore per stage bounds concurrency across
+# *overlapping* jobs — the poll_feeds cron racing queued enrich_feed calls, or
+# several enrich_feed jobs from a bulk feed import (arq runs up to max_jobs at
+# once). A semaphore created per invocation only bounds that invocation, so N
+# concurrent jobs multiply to N x limit connection checkouts and overrun the
+# engine pool; _for_each_article holds a session per article for the whole call,
+# which for summarization can reach the 120s LLM timeout. Total ceiling here is
+# ENRICH + SUMMARIZE + NER = 14, which db.py's pool is sized to absorb.
+_ENRICH_GATE = asyncio.Semaphore(ENRICH_CONCURRENCY)
+_SUMMARIZE_GATE = asyncio.Semaphore(SUMMARIZE_CONCURRENCY)
+_NER_GATE = asyncio.Semaphore(NER_CONCURRENCY)
 
-async def _for_each_article(ids, *, concurrency: int, label: str, fn) -> None:
+
+async def _for_each_article(ids, *, gate: asyncio.Semaphore, label: str, fn) -> None:
     """Run fn(session, article) for each id, each in its own session, at most
-    `concurrency` at a time. Failures are logged per article and never stop
-    the batch; fn owns any transaction discipline beyond that."""
-    semaphore = asyncio.Semaphore(concurrency)
+    `gate`'s limit at a time across every job in this worker. Failures are
+    logged per article and never stop the batch; fn owns any transaction
+    discipline beyond that."""
 
     async def one(article_id: int) -> None:
-        async with semaphore:
-            async with db.SessionLocal() as session:
-                article = await session.get(Article, article_id)
-                if article is None:
-                    return
-                try:
+        async with gate:
+            # The whole session block is guarded, not just fn: acquiring a
+            # connection can itself fail (pool timeout under load), and that
+            # must degrade one article rather than kill the job and skip the
+            # pipeline stages that follow.
+            try:
+                async with db.SessionLocal() as session:
+                    article = await session.get(Article, article_id)
+                    if article is None:
+                        return
                     await fn(session, article)
-                except Exception as exc:
-                    logger.warning("%s of article %s failed: %s", label, article_id, exc)
+            except Exception as exc:
+                logger.warning("%s of article %s failed: %s", label, article_id, exc)
 
+    # No return_exceptions: `one` already swallows Exception, and letting
+    # BaseException (worker shutdown's CancelledError) propagate is correct.
     await asyncio.gather(*(one(article_id) for article_id in ids))
 
 
@@ -106,9 +123,7 @@ async def enrich_and_summarize(ctx: dict | None = None, feed_id: int | None = No
             enrich_query = enrich_query.where(Article.feed_id == feed_id)
         enrich_ids = list(await session.scalars(enrich_query))
 
-    await _for_each_article(
-        enrich_ids, concurrency=ENRICH_CONCURRENCY, label="Enrichment", fn=enrich_article
-    )
+    await _for_each_article(enrich_ids, gate=_ENRICH_GATE, label="Enrichment", fn=enrich_article)
 
     try:
         extracted = await extract_entities(feed_id=feed_id)
@@ -151,7 +166,7 @@ async def enrich_and_summarize(ctx: dict | None = None, feed_id: int | None = No
 
     await _for_each_article(
         summarize_ids,
-        concurrency=SUMMARIZE_CONCURRENCY,
+        gate=_SUMMARIZE_GATE,
         label="Auto-summary",
         fn=_summarize_quietly,
     )
@@ -228,7 +243,7 @@ async def extract_named_entities_batch(feed_id: int | None = None) -> int:
         ids = list(await session.scalars(query))
     if not ids:
         return 0
-    await _for_each_article(ids, concurrency=NER_CONCURRENCY, label="Entity tagging", fn=_ner_one)
+    await _for_each_article(ids, gate=_NER_GATE, label="Entity tagging", fn=_ner_one)
     return len(ids)
 
 
