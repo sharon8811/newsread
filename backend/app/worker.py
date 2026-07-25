@@ -55,7 +55,13 @@ EMBED_BATCH = 50
 HISTORY_EMBED_BATCH = 50
 NER_BATCH = 10
 ENRICH_CONCURRENCY = 4
-SUMMARIZE_CONCURRENCY = 2
+# One LLM request per article (llm.summarize parses all three levels from a
+# single completion), so this is exactly how many requests are in flight
+# against the model endpoint. Kept at/below SUMMARIZE_BATCH — a higher value
+# cannot help, there are only that many articles in a cycle — and below the
+# engine's default pool (5 + 10 overflow), since _for_each_article holds one
+# session per article for the whole call.
+SUMMARIZE_CONCURRENCY = 8
 NER_CONCURRENCY = 2
 
 
