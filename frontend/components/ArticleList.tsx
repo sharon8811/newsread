@@ -327,7 +327,9 @@ function ReadingList({
   const passObserver = useRef<IntersectionObserver | null>(null);
   const compensation = useRef<{ height: number; top: number } | null>(null);
   const articlesLive = useRef<Article[] | null>(null);
-  useEffect(() => {
+  // Read from observer and event callbacks that can fire as soon as the rows
+  // paint — before a passive effect would have filled it in.
+  useLayoutEffect(() => {
     articlesLive.current = articles;
   }, [articles]);
 

@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { mutate } from "swr";
 import { api, apiWithHeaders, sendReadBatch, type Article } from "./api";
 import { keys } from "./keys";
@@ -73,7 +79,12 @@ export function useReadingWindow(opts: WindowOpts) {
 
   const articlesRef = useRef<Article[] | null>(articles);
   const stateSessionKeyRef = useRef(sessionKey);
-  useEffect(() => {
+  // Every action a reader can take — mark read, save, open — reads this
+  // mirror and gives up when it is empty. React paints the rows before it
+  // flushes passive effects, so a passive mirror leaves a window where the
+  // list is on screen and pressable while this still holds the previous
+  // value, and the keypress is silently dropped. Commit-time it is.
+  useLayoutEffect(() => {
     articlesRef.current = articles;
   }, [articles]);
 
@@ -103,7 +114,9 @@ export function useReadingWindow(opts: WindowOpts) {
   const generationRef = useRef(0);
 
   const feedIdRef = useRef(feedId);
-  useEffect(() => {
+  // Read by the batch flush, which a scroll or an unload can trigger at any
+  // moment — same reason as above.
+  useLayoutEffect(() => {
     feedIdRef.current = feedId;
   }, [feedId]);
 
