@@ -18,12 +18,22 @@ class Base(DeclarativeBase):
     pass
 
 
-# The worker holds one session per article across the whole enrich/summarize
-# call, so its peak demand is the sum of the stage gates in worker.py (14) plus
-# the short-lived sessions the batch queries open. SQLAlchemy's defaults
-# (5 + 10 overflow) sit under that ceiling, and exhausting the pool raises a
-# checkout timeout rather than merely queueing. 10 + 20 leaves headroom while
-# staying well inside Postgres' default max_connections across both processes.
+# The worker holds one session per item across whole remote calls, so its peak
+# demand is the sum of every module-level stage gate:
+#
+#   worker.py    enrich 4 + summarize 8 + NER 2       = 14
+#   pipeline.py  entity extract 4 + entity refresh 4  =  8
+#                                                       --
+#                                                       22
+#
+# plus the short-lived sessions the batch queries open. Each gate must stay
+# module-level for this arithmetic to hold — a per-invocation semaphore is
+# multiplied by however many jobs arq runs at once (max_jobs, default 10).
+# SQLAlchemy's defaults (5 + 10 overflow) sit under that ceiling, and
+# exhausting the pool raises a checkout timeout rather than merely queueing;
+# worse, an ungated stage starves the gated ones through the shared pool.
+# 10 + 20 leaves headroom while staying well inside Postgres' default
+# max_connections across both the API and worker processes.
 engine = create_async_engine(
     settings.database_url,
     pool_pre_ping=True,

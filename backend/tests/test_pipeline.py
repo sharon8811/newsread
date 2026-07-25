@@ -308,9 +308,44 @@ async def test_extract_one_missing_article(session, monkeypatch):
         pass
 
     # Article id that doesn't exist -> early return, no link call.
-    await pipeline._extract_one(
-        99999, asyncio.Semaphore(1), FakeClient(), defaultdict(asyncio.Lock)
+    await pipeline._extract_one(99999, FakeClient(), defaultdict(asyncio.Lock))
+
+
+async def test_extract_gate_is_shared_across_invocations(session, monkeypatch):
+    """The extract gate is module-level, so overlapping extraction passes (one
+    per enrich_and_summarize, and arq runs several jobs at once) share a single
+    limit. A per-invocation semaphore would admit ENTITY_CONCURRENCY each and
+    drain the engine pool out from under the worker's gated stages."""
+    feed = await _feed(session)
+    ids = [(await _article(session, feed, guid=f"g{i}")).id for i in range(10)]
+    inflight = peak = 0
+
+    async def slow_link(sess, article, client, locks):
+        nonlocal inflight, peak
+        inflight += 1
+        peak = max(peak, inflight)
+        await asyncio.sleep(0.01)
+        inflight -= 1
+
+    monkeypatch.setattr(pipeline, "link_article_entities", slow_link)
+    locks = defaultdict(asyncio.Lock)
+
+    # Two overlapping passes, mimicking two concurrent enrich_feed jobs.
+    await asyncio.gather(
+        *(pipeline._extract_one(aid, None, locks) for aid in ids[:5]),
+        *(pipeline._extract_one(aid, None, locks) for aid in ids[5:]),
     )
+    assert peak <= pipeline.ENTITY_CONCURRENCY, f"gate leaked: {peak} concurrent"
+
+
+async def test_extract_one_survives_session_failure(monkeypatch):
+    """A pool checkout timeout costs one article, not the extraction stage."""
+
+    def explode():
+        raise TimeoutError("QueuePool limit reached")
+
+    monkeypatch.setattr(pipeline.db, "SessionLocal", explode)
+    await pipeline._extract_one(1, None, defaultdict(asyncio.Lock))  # no raise
 
 
 # --- extract_entities ---

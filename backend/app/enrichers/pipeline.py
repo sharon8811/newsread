@@ -37,6 +37,16 @@ MAX_ENTITIES_PER_ARTICLE = 5
 # Refresh entities only while some linking article is reasonably fresh.
 REFRESH_ARTICLE_WINDOW = timedelta(days=14)
 
+# Module-level for the same reason as the worker's stage gates: arq runs every
+# job in one event loop, and extract_entities is reached once per
+# enrich_and_summarize call — so with several overlapping enrich_feed jobs a
+# per-invocation semaphore would admit ENTITY_CONCURRENCY *each*. Both stages
+# hold a session per item across remote fetches (10s timeout), so ungated they
+# can drain the shared engine pool and stall the worker stages that draw from
+# it. These two gates contribute 8 to the pool ceiling documented in db.py.
+_EXTRACT_GATE = asyncio.Semaphore(ENTITY_CONCURRENCY)
+_REFRESH_GATE = asyncio.Semaphore(ENTITY_CONCURRENCY)
+
 
 def _make_client() -> httpx.AsyncClient:
     return httpx.AsyncClient(
@@ -138,22 +148,26 @@ async def link_article_entities(
 
 async def _extract_one(
     article_id: int,
-    semaphore: asyncio.Semaphore,
     client: httpx.AsyncClient,
     locks: dict[tuple[str, str], asyncio.Lock],
 ) -> None:
-    async with semaphore:
-        async with db.SessionLocal() as session:
-            article = await session.get(Article, article_id)
-            if article is None:
-                return
-            try:
-                await link_article_entities(session, article, client, locks)
-            except Exception as exc:
-                logger.warning("Entity extraction for article %s failed: %s", article_id, exc)
-            # Always stamp, even on failure — never rescan, never block.
-            article.entities_extracted_at = datetime.now(UTC)
-            await session.commit()
+    async with _EXTRACT_GATE:
+        # Outer guard covers acquiring the session and the final commit; a pool
+        # timeout must cost one article, not the whole extraction stage.
+        try:
+            async with db.SessionLocal() as session:
+                article = await session.get(Article, article_id)
+                if article is None:
+                    return
+                try:
+                    await link_article_entities(session, article, client, locks)
+                except Exception as exc:
+                    logger.warning("Entity extraction for article %s failed: %s", article_id, exc)
+                # Always stamp, even on failure — never rescan, never block.
+                article.entities_extracted_at = datetime.now(UTC)
+                await session.commit()
+        except Exception as exc:
+            logger.warning("Entity extraction for article %s could not run: %s", article_id, exc)
 
 
 async def extract_entities(feed_id: int | None = None) -> int:
@@ -182,10 +196,9 @@ async def extract_entities(feed_id: int | None = None) -> int:
     if not ids:
         return 0
 
-    semaphore = asyncio.Semaphore(ENTITY_CONCURRENCY)
     locks: dict[tuple[str, str], asyncio.Lock] = defaultdict(asyncio.Lock)
     async with _make_client() as client:
-        await asyncio.gather(*(_extract_one(aid, semaphore, client, locks) for aid in ids))
+        await asyncio.gather(*(_extract_one(aid, client, locks) for aid in ids))
     return len(ids)
 
 
@@ -219,16 +232,16 @@ async def refresh_stale_entities() -> int:
     if not stale:
         return 0
 
-    semaphore = asyncio.Semaphore(ENTITY_CONCURRENCY)
-
     async def _refresh_one(kind: str, key: str) -> None:
-        async with semaphore:
-            async with db.SessionLocal() as session:
-                try:
+        async with _REFRESH_GATE:
+            # Session acquisition is inside the guard: a pool timeout must cost
+            # one entity, not abort the whole refresh pass.
+            try:
+                async with db.SessionLocal() as session:
                     await _get_or_refresh(session, BY_KIND[kind], key, client)
                     await session.commit()
-                except Exception as exc:
-                    logger.warning("Entity refresh %s:%s failed: %s", kind, key, exc)
+            except Exception as exc:
+                logger.warning("Entity refresh %s:%s failed: %s", kind, key, exc)
 
     async with _make_client() as client:
         await asyncio.gather(*(_refresh_one(kind, key) for _, kind, key in stale))
