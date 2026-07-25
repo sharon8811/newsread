@@ -18,7 +18,18 @@ class Base(DeclarativeBase):
     pass
 
 
-engine = create_async_engine(settings.database_url, pool_pre_ping=True)
+# The worker holds one session per article across the whole enrich/summarize
+# call, so its peak demand is the sum of the stage gates in worker.py (14) plus
+# the short-lived sessions the batch queries open. SQLAlchemy's defaults
+# (5 + 10 overflow) sit under that ceiling, and exhausting the pool raises a
+# checkout timeout rather than merely queueing. 10 + 20 leaves headroom while
+# staying well inside Postgres' default max_connections across both processes.
+engine = create_async_engine(
+    settings.database_url,
+    pool_pre_ping=True,
+    pool_size=10,
+    max_overflow=20,
+)
 SessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 # Set by init_db once the pgvector extension is confirmed. Embedding writes and

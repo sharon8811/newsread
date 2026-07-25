@@ -1,3 +1,4 @@
+import asyncio
 from datetime import UTC, datetime, timedelta
 
 from app import worker
@@ -41,7 +42,7 @@ async def test_for_each_article_missing_article():
     async def fail(s, article):
         raise AssertionError("fn must not be called for a missing article")
 
-    await worker._for_each_article([99999], concurrency=1, label="Enrichment", fn=fail)
+    await worker._for_each_article([99999], gate=asyncio.Semaphore(1), label="Enrichment", fn=fail)
 
 
 async def test_history_operations_audit_counts_stale_pipeline_alerts(monkeypatch):
@@ -73,7 +74,9 @@ async def test_for_each_article_calls_fn(session):
     async def fake_enrich(s, article):
         called["id"] = article.id
 
-    await worker._for_each_article([art.id], concurrency=1, label="Enrichment", fn=fake_enrich)
+    await worker._for_each_article(
+        [art.id], gate=asyncio.Semaphore(1), label="Enrichment", fn=fake_enrich
+    )
     assert called["id"] == art.id
 
 
@@ -84,7 +87,9 @@ async def test_for_each_article_swallows_errors(session):
     async def boom(s, article):
         raise RuntimeError("enrich failed")
 
-    await worker._for_each_article([art.id], concurrency=1, label="Enrichment", fn=boom)  # no raise
+    await worker._for_each_article(
+        [art.id], gate=asyncio.Semaphore(1), label="Enrichment", fn=boom
+    )  # no raise
 
 
 async def test_summarize_quietly_thin_content(session, monkeypatch):
@@ -96,7 +101,7 @@ async def test_summarize_quietly_thin_content(session, monkeypatch):
 
     monkeypatch.setattr(worker, "generate_summaries", raise_thin)
     await worker._for_each_article(
-        [art.id], concurrency=1, label="Auto-summary", fn=worker._summarize_quietly
+        [art.id], gate=asyncio.Semaphore(1), label="Auto-summary", fn=worker._summarize_quietly
     )  # no raise
 
 
@@ -109,7 +114,7 @@ async def test_summarize_quietly_short_content(session, monkeypatch):
 
     monkeypatch.setattr(worker, "generate_summaries", skip)
     await worker._for_each_article(
-        [art.id], concurrency=1, label="Auto-summary", fn=worker._summarize_quietly
+        [art.id], gate=asyncio.Semaphore(1), label="Auto-summary", fn=worker._summarize_quietly
     )  # no raise
 
 
@@ -122,7 +127,7 @@ async def test_summarize_quietly_generic_error(session, monkeypatch):
 
     monkeypatch.setattr(worker, "generate_summaries", boom)
     await worker._for_each_article(
-        [art.id], concurrency=1, label="Auto-summary", fn=worker._summarize_quietly
+        [art.id], gate=asyncio.Semaphore(1), label="Auto-summary", fn=worker._summarize_quietly
     )  # swallowed and logged by the batch helper
 
 
@@ -829,3 +834,44 @@ async def test_send_project_pin_push_adder_comment_becomes_body(session, users, 
     monkeypatch.setattr(worker.push, "send_push", fake_send)
     await worker.send_project_pin_push({}, pin.id)
     assert captured["body"] == "must read"
+
+
+async def test_for_each_article_gate_is_shared_across_invocations(session):
+    """A shared gate bounds concurrency across overlapping calls, not just
+    within one. Regression: a semaphore built per invocation let N concurrent
+    worker jobs (poll_feeds racing queued enrich_feed calls) multiply to
+    N x limit simultaneous connection checkouts and overrun the engine pool."""
+    feed = await _feed(session)
+    ids = [(await _article(session, feed, guid=f"g{i}")).id for i in range(6)]
+    gate = asyncio.Semaphore(2)
+    inflight = peak = 0
+
+    async def track(s, article):
+        nonlocal inflight, peak
+        inflight += 1
+        peak = max(peak, inflight)
+        await asyncio.sleep(0.01)
+        inflight -= 1
+
+    await asyncio.gather(
+        worker._for_each_article(ids[:3], gate=gate, label="A", fn=track),
+        worker._for_each_article(ids[3:], gate=gate, label="B", fn=track),
+    )
+    assert peak == 2, f"gate leaked: {peak} concurrent across two invocations"
+
+
+async def test_for_each_article_survives_session_acquisition_failure(monkeypatch):
+    """A pool checkout timeout must degrade one article, not kill the job and
+    skip every pipeline stage that follows it."""
+
+    def explode():
+        raise TimeoutError("QueuePool limit reached")
+
+    monkeypatch.setattr(worker.db, "SessionLocal", explode)
+
+    async def never(s, article):
+        raise AssertionError("fn must not run when the session cannot open")
+
+    await worker._for_each_article(
+        [1], gate=asyncio.Semaphore(1), label="Enrichment", fn=never
+    )  # no raise

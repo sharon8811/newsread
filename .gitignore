@@ -32,3 +32,9 @@ skills-lock.json
 
 # Personal Claude Code settings
 .claude/settings.local.json
+.claude/skills/beautify-github-readme
+
+# Local-only notes. This repo is public: pricing, cost models, and business
+# strategy live here and must never be committed.
+docs/local/
+*.local*.md
