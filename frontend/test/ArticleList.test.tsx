@@ -914,6 +914,37 @@ describe("<ArticleList> reading mode interactions", () => {
     await screen.findByText("All caught up ✓");
   });
 
+  it("acts on a keypress that lands before React flushes its passive effects", async () => {
+    const fetchMock = routedFetch([
+      {
+        match: isTopReadingRequest,
+        articles: [makeArticle({ id: 5, title: "Race Me" })],
+        headers: { "X-Unread-Count": "1" },
+      },
+    ]);
+    const { container } = renderReading(
+      <ArticleList filter="unread" emptyTitle="Empty" />,
+    );
+    // A MutationObserver callback is a microtask, so it runs at commit time —
+    // after the rows are in the DOM and pressable, but before the scheduler
+    // task that flushes passive effects. That is the window a reader hits when
+    // they press a key the moment the list appears, and where a ref mirrored
+    // by a passive effect is still empty.
+    const observer = new MutationObserver(() => {
+      if (!container.textContent?.includes("Race Me")) return;
+      observer.disconnect();
+      fireEvent.keyDown(window, { key: "m" });
+    });
+    observer.observe(container, { childList: true, subtree: true });
+
+    await screen.findByText("Race Me");
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some((c) => String(c[0]).includes("/articles/5/state")),
+      ).toBe(true),
+    );
+  });
+
   it("manual row controls visibly mark read and unread", async () => {
     const fetchMock = routedFetch([
       {
