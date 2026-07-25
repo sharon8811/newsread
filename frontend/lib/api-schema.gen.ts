@@ -2151,7 +2151,7 @@ export interface components {
              */
             summary_short: string;
             /** Summary Skipped Reason */
-            summary_skipped_reason?: "too_short" | null;
+            summary_skipped_reason?: ("too_short" | "needs_full_page") | null;
             /** Title */
             title: string;
             /** Url */
@@ -3699,7 +3699,7 @@ export interface components {
             /** Model */
             model: string | null;
             /** Skipped Reason */
-            skipped_reason?: "too_short" | null;
+            skipped_reason?: ("too_short" | "needs_full_page") | null;
             /** Summary */
             summary: string;
             /**

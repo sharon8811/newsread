@@ -14,7 +14,9 @@ from app.fetcher import (
     canonical_hn_comments_url,
     derive_excerpt,
     detect_comments_url,
+    discover_feed_url,
     fetch_feed_data,
+    find_advertised_feeds,
     parse_json_feed,
     parse_xml_feed,
     refresh_feed,
@@ -357,6 +359,71 @@ async def test_private_feed_targets_are_rejected():
 async def test_private_feed_guard_can_be_disabled(monkeypatch):
     monkeypatch.setattr("app.fetcher.settings.block_private_feed_urls", False)
     await _validate_public_url("http://127.0.0.1:8000/private")  # does not raise
+
+
+# --- feed autodiscovery ---
+
+
+HTML_PAGE = """<html><head>
+  <link rel="stylesheet" href="/style.css">
+  <link rel="alternate" type="application/xml" href="/sitemap.xml">
+  <link rel="alternate" type="application/rss+xml" title="Main" href="/feed.xml">
+  <link rel="alternate" type="application/rss+xml" title="Comments" href="/comments.xml">
+  <link rel="canonical" href="https://site.example/">
+</head><body>hi</body></html>"""
+
+
+def test_find_advertised_feeds_ranks_and_resolves():
+    found = find_advertised_feeds(HTML_PAGE, "https://site.example/")
+    assert found == [
+        "https://site.example/feed.xml",
+        "https://site.example/comments.xml",
+        # Generic XML is a last resort: it is also how sitemaps advertise.
+        "https://site.example/sitemap.xml",
+    ]
+
+
+def test_find_advertised_feeds_ignores_pages_without_links():
+    assert find_advertised_feeds("<html><body>nothing</body></html>", "https://x.example") == []
+    assert find_advertised_feeds("", "https://x.example") == []
+
+
+@respx.mock
+async def test_discover_feed_url_returns_the_first_candidate_that_parses():
+    respx.get("https://site.example/blog").mock(
+        return_value=httpx.Response(200, headers={"content-type": "text/html"}, text=HTML_PAGE)
+    )
+    # The advertised main feed is a dud; discovery must not stop there.
+    respx.get("https://site.example/feed.xml").mock(return_value=httpx.Response(404))
+    respx.get("https://site.example/comments.xml").mock(
+        return_value=httpx.Response(200, headers={"content-type": "application/rss+xml"}, text=RSS)
+    )
+    found = await discover_feed_url("https://site.example/blog")
+    assert found == "https://site.example/comments.xml"
+
+
+@respx.mock
+async def test_discover_feed_url_ignores_non_html_responses():
+    respx.get("https://feed.example/rss").mock(
+        return_value=httpx.Response(200, headers={"content-type": "application/rss+xml"}, text=RSS)
+    )
+    assert await discover_feed_url("https://feed.example/rss") is None
+
+
+@respx.mock
+async def test_discover_feed_url_returns_none_when_nothing_is_advertised():
+    respx.get("https://bare.example/page").mock(
+        return_value=httpx.Response(
+            200, headers={"content-type": "text/html"}, text="<html><body>x</body></html>"
+        )
+    )
+    assert await discover_feed_url("https://bare.example/page") is None
+
+
+@respx.mock
+async def test_discover_feed_url_survives_an_unreachable_page():
+    respx.get("https://down.example/page").mock(return_value=httpx.Response(503))
+    assert await discover_feed_url("https://down.example/page") is None
 
 
 # --- refresh_feed (DB) ---

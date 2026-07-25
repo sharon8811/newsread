@@ -24,12 +24,13 @@ from . import (
     llm,
     ner,
     push,
+    queue,
     suppressions,
 )
 from .config import settings
 from .db import init_db
 from .enrichers.pipeline import extract_entities, refresh_stale_entities
-from .extractor import enrich_article
+from .extractor import SUMMARIZABLE_FEED_HTML_CHARS, enrich_article
 from .fetcher import refresh_feed
 from .history_ingest import get_history_ingest_service
 from .models import (
@@ -51,6 +52,10 @@ logger = logging.getLogger(__name__)
 
 ENRICH_BATCH = 20
 SUMMARIZE_BATCH = 10
+# How many chained enrich_feed passes one subscribe may trigger. Five passes
+# clear a 100-entry feed; past that the 3-minutely poll can take over rather
+# than let one feed hold the queue.
+MAX_ENRICH_PASSES = 5
 EMBED_BATCH = 50
 HISTORY_EMBED_BATCH = 50
 NER_BATCH = 10
@@ -105,12 +110,24 @@ async def _for_each_article(ids, *, gate: asyncio.Semaphore, label: str, fn) -> 
 async def _summarize_quietly(session, article) -> None:
     try:
         await generate_summaries(session, article, allow_refetch=False)
-    except (ThinContentError, SummarySkipped):
-        pass  # expected terminal states: unavailable or already short
+    except SummarySkipped:
+        pass  # already stamped summary_skipped_reason
+    except ThinContentError:
+        # No usable text, and the batch path spends neither a browser render
+        # nor vision tokens to get some. Record it so the worker stops
+        # retrying this article every cycle and the feed's pending count can
+        # reach zero. The detail view still summarizes it on demand, where a
+        # refetch and vision are allowed — only "too_short" suppresses that.
+        article.summary_skipped_reason = "needs_full_page"
+        await session.commit()
 
 
-async def enrich_and_summarize(ctx: dict | None = None, feed_id: int | None = None) -> None:
-    """Fill missing full text / images, then summaries, newest articles first."""
+async def enrich_and_summarize(ctx: dict | None = None, feed_id: int | None = None) -> bool:
+    """Fill missing full text / images, then summaries, newest articles first.
+
+    Returns True when a stage ran a full batch, i.e. there is probably more of
+    this feed still to do.
+    """
     async with db.SessionLocal() as session:
         enrich_query = (
             select(Article.id)
@@ -139,7 +156,7 @@ async def enrich_and_summarize(ctx: dict | None = None, feed_id: int | None = No
             logger.info(
                 "Enriched %d articles, extracted entities for %d", len(enrich_ids), extracted
             )
-        return
+        return len(enrich_ids) >= ENRICH_BATCH
 
     async with db.SessionLocal() as session:
         summarize_query = (
@@ -154,7 +171,7 @@ async def enrich_and_summarize(ctx: dict | None = None, feed_id: int | None = No
                 or_(
                     Article.full_text != "",
                     Article.full_text_fetched_at.is_(None),
-                    func.length(Article.content_html) > 1600,
+                    func.length(Article.content_html) > SUMMARIZABLE_FEED_HTML_CHARS,
                 )
             )
             .order_by(Article.id.desc())
@@ -194,6 +211,7 @@ async def enrich_and_summarize(ctx: dict | None = None, feed_id: int | None = No
             history_documents_embedded,
             suppressed,
         )
+    return len(enrich_ids) >= ENRICH_BATCH or len(summarize_ids) >= SUMMARIZE_BATCH
 
 
 async def _ner_one(session, article) -> None:
@@ -452,9 +470,23 @@ async def suppress_articles_batch(feed_id: int | None = None) -> int:
             return 0
 
 
-async def enrich_feed(ctx: dict, feed_id: int) -> None:
-    """Enqueued by the API right after a feed is added."""
-    await enrich_and_summarize(ctx, feed_id=feed_id)
+async def enrich_feed(ctx: dict, feed_id: int, pass_number: int = 1) -> None:
+    """Enqueued by the API right after a feed is added.
+
+    A typical feed carries more entries than SUMMARIZE_BATCH, so one pass
+    leaves a freshly subscribed feed half-summarized. Chain another pass
+    rather than making the new subscriber wait out the 3-minutely poll — as
+    separate jobs, so the stage gates still bound concurrency and a long feed
+    never monopolizes a worker slot.
+    """
+    more = await enrich_and_summarize(ctx, feed_id=feed_id)
+    if not more or pass_number >= MAX_ENRICH_PASSES:
+        return
+    redis = (ctx or {}).get("redis")
+    if redis is None:
+        await queue.enqueue("enrich_feed", feed_id, pass_number + 1)
+    else:
+        await redis.enqueue_job("enrich_feed", feed_id, pass_number + 1)
 
 
 async def send_share_push(ctx: dict, share_id: int) -> None:

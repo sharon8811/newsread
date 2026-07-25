@@ -686,7 +686,10 @@ class EntityPageOut(BaseModel):
 class ArticleDetail(ArticleListItem):
     content_html: str
     summary_model: str | None = None
-    summary_skipped_reason: Literal["too_short"] | None = None
+    # "too_short": nothing worth summarizing, on demand or otherwise.
+    # "needs_full_page": the batch worker found no usable text; the on-demand
+    # path may still succeed, with a refetch or a rendered screenshot.
+    summary_skipped_reason: Literal["too_short", "needs_full_page"] | None = None
     entities: list[EntityFull] = []
 
 
@@ -1104,7 +1107,7 @@ class SummaryOut(BaseModel):
     summary_medium: str = ""
     model: str | None
     generated_at: datetime | None
-    skipped_reason: Literal["too_short"] | None = None
+    skipped_reason: Literal["too_short", "needs_full_page"] | None = None
 
 
 class SynthesisTimelineItem(BaseModel):

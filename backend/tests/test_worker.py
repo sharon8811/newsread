@@ -104,6 +104,12 @@ async def test_summarize_quietly_thin_content(session, monkeypatch):
         [art.id], gate=asyncio.Semaphore(1), label="Auto-summary", fn=worker._summarize_quietly
     )  # no raise
 
+    # Recorded, or the batch retries this article every cycle forever and the
+    # feed's pending count never reaches zero. "needs_full_page", not
+    # "too_short": on demand it may still summarize from a refetch or a render.
+    await session.refresh(art)
+    assert art.summary_skipped_reason == "needs_full_page"
+
 
 async def test_summarize_quietly_short_content(session, monkeypatch):
     feed = await _feed(session)
@@ -219,6 +225,54 @@ async def test_enrich_and_summarize_full_pipeline(session, monkeypatch):
     assert summarized == [art.id]
     assert skipped.id not in summarized
     assert history_calls == ["documents"]
+
+
+async def test_enrich_feed_chains_another_pass_while_work_remains(session, monkeypatch):
+    """A feed with more entries than SUMMARIZE_BATCH must not sit half
+    summarized until the 3-minutely poll comes round."""
+    enqueued = []
+
+    class FakeRedis:
+        async def enqueue_job(self, name, *args):
+            enqueued.append((name, args))
+
+    async def more_work(ctx=None, feed_id=None):
+        return True
+
+    monkeypatch.setattr(worker, "enrich_and_summarize", more_work)
+    await worker.enrich_feed({"redis": FakeRedis()}, 7)
+    assert enqueued == [("enrich_feed", (7, 2))]
+
+
+async def test_enrich_feed_stops_when_the_feed_is_done(session, monkeypatch):
+    enqueued = []
+
+    class FakeRedis:
+        async def enqueue_job(self, name, *args):
+            enqueued.append((name, args))
+
+    async def all_done(ctx=None, feed_id=None):
+        return False
+
+    monkeypatch.setattr(worker, "enrich_and_summarize", all_done)
+    await worker.enrich_feed({"redis": FakeRedis()}, 7)
+    assert enqueued == []
+
+
+async def test_enrich_feed_chain_is_bounded(session, monkeypatch):
+    """Never let one feed keep re-enqueueing itself indefinitely."""
+    enqueued = []
+
+    class FakeRedis:
+        async def enqueue_job(self, name, *args):
+            enqueued.append((name, args))
+
+    async def always_more(ctx=None, feed_id=None):
+        return True
+
+    monkeypatch.setattr(worker, "enrich_and_summarize", always_more)
+    await worker.enrich_feed({"redis": FakeRedis()}, 7, worker.MAX_ENRICH_PASSES)
+    assert enqueued == []
 
 
 async def test_enrich_and_summarize_scoped_to_feed(session, monkeypatch):

@@ -568,6 +568,52 @@ describe("useReadingWindow", () => {
     expect(result.current.articles![0].image_url).toBe("https://img/x.png");
     expect(result.current.articles![0].is_read).toBe(true);
   });
+
+  it("merges summaries that land after subscribing, on refreshInterval alone", async () => {
+    // The reason this poll has to exist: a freshly subscribed feed's summaries
+    // are written long after the list was painted, and nothing about them sets
+    // image_pending.
+    vi.useFakeTimers();
+    const bare = makeArticle({ id: 6, summary_short: "", image_pending: false });
+    let served: Article[] = [bare];
+    installFetch([
+      {
+        match: topRoute([]).match,
+        get articles() {
+          return served;
+        },
+        headers: { "X-Unread-Count": "1" },
+      } as Route,
+      batchRoute(),
+    ]);
+    const { result } = renderHook(() =>
+      useReadingWindow({ filter: "all", enabled: true, refreshInterval: 4000 }),
+    );
+    await vi.waitFor(() => expect(result.current.articles).toHaveLength(1));
+    served = [{ ...bare, summary_short: "the AI summary" }];
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4500);
+    });
+    expect(result.current.articles![0].summary_short).toBe("the AI summary");
+  });
+
+  it("stops polling once the server reports nothing pending", async () => {
+    vi.useFakeTimers();
+    const settled = makeArticle({ id: 6, summary_short: "done", image_pending: false });
+    const fetchMock = installFetch([
+      { ...topRoute([settled]), headers: { "X-Unread-Count": "1" } },
+      batchRoute(),
+    ]);
+    const { result } = renderHook(() =>
+      useReadingWindow({ filter: "all", enabled: true, refreshInterval: 0 }),
+    );
+    await vi.waitFor(() => expect(result.current.articles).toHaveLength(1));
+    const afterLoad = fetchMock.mock.calls.length;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(20000);
+    });
+    expect(fetchMock.mock.calls.length).toBe(afterLoad);
+  });
 });
 
 describe("useReadingWindow edges", () => {

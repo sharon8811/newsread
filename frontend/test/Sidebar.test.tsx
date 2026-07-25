@@ -184,11 +184,11 @@ describe("<Sidebar>", () => {
 
   it("toggles the add-feed form open and closed", async () => {
     render(<Sidebar />);
-    expect(screen.queryByPlaceholderText(/example.com\/feed/)).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText(/example.com or its feed/)).not.toBeInTheDocument();
     await userEvent.click(screen.getByTitle("Add feed"));
-    expect(screen.getByPlaceholderText(/example.com\/feed/)).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/example.com or its feed/)).toBeInTheDocument();
     await userEvent.click(screen.getByTitle("Add feed"));
-    expect(screen.queryByPlaceholderText(/example.com\/feed/)).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText(/example.com or its feed/)).not.toBeInTheDocument();
   });
 
   it("does nothing when submitting an empty url", async () => {
@@ -206,17 +206,22 @@ describe("<Sidebar>", () => {
     render(<Sidebar />);
     await userEvent.click(screen.getByTitle("Add feed"));
     await userEvent.type(
-      screen.getByPlaceholderText(/example.com\/feed/),
+      screen.getByPlaceholderText(/example.com or its feed/),
       "https://new.example/rss",
     );
     await userEvent.click(screen.getByRole("button", { name: "Subscribe" }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     expect(fetchMock.mock.calls[0][0]).toContain("/feeds");
     await waitFor(() => expect(pushMock).toHaveBeenCalledWith("/?feed=42"));
-    expect(mutateMock).toHaveBeenCalledWith("/feeds");
+    // Seeded from the POST response rather than re-fetched, so the sidebar
+    // never flashes "No feeds yet" over a subscribe that just succeeded.
+    const [key, updater, opts] = mutateMock.mock.calls[0];
+    expect(key).toBe("/feeds");
+    expect(opts).toEqual({ revalidate: true });
+    expect(updater([])).toEqual([expect.objectContaining({ id: 42, title: "New Feed" })]);
     // form closed after success
     await waitFor(() =>
-      expect(screen.queryByPlaceholderText(/example.com\/feed/)).not.toBeInTheDocument(),
+      expect(screen.queryByPlaceholderText(/example.com or its feed/)).not.toBeInTheDocument(),
     );
   });
 
@@ -228,7 +233,7 @@ describe("<Sidebar>", () => {
     render(<Sidebar />);
     await userEvent.click(screen.getByTitle("Add feed"));
     await userEvent.type(
-      screen.getByPlaceholderText(/example.com\/feed/),
+      screen.getByPlaceholderText(/example.com or its feed/),
       "https://bad.example/rss",
     );
     await userEvent.click(screen.getByRole("button", { name: "Subscribe" }));
@@ -242,7 +247,7 @@ describe("<Sidebar>", () => {
     render(<Sidebar />);
     await userEvent.click(screen.getByTitle("Add feed"));
     await userEvent.type(
-      screen.getByPlaceholderText(/example.com\/feed/),
+      screen.getByPlaceholderText(/example.com or its feed/),
       "https://x.example/rss",
     );
     await userEvent.click(screen.getByRole("button", { name: "Subscribe" }));

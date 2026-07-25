@@ -289,6 +289,7 @@ function ReadingList({
   emptyTitle,
   emptySubtitle,
   variant = "list",
+  refreshInterval = 0,
 }: Omit<ListProps, "filter"> & { filter: "all" | "unread" }) {
   const {
     articles,
@@ -305,7 +306,7 @@ function ReadingList({
     toggleRead,
     markOpened,
     toggleSaved,
-  } = useReadingWindow({ filter, feedId, enabled: true });
+  } = useReadingWindow({ filter, feedId, enabled: true, refreshInterval });
   const router = useRouter();
 
   const [selected, setSelected] = useState(0);

@@ -5,7 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { api, type Feed } from "@/lib/api";
 import {
-  mutateFeeds,
+  addFeedToCache,
   useAiSettings,
   useFeeds,
   useHistorySummary,
@@ -118,7 +118,7 @@ export default function Sidebar() {
       onSuccess(feed) {
         setNewUrl("");
         setAdding(false);
-        mutateFeeds();
+        addFeedToCache(feed);
         router.push(`/?feed=${feed.id}`);
       },
     },
@@ -234,7 +234,8 @@ export default function Sidebar() {
           <input
             className="input"
             style={{ fontSize: 13, padding: "7px 10px" }}
-            placeholder="https://example.com/feed.xml"
+            // A site URL works too — the server resolves the feed it advertises.
+            placeholder="example.com or its feed URL"
             value={newUrl}
             onChange={(e) => setNewUrl(e.target.value)}
             autoFocus
@@ -243,6 +244,15 @@ export default function Sidebar() {
           <button className="btn btn-accent mt-2 w-full" disabled={busy} type="submit">
             {busy ? "Fetching…" : "Subscribe"}
           </button>
+          {/* The way out of a failed paste: never hide the catalog behind the
+              form that just rejected their URL. */}
+          <p className="mt-2 text-body-sm leading-relaxed" style={{ color: "var(--ink-faint)" }}>
+            Or browse the{" "}
+            <Link href="/catalog" className="underline" style={{ color: "var(--accent)" }}>
+              catalog
+            </Link>
+            .
+          </p>
         </form>
       )}
 

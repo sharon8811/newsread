@@ -1,12 +1,15 @@
 import logging
+from urllib.parse import urlsplit
 
+import httpx
 from fastapi import APIRouter, HTTPException
 from sqlalchemy import and_, exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .. import queue
 from ..deps import CurrentUser, DbSession
-from ..fetcher import FeedRateLimited, refresh_feed
+from ..extractor import SUMMARIZABLE_FEED_HTML_CHARS
+from ..fetcher import FeedParseError, FeedRateLimited, discover_feed_url, refresh_feed
 from ..models import Article, Feed, Share, Subscription, User, UserArticleState
 from ..schemas import AddFeedIn, FeedOut, FeedSettingsIn
 
@@ -47,6 +50,33 @@ def retention_visible():
     )
 
 
+def _enrich_pending():
+    """The worker's enrich stage still owes this article full text or an image."""
+    return and_(
+        Article.full_text_fetched_at.is_(None),
+        or_(Article.full_text == "", Article.image_url.is_(None)),
+    )
+
+
+def _summary_pending():
+    """The worker's summarize stage still owes this article a summary.
+
+    Mirrors `enrich_and_summarize`'s summarize query exactly — including the
+    thin-content exclusion — so articles the worker will never summarize don't
+    keep the progress indicator spinning forever.
+    """
+    return and_(
+        Feed.ai_enabled.is_(True),
+        Article.summary_short == "",
+        Article.summary_skipped_reason.is_(None),
+        or_(
+            Article.full_text != "",
+            Article.full_text_fetched_at.is_(None),
+            func.length(Article.content_html) > SUMMARIZABLE_FEED_HTML_CHARS,
+        ),
+    )
+
+
 def _feed_list_stmt(user_id: int):
     visible = retention_visible()
     return (
@@ -59,16 +89,11 @@ def _feed_list_stmt(user_id: int):
                 or_(UserArticleState.id.is_(None), UserArticleState.is_read.is_(False)),
             )
             .label("unread_count"),
-            # Mirrors the worker's enrich query: full_text_fetched_at is stamped
-            # even on failure, so this always converges to 0.
+            # Mirrors both worker stages: full_text_fetched_at is stamped even
+            # on failure and the summarize predicate excludes the articles the
+            # worker skips for good, so this always converges to 0.
             func.count(Article.id)
-            .filter(
-                visible,
-                and_(
-                    Article.full_text_fetched_at.is_(None),
-                    or_(Article.full_text == "", Article.image_url.is_(None)),
-                ),
-            )
+            .filter(visible, or_(_enrich_pending(), _summary_pending()))
             .label("pending_count"),
             Subscription,
         )
@@ -119,47 +144,109 @@ async def list_feeds(user: CurrentUser, session: DbSession):
     return [_to_feed_out(*row) for row in rows]
 
 
+def _explain_fetch_failure(url: str, exc: Exception) -> str:
+    """Say which of the three things went wrong, so the user knows what to fix."""
+    if isinstance(exc, httpx.HTTPStatusError):
+        status = exc.response.status_code
+        if status in {401, 403}:
+            return "That site refused our request for its feed"
+        if status == 404:
+            return "Nothing is published at that URL (404)"
+        return f"That site answered with an error ({status})"
+    if isinstance(exc, httpx.HTTPError):
+        return f"Could not reach {urlsplit(url).netloc or 'that address'}"
+    if isinstance(exc, FeedParseError):
+        return str(exc)
+    return "Could not fetch or parse a feed at that URL"
+
+
+async def _create_feed(session: AsyncSession, url: str) -> Feed:
+    """Insert a feed and back-fill its first articles. Raises on a bad URL."""
+    feed = Feed(url=url)
+    session.add(feed)
+    await session.flush()
+    try:
+        await refresh_feed(session, feed, require_articles=True)
+    except FeedRateLimited as exc:
+        # The feed exists — the publisher is just throttling server-side
+        # fetches. Subscribe now (title falls back to the URL) and let the
+        # poller backfill stories once the limit clears.
+        logger.info("Subscribing to %s without an initial fetch: %s", url, exc)
+    return feed
+
+
+async def _backfill_existing(session: AsyncSession, feed: Feed, url: str) -> None:
+    """A feed row someone already created but that holds no articles yet."""
+    has_articles = await session.scalar(
+        select(func.count()).select_from(Article).where(Article.feed_id == feed.id)
+    )
+    if has_articles:
+        return
+    try:
+        await refresh_feed(session, feed, require_articles=True)
+    except FeedRateLimited as exc:
+        logger.info("Subscribing to %s without a revalidation fetch: %s", url, exc)
+    except Exception as exc:
+        await session.rollback()
+        logger.warning("Existing empty feed is no longer valid %s: %s", url, exc)
+        raise HTTPException(
+            status_code=400, detail="This feed is empty or no longer available"
+        ) from exc
+
+
+async def _resolve_subscribe_target(session: AsyncSession, url: str) -> Feed:
+    """The Feed row to subscribe to, creating it on first use.
+
+    A URL that isn't itself a feed gets one autodiscovery pass before we give
+    up: pasting the site you're reading is the common case, and the feed we
+    find is what the row is keyed on, so two users arriving from the site and
+    from its .xml share one feed.
+    """
+    feed = await session.scalar(select(Feed).where(Feed.url == url))
+    if feed is not None:
+        await _backfill_existing(session, feed, url)
+        return feed
+
+    try:
+        return await _create_feed(session, url)
+    except Exception as exc:
+        await session.rollback()
+        logger.warning("Failed to fetch feed %s: %s", url, exc)
+        failure = exc
+
+    discovered = await discover_feed_url(url, require_articles=True)
+    if discovered is None or discovered == url:
+        raise HTTPException(
+            status_code=400, detail=_explain_fetch_failure(url, failure)
+        ) from failure
+    logger.info("Autodiscovered feed %s for %s", discovered, url)
+
+    feed = await session.scalar(select(Feed).where(Feed.url == discovered))
+    if feed is not None:
+        await _backfill_existing(session, feed, discovered)
+        return feed
+    try:
+        return await _create_feed(session, discovered)
+    except Exception as exc:
+        await session.rollback()
+        logger.warning("Autodiscovered feed %s did not load: %s", discovered, exc)
+        raise HTTPException(
+            status_code=400, detail=_explain_fetch_failure(discovered, exc)
+        ) from exc
+
+
 @router.post("", response_model=FeedOut, status_code=201)
 async def add_feed(
     body: AddFeedIn,
     user: CurrentUser,
     session: DbSession,
 ):
+    # Read the id before resolving: a failed first fetch rolls the session
+    # back, which expires `user` and makes any later attribute access a lazy
+    # load the async session can't service.
+    user_id = user.id
     url = _normalize_url(body.url)
-    feed = await session.scalar(select(Feed).where(Feed.url == url))
-
-    if feed is None:
-        feed = Feed(url=url)
-        session.add(feed)
-        await session.flush()
-        try:
-            await refresh_feed(session, feed, require_articles=True)
-        except FeedRateLimited as exc:
-            # The feed exists — the publisher is just throttling server-side
-            # fetches. Subscribe now (title falls back to the URL) and let the
-            # poller backfill stories once the limit clears.
-            logger.info("Subscribing to %s without an initial fetch: %s", url, exc)
-        except Exception as exc:
-            await session.rollback()
-            logger.warning("Failed to fetch feed %s: %s", url, exc)
-            raise HTTPException(
-                status_code=400, detail="Could not fetch or parse a feed at that URL"
-            ) from exc
-    else:
-        has_articles = await session.scalar(
-            select(func.count()).select_from(Article).where(Article.feed_id == feed.id)
-        )
-        if not has_articles:
-            try:
-                await refresh_feed(session, feed, require_articles=True)
-            except FeedRateLimited as exc:
-                logger.info("Subscribing to %s without a revalidation fetch: %s", url, exc)
-            except Exception as exc:
-                await session.rollback()
-                logger.warning("Existing empty feed is no longer valid %s: %s", url, exc)
-                raise HTTPException(
-                    status_code=400, detail="This feed is empty or no longer available"
-                ) from exc
+    feed = await _resolve_subscribe_target(session, url)
 
     # Quick settings chosen at subscribe time. The global switches share PATCH
     # /feeds/{id}/settings semantics (any subscriber may flip them); is_muted
@@ -170,10 +257,10 @@ async def add_feed(
         feed.image_gen_enabled = body.image_gen_enabled
 
     already = await session.scalar(
-        select(Subscription).where(Subscription.user_id == user.id, Subscription.feed_id == feed.id)
+        select(Subscription).where(Subscription.user_id == user_id, Subscription.feed_id == feed.id)
     )
     if already is None:
-        already = Subscription(user_id=user.id, feed_id=feed.id)
+        already = Subscription(user_id=user_id, feed_id=feed.id)
         session.add(already)
     if body.is_muted is not None:
         already.is_muted = body.is_muted
@@ -182,7 +269,7 @@ async def add_feed(
     # Background: fetch og:images + full text, then pre-generate summaries.
     await queue.enqueue("enrich_feed", feed.id)
 
-    row = (await session.execute(_feed_list_stmt(user.id).where(Feed.id == feed.id))).one()
+    row = (await session.execute(_feed_list_stmt(user_id).where(Feed.id == feed.id))).one()
     return _to_feed_out(*row)
 
 

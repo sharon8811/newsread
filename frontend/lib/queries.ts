@@ -232,6 +232,21 @@ export function mutateFeeds() {
   mutate(keys.feeds);
 }
 
+/** Seed the sidebar with a feed the server just returned, then revalidate.
+ * A bare mutateFeeds() is a round-trip, and until it lands a first-time
+ * subscriber sees the "No feeds yet" empty state — the app reporting failure
+ * at the moment it succeeded. */
+export function addFeedToCache(feed: Feed) {
+  mutate(
+    keys.feeds,
+    (list?: Feed[]) => {
+      const rest = (list ?? []).filter((f) => f.id !== feed.id);
+      return [...rest, feed].sort((a, b) => a.title.localeCompare(b.title));
+    },
+    { revalidate: true },
+  );
+}
+
 export function mutateShareTargets() {
   mutate(keys.shareTargets);
 }
