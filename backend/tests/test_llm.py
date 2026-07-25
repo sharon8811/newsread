@@ -381,3 +381,32 @@ async def test_named_entities_collapses_doubled_marker(monkeypatch):
         ("person", "Peter Thiel"),
         ("org", "Palantir"),
     ]
+
+
+async def test_history_summary_repair_replays_the_rejected_reply(monkeypatch):
+    captured = {}
+
+    async def fake_complete(messages, max_tokens, **kwargs):
+        captured["messages"] = messages
+        return '{"markdown": "ok [1]", "block_ids": ["b0001"]}'
+
+    monkeypatch.setattr(llm, "_complete", fake_complete)
+    config = llm.LLMConfig(provider="system", model="m", api_key="k", base_url="", user_owned=False)
+
+    await llm.summarize_history_document(corpus="{}", config=config)
+    assert [message["role"] for message in captured["messages"]] == ["system", "user"]
+
+    await llm.summarize_history_document(
+        corpus="{}",
+        config=config,
+        previous_attempt="not json at all",
+        error="summary output is not valid JSON",
+    )
+    assert [message["role"] for message in captured["messages"]] == [
+        "system",
+        "user",
+        "assistant",
+        "user",
+    ]
+    assert captured["messages"][2]["content"] == "not json at all"
+    assert "summary output is not valid JSON" in captured["messages"][3]["content"]

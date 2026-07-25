@@ -91,28 +91,55 @@ describe("HistoryDocumentSummary", () => {
     await userEvent.click(
       screen.getByRole("button", { name: "Close citation preview" }),
     );
+    await userEvent.click(screen.getByRole("button", { name: "Show 1 source" }));
     await userEvent.click(
       screen.getByRole("button", { name: /A precise source passage/ }),
     );
     expect(screen.getByLabelText("Citation 1")).toBeInTheDocument();
   });
 
-  it("renders ordinary markdown links and leaves unmatched citation labels inert", () => {
+  it("keeps the source list collapsed until the reader asks for it", async () => {
     swrMock.mockReturnValue({
       data: {
         state: "ready",
-        markdown: "Read [the source](https://example.org) and missing [9].",
-        citations: [],
+        markdown: "A supported statement [1] and another [2].",
+        citations: [citation, { ...citation, label: 2, block_id: "p-2" }],
       },
       mutate: localMutateMock,
     });
     render(<HistoryDocumentSummary documentId={12} />);
+
+    expect(screen.queryByRole("list")).not.toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole("button", { name: "Show 2 sources" }),
+    );
+    expect(screen.getByRole("list")).toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole("button", { name: "Hide 2 sources" }),
+    );
+    expect(screen.queryByRole("list")).not.toBeInTheDocument();
+  });
+
+  it("renders ordinary markdown links and leaves unmatched citation labels inert", () => {
+    swrMock.mockReturnValue({
+      data: {
+        state: "ready",
+        markdown:
+          "Read [the source](https://example.org), missing [9] and inert [8](#newsread-citation-8).",
+        citations: [],
+      },
+      mutate: localMutateMock,
+    });
+    const { container } = render(<HistoryDocumentSummary documentId={12} />);
 
     expect(screen.getByRole("link", { name: "the source" })).toHaveAttribute(
       "href",
       "https://example.org",
     );
     expect(screen.queryByRole("button", { name: "[9]" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "8" })).not.toBeInTheDocument();
+    // An uncited bracketed number keeps its spacing and stays plain text.
+    expect(container.textContent).toContain("missing [9] and inert [8].");
   });
 
   it("regenerates a ready summary with the force flag and displays its model", async () => {

@@ -74,6 +74,73 @@ describe("structured browser extraction", () => {
     expect(extractCaptureDocument(lowValue)).toBeNull();
   });
 
+  it("splits the fallback into citable blocks instead of one wall of text", () => {
+    const source = documentFor(
+      `<body><div>
+        Nav
+        sharon8811 wants to merge 1 commit into main from perf/summarize.
+        The change raises the summarize concurrency setting from two up to eight.
+        Reviewers approved the pull request after the benchmark run had finished.
+      </div></body>`,
+    );
+
+    const captured = extractCaptureDocument(source);
+
+    expect(captured?.blocks).toHaveLength(3);
+    expect(captured?.blocks[0]?.text).toBe(
+      "sharon8811 wants to merge 1 commit into main from perf/summarize.",
+    );
+    expect(captured?.blocks.map((block) => block.id)).toEqual([
+      "b0001",
+      "b0002",
+      "b0003",
+    ]);
+  });
+
+  it("keeps a page whose content is laid out in short lines", () => {
+    const stanza = [
+      "The captured page",
+      "is laid out in",
+      "lines far shorter",
+      "than a sentence",
+      "as a poem or a",
+      "compact table is",
+    ];
+    const source = documentFor(
+      `<body><div>
+        Sign in
+        ${stanza.join("\n        ")}
+        ${stanza.join("\n        ")}
+      </div></body>`,
+    );
+
+    const captured = extractCaptureDocument(source);
+
+    // Nothing is lost: the short lines join instead of being discarded.
+    expect(captured).not.toBeNull();
+    expect(captured!.blocks).toHaveLength(1);
+    expect(captured!.blocks[0]!.text).toContain("Sign in The captured page");
+    expect(captured!.blocks[0]!.text).toContain("compact table is");
+  });
+
+  it("drops an isolated short line between real paragraphs", () => {
+    const source = documentFor(
+      `<body><div>
+        sharon8811 wants to merge 1 commit into main from perf/summarize.
+        Nav
+        The change raises the summarize concurrency setting from two up to eight.
+        Reviewers approved the pull request after the benchmark run had finished.
+      </div></body>`,
+    );
+
+    const captured = extractCaptureDocument(source);
+
+    expect(captured?.blocks).toHaveLength(3);
+    expect(
+      captured?.blocks.some((block) => block.text.includes("Nav")),
+    ).toBe(false);
+  });
+
   it("ignores hidden blocks", () => {
     const source = documentFor(`
       <article>

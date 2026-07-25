@@ -24,7 +24,7 @@ HISTORY_SUMMARY_PROMPT_VERSION = "history-summary-v1"
 HISTORY_SUMMARY_BATCH = 10
 HISTORY_SUMMARY_STALE_AFTER = timedelta(minutes=15)
 MAX_CITATIONS = 12
-_FENCED_JSON_RE = re.compile(r"^```(?:json)?\s*(.*?)\s*```$", re.DOTALL | re.IGNORECASE)
+_FENCED_JSON_RE = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.DOTALL | re.IGNORECASE)
 _MARKDOWN_LINK_RE = re.compile(r"\[[^\]]+\]\([^)]+\)")
 _CITATION_MARKER_RE = re.compile(r"\[(\d+)\]")
 _HTML_RE = re.compile(r"<[A-Za-z/][^>]*>")
@@ -34,15 +34,77 @@ class HistorySummaryOutputError(llm.EmptyResponseError):
     pass
 
 
+def _json_object(raw: str) -> str:
+    """Pull the JSON object out of a reply that wrapped it in prose or a fence.
+
+    Nothing here relaxes what the object itself must contain — a model that
+    adds a greeting should not cost the user their whole summary."""
+    text = raw.strip()
+    if match := _FENCED_JSON_RE.search(text):
+        return match.group(1)
+    start = text.find("{")
+    if start == -1:
+        raise HistorySummaryOutputError("summary output has no JSON object")
+    depth = 0
+    in_string = False
+    escaped = False
+    for index in range(start, len(text)):
+        character = text[index]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif character == "\\":
+                escaped = True
+            elif character == '"':
+                in_string = False
+        elif character == '"':
+            in_string = True
+        elif character == "{":
+            depth += 1
+        elif character == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start : index + 1]
+    raise HistorySummaryOutputError("summary output has no complete JSON object")
+
+
+def _renumber_markers(markdown: str, block_ids: list[str]) -> tuple[str, list[str]]:
+    """Keep the markers the model actually used, in reading order.
+
+    Models routinely cite a subset of the sources they list, or bracket a bare
+    number that is not a citation at all. Both used to fail the whole summary;
+    now the uncited sources are dropped and the rest renumbered from 1."""
+    used: list[int] = []
+    for marker in _CITATION_MARKER_RE.findall(markdown):
+        number = int(marker)
+        if 1 <= number <= len(block_ids) and number not in used:
+            used.append(number)
+    if not used:
+        raise HistorySummaryOutputError("summary cites none of its sources")
+    renumbered = {old: new for new, old in enumerate(used, start=1)}
+
+    def replace(match: re.Match[str]) -> str:
+        number = int(match.group(1))
+        if number in renumbered:
+            return f"[{renumbered[number]}]"
+        # A marker in citation range that names a source the model never
+        # listed is a dangling reference: drop it. A larger number is prose —
+        # a year, a version, a quantity — and stays.
+        return "" if number <= MAX_CITATIONS else match.group(0)
+
+    cleaned = _CITATION_MARKER_RE.sub(replace, markdown)
+    # Tidy the gap a dropped marker leaves behind.
+    cleaned = re.sub(r" +([.,;:)])", r"\1", cleaned)
+    return re.sub(r"[ \t]+(\n|$)", r"\1", cleaned), [block_ids[old - 1] for old in used]
+
+
 def parse_history_summary(raw: str, blocks: list[dict[str, str]]) -> tuple[str, list[dict]]:
     """Validate model output and derive every quote from trusted stored text."""
-    if match := _FENCED_JSON_RE.fullmatch(raw.strip()):
-        raw = match.group(1)
     try:
-        value = json.loads(raw)
+        value = json.loads(_json_object(raw))
     except json.JSONDecodeError as exc:
         raise HistorySummaryOutputError("summary output is not valid JSON") from exc
-    if not isinstance(value, dict) or set(value) != {"markdown", "block_ids"}:
+    if not isinstance(value, dict) or not {"markdown", "block_ids"} <= set(value):
         raise HistorySummaryOutputError("summary output has invalid fields")
     markdown = value["markdown"]
     block_ids = value["block_ids"]
@@ -62,13 +124,11 @@ def parse_history_summary(raw: str, blocks: list[dict[str, str]]) -> tuple[str, 
         or len(set(block_ids)) != len(block_ids)
     ):
         raise HistorySummaryOutputError("summary citations are invalid")
-    markers = {int(value) for value in _CITATION_MARKER_RE.findall(markdown)}
-    if markers != set(range(1, len(block_ids) + 1)):
-        raise HistorySummaryOutputError("summary citation markers do not match its sources")
+    markdown, cited_ids = _renumber_markers(markdown, block_ids)
 
     blocks_by_id = {block["id"]: block for block in blocks}
     citations: list[dict] = []
-    for block_id in block_ids:
+    for block_id in cited_ids:
         block = blocks_by_id.get(block_id)
         if block is None:
             raise HistorySummaryOutputError("summary cites an unknown block")
@@ -144,10 +204,22 @@ async def generate_history_summary(ctx: dict | None, summary_id: int) -> None:
                     config=config,
                     usage=usage,
                 )
-                markdown, citations = parse_history_summary(
-                    raw,
-                    prompt_blocks,
-                )
+                try:
+                    markdown, citations = parse_history_summary(raw, prompt_blocks)
+                except HistorySummaryOutputError as invalid:
+                    # One malformed reply used to cost the user the summary
+                    # entirely; give the model its own output back once.
+                    logger.info(
+                        "History summary %s retrying invalid output: %s", summary_id, invalid
+                    )
+                    repaired = await llm.summarize_history_document(
+                        corpus=corpus,
+                        config=config,
+                        usage=usage,
+                        previous_attempt=raw,
+                        error=str(invalid),
+                    )
+                    markdown, citations = parse_history_summary(repaired, prompt_blocks)
             row = await session.get(BrowserHistorySummary, summary_id)
             if row is None:
                 return

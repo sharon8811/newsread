@@ -187,11 +187,19 @@ describe("HistoryDocumentPage", () => {
           { id: "b0002", kind: "quote", text: "Quoted" },
           { id: "b0003", kind: "code", text: "const answer = 42;" },
           { id: "b0004", kind: "list_item", text: "Listed" },
-          { id: "b0005", kind: "paragraph", text: "Paragraph" },
+          { id: "b0005", kind: "list_item", text: "Listed again" },
+          { id: "b0006", kind: "paragraph", text: "Paragraph" },
+          { id: "b0007", kind: "list_item", text: "Listed later" },
         ],
       },
     };
-    render(<HistoryDocumentPage />);
+    const { container } = render(<HistoryDocumentPage />);
+
+    // Adjacent list items share one list; a paragraph starts a new one.
+    const lists = container.querySelectorAll(".reader ul");
+    expect(lists).toHaveLength(2);
+    expect(lists[0]!.querySelectorAll("li")).toHaveLength(2);
+    expect(lists[1]!.querySelectorAll("li")).toHaveLength(1);
 
     expect(
       screen.getByRole("heading", { name: "https://example.com/saved" }),

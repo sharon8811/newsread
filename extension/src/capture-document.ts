@@ -149,14 +149,47 @@ export function extractCaptureDocument(
   }
 
   if (characters < MIN_USEFUL_CHARACTERS) {
-    const fallback = normalizeBlockText(root.innerText, "paragraph");
-    if (fallback.length < MIN_USEFUL_CHARACTERS) return null;
+    // Pages that carry their text outside p/li/blockquote — app shells, most
+    // GitHub views — used to collapse into a single block. That reads as one
+    // run-on wall of text and leaves a summary with exactly one citable
+    // source, so split on the line breaks innerText already puts at block
+    // boundaries.
+    const fallback: CaptureBlock[] = [];
+    let fallbackCharacters = 0;
+    // A run of short lines is content laid out in short lines — a poem, a
+    // table, a directory listing — so it is joined rather than dropped. Only
+    // a short run that stands alone is page furniture ("Sign in", a crumb).
+    let run: string[] = [];
+    const emit = (text: string): boolean => {
+      const remaining = MAX_DOCUMENT_CHARS - fallbackCharacters;
+      if (remaining <= 0 || fallback.length >= MAX_BLOCKS) return false;
+      const bounded = text.slice(0, Math.min(MAX_BLOCK_CHARS, remaining));
+      fallback.push({
+        id: `b${String(fallback.length + 1).padStart(4, "0")}`,
+        kind: "paragraph",
+        text: bounded,
+      });
+      fallbackCharacters += bounded.length;
+      return true;
+    };
+    const flushRun = (): boolean => {
+      const joined = run.join(" ");
+      run = [];
+      return joined.length < 20 ? true : emit(joined);
+    };
+    for (const line of root.innerText.split("\n")) {
+      const text = normalizeBlockText(line, "paragraph");
+      if (!text) continue;
+      if (text.length < 20) {
+        run.push(text);
+        continue;
+      }
+      if (!flushRun() || !emit(text)) break;
+    }
+    flushRun();
+    if (fallbackCharacters < MIN_USEFUL_CHARACTERS) return null;
     blocks.length = 0;
-    blocks.push({
-      id: "b0001",
-      kind: "paragraph",
-      text: fallback.slice(0, MAX_DOCUMENT_CHARS),
-    });
+    blocks.push(...fallback);
   }
   return canonicalizeCaptureDocument({
     schema_version: 1,

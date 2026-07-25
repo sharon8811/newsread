@@ -477,6 +477,25 @@ body {
   margin-bottom: 0;
 }
 
+/* Citation markers ride along with the claim they support, so they stay out of
+   the reading line instead of interrupting it with bracketed numbers. */
+.citation-marker {
+  font-family: var(--mono);
+  font-size: 0.62em;
+  line-height: 1;
+  vertical-align: super;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-radius: 3px;
+  padding: 2px 4px;
+  margin-left: 2px;
+  transition: background 0.12s ease;
+}
+.citation-marker:hover,
+.citation-marker[aria-expanded="true"] {
+  background: color-mix(in srgb, var(--accent) 26%, transparent);
+}
+
 /* ——— marginalia (share notes) ——— */
 
 .note-quote {
