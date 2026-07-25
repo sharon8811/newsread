@@ -1,5 +1,6 @@
 from datetime import UTC, datetime
 
+import httpx
 import pytest
 from sqlalchemy import select
 
@@ -38,6 +39,13 @@ def _mock_refresh(monkeypatch):
         return 1
 
     monkeypatch.setattr(feeds_router, "refresh_feed", fake_refresh)
+
+    # Autodiscovery only runs after a failed fetch; keep it off the network
+    # unless a test opts in.
+    async def no_discovery(url, *, require_articles=False):
+        return None
+
+    monkeypatch.setattr(feeds_router, "discover_feed_url", no_discovery)
     return fake_refresh
 
 
@@ -63,22 +71,111 @@ async def test_list_feeds_with_counts(client, users, data):
     assert body[0]["unread_count"] == 1
 
 
-async def test_pending_count_counts_only_unstamped_articles(client, users, data):
+async def _pending_count(client, users, user):
+    resp = await client.get("/api/feeds", headers=users.auth(user))
+    return resp.json()[0]["pending_count"]
+
+
+@pytest.fixture
+def batch_llm(monkeypatch):
+    """conftest scrubs the API key, so the suite runs LLM-less by default and
+    the summarize stage is a no-op. The summary-pending cases only mean
+    anything on an install where the worker would actually summarize."""
+    monkeypatch.setattr(feeds_router.llm, "is_configured", lambda: True)
+
+
+async def test_pending_count_counts_unstamped_articles(batch_llm, client, users, data):
     user = await users.create()
     feed = await data.feed(title="Tech")
     await data.subscribe(user, feed)
-    # Never attempted, full_text empty -> pending.
+    # Never attempted, full_text empty -> the enrich stage still owes it.
     await data.article(feed)
-    # Attempt stamped -> settled, even though the image is still missing.
+    # Attempt stamped and too thin to summarize -> settled, even though the
+    # image is still missing.
     await data.article(feed, full_text_fetched_at=datetime.now(UTC))
-    # Fully enriched -> settled.
+    # Enriched and summarized -> settled.
     await data.article(
-        feed, full_text="body", image_url="https://x/i.png", full_text_fetched_at=datetime.now(UTC)
+        feed,
+        full_text="body",
+        image_url="https://x/i.png",
+        full_text_fetched_at=datetime.now(UTC),
+        summary_short="a summary",
     )
 
-    resp = await client.get("/api/feeds", headers=users.auth(user))
-    body = resp.json()
-    assert body[0]["pending_count"] == 1
+    assert await _pending_count(client, users, user) == 1
+
+
+async def test_pending_count_includes_articles_awaiting_a_summary(batch_llm, client, users, data):
+    """The summarize stage runs after enrichment; the indicator has to cover
+    it or it reports "done" while the summaries are still being written."""
+    user = await users.create()
+    feed = await data.feed(title="Tech")
+    await data.subscribe(user, feed)
+    article = await data.article(
+        feed,
+        full_text="a long enough body",
+        image_url="https://x/i.png",
+        full_text_fetched_at=datetime.now(UTC),
+    )
+
+    assert await _pending_count(client, users, user) == 1
+
+    article.summary_short = "the summary"
+    await data.session.commit()
+    assert await _pending_count(client, users, user) == 0
+
+
+async def test_pending_count_excludes_summaries_the_worker_will_never_write(
+    batch_llm, client, users, data
+):
+    """Skipped and thin-content articles are excluded by the worker's own
+    summarize query, so counting them would spin the indicator forever."""
+    user = await users.create()
+    feed = await data.feed(title="Tech")
+    await data.subscribe(user, feed)
+    stamped = datetime.now(UTC)
+    # Explicitly skipped.
+    await data.article(
+        feed, full_text="body", full_text_fetched_at=stamped, summary_skipped_reason="too_short"
+    )
+    # Page fetch failed and the feed's own content is a stub.
+    await data.article(feed, full_text="", content_html="<p>stub</p>", full_text_fetched_at=stamped)
+
+    assert await _pending_count(client, users, user) == 0
+
+
+async def test_pending_count_ignores_summaries_on_ai_disabled_feeds(batch_llm, client, users, data):
+    user = await users.create()
+    feed = await data.feed(title="Tech", ai_enabled=False)
+    await data.subscribe(user, feed)
+    await data.article(
+        feed,
+        full_text="body",
+        image_url="https://x/i.png",
+        full_text_fetched_at=datetime.now(UTC),
+    )
+
+    assert await _pending_count(client, users, user) == 0
+
+
+async def test_pending_count_ignores_summaries_without_a_server_llm(client, users, data):
+    """Regression: `ai_enabled` defaults to True even on installs with no
+    server-wide LLM, but there the worker returns before its summarize stage.
+    Counting those articles would leave the enrichment chip spinning — and the
+    inbox polling /feeds and /articles — forever. (No `batch_llm` fixture
+    here: this is the scrubbed, LLM-less configuration.)"""
+    user = await users.create()
+    feed = await data.feed(title="Tech")
+    await data.subscribe(user, feed)
+    await data.article(
+        feed,
+        full_text="a long enough body",
+        image_url="https://x/i.png",
+        full_text_fetched_at=datetime.now(UTC),
+    )
+
+    assert feeds_router.llm.is_configured() is False
+    assert await _pending_count(client, users, user) == 0
 
 
 async def test_add_new_feed(client, users):
@@ -171,6 +268,88 @@ async def test_add_feed_fetch_failure(client, users, monkeypatch):
         "/api/feeds", json={"url": "https://broken.example/rss"}, headers=users.auth(user)
     )
     assert resp.status_code == 400
+
+
+async def test_add_feed_error_names_the_actual_failure(client, users, monkeypatch):
+    """ "Could not fetch or parse" for every failure leaves the user with
+    nothing to act on: a 404 and an unreachable host need different fixes."""
+
+    async def gone(session, feed, *, require_articles=False):
+        raise httpx.HTTPStatusError(
+            "404", request=httpx.Request("GET", feed.url), response=httpx.Response(404)
+        )
+
+    monkeypatch.setattr(feeds_router, "refresh_feed", gone)
+    user = await users.create()
+    resp = await client.post(
+        "/api/feeds", json={"url": "https://site.example/nope.xml"}, headers=users.auth(user)
+    )
+    assert resp.status_code == 400
+    assert "404" in resp.json()["detail"]
+
+
+async def test_add_feed_unreachable_host_names_the_host(client, users, monkeypatch):
+    async def unreachable(session, feed, *, require_articles=False):
+        raise httpx.ConnectError("nodename nor servname provided")
+
+    monkeypatch.setattr(feeds_router, "refresh_feed", unreachable)
+    user = await users.create()
+    resp = await client.post(
+        "/api/feeds", json={"url": "https://nope.example/rss"}, headers=users.auth(user)
+    )
+    assert resp.status_code == 400
+    assert "nope.example" in resp.json()["detail"]
+
+
+async def test_add_feed_falls_back_to_autodiscovery(client, users, monkeypatch, session):
+    """Pasting the site you're reading is the common case; the subscription
+    is keyed on the feed we discover, not on the page URL."""
+    tried: list[str] = []
+
+    async def only_the_feed_parses(session_, feed, *, require_articles=False):
+        tried.append(feed.url)
+        if feed.url != "https://site.example/atom.xml":
+            raise ValueError("not a feed")
+        feed.title = "The Site"
+        return 1
+
+    async def discover(url, *, require_articles=False):
+        assert url == "https://site.example"
+        return "https://site.example/atom.xml"
+
+    monkeypatch.setattr(feeds_router, "refresh_feed", only_the_feed_parses)
+    monkeypatch.setattr(feeds_router, "discover_feed_url", discover)
+    user = await users.create()
+    resp = await client.post("/api/feeds", json={"url": "site.example"}, headers=users.auth(user))
+    assert resp.status_code == 201
+    assert resp.json()["url"] == "https://site.example/atom.xml"
+    assert tried == ["https://site.example", "https://site.example/atom.xml"]
+    # The page URL must not leave a dead feed row behind.
+    assert await session.scalar(select(Feed).where(Feed.url == "https://site.example")) is None
+
+
+async def test_autodiscovery_reuses_an_existing_feed_row(client, users, data, monkeypatch):
+    """Two users, one arriving via the site and one via its .xml, share a feed."""
+    user = await users.create()
+    feed = await data.feed(url="https://site.example/atom.xml", title="The Site")
+    await data.article(feed)
+    # Read through the ORM before the route's failed first fetch rolls back
+    # (and expires) this instance.
+    feed_id, feed_url = feed.id, feed.url
+
+    async def boom(session, f, *, require_articles=False):
+        raise ValueError("not a feed")
+
+    async def discover(url, *, require_articles=False):
+        return feed_url
+
+    monkeypatch.setattr(feeds_router, "refresh_feed", boom)
+    monkeypatch.setattr(feeds_router, "discover_feed_url", discover)
+    resp = await client.post(
+        "/api/feeds", json={"url": "https://site.example"}, headers=users.auth(user)
+    )
+    assert resp.status_code == 201
+    assert resp.json()["id"] == feed_id
 
 
 async def test_add_feed_rate_limited_subscribes_anyway(client, users, monkeypatch):

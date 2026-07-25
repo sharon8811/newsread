@@ -37,6 +37,10 @@ type WindowOpts = {
   filter: "all" | "unread";
   feedId?: string | null;
   enabled: boolean;
+  /** Poll this often (ms) while the server reports background work on these
+   * articles — summaries and images landing on a freshly subscribed feed.
+   * 0 disables it. */
+  refreshInterval?: number;
 };
 
 function listPath(
@@ -54,7 +58,7 @@ function listPath(
 }
 
 export function useReadingWindow(opts: WindowOpts) {
-  const { filter, feedId, enabled } = opts;
+  const { filter, feedId, enabled, refreshInterval = 0 } = opts;
   const key = listPath({ filter, feedId, enabled });
   const sessionKey = readingSessionKey(filter, feedId);
   // The snapshot exists to make article detail → Back seamless. Ordinary app
@@ -475,12 +479,16 @@ export function useReadingWindow(opts: WindowOpts) {
     });
   }, []);
 
-  // While AI illustrations render for windowed articles, poll and merge the
-  // fresh fields in place (never reordering or adding rows mid-read).
+  // While the server is still filling these articles in — AI illustrations
+  // rendering, or a freshly subscribed feed's summaries and images landing —
+  // poll and merge the fresh fields in place (never reordering or adding rows
+  // mid-read). `refreshInterval` comes from the feed's pending count, so it
+  // stops on its own once the worker is done.
   const hasPendingImages =
     articles?.some((a) => a.image_pending && !a.image_url) ?? false;
+  const pollMs = hasPendingImages ? 4000 : refreshInterval;
   useEffect(() => {
-    if (!enabled || !hasPendingImages) return;
+    if (!enabled || pollMs <= 0) return;
     const timer = setInterval(async () => {
       try {
         const page = await apiWithHeaders<Article[]>(
@@ -500,9 +508,9 @@ export function useReadingWindow(opts: WindowOpts) {
       } catch {
         // Transient; next tick retries.
       }
-    }, 4000);
+    }, pollMs);
     return () => clearInterval(timer);
-  }, [enabled, hasPendingImages, filter, feedId]);
+  }, [enabled, pollMs, filter, feedId]);
 
   return {
     articles,

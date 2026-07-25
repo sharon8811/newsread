@@ -18,6 +18,12 @@ MIN_USEFUL_CHARS = 800
 
 MAX_LLM_CHARS = 24_000
 
+# A failed page fetch leaves only the feed's own content_html to summarize
+# from. Below this it's a stub the summarizer would skip every cycle, so the
+# batch worker never picks the article up — and the progress indicators must
+# agree, or they'd wait on work that will never happen.
+SUMMARIZABLE_FEED_HTML_CHARS = 1600
+
 # Short pages that contain only a browser/app shell are not "already short";
 # their useful content may be visual and can still be grounded by a screenshot.
 # Keep these deliberately narrow so ordinary short posts never spend a vision

@@ -363,6 +363,72 @@ async def fetch_feed_data(url: str, *, require_articles: bool = False) -> Parsed
     return parsed
 
 
+# <link rel="alternate"> types that advertise a feed, best first: the generic
+# XML types are also used for sitemaps and stylesheets, so they're last resort.
+_FEED_LINK_TYPES = (
+    "application/rss+xml",
+    "application/atom+xml",
+    "application/feed+json",
+    "application/json",
+    "application/xml",
+    "text/xml",
+)
+# Sites happily advertise a per-category feed for every section; only the
+# first few are worth a round trip.
+_MAX_DISCOVERY_CANDIDATES = 4
+
+
+def find_advertised_feeds(body: str, base_url: str) -> list[str]:
+    """Feed URLs a page advertises via <link rel="alternate">, best type first."""
+    try:
+        doc = lxml_html.fromstring(body)
+    except (etree.ParserError, etree.XMLSyntaxError, ValueError):
+        return []
+    ranked: list[tuple[int, str]] = []
+    seen: set[str] = set()
+    for link in doc.xpath("//link[@rel and @href]"):
+        if "alternate" not in (link.get("rel") or "").lower().split():
+            continue
+        link_type = (link.get("type") or "").lower().strip()
+        if link_type not in _FEED_LINK_TYPES:
+            continue
+        candidate = urljoin(base_url, link.get("href", "").strip())
+        if not candidate or candidate in seen:
+            continue
+        seen.add(candidate)
+        ranked.append((_FEED_LINK_TYPES.index(link_type), candidate))
+    # Stable sort: keep document order within a type, since the first feed a
+    # page lists is its main one.
+    ranked.sort(key=lambda item: item[0])
+    return [candidate for _, candidate in ranked]
+
+
+async def discover_feed_url(page_url: str, *, require_articles: bool = False) -> str | None:
+    """Resolve a site URL to the feed it advertises, or None.
+
+    People paste the page they're reading, not its .xml — every mainstream
+    reader resolves that for them. Only candidates that actually parse as a
+    feed are returned, so a bad <link> tag can't create a dead subscription.
+    """
+    try:
+        response = await _get_public_feed(page_url)
+    except (httpx.HTTPError, FeedParseError, FeedRateLimited) as exc:
+        logger.info("Feed autodiscovery could not load %s: %s", page_url, exc)
+        return None
+    if "html" not in response.headers.get("content-type", "").lower():
+        return None
+
+    candidates = find_advertised_feeds(response.text, str(response.url))
+    for candidate in candidates[:_MAX_DISCOVERY_CANDIDATES]:
+        try:
+            await fetch_feed_data(candidate, require_articles=require_articles)
+        except Exception as exc:  # any unusable candidate: try the next one
+            logger.info("Discovered feed %s did not parse: %s", candidate, exc)
+            continue
+        return candidate
+    return None
+
+
 async def refresh_feed(session: AsyncSession, feed: Feed, *, require_articles: bool = False) -> int:
     """Fetch a feed and insert new articles. Returns the number of new articles.
 

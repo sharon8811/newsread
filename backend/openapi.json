@@ -712,7 +712,10 @@
           "summary_skipped_reason": {
             "anyOf": [
               {
-                "const": "too_short",
+                "enum": [
+                  "too_short",
+                  "needs_full_page"
+                ],
                 "type": "string"
               },
               {
@@ -4921,7 +4924,10 @@
           "skipped_reason": {
             "anyOf": [
               {
-                "const": "too_short",
+                "enum": [
+                  "too_short",
+                  "needs_full_page"
+                ],
                 "type": "string"
               },
               {
