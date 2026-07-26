@@ -6,15 +6,16 @@ from app.summarizer import SummarySkipped, ThinContentError, generate_summaries
 
 
 async def _make_article(session, **kwargs):
-    feed = Feed(url="https://feed/x")
+    feed = Feed(url="https://feed/x", summary_instructions=kwargs.get("summary_instructions"))
     session.add(feed)
     await session.flush()
     art = Article(
         feed_id=feed.id,
         guid="g",
-        url="https://x/a",
+        url=kwargs.get("url", "https://x/a"),
         title="Title",
         content_html=kwargs.get("content_html", ""),
+        full_text=kwargs.get("full_text", ""),
     )
     session.add(art)
     await session.commit()
@@ -43,6 +44,53 @@ async def test_generate_summaries_success(session, monkeypatch):
     assert art.summary_model == "test-model"
     assert art.summary_generated_at is not None
     assert art.summary_skipped_reason is None
+
+
+async def test_generate_summaries_passes_feed_instructions_and_transcript_kind(
+    session, monkeypatch
+):
+    art = await _make_article(
+        session,
+        url="https://www.youtube.com/watch?v=RsR6cbovMfI",
+        full_text="spoken words",
+        summary_instructions="Skip sponsor segments.",
+    )
+    captured = {}
+
+    async def fake_ensure(session_, article, allow_refetch=True):
+        return "x" * 500
+
+    async def fake_summarize(title, text, **kwargs):
+        captured.update(kwargs)
+        return ("s", "m", "f")
+
+    monkeypatch.setattr(summarizer, "ensure_full_text", fake_ensure)
+    monkeypatch.setattr(summarizer.llm, "summarize", fake_summarize)
+
+    await generate_summaries(session, art)
+    assert captured["instructions"] == "Skip sponsor segments."
+    assert captured["source_kind"] == "transcript"
+
+
+async def test_generate_summaries_treats_a_captionless_video_as_an_article(session, monkeypatch):
+    # No transcript means the text is the feed's own description, which reads
+    # like prose — the transcript caveats would be a lie.
+    art = await _make_article(session, url="https://www.youtube.com/watch?v=RsR6cbovMfI")
+    captured = {}
+
+    async def fake_ensure(session_, article, allow_refetch=True):
+        return "x" * 500
+
+    async def fake_summarize(title, text, **kwargs):
+        captured.update(kwargs)
+        return ("s", "m", "f")
+
+    monkeypatch.setattr(summarizer, "ensure_full_text", fake_ensure)
+    monkeypatch.setattr(summarizer.llm, "summarize", fake_summarize)
+
+    await generate_summaries(session, art)
+    assert captured["source_kind"] == "article"
+    assert captured["instructions"] is None
 
 
 async def test_generate_summaries_skips_real_short_source_without_llm_or_vision(

@@ -76,6 +76,7 @@ export default function FeedSettingsModal({
   const [aiEnabled, setAiEnabled] = useState(feed.ai_enabled);
   const [imageGenEnabled, setImageGenEnabled] = useState(feed.image_gen_enabled);
   const [refreshMinutes, setRefreshMinutes] = useState(feed.refresh_interval_minutes);
+  const [instructions, setInstructions] = useState(feed.summary_instructions ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -95,6 +96,9 @@ export default function FeedSettingsModal({
       patch.image_gen_enabled = imageGenEnabled;
     if (refreshMinutes !== feed.refresh_interval_minutes)
       patch.refresh_interval_minutes = refreshMinutes;
+    const trimmedInstructions = instructions.trim();
+    if (trimmedInstructions !== (feed.summary_instructions ?? ""))
+      patch.summary_instructions = trimmedInstructions || null;
     return patch;
   }
 
@@ -243,6 +247,29 @@ export default function FeedSettingsModal({
               ))}
             </select>
           </Row>
+        </div>
+
+        <div className="mt-3">
+          <label
+            className="text-body-sm font-medium"
+            style={{ color: "var(--ink-dim)" }}
+            htmlFor="feed-instructions-input"
+          >
+            Summary instructions
+          </label>
+          <p className="mt-0.5 text-label" style={{ color: "var(--ink-faint)" }}>
+            Steers how this feed is summarized; applies to everyone subscribed
+          </p>
+          <textarea
+            id="feed-instructions-input"
+            className="input mt-1.5"
+            style={{ fontSize: 13.5 }}
+            rows={2}
+            maxLength={2000}
+            placeholder="Focus on the technical takeaways, skip sponsor segments…"
+            value={instructions}
+            onChange={(e) => setInstructions(e.target.value)}
+          />
         </div>
 
         <ErrorText className="mt-2">{error}</ErrorText>

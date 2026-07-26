@@ -141,6 +141,7 @@ def _to_feed_out(
         ai_enabled=feed.ai_enabled,
         image_gen_enabled=feed.image_gen_enabled,
         refresh_interval_minutes=feed.refresh_interval_minutes,
+        summary_instructions=feed.summary_instructions,
     )
 
 
@@ -261,6 +262,8 @@ async def add_feed(
         feed.ai_enabled = body.ai_enabled
     if body.image_gen_enabled is not None:
         feed.image_gen_enabled = body.image_gen_enabled
+    if body.summary_instructions is not None:
+        feed.summary_instructions = body.summary_instructions.strip() or None
 
     already = await session.scalar(
         select(Subscription).where(Subscription.user_id == user_id, Subscription.feed_id == feed.id)
@@ -337,6 +340,9 @@ async def update_feed_settings(
         feed.image_gen_enabled = updates["image_gen_enabled"]
     if updates.get("refresh_interval_minutes") is not None:
         feed.refresh_interval_minutes = updates["refresh_interval_minutes"]
+    # Present-but-null (or blank) clears the steer back to the default prompt.
+    if "summary_instructions" in updates:
+        feed.summary_instructions = (updates["summary_instructions"] or "").strip() or None
 
     await session.commit()
     row = (await session.execute(_feed_list_stmt(user.id).where(Feed.id == feed.id))).one()

@@ -5,6 +5,7 @@ import pytest
 import pytest_asyncio
 from sqlalchemy import func, select
 
+from app import youtube
 from app.fetcher import FeedParseError, FeedRateLimited, ParsedArticle, ParsedFeed
 from app.models import CatalogEntry, CatalogEntryEmbedding
 from app.routers import catalog as catalog_router
@@ -435,6 +436,7 @@ async def test_smart_list_describes_providers(client, users):
         "hacker-news",
         "medium",
         "mastodon",
+        "youtube",
     }
     reddit = next(p for p in body if p["key"] == "reddit")
     assert reddit["topic_label"] == "Subreddit"
@@ -520,6 +522,9 @@ async def test_smart_resolve_endpoint(client, users):
         "topic": "rust",
         "url": "https://www.reddit.com/r/rust/.rss",
         "title": "r/rust",
+        # Only lookup providers (YouTube) fill these in.
+        "description": None,
+        "alternatives": [],
     }
 
     resp = await client.get(
@@ -534,6 +539,53 @@ async def test_smart_resolve_endpoint(client, users):
     )
     assert resp.status_code == 422
     assert "valid Reddit subreddit" in resp.json()["detail"]
+
+
+async def test_youtube_resolve_endpoint(client, users, monkeypatch):
+    user = await users.create()
+
+    async def fake_resolve(raw):
+        assert raw == "Better Stack"
+        return youtube.ChannelResolution(
+            match=youtube.ChannelMatch("UC" + "a" * 22, "Better Stack", "Logs"),
+            alternatives=(youtube.ChannelMatch("UC" + "b" * 22, "Life Stack"),),
+        )
+
+    monkeypatch.setattr(catalog_router.youtube, "resolve_channel", fake_resolve)
+    resp = await client.get(
+        "/api/catalog/smart/youtube/resolve",
+        params={"topic": "Better Stack"},
+        headers=users.auth(user),
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["url"] == f"https://www.youtube.com/feeds/videos.xml?channel_id=UC{'a' * 22}"
+    assert body["title"] == "Better Stack"
+    assert body["description"] == "Logs"
+    # A runner-up is offered by its own channel URL, so picking it is exact.
+    assert body["alternatives"] == [
+        {
+            "topic": f"https://www.youtube.com/channel/UC{'b' * 22}",
+            "title": "Life Stack",
+            "url": f"https://www.youtube.com/feeds/videos.xml?channel_id=UC{'b' * 22}",
+        }
+    ]
+
+
+async def test_youtube_resolve_endpoint_reports_lookup_failures(client, users, monkeypatch):
+    user = await users.create()
+
+    async def unresolvable(raw):
+        raise ValueError("No YouTube channel found for @ghost")
+
+    monkeypatch.setattr(catalog_router.youtube, "resolve_channel", unresolvable)
+    resp = await client.get(
+        "/api/catalog/smart/youtube/resolve",
+        params={"topic": "@ghost"},
+        headers=users.auth(user),
+    )
+    assert resp.status_code == 422
+    assert "No YouTube channel found" in resp.json()["detail"]
 
 
 async def test_smart_preview_fetches_resolved_url(client, users, monkeypatch):

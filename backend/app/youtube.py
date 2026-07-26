@@ -1,0 +1,328 @@
+"""YouTube channel feeds: resolve a channel to its RSS URL, read its captions.
+
+A channel is followed through the public Atom feed YouTube publishes for every
+channel id (`/feeds/videos.xml?channel_id=UC…`) — no key, no quota. The only
+hard part is that people have a handle or a page URL, not the id, so this
+module turns whatever they pasted into that id. Videos then carry no article
+text at all, so summaries come from the captions instead of the page.
+"""
+
+import asyncio
+import logging
+import re
+import time
+from dataclasses import dataclass
+from urllib.parse import parse_qs, urlsplit
+
+import httpx
+from scrapling.fetchers import AsyncFetcher
+
+from .config import settings
+
+logger = logging.getLogger(__name__)
+
+CHANNEL_FEED_PREFIX = "https://www.youtube.com/feeds/videos.xml?channel_id="
+DATA_API_BASE = "https://www.googleapis.com/youtube/v3"
+
+_VIDEO_ID = re.compile(r"^[A-Za-z0-9_-]{11}$")
+_CHANNEL_ID = re.compile(r"^UC[A-Za-z0-9_-]{22}$")
+_HANDLE = re.compile(r"^[A-Za-z0-9._-]{3,30}$")
+# The channel page advertises its own feed; that link is the resolution.
+_PAGE_FEED_LINK = re.compile(r"videos\.xml\?channel_id=(UC[A-Za-z0-9_-]{22})")
+_OG_META = re.compile(
+    r'<meta[^>]+property="og:(title|description)"[^>]+content="([^"]*)"',
+    re.IGNORECASE,
+)
+
+# Only names typed as free text reach search.list, which costs 100 quota units
+# per call against a 10,000/day default — and the catalog modal resolves on
+# every debounced keystroke. Every lookup is cached, keyed by what was typed.
+RESOLVE_TTL_SECONDS = 900
+_resolve_cache: dict[str, tuple[float, "ChannelResolution"]] = {}
+
+# Long transcripts are clipped to MAX_LLM_CHARS before they reach a model
+# anyway; this only keeps a 4-hour stream from bloating the row.
+MAX_TRANSCRIPT_CHARS = 100_000
+
+# YouTube blocks an IP that asks for many transcripts at once — a freshly
+# subscribed channel arrives with 15 videos, and the worker enriches several
+# articles concurrently. One caption request at a time keeps a new channel
+# under the limit; the cooldown below covers the rest.
+_TRANSCRIPT_GATE = asyncio.Semaphore(1)
+BLOCK_COOLDOWN_SECONDS = 1800
+_blocked_until = 0.0
+
+
+class TranscriptBlocked(Exception):
+    """YouTube refused the request (IP block / rate limit), not "no captions".
+
+    Worth retrying later, so the caller must not spend the article's one
+    enrichment attempt on it.
+    """
+
+
+@dataclass(frozen=True)
+class ChannelMatch:
+    channel_id: str
+    title: str
+    description: str | None = None
+
+    @property
+    def feed_url(self) -> str:
+        return channel_feed_url(self.channel_id)
+
+
+@dataclass(frozen=True)
+class ChannelResolution:
+    """The best match plus the runners-up: display names are not unique, so a
+    name search has to let the reader pick."""
+
+    match: ChannelMatch
+    alternatives: tuple[ChannelMatch, ...] = ()
+
+
+def channel_feed_url(channel_id: str) -> str:
+    return f"{CHANNEL_FEED_PREFIX}{channel_id}"
+
+
+def video_id(url: str) -> str | None:
+    """The video id in a watch/shorts/embed/youtu.be URL, or None."""
+    if not url:
+        return None
+    try:
+        parsed = urlsplit(url)
+    except ValueError:
+        return None
+    host = (parsed.hostname or "").lower().removeprefix("www.").removeprefix("m.")
+    segments = [segment for segment in parsed.path.split("/") if segment]
+    candidate: str | None = None
+    if host == "youtu.be":
+        candidate = segments[0] if segments else None
+    elif host in ("youtube.com", "youtube-nocookie.com"):
+        if parsed.path.rstrip("/") == "/watch":
+            values = parse_qs(parsed.query).get("v") or []
+            candidate = values[0] if values else None
+        elif len(segments) == 2 and segments[0] in ("shorts", "embed", "live", "v"):
+            candidate = segments[1]
+    if candidate and _VIDEO_ID.match(candidate):
+        return candidate
+    return None
+
+
+def _handle_from(raw: str) -> str | None:
+    """The @handle in a handle, a handle URL, or a legacy /c//user/ vanity URL."""
+    if raw.startswith("@"):
+        return raw[1:] if _HANDLE.fullmatch(raw[1:]) else None
+    if "/" not in raw and "." not in raw:
+        return None  # a bare word is a name to search, not a handle
+    path = urlsplit(raw if "://" in raw else f"https://{raw}").path
+    segments = [segment for segment in path.split("/") if segment]
+    if not segments:
+        return None
+    if segments[0].startswith("@"):
+        candidate = segments[0][1:]
+    elif len(segments) >= 2 and segments[0] in ("c", "user"):
+        candidate = segments[1]
+    else:
+        return None
+    return candidate if _HANDLE.fullmatch(candidate) else None
+
+
+def _channel_id_from(raw: str) -> str | None:
+    """A channel id typed bare, in a /channel/ URL, or in a pasted feed URL."""
+    if _CHANNEL_ID.fullmatch(raw):
+        return raw
+    if "/" not in raw:
+        return None
+    parsed = urlsplit(raw if "://" in raw else f"https://{raw}")
+    values = parse_qs(parsed.query).get("channel_id") or []
+    if values and _CHANNEL_ID.fullmatch(values[0]):
+        return values[0]
+    segments = [segment for segment in parsed.path.split("/") if segment]
+    if len(segments) >= 2 and segments[0] == "channel" and _CHANNEL_ID.fullmatch(segments[1]):
+        return segments[1]
+    return None
+
+
+def _looks_like_youtube_url(raw: str) -> bool:
+    if "://" not in raw and "/" not in raw:
+        return False
+    host = urlsplit(raw if "://" in raw else f"https://{raw}").hostname or ""
+    return host.lower().removeprefix("www.").removeprefix("m.") in (
+        "youtube.com",
+        "youtube-nocookie.com",
+        "youtu.be",
+    )
+
+
+async def _scrape_channel_page(handle: str) -> ChannelMatch:
+    """Read the channel id off the page's own <link rel="alternate"> feed tag.
+
+    Fetched through Scrapling's browser impersonation, the same way article
+    pages are (see extractor.fetch_page): it supplies a current Chrome
+    User-Agent and a matching TLS fingerprint, so there is no UA string here
+    to go stale.
+    """
+    url = f"https://www.youtube.com/@{handle}"
+    try:
+        page = await AsyncFetcher.get(url, impersonate="chrome")
+    except Exception as exc:
+        logger.info("YouTube channel page %s could not be loaded: %s", url, exc)
+        raise ValueError("Could not reach YouTube to look up that channel") from exc
+    if page.status == 404:
+        raise ValueError(f"No YouTube channel found for @{handle}")
+    if page.status >= 400:
+        raise ValueError("YouTube did not return that channel's page")
+    body = page.html_content
+    match = _PAGE_FEED_LINK.search(body)
+    if match is None:
+        raise ValueError(f"No YouTube channel found for @{handle}")
+    meta = {key.lower(): value for key, value in _OG_META.findall(body)}
+    return ChannelMatch(
+        channel_id=match.group(1),
+        title=meta.get("title") or f"@{handle}",
+        description=meta.get("description") or None,
+    )
+
+
+async def _data_api(path: str, params: dict[str, str]) -> dict:
+    async with httpx.AsyncClient(timeout=20) as client:
+        response = await client.get(
+            f"{DATA_API_BASE}/{path}",
+            params={**params, "key": settings.youtube_api_key},
+        )
+    if response.status_code >= 400:
+        detail = ""
+        try:
+            detail = response.json().get("error", {}).get("message", "")
+        except ValueError:
+            pass
+        logger.warning("YouTube Data API %s failed (%s): %s", path, response.status_code, detail)
+        raise ValueError("The YouTube API rejected that lookup")
+    return response.json()
+
+
+def _api_channel_match(item: dict) -> ChannelMatch:
+    snippet = item.get("snippet") or {}
+    identifier = item.get("id")
+    if isinstance(identifier, dict):  # search.list wraps the id
+        identifier = identifier.get("channelId")
+    return ChannelMatch(
+        channel_id=identifier or "",
+        title=snippet.get("title") or "",
+        description=(snippet.get("description") or "").strip() or None,
+    )
+
+
+async def _resolve_handle(handle: str) -> ChannelMatch:
+    if not settings.youtube_api_key:
+        return await _scrape_channel_page(handle)
+    data = await _data_api("channels", {"part": "id,snippet", "forHandle": f"@{handle}"})
+    items = data.get("items") or []
+    if not items:
+        # A legacy /c/ or /user/ vanity name is not a handle; the page still
+        # advertises the feed, so fall back rather than dead-ending.
+        return await _scrape_channel_page(handle)
+    return _api_channel_match(items[0])
+
+
+async def _search_by_name(name: str) -> ChannelResolution:
+    if not settings.youtube_api_key:
+        raise ValueError(
+            "Paste the channel's URL or @handle — searching by name needs a YouTube API key"
+        )
+    data = await _data_api(
+        "search",
+        {"part": "snippet", "type": "channel", "maxResults": "5", "q": name},
+    )
+    found = (_api_channel_match(item) for item in data.get("items") or [])
+    matches = [match for match in found if match.channel_id]
+    if not matches:
+        raise ValueError(f"No YouTube channel found for “{name}”")
+    return ChannelResolution(match=matches[0], alternatives=tuple(matches[1:]))
+
+
+async def resolve_channel(raw: str) -> ChannelResolution:
+    """Turn a handle, channel URL, feed URL, channel id or display name into a
+    channel. Raises ValueError with a user-facing message when it can't."""
+    topic = raw.strip()
+    if not topic:
+        raise ValueError("Enter a YouTube channel")
+    if len(topic) > 200:
+        raise ValueError("That does not look like a YouTube channel")
+    if video_id(topic):
+        raise ValueError("That is a link to a single video — paste the channel's URL or @handle")
+
+    cached = _resolve_cache.get(topic)
+    if cached is not None and cached[0] > time.monotonic():
+        return cached[1]
+
+    if channel_id := _channel_id_from(topic):
+        # A bare id carries no title; the Atom feed supplies the real one on
+        # subscribe, so the id is an honest placeholder until then.
+        resolution = ChannelResolution(match=ChannelMatch(channel_id=channel_id, title=channel_id))
+    elif handle := _handle_from(topic):
+        resolution = ChannelResolution(match=await _resolve_handle(handle))
+    elif _looks_like_youtube_url(topic):
+        raise ValueError("That YouTube link does not point at a channel")
+    else:
+        resolution = await _search_by_name(topic)
+
+    _resolve_cache[topic] = (time.monotonic() + RESOLVE_TTL_SECONDS, resolution)
+    return resolution
+
+
+def _pick_transcript(transcripts) -> object | None:
+    """A human-written track beats an auto-generated one; language order is
+    whatever the channel publishes, since the video's own language is the one
+    the summary should be written in."""
+    manual = [item for item in transcripts if not item.is_generated]
+    generated = [item for item in transcripts if item.is_generated]
+    ordered = manual + generated
+    return ordered[0] if ordered else None
+
+
+def _read_transcript(video: str) -> str:
+    """Blocking: youtube_transcript_api is built on requests."""
+    from youtube_transcript_api import (
+        IpBlocked,
+        RequestBlocked,
+        YouTubeRequestFailed,
+        YouTubeTranscriptApi,
+    )
+
+    try:
+        transcript = _pick_transcript(YouTubeTranscriptApi().list(video))
+        if transcript is None:
+            return ""
+        text = " ".join(snippet.text for snippet in transcript.fetch())
+    except (RequestBlocked, IpBlocked, YouTubeRequestFailed) as exc:
+        raise TranscriptBlocked(str(exc).strip().splitlines()[0] or "blocked") from exc
+    return re.sub(r"\s+", " ", text).strip()[:MAX_TRANSCRIPT_CHARS]
+
+
+async def fetch_transcript(video: str) -> str:
+    """The video's captions as plain text, or "" when there are none.
+
+    Raises TranscriptBlocked when YouTube refuses us — that one is worth
+    retrying later. Every other failure (captions off, video gone) returns "",
+    and the caller falls back to the feed's description.
+    """
+    global _blocked_until
+
+    if time.monotonic() < _blocked_until:
+        # Already refused recently: fail fast instead of feeding the block.
+        raise TranscriptBlocked("YouTube is currently refusing our caption requests")
+    async with _TRANSCRIPT_GATE:
+        try:
+            return await asyncio.to_thread(_read_transcript, video)
+        except TranscriptBlocked:
+            _blocked_until = time.monotonic() + BLOCK_COOLDOWN_SECONDS
+            logger.warning(
+                "YouTube blocked our caption requests; pausing transcripts for %d minutes",
+                BLOCK_COOLDOWN_SECONDS // 60,
+            )
+            raise
+        except Exception as exc:
+            logger.info("No transcript for youtube video %s: %s", video, exc)
+            return ""

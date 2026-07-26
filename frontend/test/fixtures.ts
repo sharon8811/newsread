@@ -47,6 +47,7 @@ export function makeFeed(over: Partial<Feed> = {}): Feed {
     ai_enabled: true,
     image_gen_enabled: true,
     refresh_interval_minutes: 15,
+    summary_instructions: null,
     ...over,
   };
 }

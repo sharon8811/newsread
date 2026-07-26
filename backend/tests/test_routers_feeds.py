@@ -535,6 +535,38 @@ async def test_settings_global_feed_fields(client, users, data, session):
     assert stored.refresh_interval_minutes == 60
 
 
+async def test_summary_instructions_round_trip(client, users, session):
+    user = await users.create()
+    resp = await client.post(
+        "/api/feeds",
+        json={
+            "url": "instructed.example/rss",
+            "summary_instructions": "  Focus on the benchmarks.  ",
+        },
+        headers=users.auth(user),
+    )
+    assert resp.status_code == 201
+    feed_id = resp.json()["id"]
+    assert resp.json()["summary_instructions"] == "Focus on the benchmarks."
+
+    resp = await client.patch(
+        f"/api/feeds/{feed_id}/settings",
+        json={"summary_instructions": "Skip sponsor segments."},
+        headers=users.auth(user),
+    )
+    assert resp.json()["summary_instructions"] == "Skip sponsor segments."
+
+    # Blank (or explicit null) clears the steer back to the default prompt.
+    resp = await client.patch(
+        f"/api/feeds/{feed_id}/settings",
+        json={"summary_instructions": "   "},
+        headers=users.auth(user),
+    )
+    assert resp.json()["summary_instructions"] is None
+    session.expunge_all()
+    assert (await session.get(Feed, feed_id)).summary_instructions is None
+
+
 async def test_settings_validation_bounds(client, users, data):
     user = await users.create()
     feed = await data.feed()

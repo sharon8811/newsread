@@ -42,7 +42,7 @@ It's fully self-hosted: your server, your database, your choice of LLM (any Open
   <img src="assets/readme/shot-related.png" width="100%" alt="Related coverage section with SAME STORY badges and a live Hacker News discussion header showing 612 points and 202 comments">
 </p>
 
-**Feeds worth following.** A curated, health-checked catalog with live previews, semantic discovery, and smart feeds for any subreddit, Hacker News search, Google News topic, Medium tag, or Mastodon hashtag. Subscribe with per-feed AI settings in one click.
+**Feeds worth following.** A curated, health-checked catalog with live previews, semantic discovery, and smart feeds for any subreddit, Hacker News search, Google News topic, Medium tag, Mastodon hashtag, or YouTube channel — paste a handle and its videos arrive summarized from their transcripts. Subscribe with per-feed AI settings, including your own summarizing instructions, in one click.
 
 <p align="center">
   <img src="assets/readme/shot-catalog.png" width="100%" alt="Feed catalog with a NASA feed preview modal: latest stories, quick settings chips, and a subscribe button">

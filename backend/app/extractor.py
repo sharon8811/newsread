@@ -7,6 +7,7 @@ import trafilatura
 from scrapling.fetchers import AsyncFetcher
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from . import youtube
 from .fetcher import strip_html
 from .models import Article
 
@@ -82,8 +83,39 @@ async def fetch_page(url: str) -> tuple[str, str | None, str | None]:
     return text, image, title
 
 
+async def _enrich_video(article: Article, video: str) -> bool:
+    """A video's prose is its captions; its watch page has none to extract.
+
+    Unconditional, unlike the page path below: a video description often runs
+    past the is_thin threshold, which would otherwise leave the transcript —
+    the only real source — unfetched.
+
+    Returns whether the article is done (False keeps it pending: YouTube
+    refused this request and the captions are still out there).
+    """
+    done = True
+    if not article.full_text:
+        try:
+            article.full_text = await youtube.fetch_transcript(video)
+        except youtube.TranscriptBlocked as exc:
+            logger.info("Transcript for %s deferred: %s", video, exc)
+            done = False
+    if not article.image_url:
+        # Feed entries carry a media:thumbnail; this covers the ones that don't.
+        article.image_url = f"https://i.ytimg.com/vi/{video}/hqdefault.jpg"
+    return done
+
+
 async def enrich_article(session: AsyncSession, article: Article) -> None:
     """Fill full_text and image_url from the original page, fetching it at most once."""
+    if video := youtube.video_id(article.url):
+        # A blocked request leaves the stamp NULL so a later pass retries it —
+        # the only case where an article stays pending on purpose.
+        if await _enrich_video(article, video):
+            article.full_text_fetched_at = datetime.now(UTC)
+        await session.commit()
+        return
+
     need_text = not article.full_text and is_thin(strip_html(article.content_html))
     need_image = not article.image_url
     if need_text or need_image:

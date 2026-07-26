@@ -111,6 +111,23 @@ async def test_summarize_quietly_thin_content(session, monkeypatch):
     assert art.summary_skipped_reason == "needs_full_page"
 
 
+async def test_summarize_quietly_waits_for_a_deferred_transcript(session, monkeypatch):
+    feed = await _feed(session)
+    art = await _article(session, feed, url="https://www.youtube.com/watch?v=RsR6cbovMfI")
+
+    async def fail(s, article, allow_refetch=False):
+        raise AssertionError("a video with its transcript still owed must not be summarized")
+
+    monkeypatch.setattr(worker, "generate_summaries", fail)
+    await worker._for_each_article(
+        [art.id], gate=asyncio.Semaphore(1), label="Auto-summary", fn=worker._summarize_quietly
+    )
+    # Nothing stamped: the next cycle summarizes it once the captions land.
+    await session.refresh(art)
+    assert art.summary_skipped_reason is None
+    assert art.summary_short == ""
+
+
 async def test_summarize_quietly_short_content(session, monkeypatch):
     feed = await _feed(session)
     art = await _article(session, feed)

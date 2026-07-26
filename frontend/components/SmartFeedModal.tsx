@@ -129,6 +129,22 @@ export default function SmartFeedModal({
               ))}
             </div>
           )}
+          {(resolved?.alternatives.length ?? 0) > 0 && (
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              <span className="text-label" style={{ color: "var(--ink-faint)" }}>Did you mean:</span>
+              {resolved?.alternatives.map((alternative) => (
+                <Chip
+                  key={alternative.url}
+                  className="px-2 py-0.5 text-label"
+                  // Set the input to the unambiguous URL, not the name, so the
+                  // re-resolve lands on exactly this one.
+                  onClick={() => setTopic(alternative.topic)}
+                >
+                  {alternative.title}
+                </Chip>
+              ))}
+            </div>
+          )}
         </header>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6">
@@ -141,6 +157,11 @@ export default function SmartFeedModal({
             <ErrorText>
               {resolveError instanceof Error ? resolveError.message : "That topic could not be resolved."}
             </ErrorText>
+          )}
+          {resolved?.description && (
+            <p className="mb-3 text-body-sm leading-relaxed" style={{ color: "var(--ink-dim)" }}>
+              {resolved.description}
+            </p>
           )}
           {resolved && (
             <>

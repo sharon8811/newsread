@@ -144,7 +144,7 @@ async def _make_article(session, **kwargs):
     art = Article(
         feed_id=feed.id,
         guid=kwargs.get("guid", "g"),
-        url="https://x/a",
+        url=kwargs.get("url", "https://x/a"),
         title="T",
         content_html=kwargs.get("content_html", ""),
         full_text=kwargs.get("full_text", ""),
@@ -182,6 +182,66 @@ async def test_enrich_article_skips_when_nothing_needed(session, monkeypatch):
     await enrich_article(session, art)
     assert not called
     assert art.full_text_fetched_at is not None
+
+
+async def test_enrich_video_summarizes_from_captions_not_the_watch_page(session, monkeypatch):
+    # A video description usually clears the is_thin bar, so the transcript —
+    # the only real source — must be fetched regardless of its length.
+    long_description = "<p>" + ("word " * 200) + "</p>"
+    art = await _make_article(
+        session,
+        url="https://www.youtube.com/watch?v=RsR6cbovMfI",
+        content_html=long_description,
+    )
+
+    async def fake_fetch_page(url):
+        raise AssertionError("videos must not be scraped")
+
+    async def fake_transcript(video):
+        assert video == "RsR6cbovMfI"
+        return "spoken words from the video"
+
+    monkeypatch.setattr(extractor, "fetch_page", fake_fetch_page)
+    monkeypatch.setattr(extractor.youtube, "fetch_transcript", fake_transcript)
+    await enrich_article(session, art)
+    assert art.full_text == "spoken words from the video"
+    assert art.image_url == "https://i.ytimg.com/vi/RsR6cbovMfI/hqdefault.jpg"
+    assert art.full_text_fetched_at is not None
+
+
+async def test_enrich_video_keeps_the_feed_thumbnail_and_stamps_without_captions(
+    session, monkeypatch
+):
+    art = await _make_article(
+        session,
+        url="https://www.youtube.com/watch?v=RsR6cbovMfI",
+        image_url="https://i3.ytimg.com/vi/RsR6cbovMfI/hqdefault.jpg",
+    )
+
+    async def no_captions(video):
+        return ""
+
+    monkeypatch.setattr(extractor.youtube, "fetch_transcript", no_captions)
+    await enrich_article(session, art)
+    assert art.full_text == ""
+    assert art.image_url == "https://i3.ytimg.com/vi/RsR6cbovMfI/hqdefault.jpg"
+    # Stamped anyway, or the feed's pending count never reaches zero.
+    assert art.full_text_fetched_at is not None
+
+
+async def test_enrich_video_stays_pending_when_youtube_blocks_us(session, monkeypatch):
+    art = await _make_article(session, url="https://www.youtube.com/watch?v=RsR6cbovMfI")
+
+    async def blocked(video):
+        raise extractor.youtube.TranscriptBlocked("rate limited")
+
+    monkeypatch.setattr(extractor.youtube, "fetch_transcript", blocked)
+    await enrich_article(session, art)
+    # Unstamped on purpose: the captions exist, YouTube just refused us, so a
+    # later pass must be allowed to try again.
+    assert art.full_text_fetched_at is None
+    assert art.full_text == ""
+    assert art.image_url == "https://i.ytimg.com/vi/RsR6cbovMfI/hqdefault.jpg"
 
 
 async def test_enrich_article_stamps_rich_body_with_image(session, monkeypatch):

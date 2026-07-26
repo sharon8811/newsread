@@ -521,6 +521,18 @@
             ],
             "title": "Is Muted"
           },
+          "summary_instructions": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary Instructions"
+          },
           "url": {
             "maxLength": 2048,
             "minLength": 4,
@@ -3636,6 +3648,17 @@
             ],
             "title": "Sort Order"
           },
+          "summary_instructions": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary Instructions"
+          },
           "title": {
             "title": "Title",
             "type": "string"
@@ -3765,6 +3788,18 @@
               }
             ],
             "title": "Sort Order"
+          },
+          "summary_instructions": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary Instructions"
           },
           "title_override": {
             "anyOf": [
@@ -4816,6 +4851,30 @@
         "title": "ShareTargetOut",
         "type": "object"
       },
+      "SmartFeedAlternative": {
+        "description": "A runner-up match for an ambiguous topic (YouTube display names are not\nunique). Picking one re-resolves it by its unambiguous URL.",
+        "properties": {
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "topic": {
+            "title": "Topic",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "topic",
+          "title",
+          "url"
+        ],
+        "title": "SmartFeedAlternative",
+        "type": "object"
+      },
       "SmartFeedOut": {
         "description": "A topic-parameterized feed source (e.g. any subreddit) the user can\nsubscribe to by typing a topic \u2014 or pasting the topic's page URL.",
         "properties": {
@@ -4870,6 +4929,25 @@
       },
       "SmartFeedResolveOut": {
         "properties": {
+          "alternatives": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/SmartFeedAlternative"
+            },
+            "title": "Alternatives",
+            "type": "array"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
           "key": {
             "title": "Key",
             "type": "string"

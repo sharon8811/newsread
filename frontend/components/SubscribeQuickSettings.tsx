@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import type { SubscribeOptions } from "@/lib/api";
 import Chip from "./ui/Chip";
 
@@ -9,12 +10,16 @@ export type SubscribeSettings = {
   ai_enabled: boolean;
   image_gen_enabled: boolean;
   is_muted: boolean;
+  summary_instructions: string;
 };
+
+type ToggleKey = "ai_enabled" | "image_gen_enabled" | "is_muted";
 
 export const DEFAULT_SUBSCRIBE_SETTINGS: SubscribeSettings = {
   ai_enabled: true,
   image_gen_enabled: true,
   is_muted: false,
+  summary_instructions: "",
 };
 
 /** Only deviations from the defaults go on the wire: ai/image toggles are
@@ -25,10 +30,12 @@ export function toSubscribeOptions(settings: SubscribeSettings): SubscribeOption
   if (!settings.ai_enabled) options.ai_enabled = false;
   if (!settings.image_gen_enabled) options.image_gen_enabled = false;
   if (settings.is_muted) options.is_muted = true;
+  const instructions = settings.summary_instructions.trim();
+  if (instructions) options.summary_instructions = instructions;
   return options;
 }
 
-const FIELDS: { key: keyof SubscribeSettings; label: string; hint: string }[] = [
+const FIELDS: { key: ToggleKey; label: string; hint: string }[] = [
   { key: "ai_enabled", label: "AI summaries", hint: "Summarize new articles automatically" },
   { key: "image_gen_enabled", label: "AI images", hint: "Generate images for stories missing one" },
   { key: "is_muted", label: "Mute", hint: "Hide from Inbox and unread counts" },
@@ -43,6 +50,9 @@ export default function SubscribeQuickSettings({
   onChange: (value: SubscribeSettings) => void;
   disabled?: boolean;
 }) {
+  // Open when there is already something to see, so the text is never hidden
+  // behind a chip the reader has to remember to press.
+  const [showInstructions, setShowInstructions] = useState(value.summary_instructions !== "");
   return (
     <fieldset className="min-w-0" disabled={disabled}>
       <legend className="mono-label">Quick settings</legend>
@@ -57,7 +67,27 @@ export default function SubscribeQuickSettings({
             {label}
           </Chip>
         ))}
+        <Chip
+          active={showInstructions}
+          title="Tell the summarizer what to focus on for this feed"
+          aria-expanded={showInstructions}
+          onClick={() => setShowInstructions((open) => !open)}
+        >
+          Summary instructions
+        </Chip>
       </div>
+      {showInstructions && (
+        <textarea
+          className="input mt-1.5"
+          style={{ fontSize: 13 }}
+          rows={2}
+          maxLength={2000}
+          aria-label="Summary instructions"
+          placeholder="Focus on the technical takeaways, skip sponsor segments…"
+          value={value.summary_instructions}
+          onChange={(event) => onChange({ ...value, summary_instructions: event.target.value })}
+        />
+      )}
     </fieldset>
   );
 }

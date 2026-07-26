@@ -26,6 +26,7 @@ from . import (
     push,
     queue,
     suppressions,
+    youtube,
 )
 from .config import settings
 from .db import init_db
@@ -108,6 +109,11 @@ async def _for_each_article(ids, *, gate: asyncio.Semaphore, label: str, fn) -> 
 
 
 async def _summarize_quietly(session, article) -> None:
+    if youtube.video_id(article.url) and article.full_text_fetched_at is None:
+        # The enrich stage left this video pending because YouTube refused the
+        # caption request. Summarizing its description now would stick — a
+        # non-empty summary is never regenerated — so wait for the transcript.
+        return
     try:
         await generate_summaries(session, article, allow_refetch=False)
     except SummarySkipped:

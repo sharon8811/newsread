@@ -267,6 +267,37 @@ def test_parse_xml_feed_media_content_image():
     assert feed.articles[0].image_url == "https://x/pic.jpg"
 
 
+def test_parse_xml_feed_ignores_non_image_media_content():
+    # YouTube's channel feeds put a flash player URL in media:content and the
+    # real thumbnail in media:thumbnail; taking the first one shipped a dead
+    # image to every video row.
+    xml = """<?xml version="1.0"?>
+    <feed xmlns="http://www.w3.org/2005/Atom" xmlns:media="http://search.yahoo.com/mrss/">
+      <title>Channel</title>
+      <entry><title>V</title><id>yt:video:abc</id><link href="https://youtu.be/abc"/>
+        <media:group>
+          <media:content url="https://www.youtube.com/v/abc?version=3"
+            type="application/x-shockwave-flash"/>
+          <media:thumbnail url="https://i3.ytimg.com/vi/abc/hqdefault.jpg"/>
+        </media:group>
+      </entry>
+    </feed>"""
+    feed = parse_xml_feed(xml)
+    assert feed.articles[0].image_url == "https://i3.ytimg.com/vi/abc/hqdefault.jpg"
+
+
+def test_parse_xml_feed_prefers_a_declared_image_over_a_thumbnail():
+    xml = """<?xml version="1.0"?>
+    <rss version="2.0" xmlns:media="http://search.yahoo.com/mrss/"><channel><title>F</title>
+      <item><title>T</title><link>https://x/1</link>
+        <media:content url="https://x/full.jpg" type="image/jpeg"/>
+        <media:thumbnail url="https://x/tiny.jpg"/>
+      </item>
+    </channel></rss>"""
+    feed = parse_xml_feed(xml)
+    assert feed.articles[0].image_url == "https://x/full.jpg"
+
+
 def test_parse_xml_feed_enclosure_image():
     xml = """<?xml version="1.0"?>
     <rss version="2.0"><channel><title>F</title>

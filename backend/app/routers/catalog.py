@@ -2,6 +2,7 @@ import html
 import logging
 import re
 import time
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Literal
@@ -12,7 +13,7 @@ from sqlalchemy import and_, case, func, literal_column, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .. import embeddings, ranking
+from .. import embeddings, ranking, youtube
 from ..config import settings
 from ..deps import CurrentUser, DbSession
 from ..fetcher import FeedParseError, FeedRateLimited, fetch_feed_data, strip_html
@@ -30,6 +31,7 @@ from ..schemas import (
     CatalogPreviewOut,
     CatalogSubmissionIn,
     CatalogSubmissionOut,
+    SmartFeedAlternative,
     SmartFeedOut,
     SmartFeedResolveOut,
 )
@@ -62,16 +64,44 @@ class SmartFeedProvider:
     category: str
     topic_label: str
     topic_hint: str
-    url_template: str  # receives the url-encoded topic as {topic}
-    title_template: str  # receives the plain topic as {topic}
+    # Both empty for `lookup` providers, which resolve over the network instead.
+    url_template: str = ""  # receives the url-encoded topic as {topic}
+    title_template: str = ""  # receives the plain topic as {topic}
     example_topics: tuple[str, ...] = ()
-    kind: Literal["slug", "query"] = "slug"
+    kind: Literal["slug", "query", "lookup"] = "slug"
     # slug providers: extract the topic from a pasted URL, strip UI prefixes
     # ("r/", "#"), and validate the final slug.
     url_topic_re: re.Pattern | None = None
     strip_prefixes: tuple[str, ...] = ()
     topic_re: re.Pattern = field(default=re.compile(r"^[A-Za-z0-9_]{1,80}$"))
     lowercase: bool = False
+    # lookup providers: the feed URL isn't a template over the topic, it has to
+    # be looked up over the network (YouTube's channel ids), so they bring
+    # their own async resolver instead of url_template/title_template.
+    resolver: Callable[[str], Awaitable[SmartFeedResolveOut]] | None = None
+
+
+async def _resolve_youtube_channel(raw: str) -> SmartFeedResolveOut:
+    """A handle, channel URL, channel id or display name -> the channel's Atom
+    feed. Raises ValueError with a user-facing message (surfaced as a 422)."""
+    resolved = await youtube.resolve_channel(raw)
+    return SmartFeedResolveOut(
+        key="youtube",
+        topic=resolved.match.title,
+        url=resolved.match.feed_url,
+        title=resolved.match.title,
+        description=resolved.match.description,
+        alternatives=[
+            # The topic is the channel URL, not the name: picking a runner-up
+            # must resolve to exactly that channel, without another search.
+            SmartFeedAlternative(
+                topic=f"https://www.youtube.com/channel/{alternative.channel_id}",
+                title=alternative.title,
+                url=alternative.feed_url,
+            )
+            for alternative in resolved.alternatives
+        ],
+    )
 
 
 SMART_FEEDS: dict[str, SmartFeedProvider] = {
@@ -132,6 +162,18 @@ SMART_FEEDS: dict[str, SmartFeedProvider] = {
             url_topic_re=re.compile(r"medium\.com/(?:feed/)?tag/([A-Za-z0-9-]+)", re.IGNORECASE),
             topic_re=re.compile(r"^[a-z0-9][a-z0-9-]{0,79}$"),
             lowercase=True,
+        ),
+        SmartFeedProvider(
+            key="youtube",
+            name="YouTube",
+            description="Follow any channel; new videos arrive summarized from their transcript.",
+            site_url="https://www.youtube.com",
+            category="Video",
+            topic_label="Channel",
+            topic_hint="@mkbhd, or paste a channel URL",
+            example_topics=("@mkbhd", "@veritasium"),
+            kind="lookup",
+            resolver=_resolve_youtube_channel,
         ),
         SmartFeedProvider(
             key="mastodon",
@@ -202,6 +244,14 @@ def resolve_smart_topic(provider: SmartFeedProvider, raw: str) -> SmartFeedResol
         url=provider.url_template.format(topic=quote(topic, safe="")),
         title=provider.title_template.format(topic=topic),
     )
+
+
+async def resolve_smart_topic_async(provider: SmartFeedProvider, raw: str) -> SmartFeedResolveOut:
+    """resolve_smart_topic for every provider, including the ones whose topic
+    only becomes a feed URL after a network lookup."""
+    if provider.resolver is not None:
+        return await provider.resolver(raw)
+    return resolve_smart_topic(provider, raw)
 
 
 def _catalog_filter(category: str | None):
@@ -519,7 +569,7 @@ async def resolve_smart_feed(
 ):
     """Turn a topic (or a pasted topic-page URL) into a concrete feed URL."""
     try:
-        return resolve_smart_topic(_smart_provider(key), topic)
+        return await resolve_smart_topic_async(_smart_provider(key), topic)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
@@ -532,7 +582,7 @@ async def preview_smart_feed(
 ):
     """Server-side preview fallback for browsers blocked by feed CORS policies."""
     try:
-        resolved = resolve_smart_topic(_smart_provider(key), topic)
+        resolved = await resolve_smart_topic_async(_smart_provider(key), topic)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return await _cached_preview(resolved.url, fallback_title=resolved.title)

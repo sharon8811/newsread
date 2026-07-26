@@ -490,6 +490,11 @@ class Feed(Base):
     # Global switch: generate AI illustrations for this feed's imageless
     # articles (shared by all subscribers, like ai_enabled).
     image_gen_enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    # Free-text steer appended to this feed's summary prompt ("focus on the
+    # benchmarks, skip sponsor segments"). Global like the switches above:
+    # summaries are stored once per article and read by every subscriber, so
+    # there is no per-user version of this.
+    summary_instructions: Mapped[str | None] = mapped_column(Text)
     # Non-null marks this as the user's hidden "Imported" feed holding their
     # pasted-URL articles. It has a newsread:// sentinel URL, is never polled,
     # and stays out of every feed listing and feed-settings endpoint.

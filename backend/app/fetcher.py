@@ -244,6 +244,32 @@ def parse_json_feed(data: dict) -> ParsedFeed:
     )
 
 
+def _media_image_url(entry) -> str | None:
+    """The entry's lead image from Media RSS.
+
+    media:content can carry anything — YouTube's channel feeds put a flash
+    player URL there — so it only counts when it says it is an image, or when
+    it declares no type at all (many feeds use it as a bare image slot).
+    """
+    typed: list[str] = []
+    untyped: list[str] = []
+    for media in entry.get("media_content") or []:
+        url = media.get("url")
+        if not url:
+            continue
+        kind = f"{media.get('type') or ''} {media.get('medium') or ''}".strip()
+        if not kind:
+            untyped.append(url)
+        elif str(media.get("type") or "").startswith("image/") or media.get("medium") == "image":
+            typed.append(url)
+    for media in entry.get("media_thumbnail") or []:
+        if media.get("url"):
+            typed.append(media["url"])
+    for url in typed + untyped:
+        return url
+    return None
+
+
 def parse_xml_feed(text: str) -> ParsedFeed:
     parsed = feedparser.parse(text)
     articles: list[ParsedArticle] = []
@@ -262,11 +288,7 @@ def parse_xml_feed(text: str) -> ParsedFeed:
             if entry.get(key):
                 published = datetime(*entry[key][:6], tzinfo=UTC)
                 break
-        image_url = None
-        for media in (entry.get("media_content") or []) + (entry.get("media_thumbnail") or []):
-            if media.get("url"):
-                image_url = media["url"]
-                break
+        image_url = _media_image_url(entry)
         if not image_url:
             for enclosure in entry.get("enclosures", []) or []:
                 if str(enclosure.get("type", "")).startswith("image/") and enclosure.get("href"):
