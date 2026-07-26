@@ -21,6 +21,17 @@ class SummarySkipped(Exception):
     """The source is already shorter than a useful summary; no LLM call was made."""
 
 
+def transcript_still_owed(article: Article) -> bool:
+    """A video whose captions have not been fetched yet. Enrichment stamps
+    full_text_fetched_at even when it comes up empty, so an unstamped video is
+    one YouTube refused us — the transcript is still out there."""
+    return (
+        bool(youtube.video_id(article.url))
+        and not article.full_text
+        and article.full_text_fetched_at is None
+    )
+
+
 async def generate_summaries(
     session: AsyncSession,
     article: Article,
@@ -40,6 +51,14 @@ async def generate_summaries(
     on every bot-blocked stub.
     """
     text = await ensure_full_text(session, article, allow_refetch=allow_refetch)
+    if transcript_still_owed(article):
+        # YouTube refused the caption request (see extractor._enrich_video).
+        # Anything stored now is permanent — a summary is never regenerated and
+        # a "too_short" stamp blocks even a manual retry — so the video would be
+        # stuck with its description long after the captions became available.
+        raise ThinContentError(
+            "YouTube is throttling caption requests for this video — try again in a few minutes."
+        )
     if is_too_short_to_summarize(text):
         article.summary_short = ""
         article.summary_medium = ""

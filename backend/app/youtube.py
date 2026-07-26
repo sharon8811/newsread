@@ -130,22 +130,34 @@ def video_id(url: str) -> str | None:
 
 
 def _handle_from(raw: str) -> str | None:
-    """The @handle in a handle, a handle URL, or a legacy /c//user/ vanity URL."""
+    """The @handle typed bare or pasted as a handle URL."""
     if raw.startswith("@"):
         return raw[1:] if _HANDLE.fullmatch(raw[1:]) else None
     if "/" not in raw and "." not in raw:
         return None  # a bare word is a name to search, not a handle
-    path = urlsplit(raw if "://" in raw else f"https://{raw}").path
-    segments = [segment for segment in path.split("/") if segment]
-    if not segments:
+    segments = _path_segments(raw)
+    if not segments or not segments[0].startswith("@"):
         return None
-    if segments[0].startswith("@"):
-        candidate = segments[0][1:]
-    elif len(segments) >= 2 and segments[0] in ("c", "user"):
-        candidate = segments[1]
-    else:
-        return None
+    candidate = segments[0][1:]
     return candidate if _HANDLE.fullmatch(candidate) else None
+
+
+def _legacy_channel_url(raw: str) -> str | None:
+    """A pre-handle vanity URL (/c/name, /user/name), kept at its own path.
+
+    These are not handles: a channel can hold /user/foo while @foo belongs to
+    someone else entirely, so rewriting them to /@foo risks resolving to the
+    wrong channel. Their page still advertises the channel's feed.
+    """
+    segments = _path_segments(raw)
+    if len(segments) >= 2 and segments[0] in ("c", "user") and _HANDLE.fullmatch(segments[1]):
+        return f"https://www.youtube.com/{segments[0]}/{segments[1]}"
+    return None
+
+
+def _path_segments(raw: str) -> list[str]:
+    path = urlsplit(raw if "://" in raw else f"https://{raw}").path
+    return [segment for segment in path.split("/") if segment]
 
 
 def _channel_id_from(raw: str) -> str | None:
@@ -175,13 +187,13 @@ def _looks_like_youtube_url(raw: str) -> bool:
     )
 
 
-async def _scrape_channel_page(handle: str) -> ChannelMatch:
+async def _scrape_channel_page(url: str) -> ChannelMatch:
     """Read the channel id off the page's own <link rel="alternate"> feed tag.
 
     A plain GET: the page is served to anyone who asks, so this needs no
     browser and no impersonation stack, only honest browser headers.
     """
-    url = f"https://www.youtube.com/@{handle}"
+    label = urlsplit(url).path.strip("/") or url
     async with httpx.AsyncClient(
         follow_redirects=True, timeout=20, headers=browser_headers()
     ) as client:
@@ -191,17 +203,17 @@ async def _scrape_channel_page(handle: str) -> ChannelMatch:
             logger.info("YouTube channel page %s could not be loaded: %s", url, exc)
             raise ValueError("Could not reach YouTube to look up that channel") from exc
     if response.status_code == 404:
-        raise ValueError(f"No YouTube channel found for @{handle}")
+        raise ValueError(f"No YouTube channel found for {label}")
     if response.status_code >= 400:
         raise ValueError("YouTube did not return that channel's page")
     body = response.text
     match = _PAGE_FEED_LINK.search(body)
     if match is None:
-        raise ValueError(f"No YouTube channel found for @{handle}")
+        raise ValueError(f"No YouTube channel found for {label}")
     meta = {key.lower(): value for key, value in _OG_META.findall(body)}
     return ChannelMatch(
         channel_id=match.group(1),
-        title=meta.get("title") or f"@{handle}",
+        title=meta.get("title") or label,
         description=meta.get("description") or None,
     )
 
@@ -236,14 +248,15 @@ def _api_channel_match(item: dict) -> ChannelMatch:
 
 
 async def _resolve_handle(handle: str) -> ChannelMatch:
+    page_url = f"https://www.youtube.com/@{handle}"
     if not settings.youtube_api_key:
-        return await _scrape_channel_page(handle)
+        return await _scrape_channel_page(page_url)
     data = await _data_api("channels", {"part": "id,snippet", "forHandle": f"@{handle}"})
     items = data.get("items") or []
     if not items:
-        # A legacy /c/ or /user/ vanity name is not a handle; the page still
-        # advertises the feed, so fall back rather than dead-ending.
-        return await _scrape_channel_page(handle)
+        # The API can lag a freshly claimed handle; the page still advertises
+        # the feed, so fall back rather than dead-ending.
+        return await _scrape_channel_page(page_url)
     return _api_channel_match(items[0])
 
 
@@ -284,6 +297,8 @@ async def resolve_channel(raw: str) -> ChannelResolution:
         resolution = ChannelResolution(match=ChannelMatch(channel_id=channel_id, title=channel_id))
     elif handle := _handle_from(topic):
         resolution = ChannelResolution(match=await _resolve_handle(handle))
+    elif legacy_url := _legacy_channel_url(topic):
+        resolution = ChannelResolution(match=await _scrape_channel_page(legacy_url))
     elif _looks_like_youtube_url(topic):
         raise ValueError("That YouTube link does not point at a channel")
     else:

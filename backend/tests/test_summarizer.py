@@ -1,3 +1,5 @@
+from datetime import UTC, datetime
+
 import pytest
 
 from app import summarizer
@@ -16,6 +18,7 @@ async def _make_article(session, **kwargs):
         title="Title",
         content_html=kwargs.get("content_html", ""),
         full_text=kwargs.get("full_text", ""),
+        full_text_fetched_at=kwargs.get("full_text_fetched_at"),
     )
     session.add(art)
     await session.commit()
@@ -53,6 +56,7 @@ async def test_generate_summaries_passes_feed_instructions_and_transcript_kind(
         session,
         url="https://www.youtube.com/watch?v=RsR6cbovMfI",
         full_text="spoken words",
+        full_text_fetched_at=datetime.now(UTC),
         summary_instructions="Skip sponsor segments.",
     )
     captured = {}
@@ -72,10 +76,40 @@ async def test_generate_summaries_passes_feed_instructions_and_transcript_kind(
     assert captured["source_kind"] == "transcript"
 
 
+async def test_generate_summaries_refuses_a_video_whose_captions_are_still_owed(
+    session, monkeypatch
+):
+    # Enrichment leaves a blocked video unstamped. Whatever we store now is
+    # permanent — a summary is never regenerated, and "too_short" would block
+    # even a manual retry — so both the on-demand path and the importer must
+    # back off instead of summarizing the description.
+    art = await _make_article(session, url="https://www.youtube.com/watch?v=RsR6cbovMfI")
+    assert art.full_text_fetched_at is None
+
+    async def fake_ensure(session_, article, allow_refetch=True):
+        return "x" * 500
+
+    async def fail(*args, **kwargs):  # pragma: no cover - must not be reached
+        raise AssertionError("summarized a video whose transcript is still owed")
+
+    monkeypatch.setattr(summarizer, "ensure_full_text", fake_ensure)
+    monkeypatch.setattr(summarizer.llm, "summarize", fail)
+
+    with pytest.raises(ThinContentError, match="throttling caption requests"):
+        await generate_summaries(session, art, allow_vision=True, config=_vision_config())
+    assert art.summary_short == ""
+    assert art.summary_skipped_reason is None  # nothing permanent recorded
+
+
 async def test_generate_summaries_treats_a_captionless_video_as_an_article(session, monkeypatch):
     # No transcript means the text is the feed's own description, which reads
-    # like prose — the transcript caveats would be a lie.
-    art = await _make_article(session, url="https://www.youtube.com/watch?v=RsR6cbovMfI")
+    # like prose — the transcript caveats would be a lie. The stamp is what
+    # separates "this video has no captions" from "YouTube refused us".
+    art = await _make_article(
+        session,
+        url="https://www.youtube.com/watch?v=RsR6cbovMfI",
+        full_text_fetched_at=datetime.now(UTC),
+    )
     captured = {}
 
     async def fake_ensure(session_, article, allow_refetch=True):

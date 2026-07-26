@@ -87,22 +87,35 @@ async def test_resolve_handle_reads_the_page_feed_link(no_api_key):
     route = respx.get("https://www.youtube.com/@betterstack").mock(
         return_value=httpx.Response(200, text=CHANNEL_PAGE)
     )
-    for raw in (
-        "@betterstack",
-        "https://www.youtube.com/@betterstack",
-        "youtube.com/c/betterstack",
-    ):
+    for raw in ("@betterstack", "https://www.youtube.com/@betterstack"):
         resolved = await youtube.resolve_channel(raw)
         assert resolved.match.channel_id == CHANNEL_ID
         assert resolved.match.title == "Better Stack"
         assert resolved.match.description == "30x cheaper than Datadog."
-    # Three inputs, three lookups: the cache is keyed on what was typed.
-    assert route.call_count == 3
+    # Two inputs, two lookups: the cache is keyed on what was typed.
+    assert route.call_count == 2
     # YouTube answers browsers, not scripts.
     assert "Chrome/" in route.calls[0].request.headers["user-agent"]
     # A repeat of the same input is served from the cache.
     await youtube.resolve_channel("@betterstack")
-    assert route.call_count == 3
+    assert route.call_count == 2
+
+
+@respx.mock
+async def test_legacy_vanity_urls_are_scraped_at_their_own_path(no_api_key):
+    # /user/foo and /c/foo are not @foo — the handle can belong to a different
+    # channel entirely, so rewriting the path could resolve to the wrong one.
+    handle_route = respx.get("https://www.youtube.com/@betterstack").mock(
+        return_value=httpx.Response(200, text=CHANNEL_PAGE)
+    )
+    for path in ("user/betterstack", "c/betterstack"):
+        route = respx.get(f"https://www.youtube.com/{path}").mock(
+            return_value=httpx.Response(200, text=CHANNEL_PAGE)
+        )
+        resolved = await youtube.resolve_channel(f"https://www.youtube.com/{path}")
+        assert resolved.match.channel_id == CHANNEL_ID
+        assert route.call_count == 1
+    assert handle_route.call_count == 0
 
 
 @respx.mock
@@ -146,7 +159,7 @@ async def test_resolve_handle_uses_the_data_api_when_configured(api_key):
 
 @respx.mock
 async def test_resolve_falls_back_to_the_page_when_the_api_knows_no_handle(api_key):
-    # /c/ and /user/ vanity names are not handles; their page still advertises
+    # The Data API can lag a freshly claimed handle; the page still advertises
     # the feed, so an empty API answer must not dead-end.
     respx.get("https://www.googleapis.com/youtube/v3/channels").mock(
         return_value=httpx.Response(200, json={"items": []})
@@ -154,7 +167,7 @@ async def test_resolve_falls_back_to_the_page_when_the_api_knows_no_handle(api_k
     respx.get("https://www.youtube.com/@betterstack").mock(
         return_value=httpx.Response(200, text=CHANNEL_PAGE)
     )
-    resolved = await youtube.resolve_channel("https://www.youtube.com/user/betterstack")
+    resolved = await youtube.resolve_channel("@betterstack")
     assert resolved.match.channel_id == CHANNEL_ID
 
 

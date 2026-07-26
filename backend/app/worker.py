@@ -26,7 +26,6 @@ from . import (
     push,
     queue,
     suppressions,
-    youtube,
 )
 from .config import settings
 from .db import init_db
@@ -47,7 +46,12 @@ from .models import (
     Share,
     UserDislikeRule,
 )
-from .summarizer import SummarySkipped, ThinContentError, generate_summaries
+from .summarizer import (
+    SummarySkipped,
+    ThinContentError,
+    generate_summaries,
+    transcript_still_owed,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -109,10 +113,11 @@ async def _for_each_article(ids, *, gate: asyncio.Semaphore, label: str, fn) -> 
 
 
 async def _summarize_quietly(session, article) -> None:
-    if youtube.video_id(article.url) and article.full_text_fetched_at is None:
+    if transcript_still_owed(article):
         # The enrich stage left this video pending because YouTube refused the
-        # caption request. Summarizing its description now would stick — a
-        # non-empty summary is never regenerated — so wait for the transcript.
+        # caption request. generate_summaries would refuse it too, but as a
+        # ThinContentError — which this function records as needs_full_page,
+        # permanently excluding an article whose captions are merely delayed.
         return
     try:
         await generate_summaries(session, article, allow_refetch=False)
