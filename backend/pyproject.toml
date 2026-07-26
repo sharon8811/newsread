@@ -35,6 +35,13 @@ dependencies = [
     # session tokens that change without notice, so this stays a maintained
     # dependency rather than a few lines of our own scraping.
     "youtube-transcript-api>=1.2",
+    # requests is youtube-transcript-api's HTTP client; we hand it a session of
+    # our own (see youtube.browser_headers), so we depend on it explicitly.
+    "requests>=2.32",
+    # Current browser User-Agent + client hints for the two YouTube endpoints
+    # that answer browsers rather than scripts. A library so the string is
+    # refreshed by a dependency bump, not left to rot in our source.
+    "ua-generator>=2.1",
 ]
 
 [dependency-groups]

@@ -1,5 +1,6 @@
 """Channel resolution and caption fetching, with the network mocked."""
 
+import re
 import types
 
 import httpx
@@ -67,28 +68,24 @@ async def test_resolve_direct_forms_never_touch_the_network(no_api_key):
         assert resolved.alternatives == ()
 
 
-def _stub_pages(monkeypatch, pages: dict):
-    """Channel pages come through Scrapling (browser impersonation), so they
-    are stubbed at the fetcher, not with respx. Values are (status, html) or
-    an exception to raise. Returns the list of URLs fetched."""
-    fetched: list[str] = []
-
-    async def fake_get(url, **kwargs):
-        assert kwargs.get("impersonate") == "chrome"
-        fetched.append(url)
-        result = pages[url]
-        if isinstance(result, Exception):
-            raise result
-        status, html = result
-        return types.SimpleNamespace(status=status, html_content=html)
-
-    monkeypatch.setattr(youtube.AsyncFetcher, "get", staticmethod(fake_get))
-    return fetched
+def test_browser_headers_look_like_a_current_chrome():
+    headers = youtube.browser_headers()
+    agent = headers["user-agent"]
+    assert "Chrome/" in agent and "Mozilla/5.0" in agent
+    # Old browser versions are a bot signal in their own right; ua-generator is
+    # pinned to the newest Chrome it ships, so this only fails on a very stale
+    # dependency (Chrome 100 shipped in 2022).
+    assert int(re.search(r"Chrome/(\d+)", agent).group(1)) >= 130
+    assert headers["sec-ch-ua-mobile"] == "?0"
+    # Reused for every request: a UA that changes per request from one IP is
+    # itself suspicious.
+    assert youtube.browser_headers() is headers
 
 
-async def test_resolve_handle_reads_the_page_feed_link(no_api_key, monkeypatch):
-    fetched = _stub_pages(
-        monkeypatch, {"https://www.youtube.com/@betterstack": (200, CHANNEL_PAGE)}
+@respx.mock
+async def test_resolve_handle_reads_the_page_feed_link(no_api_key):
+    route = respx.get("https://www.youtube.com/@betterstack").mock(
+        return_value=httpx.Response(200, text=CHANNEL_PAGE)
     )
     for raw in (
         "@betterstack",
@@ -100,28 +97,31 @@ async def test_resolve_handle_reads_the_page_feed_link(no_api_key, monkeypatch):
         assert resolved.match.title == "Better Stack"
         assert resolved.match.description == "30x cheaper than Datadog."
     # Three inputs, three lookups: the cache is keyed on what was typed.
-    assert len(fetched) == 3
+    assert route.call_count == 3
+    # YouTube answers browsers, not scripts.
+    assert "Chrome/" in route.calls[0].request.headers["user-agent"]
     # A repeat of the same input is served from the cache.
     await youtube.resolve_channel("@betterstack")
-    assert len(fetched) == 3
+    assert route.call_count == 3
 
 
-async def test_resolve_handle_page_failures(no_api_key, monkeypatch):
-    _stub_pages(
-        monkeypatch,
-        {
-            "https://www.youtube.com/@ghost": (404, ""),
-            "https://www.youtube.com/@empty": (200, "<html>no feed link here</html>"),
-            "https://www.youtube.com/@boom": (500, ""),
-            "https://www.youtube.com/@offline": httpx.ConnectError("down"),
-        },
-    )
+@respx.mock
+async def test_resolve_handle_page_failures(no_api_key):
+    respx.get("https://www.youtube.com/@ghost").mock(return_value=httpx.Response(404))
     with pytest.raises(ValueError, match="No YouTube channel found"):
         await youtube.resolve_channel("@ghost")
+
+    respx.get("https://www.youtube.com/@empty").mock(
+        return_value=httpx.Response(200, text="<html>no feed link here</html>")
+    )
     with pytest.raises(ValueError, match="No YouTube channel found"):
         await youtube.resolve_channel("@empty")
+
+    respx.get("https://www.youtube.com/@boom").mock(return_value=httpx.Response(500))
     with pytest.raises(ValueError, match="did not return"):
         await youtube.resolve_channel("@boom")
+
+    respx.get("https://www.youtube.com/@offline").mock(side_effect=httpx.ConnectError("down"))
     with pytest.raises(ValueError, match="Could not reach YouTube"):
         await youtube.resolve_channel("@offline")
 
@@ -145,13 +145,15 @@ async def test_resolve_handle_uses_the_data_api_when_configured(api_key):
 
 
 @respx.mock
-async def test_resolve_falls_back_to_the_page_when_the_api_knows_no_handle(api_key, monkeypatch):
+async def test_resolve_falls_back_to_the_page_when_the_api_knows_no_handle(api_key):
     # /c/ and /user/ vanity names are not handles; their page still advertises
     # the feed, so an empty API answer must not dead-end.
     respx.get("https://www.googleapis.com/youtube/v3/channels").mock(
         return_value=httpx.Response(200, json={"items": []})
     )
-    _stub_pages(monkeypatch, {"https://www.youtube.com/@betterstack": (200, CHANNEL_PAGE)})
+    respx.get("https://www.youtube.com/@betterstack").mock(
+        return_value=httpx.Response(200, text=CHANNEL_PAGE)
+    )
     resolved = await youtube.resolve_channel("https://www.youtube.com/user/betterstack")
     assert resolved.match.channel_id == CHANNEL_ID
 
@@ -237,6 +239,11 @@ def _stub_api(monkeypatch, tracks, error=None):
     from youtube_transcript_api import IpBlocked, RequestBlocked, YouTubeRequestFailed
 
     class FakeApi:
+        def __init__(self, http_client=None):
+            # The library sends no User-Agent of its own; ours must arrive on
+            # the session we hand it, or YouTube blocks python-requests fast.
+            assert "Chrome/" in http_client.headers["user-agent"]
+
         def list(self, video):
             if error is not None:
                 raise error
@@ -278,6 +285,9 @@ async def test_a_blocked_request_raises_and_pauses_further_attempts(monkeypatch)
     calls = 0
 
     class CountingApi:
+        def __init__(self, http_client=None):
+            pass
+
         def list(self, video):
             nonlocal calls
             calls += 1
