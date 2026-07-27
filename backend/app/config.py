@@ -57,6 +57,10 @@ class Settings(BaseSettings):
     object_store_access_key: str = ""
     object_store_secret_key: str = ""
     object_store_bucket: str = "newsread-history"
+    # Public media (AI-generated article illustrations) lives in its own
+    # bucket on the same endpoint: unencrypted, not user-scoped, and outside
+    # the history GC sweep. Created on demand at startup.
+    object_store_media_bucket: str = "newsread-media"
     object_store_region: str = "us-east-1"
     object_store_secure: bool = False
     history_object_max_bytes: int = 1024 * 1024

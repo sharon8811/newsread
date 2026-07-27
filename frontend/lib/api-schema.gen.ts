@@ -266,9 +266,11 @@ export interface paths {
         };
         /**
          * Get Generated Image
-         * @description Serves AI-generated article images. Unauthenticated on purpose: <img>
-         *     tags can't send Authorization headers, and these illustrate public news
-         *     articles just like the og:images we scrape.
+         * @description Serves AI-generated article images from the media bucket.
+         *     Unauthenticated on purpose: <img> tags can't send Authorization headers,
+         *     and these illustrate public news articles just like the og:images we
+         *     scrape. The bytes are proxied rather than redirected — the object store is
+         *     private and typically not reachable from browsers at all.
          */
         get: operations["get_generated_image_api_articles__article_id__generated_image_get"];
         put?: never;

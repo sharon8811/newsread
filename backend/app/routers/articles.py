@@ -9,7 +9,7 @@ from sqlalchemy import and_, exists, func, literal_column, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .. import crypto, embeddings, image_gen, ranking
+from .. import crypto, embeddings, image_gen, media_storage, ranking
 from ..access import accessible_article
 from ..config import settings
 from ..deps import CurrentUser, DbSession
@@ -29,6 +29,7 @@ from ..models import (
     UserReadingPosition,
 )
 from ..ner import NER_KINDS
+from ..object_store import ObjectNotFound, ObjectStoreError
 from ..schemas import (
     ArticleDetail,
     ArticleListItem,
@@ -889,14 +890,26 @@ async def get_generated_image(
     article_id: int,
     session: DbSession,
 ):
-    """Serves AI-generated article images. Unauthenticated on purpose: <img>
-    tags can't send Authorization headers, and these illustrate public news
-    articles just like the og:images we scrape."""
+    """Serves AI-generated article images from the media bucket.
+    Unauthenticated on purpose: <img> tags can't send Authorization headers,
+    and these illustrate public news articles just like the og:images we
+    scrape. The bytes are proxied rather than redirected — the object store is
+    private and typically not reachable from browsers at all."""
     image = await session.get(GeneratedImage, article_id)
     if image is None:
         raise HTTPException(status_code=404, detail="No generated image")
+    try:
+        data = await media_storage.get_media_store().get(image.object_key)
+    except ObjectNotFound:
+        # The row outlived its object (a bucket wiped or restored without the
+        # database). 404 rather than 503: retrying won't bring it back.
+        logger.warning("Generated image object %s is missing", image.object_key)
+        raise HTTPException(status_code=404, detail="No generated image") from None
+    except ObjectStoreError as exc:
+        logger.warning("Generated image object %s unreadable: %s", image.object_key, exc)
+        raise HTTPException(status_code=503, detail="Image storage unavailable") from exc
     return Response(
-        content=image.data,
+        content=data,
         media_type=image.content_type,
         headers={"Cache-Control": "public, max-age=31536000, immutable"},
     )

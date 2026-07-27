@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from . import error_handlers
+from . import error_handlers, media_storage
 from .config import settings
 from .db import init_db
 from .routers import (
@@ -40,6 +40,7 @@ MIN_CLIENT_VERSION = "0.1.0"
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
+    await media_storage.ensure_media_bucket()
     yield
 
 

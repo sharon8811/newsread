@@ -1,19 +1,13 @@
-"""Provider-neutral object storage for encrypted browser-history content."""
+"""Provider-neutral object storage for encrypted browser-history content.
+
+The S3 transport itself lives in object_store; this module adds the per-user
+key wrapping and envelope encryption that history content requires.
+"""
 
 from __future__ import annotations
 
-import io
-from bisect import bisect_right
-from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import UTC, datetime
-from functools import partial
-from typing import Protocol
 
-import anyio
-import boto3
-from botocore.config import Config as BotoConfig
-from botocore.exceptions import ClientError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -28,270 +22,37 @@ from .history_crypto import (
     parse_object_header,
 )
 from .models import BrowserHistoryUserKey, User
+from .object_store import (
+    InMemoryObjectStore,
+    ObjectNotFound,
+    ObjectStore,
+    ObjectStoreError,
+    S3ObjectStore,
+    StoredObjectInfo,
+    StoredObjectPage,
+    s3_object_store_from_settings,
+)
 
+# History code (and its tests) name these errors after the feature; they are
+# the object-store errors, not a separate hierarchy.
+HistoryStorageError = ObjectStoreError
+HistoryObjectNotFound = ObjectNotFound
 
-class HistoryStorageError(Exception):
-    """Base error for object-store failures safe to handle at service boundaries."""
-
-
-class HistoryObjectNotFound(HistoryStorageError):
-    pass
-
-
-class ObjectStore(Protocol):
-    async def ensure_bucket(self) -> None: ...
-
-    async def exists(self, key: str) -> bool: ...
-
-    async def put_if_absent(self, key: str, data: bytes) -> bool: ...
-
-    async def get(self, key: str) -> bytes: ...
-
-    async def delete(self, key: str) -> None: ...
-
-    async def list_objects(
-        self,
-        prefix: str,
-        *,
-        limit: int,
-        cursor: str | None = None,
-    ) -> StoredObjectPage: ...
-
-
-class S3ObjectStore:
-    """Async facade over the mature synchronous Boto3 S3 client."""
-
-    def __init__(
-        self,
-        *,
-        endpoint_url: str,
-        access_key: str,
-        secret_key: str,
-        bucket: str,
-        region: str = "us-east-1",
-    ):
-        self.bucket = bucket
-        self.region = region
-        self._client = boto3.client(
-            "s3",
-            endpoint_url=endpoint_url,
-            aws_access_key_id=access_key,
-            aws_secret_access_key=secret_key,
-            region_name=region,
-            config=BotoConfig(
-                signature_version="s3v4",
-                s3={"addressing_style": "path"},
-                retries={"max_attempts": 4, "mode": "standard"},
-            ),
-        )
-
-    async def ensure_bucket(self) -> None:
-        def ensure() -> None:
-            try:
-                self._client.head_bucket(Bucket=self.bucket)
-                return
-            except ClientError as exc:
-                if _error_code(exc) not in {"404", "NoSuchBucket", "NotFound"}:
-                    raise
-            kwargs: dict[str, object] = {"Bucket": self.bucket}
-            if self.region != "us-east-1":
-                kwargs["CreateBucketConfiguration"] = {
-                    "LocationConstraint": self.region,
-                }
-            self._client.create_bucket(**kwargs)
-
-        try:
-            await anyio.to_thread.run_sync(ensure)
-        except ClientError as exc:
-            raise HistoryStorageError(
-                f"could not ensure history bucket: {_error_code(exc)}"
-            ) from exc
-
-    async def exists(self, key: str) -> bool:
-        def head() -> bool:
-            try:
-                self._client.head_object(Bucket=self.bucket, Key=key)
-                return True
-            except ClientError as exc:
-                if _error_code(exc) in {"404", "NoSuchKey", "NotFound"}:
-                    return False
-                raise
-
-        try:
-            return await anyio.to_thread.run_sync(head)
-        except ClientError as exc:
-            raise HistoryStorageError(
-                f"could not inspect history object: {_error_code(exc)}"
-            ) from exc
-
-    async def put_if_absent(self, key: str, data: bytes) -> bool:
-        def put() -> bool:
-            try:
-                self._client.put_object(
-                    Bucket=self.bucket,
-                    Key=key,
-                    Body=io.BytesIO(data),
-                    ContentLength=len(data),
-                    ContentType="application/octet-stream",
-                    IfNoneMatch="*",
-                )
-                return True
-            except ClientError as exc:
-                if _error_code(exc) in {"PreconditionFailed", "412"}:
-                    return False
-                raise
-
-        try:
-            return await anyio.to_thread.run_sync(put)
-        except ClientError as exc:
-            raise HistoryStorageError(
-                f"could not store history object: {_error_code(exc)}"
-            ) from exc
-
-    async def get(self, key: str) -> bytes:
-        def read() -> bytes:
-            try:
-                response = self._client.get_object(Bucket=self.bucket, Key=key)
-            except ClientError as exc:
-                if _error_code(exc) in {"404", "NoSuchKey", "NotFound"}:
-                    raise HistoryObjectNotFound(key) from exc
-                raise
-            body = response["Body"]
-            try:
-                return body.read()
-            finally:
-                body.close()
-
-        try:
-            return await anyio.to_thread.run_sync(read)
-        except HistoryObjectNotFound:
-            raise
-        except ClientError as exc:
-            raise HistoryStorageError(f"could not read history object: {_error_code(exc)}") from exc
-
-    async def delete(self, key: str) -> None:
-        try:
-            await anyio.to_thread.run_sync(
-                partial(self._client.delete_object, Bucket=self.bucket, Key=key)
-            )
-        except ClientError as exc:
-            raise HistoryStorageError(
-                f"could not delete history object: {_error_code(exc)}"
-            ) from exc
-
-    async def list_objects(
-        self,
-        prefix: str,
-        *,
-        limit: int,
-        cursor: str | None = None,
-    ) -> StoredObjectPage:
-        def collect() -> StoredObjectPage:
-            kwargs: dict[str, object] = {
-                "Bucket": self.bucket,
-                "Prefix": prefix,
-                "MaxKeys": limit,
-            }
-            if cursor:
-                # StartAfter is stable even if this page's orphan keys are
-                # deleted before the next sweep; continuation tokens need not
-                # remain valid across mutations on every S3-compatible store.
-                kwargs["StartAfter"] = cursor
-            page = self._client.list_objects_v2(**kwargs)
-            output: list[StoredObjectInfo] = []
-            for item in page.get("Contents", []):
-                modified_at = item["LastModified"]
-                if modified_at.tzinfo is None:
-                    modified_at = modified_at.replace(tzinfo=UTC)
-                output.append(
-                    StoredObjectInfo(
-                        key=item["Key"],
-                        byte_size=int(item.get("Size", 0)),
-                        modified_at=modified_at,
-                    )
-                )
-            return StoredObjectPage(
-                objects=output,
-                next_cursor=(output[-1].key if page.get("IsTruncated") and output else None),
-            )
-
-        try:
-            return await anyio.to_thread.run_sync(collect)
-        except ClientError as exc:
-            raise HistoryStorageError(
-                f"could not list history objects: {_error_code(exc)}"
-            ) from exc
-
-
-class InMemoryObjectStore:
-    """Deterministic object-store fake shared by unit and service tests."""
-
-    def __init__(self, initial: Mapping[str, bytes] | None = None):
-        self.objects = dict(initial or {})
-        now = datetime.now(UTC)
-        self.modified_at = {key: now for key in self.objects}
-        self._lock = anyio.Lock()
-
-    async def ensure_bucket(self) -> None:
-        return None
-
-    async def exists(self, key: str) -> bool:
-        return key in self.objects
-
-    async def put_if_absent(self, key: str, data: bytes) -> bool:
-        async with self._lock:
-            if key in self.objects:
-                return False
-            self.objects[key] = bytes(data)
-            self.modified_at[key] = datetime.now(UTC)
-            return True
-
-    async def get(self, key: str) -> bytes:
-        try:
-            return self.objects[key]
-        except KeyError:
-            raise HistoryObjectNotFound(key) from None
-
-    async def delete(self, key: str) -> None:
-        self.objects.pop(key, None)
-        self.modified_at.pop(key, None)
-
-    async def list_objects(
-        self,
-        prefix: str,
-        *,
-        limit: int,
-        cursor: str | None = None,
-    ) -> StoredObjectPage:
-        now = datetime.now(UTC)
-        keys = [key for key in sorted(self.objects) if key.startswith(prefix)]
-        start = bisect_right(keys, cursor) if cursor else 0
-        selected = keys[start : start + limit]
-        objects = [
-            StoredObjectInfo(
-                key=key,
-                byte_size=len(self.objects[key]),
-                modified_at=self.modified_at.get(key, now),
-            )
-            for key in selected
-        ]
-        return StoredObjectPage(
-            objects=objects,
-            next_cursor=selected[-1] if start + len(selected) < len(keys) else None,
-        )
-
-
-@dataclass(frozen=True)
-class StoredObjectInfo:
-    key: str
-    byte_size: int
-    modified_at: datetime
-
-
-@dataclass(frozen=True)
-class StoredObjectPage:
-    objects: list[StoredObjectInfo]
-    next_cursor: str | None
+__all__ = [
+    "EncryptedHistoryStorage",
+    "HistoryKeyService",
+    "HistoryObjectNotFound",
+    "HistoryStorageError",
+    "InMemoryObjectStore",
+    "ObjectStore",
+    "S3ObjectStore",
+    "StoredHistoryObject",
+    "StoredObjectInfo",
+    "StoredObjectPage",
+    "encrypted_history_storage_from_settings",
+    "history_object_key",
+    "s3_object_store_from_settings",
+]
 
 
 @dataclass(frozen=True)
@@ -492,24 +253,6 @@ def history_object_key(
     return f"users/{user_id}/history/{plural}/sha256/{object_hash[:2]}/{object_hash}"
 
 
-def s3_object_store_from_settings(config: Settings = settings) -> S3ObjectStore:
-    endpoint = config.object_store_endpoint.strip()
-    if not endpoint.startswith(("http://", "https://")):
-        scheme = "https" if config.object_store_secure else "http"
-        endpoint = f"{scheme}://{endpoint}"
-    if endpoint in {"http://", "https://"}:
-        raise HistoryStorageError("NEWSREAD_OBJECT_STORE_ENDPOINT is not configured")
-    if not config.object_store_access_key or not config.object_store_secret_key:
-        raise HistoryStorageError("object-store credentials are not configured")
-    return S3ObjectStore(
-        endpoint_url=endpoint,
-        access_key=config.object_store_access_key,
-        secret_key=config.object_store_secret_key,
-        bucket=config.object_store_bucket,
-        region=config.object_store_region,
-    )
-
-
 def encrypted_history_storage_from_settings(
     config: Settings = settings,
 ) -> EncryptedHistoryStorage:
@@ -525,7 +268,3 @@ def encrypted_history_storage_from_settings(
         s3_object_store_from_settings(config),
         HistoryKeyService(keyring),
     )
-
-
-def _error_code(exc: ClientError) -> str:
-    return str(exc.response.get("Error", {}).get("Code", "unknown"))

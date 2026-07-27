@@ -662,8 +662,9 @@ async def test_cursor_pagination_oldest_sort_null_tail(client, users, data, sess
 
 # --- lazy image generation (bring-your-own-key PR 4) ---
 
-from app import image_gen, llm
+from app import image_gen, llm, media_storage
 from app.models import GeneratedImage
+from app.object_store import ObjectStoreError
 
 
 def _image_config(user_owned=False):
@@ -782,15 +783,26 @@ async def test_get_article_broken_key_does_not_block_reading(
     assert resp.json()["image_pending"] is False
 
 
-async def test_generated_image_served_unauthenticated(client, users, data, session):
-    user, feed = await _setup(users, data)
-    art = await data.article(feed)
+async def _store_generated_image(session, media_store, article, data=b"\x89PNG bytes"):
+    key = media_storage.generated_image_key(article.id, data)
+    await media_store.put(key, data, content_type="image/png")
     session.add(
         GeneratedImage(
-            article_id=art.id, content_type="image/png", data=b"\x89PNG bytes", model="img-model"
+            article_id=article.id,
+            content_type="image/png",
+            object_key=key,
+            byte_size=len(data),
+            model="img-model",
         )
     )
     await session.commit()
+    return key
+
+
+async def test_generated_image_served_unauthenticated(client, users, data, session, media_store):
+    user, feed = await _setup(users, data)
+    art = await data.article(feed)
+    await _store_generated_image(session, media_store, art)
 
     resp = await client.get(f"/api/articles/{art.id}/generated-image")  # no auth header
     assert resp.status_code == 200
@@ -804,6 +816,33 @@ async def test_generated_image_404_when_missing(client, users, data):
     art = await data.article(feed)
     resp = await client.get(f"/api/articles/{art.id}/generated-image")
     assert resp.status_code == 404
+
+
+async def test_generated_image_404_when_object_is_gone(client, users, data, session, media_store):
+    """A row whose object vanished (bucket restored without the database) is a
+    permanent miss, not a retryable outage."""
+    user, feed = await _setup(users, data)
+    art = await data.article(feed)
+    key = await _store_generated_image(session, media_store, art)
+    await media_store.delete(key)
+
+    resp = await client.get(f"/api/articles/{art.id}/generated-image")
+    assert resp.status_code == 404
+
+
+async def test_generated_image_503_when_store_unreachable(
+    client, users, data, session, media_store, monkeypatch
+):
+    user, feed = await _setup(users, data)
+    art = await data.article(feed)
+    await _store_generated_image(session, media_store, art)
+
+    async def unreachable(key):
+        raise ObjectStoreError("could not read object: ConnectionError")
+
+    monkeypatch.setattr(media_store, "get", unreachable)
+    resp = await client.get(f"/api/articles/{art.id}/generated-image")
+    assert resp.status_code == 503
 
 
 # --- list-triggered generation, per-feed switch, monthly budget ---

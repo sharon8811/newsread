@@ -169,6 +169,20 @@ async def _clean():
 
 
 @pytest.fixture(autouse=True)
+def media_store(monkeypatch):
+    """An in-memory media bucket for every test. Both the writer (image_gen)
+    and the reader (the serving route) resolve the store through this module
+    attribute at call time, so one patch covers both; tests that care can
+    inspect `.objects` or seed it directly."""
+    from app import media_storage
+    from app.object_store import InMemoryObjectStore
+
+    store = InMemoryObjectStore()
+    monkeypatch.setattr(media_storage, "get_media_store", lambda: store)
+    return store
+
+
+@pytest.fixture(autouse=True)
 def _skip_feed_url_validation(monkeypatch):
     """Feed fetches use respx-mocked hosts that must never hit real DNS.
     Tests exercising the guard call the imported _validate_public_url directly,

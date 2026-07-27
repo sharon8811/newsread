@@ -3,9 +3,9 @@
 Generation is lazy: the first view of an imageless article claims it
 (articles.image_gen_attempted_at) and a background task renders the viewer's
 prompt template against their image model — or the server-wide
-IMAGE_GENERATION_* default when they haven't configured one. The result is
-stored in generated_images and article.image_url points at the serving route,
-so every subscriber sees it.
+IMAGE_GENERATION_* default when they haven't configured one. The bytes go to
+the media bucket (media_storage), generated_images records where, and
+article.image_url points at the serving route, so every subscriber sees it.
 
 Two wire shapes: OpenRouter serves image models through its dedicated
 `POST {base}/images` endpoint (the only one that accepts generation knobs like
@@ -24,7 +24,7 @@ import httpx
 from openai import AsyncOpenAI
 from sqlalchemy import func, select
 
-from . import crypto, db, llm
+from . import crypto, db, llm, media_storage
 from .config import settings
 from .models import Article, GeneratedImage, User, UserAISettings
 
@@ -223,9 +223,33 @@ async def generate_for_article(
                 error=str(exc),
             )
             return
+        # Store the bytes before the row that points at them: a row whose
+        # object is missing would render as a broken image, while an object
+        # without a row is only a few unreferenced bytes the next generation
+        # for this article overwrites (same key for the same content).
+        try:
+            object_key = media_storage.generated_image_key(article_id, data)
+            await media_storage.get_media_store().put(object_key, data, content_type=content_type)
+        except Exception as exc:
+            logger.warning("Storing the generated image for article %s failed: %s", article_id, exc)
+            await llm.record_usage(
+                session,
+                user_id=user_id,
+                feature="image",
+                config=config,
+                usage=usage,
+                duration_ms=int((time.monotonic() - started) * 1000),
+                status="error",
+                error=f"image storage failed: {exc}",
+            )
+            return
         session.add(
             GeneratedImage(
-                article_id=article_id, content_type=content_type, data=data, model=config.model
+                article_id=article_id,
+                content_type=content_type,
+                object_key=object_key,
+                byte_size=len(data),
+                model=config.model,
             )
         )
         article = await session.get(Article, article_id)

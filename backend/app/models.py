@@ -643,9 +643,11 @@ class Article(Base):
 
 
 class GeneratedImage(Base):
-    """AI-generated illustration for an article without one, stored as bytes
-    in Postgres (no media volume to configure at this scale) and served by
-    GET /articles/{id}/generated-image."""
+    """AI-generated illustration for an article without one. This row is
+    metadata only: the bytes live in the media bucket under `object_key`
+    (media_storage), and GET /articles/{id}/generated-image streams them back.
+    They were BYTEA here until migration 0013 — a few hundred images were most
+    of the database."""
 
     __tablename__ = "generated_images"
 
@@ -653,7 +655,8 @@ class GeneratedImage(Base):
         ForeignKey("articles.id", ondelete="CASCADE"), primary_key=True
     )
     content_type: Mapped[str] = mapped_column(String(64), default="image/png")
-    data: Mapped[bytes] = mapped_column(LargeBinary)
+    object_key: Mapped[str] = mapped_column(String(512))
+    byte_size: Mapped[int] = mapped_column(Integer)
     model: Mapped[str] = mapped_column(String(120))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

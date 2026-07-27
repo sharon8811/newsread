@@ -6,11 +6,19 @@ from fastapi import APIRouter, HTTPException
 from sqlalchemy import and_, exists, false, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .. import llm, queue
+from .. import llm, media_storage, queue
 from ..deps import CurrentUser, DbSession
 from ..extractor import SUMMARIZABLE_FEED_HTML_CHARS
 from ..fetcher import FeedParseError, FeedRateLimited, discover_feed_url, refresh_feed
-from ..models import Article, Feed, Share, Subscription, User, UserArticleState
+from ..models import (
+    Article,
+    Feed,
+    GeneratedImage,
+    Share,
+    Subscription,
+    User,
+    UserArticleState,
+)
 from ..schemas import AddFeedIn, FeedOut, FeedSettingsIn
 
 logger = logging.getLogger(__name__)
@@ -368,5 +376,31 @@ async def unsubscribe(
         select(exists().where(and_(Share.article_id == Article.id, Article.feed_id == feed.id)))
     )
     if not has_subscribers and not has_shares:
+        # The generated_images rows cascade with the articles, but their bytes
+        # live in the media bucket — collect the keys while the rows still
+        # exist, then delete the objects once the cascade has committed.
+        orphaned_objects = list(
+            await session.scalars(
+                select(GeneratedImage.object_key)
+                .join(Article, Article.id == GeneratedImage.article_id)
+                .where(Article.feed_id == feed.id)
+            )
+        )
         await session.delete(feed)
+        await session.commit()
+        await _delete_media_objects(orphaned_objects)
+        return
     await session.commit()
+
+
+async def _delete_media_objects(keys: list[str]) -> None:
+    """Best-effort: a failed delete leaves bytes behind, which is never worth
+    failing an unsubscribe the database has already committed."""
+    if not keys:
+        return
+    try:
+        store = media_storage.get_media_store()
+        for key in keys:
+            await store.delete(key)
+    except Exception as exc:
+        logger.warning("Could not delete %d generated-image object(s): %s", len(keys), exc)

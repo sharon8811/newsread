@@ -22,6 +22,7 @@ from . import (
     history_operations,
     history_summaries,
     llm,
+    media_storage,
     ner,
     push,
     queue,
@@ -618,6 +619,7 @@ async def poll_feeds(ctx: dict) -> None:
 
 async def startup(ctx: dict) -> None:
     await init_db()
+    await media_storage.ensure_media_bucket()
     logger.info("Feed worker started (LLM configured: %s)", llm.is_configured())
 
 
