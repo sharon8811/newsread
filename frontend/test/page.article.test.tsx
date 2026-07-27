@@ -240,6 +240,33 @@ describe("ArticlePage", () => {
     expect(screen.getByText(/only provides a headline/)).toBeInTheDocument();
   });
 
+  it("sends a video to YouTube instead of offering to read it", () => {
+    swrMock.mockReturnValue({
+      data: makeArticleDetail({
+        is_read: true,
+        content_html: "",
+        url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+      }),
+      error: undefined,
+    });
+    render(<ArticlePage />);
+    const link = screen.getByRole("link", { name: /Go to video/ });
+    expect(link).toHaveAttribute("href", "https://www.youtube.com/watch?v=dQw4w9WgXcQ");
+    expect(screen.queryByText("Read original")).not.toBeInTheDocument();
+    // The empty-body placeholder points at the same action.
+    expect(screen.getByText(/written from the captions/).textContent).toContain("Go to video");
+  });
+
+  it("keeps “Read original” for an ordinary article", () => {
+    swrMock.mockReturnValue({
+      data: makeArticleDetail({ is_read: true, url: "https://news.example/story" }),
+      error: undefined,
+    });
+    render(<ArticlePage />);
+    expect(screen.getByRole("link", { name: /Read original/ })).toBeInTheDocument();
+    expect(screen.queryByText("Go to video")).not.toBeInTheDocument();
+  });
+
   it("renders content html when present", () => {
     swrMock.mockReturnValue({
       data: makeArticleDetail({ is_read: true, content_html: "<p>body text here</p>" }),

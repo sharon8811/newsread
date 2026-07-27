@@ -333,6 +333,131 @@ describe("<Sidebar>", () => {
 });
 
 
+describe("<Sidebar> YouTube channels group", () => {
+  const channel = (over: Parameters<typeof makeFeed>[0] = {}) =>
+    makeFeed({
+      url: "https://www.youtube.com/feeds/videos.xml?channel_id=UCBJycsmduvYEL83R_U4JriQ",
+      ...over,
+    });
+
+  beforeEach(() => {
+    pushMock.mockClear();
+    pathState.value = "/";
+    searchState.feed = null;
+    authState.user = makeUser();
+    authState.logout = vi.fn();
+    localStorage.clear();
+  });
+
+  it("stays out of the way when nothing YouTube is followed", () => {
+    setSwr({ feeds: [makeFeed({ id: 1, title: "Plain Feed" })], unseen: { count: 0 } });
+    render(<Sidebar />);
+    expect(screen.queryByText("YouTube channels")).not.toBeInTheDocument();
+    expect(screen.getByText("Plain Feed")).toBeInTheDocument();
+  });
+
+  it("moves followed channels into the group and leaves RSS feeds alone", () => {
+    setSwr({
+      feeds: [
+        makeFeed({ id: 1, title: "Plain Feed", unread_count: 1 }),
+        channel({ id: 2, title: "MKBHD", unread_count: 4 }),
+      ],
+      unseen: { count: 0 },
+    });
+    render(<Sidebar />);
+
+    expect(screen.getByText("YouTube channels")).toBeInTheDocument();
+    expect(screen.getByText("MKBHD").closest("a")).toHaveAttribute("href", "/?feed=2");
+    // The video icon marks the channel; the RSS feed keeps its own.
+    expect(screen.getByText("MKBHD").closest("a")!.querySelector("rect")).toBeTruthy();
+    expect(screen.getByText("Plain Feed").closest("a")!.querySelector("rect")).toBeNull();
+    // Expanded, each channel carries its own count and the header shows none.
+    expect(screen.getByText("MKBHD").closest("a")!.textContent).toContain("4");
+    expect(screen.getByText("YouTube channels").closest("button")!.textContent).toBe(
+      "YouTube channels",
+    );
+  });
+
+  it("collapses to a single row with the group's unread total, and remembers it", async () => {
+    setSwr({
+      feeds: [
+        channel({ id: 2, title: "MKBHD", unread_count: 4 }),
+        channel({ id: 3, title: "Veritasium", unread_count: 2 }),
+        channel({ id: 4, title: "Muted Channel", unread_count: 9, is_muted: true }),
+      ],
+      unseen: { count: 0 },
+    });
+    const { unmount } = render(<Sidebar />);
+    await userEvent.click(screen.getByTitle("Collapse YouTube channels"));
+
+    expect(screen.queryByText("MKBHD")).not.toBeInTheDocument();
+    expect(screen.queryByText("Veritasium")).not.toBeInTheDocument();
+    // 4 + 2; the muted channel is excluded, as it is from the Inbox total.
+    expect(screen.getByText("YouTube channels").closest("button")!.textContent).toContain("6");
+    expect(localStorage.getItem("newsread_youtube_group_open")).toBe("0");
+
+    // A later visit opens collapsed.
+    unmount();
+    render(<Sidebar />);
+    expect(screen.queryByText("MKBHD")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByTitle("Expand YouTube channels"));
+    expect(screen.getByText("MKBHD")).toBeInTheDocument();
+    expect(localStorage.getItem("newsread_youtube_group_open")).toBe("1");
+  });
+
+  it("hides the collapsed total when every channel is read", async () => {
+    setSwr({ feeds: [channel({ id: 2, title: "MKBHD", unread_count: 0 })], unseen: { count: 0 } });
+    render(<Sidebar />);
+    await userEvent.click(screen.getByTitle("Collapse YouTube channels"));
+    expect(screen.getByText("YouTube channels").closest("button")!.textContent).toBe(
+      "YouTube channels",
+    );
+  });
+
+  it("opens settings for a channel from inside the group", async () => {
+    setSwr({ feeds: [channel({ id: 2, title: "MKBHD" })], unseen: { count: 0 } });
+    render(<Sidebar />);
+    await userEvent.click(screen.getByTitle("Feed settings"));
+    expect(screen.getByTestId("feed-settings-modal")).toBeInTheDocument();
+    expect(settingsProps.current!.feed).toMatchObject({ id: 2 });
+  });
+
+  it("keeps the desktop rail and the mobile drawer in step", async () => {
+    // The app shell mounts both sidebars at once and hides one with CSS, so a
+    // toggle in either has to move the other — not just the storage key.
+    setSwr({ feeds: [channel({ id: 2, title: "MKBHD" })], unseen: { count: 0 } });
+    render(
+      <>
+        <Sidebar />
+        <Sidebar />
+      </>,
+    );
+    expect(screen.getAllByText("MKBHD")).toHaveLength(2);
+    await userEvent.click(screen.getAllByTitle("Collapse YouTube channels")[0]);
+    expect(screen.queryByText("MKBHD")).not.toBeInTheDocument();
+    expect(screen.getAllByTitle("Expand YouTube channels")).toHaveLength(2);
+  });
+
+  it("still toggles when storage is unavailable", async () => {
+    // setup.ts swaps in its own in-memory Storage, so the spies go on the
+    // instance — Storage.prototype is not what the component calls.
+    const getItem = vi.spyOn(localStorage, "getItem").mockImplementation(() => {
+      throw new Error("denied");
+    });
+    const setItem = vi.spyOn(localStorage, "setItem").mockImplementation(() => {
+      throw new Error("denied");
+    });
+    setSwr({ feeds: [channel({ id: 2, title: "MKBHD" })], unseen: { count: 0 } });
+    render(<Sidebar />);
+    // Unreadable storage means expanded, the same as a first visit.
+    expect(screen.getByText("MKBHD")).toBeInTheDocument();
+    await userEvent.click(screen.getByTitle("Collapse YouTube channels"));
+    expect(screen.queryByText("MKBHD")).not.toBeInTheDocument();
+    getItem.mockRestore();
+    setItem.mockRestore();
+  });
+});
+
 describe("<Sidebar> AI usage link", () => {
   beforeEach(() => {
     pathState.value = "/";

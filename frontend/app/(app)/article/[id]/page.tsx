@@ -31,11 +31,13 @@ import {
   FolderIcon,
   ShareIcon,
   SparkleIcon,
+  YouTubeIcon,
 } from "@/components/icons";
 import { api, imageSrc } from "@/lib/api";
 import { useArticleDetail } from "@/lib/queries";
 import { domainOf, timeAgo } from "@/lib/format";
 import { discussionRefFor } from "@/lib/discussions";
+import { isYouTubeVideoUrl } from "@/lib/youtube";
 import { markArticleReadInReadingSessions } from "@/lib/readingSession";
 import { useReadingTimer } from "@/lib/useReadingTimer";
 
@@ -147,6 +149,11 @@ export default function ArticlePage() {
     );
   }
 
+  // A followed YouTube channel's items are videos, not pages to read — the
+  // primary action says where it actually goes.
+  const isVideo = isYouTubeVideoUrl(article.url);
+  const originalLabel = isVideo ? "Go to video" : "Read original";
+
   return (
     <HackerNewsDiscussionController key={article.id} article={article}>
       {(discussion) => (
@@ -208,8 +215,8 @@ export default function ArticlePage() {
             target="_blank"
             rel="noreferrer"
           >
-            <ExternalIcon size={14} />
-            Read original
+            {isVideo ? <YouTubeIcon size={14} /> : <ExternalIcon size={14} />}
+            {originalLabel}
           </a>
           <HackerNewsDiscussionLink article={article} />
           {article.comments_url && !discussionRefFor(article) && (
@@ -267,7 +274,10 @@ export default function ArticlePage() {
         />
       ) : (
         <p className="reader mt-8 italic" style={{ color: "var(--ink-dim)" }}>
-          This feed only provides a headline. Use “Read original” above.
+          {isVideo
+            ? "This is a video — its summary is written from the captions."
+            : "This feed only provides a headline."}{" "}
+          Use “{originalLabel}” above.
         </p>
       )}
 
