@@ -19,7 +19,7 @@ from typing import Protocol
 import anyio
 import boto3
 from botocore.config import Config as BotoConfig
-from botocore.exceptions import ClientError
+from botocore.exceptions import BotoCoreError, ClientError
 
 from .config import Settings, settings
 
@@ -86,7 +86,7 @@ class S3ObjectStore:
     async def ensure_bucket(self) -> None:
         try:
             await anyio.to_thread.run_sync(self.ensure_bucket_sync)
-        except ClientError as exc:
+        except (BotoCoreError, ClientError) as exc:
             raise ObjectStoreError(f"could not ensure bucket: {_error_code(exc)}") from exc
 
     def ensure_bucket_sync(self) -> None:
@@ -114,7 +114,7 @@ class S3ObjectStore:
 
         try:
             return await anyio.to_thread.run_sync(head)
-        except ClientError as exc:
+        except (BotoCoreError, ClientError) as exc:
             raise ObjectStoreError(f"could not inspect object: {_error_code(exc)}") from exc
 
     async def put(
@@ -124,7 +124,7 @@ class S3ObjectStore:
             await anyio.to_thread.run_sync(
                 partial(self.put_sync, key, data, content_type=content_type)
             )
-        except ClientError as exc:
+        except (BotoCoreError, ClientError) as exc:
             raise ObjectStoreError(f"could not store object: {_error_code(exc)}") from exc
 
     def put_sync(self, key: str, data: bytes, *, content_type: str = _DEFAULT_CONTENT_TYPE) -> None:
@@ -156,7 +156,7 @@ class S3ObjectStore:
 
         try:
             return await anyio.to_thread.run_sync(put)
-        except ClientError as exc:
+        except (BotoCoreError, ClientError) as exc:
             raise ObjectStoreError(f"could not store object: {_error_code(exc)}") from exc
 
     def get_sync(self, key: str) -> bytes:
@@ -178,7 +178,7 @@ class S3ObjectStore:
             return await anyio.to_thread.run_sync(self.get_sync, key)
         except ObjectNotFound:
             raise
-        except ClientError as exc:
+        except (BotoCoreError, ClientError) as exc:
             raise ObjectStoreError(f"could not read object: {_error_code(exc)}") from exc
 
     async def delete(self, key: str) -> None:
@@ -186,7 +186,7 @@ class S3ObjectStore:
             await anyio.to_thread.run_sync(
                 partial(self._client.delete_object, Bucket=self.bucket, Key=key)
             )
-        except ClientError as exc:
+        except (BotoCoreError, ClientError) as exc:
             raise ObjectStoreError(f"could not delete object: {_error_code(exc)}") from exc
 
     async def list_objects(
@@ -227,7 +227,7 @@ class S3ObjectStore:
 
         try:
             return await anyio.to_thread.run_sync(collect)
-        except ClientError as exc:
+        except (BotoCoreError, ClientError) as exc:
             raise ObjectStoreError(f"could not list objects: {_error_code(exc)}") from exc
 
 
@@ -337,5 +337,10 @@ def s3_object_store_from_settings(
     )
 
 
-def _error_code(exc: ClientError) -> str:
-    return str(exc.response.get("Error", {}).get("Code", "unknown"))
+def _error_code(exc: BotoCoreError | ClientError) -> str:
+    """A short cause for an error message. Service errors carry an S3 error
+    code; transport failures (DNS, refused connection, timeout) are
+    BotoCoreErrors with no code, so their class name stands in."""
+    if isinstance(exc, ClientError):
+        return str(exc.response.get("Error", {}).get("Code", "unknown"))
+    return type(exc).__name__
