@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { api, type Feed } from "@/lib/api";
 import {
   addFeedToCache,
@@ -153,12 +153,37 @@ function FeedRow({
 // means expanded, so the group behaves like the flat list it grew out of.
 const YOUTUBE_OPEN_KEY = "newsread_youtube_group_open";
 
+// The app shell keeps both sidebars mounted at once (desktop rail and mobile
+// drawer, hidden by CSS), so this can't live in component state: collapsing
+// one has to move the other, not just the storage key. Storage stays the
+// source of truth, with a memory fallback for when it is unavailable.
+let youTubeOpenFallback = true;
+const youTubeListeners = new Set<() => void>();
+
 function loadYouTubeOpen(): boolean {
   try {
     return localStorage.getItem(YOUTUBE_OPEN_KEY) !== "0";
   } catch {
-    return true;
+    return youTubeOpenFallback;
   }
+}
+
+function storeYouTubeOpen(open: boolean) {
+  try {
+    localStorage.setItem(YOUTUBE_OPEN_KEY, open ? "1" : "0");
+  } catch {
+    // Storage disabled (private browsing): the group still toggles for this
+    // session, it just forgets between visits.
+    youTubeOpenFallback = open;
+  }
+  for (const listener of youTubeListeners) listener();
+}
+
+function subscribeYouTubeOpen(listener: () => void) {
+  youTubeListeners.add(listener);
+  return () => {
+    youTubeListeners.delete(listener);
+  };
 }
 
 export default function Sidebar() {
@@ -182,9 +207,9 @@ export default function Sidebar() {
   const [adding, setAdding] = useState(false);
   const [newUrl, setNewUrl] = useState("");
   const [settingsFeed, setSettingsFeed] = useState<Feed | null>(null);
-  // Lazy init reads localStorage: the app shell only mounts the sidebar once
-  // auth has resolved on the client, so this never runs during SSR.
-  const [youTubeOpen, setYouTubeOpen] = useState(loadYouTubeOpen);
+  // Reads localStorage: the app shell only mounts the sidebar once auth has
+  // resolved on the client, so the server snapshot is never the real answer.
+  const youTubeOpen = useSyncExternalStore(subscribeYouTubeOpen, loadYouTubeOpen, () => true);
 
   const totalUnread =
     feeds?.reduce((sum, f) => (f.is_muted ? sum : sum + f.unread_count), 0) ?? 0;
@@ -199,14 +224,7 @@ export default function Sidebar() {
   );
 
   function toggleYouTube() {
-    const next = !youTubeOpen;
-    setYouTubeOpen(next);
-    try {
-      localStorage.setItem(YOUTUBE_OPEN_KEY, next ? "1" : "0");
-    } catch {
-      // Storage disabled (private browsing): the group still toggles, it just
-      // forgets between visits.
-    }
+    storeYouTubeOpen(!youTubeOpen);
   }
 
   const {

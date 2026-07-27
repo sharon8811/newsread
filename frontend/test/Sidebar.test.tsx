@@ -422,6 +422,22 @@ describe("<Sidebar> YouTube channels group", () => {
     expect(settingsProps.current!.feed).toMatchObject({ id: 2 });
   });
 
+  it("keeps the desktop rail and the mobile drawer in step", async () => {
+    // The app shell mounts both sidebars at once and hides one with CSS, so a
+    // toggle in either has to move the other — not just the storage key.
+    setSwr({ feeds: [channel({ id: 2, title: "MKBHD" })], unseen: { count: 0 } });
+    render(
+      <>
+        <Sidebar />
+        <Sidebar />
+      </>,
+    );
+    expect(screen.getAllByText("MKBHD")).toHaveLength(2);
+    await userEvent.click(screen.getAllByTitle("Collapse YouTube channels")[0]);
+    expect(screen.queryByText("MKBHD")).not.toBeInTheDocument();
+    expect(screen.getAllByTitle("Expand YouTube channels")).toHaveLength(2);
+  });
+
   it("still toggles when storage is unavailable", async () => {
     // setup.ts swaps in its own in-memory Storage, so the spies go on the
     // instance — Storage.prototype is not what the component calls.
