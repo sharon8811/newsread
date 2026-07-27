@@ -18,9 +18,11 @@ import { useAuth } from "@/lib/auth";
 import FeedSettingsModal from "./FeedSettingsModal";
 import Avatar from "./ui/Avatar";
 import ErrorText from "./ui/ErrorText";
+import { isYouTubeChannelFeed } from "@/lib/youtube";
 import {
   ActivityIcon,
   BookmarkIcon,
+  ChevronUpIcon,
   CompassIcon,
   FolderIcon,
   GearIcon,
@@ -35,6 +37,7 @@ import {
   SparkleIcon,
   UsersIcon,
   XIcon,
+  YouTubeIcon,
 } from "./icons";
 
 function NavLink({
@@ -81,6 +84,83 @@ function NavLink({
   );
 }
 
+function FeedRow({
+  feed,
+  active,
+  icon,
+  indented,
+  onSettings,
+}: {
+  feed: Feed;
+  active: boolean;
+  icon: React.ReactNode;
+  indented?: boolean;
+  onSettings: () => void;
+}) {
+  return (
+    <div className="group relative">
+      <Link
+        href={`/?feed=${feed.id}`}
+        className={`flex items-center gap-2.5 rounded-md py-[7px] text-body transition-colors ${
+          indented ? "pl-7 pr-3" : "px-3"
+        }`}
+        style={{
+          background: active ? "var(--bg-hover)" : "transparent",
+          color: active ? "var(--ink)" : "var(--ink-dim)",
+        }}
+      >
+        <span style={{ color: active ? "var(--accent)" : "var(--ink-faint)" }}>{icon}</span>
+        <span
+          className="flex-1 truncate"
+          style={feed.is_muted ? { color: "var(--ink-faint)" } : undefined}
+        >
+          {feed.title}
+        </span>
+        {feed.is_muted ? (
+          <span
+            className="group-hover:opacity-0"
+            style={{ color: "var(--ink-faint)" }}
+            title="Muted"
+          >
+            <MuteIcon size={11} />
+          </span>
+        ) : (
+          feed.unread_count > 0 && (
+            <span
+              className="font-mono-nr text-caption group-hover:opacity-0"
+              style={{ color: "var(--ink-faint)" }}
+            >
+              {feed.unread_count}
+            </span>
+          )
+        )}
+      </Link>
+      {/* Visibility via opacity, not `hidden`: .icon-btn is unlayered
+          CSS whose display:inline-flex outranks the layered utility. */}
+      <button
+        className="icon-btn pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover:pointer-events-auto group-hover:opacity-100"
+        style={{ width: 24, height: 24 }}
+        title="Feed settings"
+        onClick={onSettings}
+      >
+        <GearIcon size={12} />
+      </button>
+    </div>
+  );
+}
+
+// Whether the YouTube group is expanded, remembered across visits. Absent key
+// means expanded, so the group behaves like the flat list it grew out of.
+const YOUTUBE_OPEN_KEY = "newsread_youtube_group_open";
+
+function loadYouTubeOpen(): boolean {
+  try {
+    return localStorage.getItem(YOUTUBE_OPEN_KEY) !== "0";
+  } catch {
+    return true;
+  }
+}
+
 export default function Sidebar() {
   const { user, logout } = useAuth();
   const router = useRouter();
@@ -102,9 +182,32 @@ export default function Sidebar() {
   const [adding, setAdding] = useState(false);
   const [newUrl, setNewUrl] = useState("");
   const [settingsFeed, setSettingsFeed] = useState<Feed | null>(null);
+  // Lazy init reads localStorage: the app shell only mounts the sidebar once
+  // auth has resolved on the client, so this never runs during SSR.
+  const [youTubeOpen, setYouTubeOpen] = useState(loadYouTubeOpen);
 
   const totalUnread =
     feeds?.reduce((sum, f) => (f.is_muted ? sum : sum + f.unread_count), 0) ?? 0;
+
+  const youTubeFeeds = feeds?.filter((f) => isYouTubeChannelFeed(f.url)) ?? [];
+  const otherFeeds = feeds?.filter((f) => !isYouTubeChannelFeed(f.url)) ?? [];
+  // Only shown while the group is collapsed — expanded, each channel carries
+  // its own count and a second total would double-report.
+  const youTubeUnread = youTubeFeeds.reduce(
+    (sum, f) => (f.is_muted ? sum : sum + f.unread_count),
+    0,
+  );
+
+  function toggleYouTube() {
+    const next = !youTubeOpen;
+    setYouTubeOpen(next);
+    try {
+      localStorage.setItem(YOUTUBE_OPEN_KEY, next ? "1" : "0");
+    } catch {
+      // Storage disabled (private browsing): the group still toggles, it just
+      // forgets between visits.
+    }
+  }
 
   const {
     run: addFeed,
@@ -269,59 +372,62 @@ export default function Sidebar() {
             .
           </p>
         )}
-        {feeds?.map((feed) => {
-          const active = activeFeed === String(feed.id);
-          return (
-            <div key={feed.id} className="group relative">
-              <Link
-                href={`/?feed=${feed.id}`}
-                className="flex items-center gap-2.5 rounded-md px-3 py-[7px] text-body transition-colors"
+        {otherFeeds.map((feed) => (
+          <FeedRow
+            key={feed.id}
+            feed={feed}
+            active={activeFeed === String(feed.id)}
+            icon={<RssIcon size={13} />}
+            onSettings={() => setSettingsFeed(feed)}
+          />
+        ))}
+
+        {/* Followed YouTube channels live in one collapsible folder so a
+            handful of them can't crowd out the rest of the feed list. */}
+        {youTubeFeeds.length > 0 && (
+          <div>
+            <button
+              className="flex w-full items-center gap-2.5 rounded-md px-3 py-[7px] text-left text-body transition-colors"
+              style={{ color: "var(--ink-dim)" }}
+              onClick={toggleYouTube}
+              aria-expanded={youTubeOpen}
+              title={youTubeOpen ? "Collapse YouTube channels" : "Expand YouTube channels"}
+            >
+              <span style={{ color: "var(--ink-faint)" }}>
+                <YouTubeIcon size={13} />
+              </span>
+              <span className="flex-1 truncate">YouTube channels</span>
+              {!youTubeOpen && youTubeUnread > 0 && (
+                <span
+                  className="font-mono-nr text-caption"
+                  style={{ color: "var(--ink-faint)" }}
+                >
+                  {youTubeUnread}
+                </span>
+              )}
+              <span
+                className="transition-transform"
                 style={{
-                  background: active ? "var(--bg-hover)" : "transparent",
-                  color: active ? "var(--ink)" : "var(--ink-dim)",
+                  color: "var(--ink-faint)",
+                  transform: youTubeOpen ? undefined : "rotate(180deg)",
                 }}
               >
-                <span style={{ color: active ? "var(--accent)" : "var(--ink-faint)" }}>
-                  <RssIcon size={13} />
-                </span>
-                <span
-                  className="flex-1 truncate"
-                  style={feed.is_muted ? { color: "var(--ink-faint)" } : undefined}
-                >
-                  {feed.title}
-                </span>
-                {feed.is_muted ? (
-                  <span
-                    className="group-hover:opacity-0"
-                    style={{ color: "var(--ink-faint)" }}
-                    title="Muted"
-                  >
-                    <MuteIcon size={11} />
-                  </span>
-                ) : (
-                  feed.unread_count > 0 && (
-                    <span
-                      className="font-mono-nr text-caption group-hover:opacity-0"
-                      style={{ color: "var(--ink-faint)" }}
-                    >
-                      {feed.unread_count}
-                    </span>
-                  )
-                )}
-              </Link>
-              {/* Visibility via opacity, not `hidden`: .icon-btn is unlayered
-                  CSS whose display:inline-flex outranks the layered utility. */}
-              <button
-                className="icon-btn pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover:pointer-events-auto group-hover:opacity-100"
-                style={{ width: 24, height: 24 }}
-                title="Feed settings"
-                onClick={() => setSettingsFeed(feed)}
-              >
-                <GearIcon size={12} />
-              </button>
-            </div>
-          );
-        })}
+                <ChevronUpIcon size={12} />
+              </span>
+            </button>
+            {youTubeOpen &&
+              youTubeFeeds.map((feed) => (
+                <FeedRow
+                  key={feed.id}
+                  feed={feed}
+                  active={activeFeed === String(feed.id)}
+                  icon={<YouTubeIcon size={13} />}
+                  indented
+                  onSettings={() => setSettingsFeed(feed)}
+                />
+              ))}
+          </div>
+        )}
       </div>
 
       {settingsFeed && (

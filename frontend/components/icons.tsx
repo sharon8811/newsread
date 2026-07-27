@@ -220,6 +220,15 @@ export function RssIcon(p: IconProps) {
   );
 }
 
+export function YouTubeIcon(p: IconProps) {
+  return (
+    <svg {...base(p)}>
+      <rect x="2" y="5" width="20" height="14" rx="4.5" />
+      <path d="m10.2 9.2 5 2.8-5 2.8z" />
+    </svg>
+  );
+}
+
 export function SparkleIcon(p: IconProps) {
   return (
     <svg {...base(p)}>

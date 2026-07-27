@@ -6,7 +6,7 @@ const ALL = [
   "InboxIcon", "BookmarkIcon", "ShareIcon", "UsersIcon", "ExternalIcon",
   "CommentIcon", "PlusIcon", "RefreshIcon", "CheckIcon", "CheckAllIcon",
   "XIcon", "EyeOffIcon", "SearchIcon", "LogoutIcon", "RssIcon", "SparkleIcon", "ListIcon",
-  "StoriesIcon", "CardsIcon", "ChevronUpIcon", "TrashIcon", "MenuIcon",
+  "StoriesIcon", "CardsIcon", "ChevronUpIcon", "TrashIcon", "MenuIcon", "YouTubeIcon",
 ] as const;
 
 describe("icons", () => {
