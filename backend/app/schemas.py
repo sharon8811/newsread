@@ -492,6 +492,7 @@ class AddFeedIn(BaseModel):
     ai_enabled: bool | None = None
     image_gen_enabled: bool | None = None
     is_muted: bool | None = None
+    summary_instructions: str | None = Field(default=None, max_length=2000)
 
 
 class FeedOut(BaseModel):
@@ -515,6 +516,7 @@ class FeedOut(BaseModel):
     ai_enabled: bool = True
     image_gen_enabled: bool = True
     refresh_interval_minutes: int = 15
+    summary_instructions: str | None = None
 
 
 class SubscriptionViewIn(BaseModel):
@@ -533,6 +535,7 @@ class FeedSettingsIn(BaseModel):
     ai_enabled: bool | None = None
     image_gen_enabled: bool | None = None
     refresh_interval_minutes: int | None = Field(default=None, ge=5, le=10080)
+    summary_instructions: str | None = Field(default=None, max_length=2000)
 
 
 # --- Catalog (curated feed directory) ---
@@ -597,11 +600,22 @@ class SmartFeedOut(BaseModel):
     example_topics: list[str] = []
 
 
+class SmartFeedAlternative(BaseModel):
+    """A runner-up match for an ambiguous topic (YouTube display names are not
+    unique). Picking one re-resolves it by its unambiguous URL."""
+
+    topic: str
+    title: str
+    url: str
+
+
 class SmartFeedResolveOut(BaseModel):
     key: str
     topic: str  # normalized topic, echoed back for display
     url: str  # the concrete feed URL to subscribe to
     title: str  # suggested feed display title, e.g. "r/programming"
+    description: str | None = None
+    alternatives: list[SmartFeedAlternative] = []
 
 
 class CatalogSubmissionIn(BaseModel):

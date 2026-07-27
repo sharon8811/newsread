@@ -25,10 +25,13 @@ def register(app: FastAPI) -> None:
     @app.exception_handler(ThinContentError)
     async def _thin_content(request: Request, exc: ThinContentError) -> JSONResponse:
         # Summarizing a headline stub just makes the model invent details.
+        # Some raisers know why (a video whose captions are being throttled);
+        # the rest get the generic reason.
         return JSONResponse(
             status_code=422,
             content={
-                "detail": "Couldn't fetch the article's full text — the site may "
+                "detail": str(exc)
+                or "Couldn't fetch the article's full text — the site may "
                 "block automated readers. Open the original instead."
             },
         )

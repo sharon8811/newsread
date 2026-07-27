@@ -91,6 +91,17 @@ async def test_summarize_thin_content(client, users, data, monkeypatch):
     monkeypatch.setattr(ai_router, "generate_summaries", raise_thin)
     resp = await client.post(f"/api/articles/{art.id}/summarize", headers=users.auth(user))
     assert resp.status_code == 422
+    assert "block automated readers" in resp.json()["detail"]
+
+    # A raiser that knows why (a video whose captions are being throttled)
+    # says so instead, since that one is worth retrying in a minute.
+    async def raise_thin_with_reason(session, article, **kwargs):
+        raise ThinContentError("YouTube is throttling caption requests for this video")
+
+    monkeypatch.setattr(ai_router, "generate_summaries", raise_thin_with_reason)
+    resp = await client.post(f"/api/articles/{art.id}/summarize", headers=users.auth(user))
+    assert resp.status_code == 422
+    assert resp.json()["detail"] == "YouTube is throttling caption requests for this video"
 
 
 async def test_summarize_short_content_returns_skipped_without_usage(

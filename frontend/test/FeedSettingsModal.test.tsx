@@ -121,6 +121,35 @@ describe("<FeedSettingsModal>", () => {
     });
   });
 
+  it("patches the summary instructions and clears them when emptied", async () => {
+    const fetchMock = okFetch(makeFeed());
+    vi.stubGlobal("fetch", fetchMock);
+    const { unmount } = render(<FeedSettingsModal feed={makeFeed()} onClose={vi.fn()} />);
+    await userEvent.type(
+      screen.getByLabelText("Summary instructions"),
+      "  Skip sponsor segments.  ",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    expect(await lastBody(fetchMock)).toEqual({
+      summary_instructions: "Skip sponsor segments.",
+    });
+    unmount();
+
+    render(
+      <FeedSettingsModal
+        feed={makeFeed({ summary_instructions: "Skip sponsor segments." })}
+        onClose={vi.fn()}
+      />,
+    );
+    const field = screen.getByLabelText("Summary instructions");
+    expect(field).toHaveValue("Skip sponsor segments.");
+    await userEvent.clear(field);
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(await lastBody(fetchMock)).toEqual({ summary_instructions: null });
+  });
+
   it("offers the feed's off-preset refresh interval as an option", () => {
     render(
       <FeedSettingsModal feed={makeFeed({ refresh_interval_minutes: 45 })} onClose={vi.fn()} />,

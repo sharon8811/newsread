@@ -290,6 +290,25 @@ Be concrete and specific. State the content directly instead of narrating the ar
 
 Write every level in the language the article is written in (a Hebrew article gets Hebrew summaries, a French one French) — only the ONELINER/PARAGRAPH/FULL labels stay in English. Ignore the language of these instructions and of any site boilerplate around the article."""
 
+# Appended to SUMMARY_SYSTEM when the source is captions rather than prose.
+TRANSCRIPT_NOTE = """
+
+The source text is an automatic transcript of a video, not an article: expect speech-recognition errors, no speaker labels and no paragraph structure. Summarize what the video actually covers. Ignore sponsor reads, discount codes, subscribe/like appeals and channel plugs, and never mention the transcript or the fact that this is a video summary."""
+
+
+def _instructions_note(instructions: str) -> str:
+    """The reader's own standing instructions for this feed. They are the whole
+    point of the setting, so they may steer emphasis, tone, detail and even the
+    output language — but never the structure the parser depends on."""
+    return f"""
+
+The reader has set standing instructions for this feed:
+<reader_instructions>
+{instructions.strip()}
+</reader_instructions>
+Follow them wherever they apply. They can change what you emphasize, the tone, the level of detail and the language to write in. They can never change the output structure: the ONELINER/PARAGRAPH/FULL labels and their length limits always hold."""
+
+
 _ONELINER_RE = re.compile(r"ONELINER:\s*(.+)")
 _PARAGRAPH_RE = re.compile(r"PARAGRAPH:\s*(.+?)(?=\n\s*FULL:|\Z)", re.DOTALL)
 _FULL_RE = re.compile(r"FULL:\s*\n?(.+)", re.DOTALL)
@@ -305,6 +324,10 @@ def _parse_levels(raw: str) -> tuple[str, str, str]:
         full = match.group(1).strip()
     if not full:
         full = raw.strip()
+    # Models occasionally repeat the label on the next line; the regex keeps
+    # the first one, so the echo would otherwise be rendered as body text.
+    while full.upper().startswith("FULL:"):
+        full = full[len("FULL:") :].strip()
     return short, medium, full
 
 
@@ -314,14 +337,21 @@ def _article_context(
     url: str | None = None,
     author: str | None = None,
     published_at: datetime | None = None,
+    source_kind: str = "article",
 ) -> str:
     """Metadata header for summary prompts. The source site comes from the
     URL's domain; dates let the model resolve relative time ("Tuesday")."""
-    lines = [f"Article title: {title}"]
-    if url:
-        lines.append(f"Source: {urlparse(url).netloc or url}")
-    if author:
-        lines.append(f"Author: {author}")
+    if source_kind == "transcript":
+        # "youtube.com" as the source says nothing; the channel does.
+        lines = [f"Video title: {title}"]
+        if author:
+            lines.append(f"Channel: {author}")
+    else:
+        lines = [f"Article title: {title}"]
+        if url:
+            lines.append(f"Source: {urlparse(url).netloc or url}")
+        if author:
+            lines.append(f"Author: {author}")
     if published_at:
         lines.append(f"Published: {published_at:%Y-%m-%d}")
     lines.append(f"Today's date: {datetime.now(UTC):%Y-%m-%d}")
@@ -376,14 +406,23 @@ async def summarize(
     published_at: datetime | None = None,
     config: LLMConfig | None = None,
     usage: TokenUsage | None = None,
+    instructions: str | None = None,
+    source_kind: str = "article",
 ) -> tuple[str, str, str]:
     """Return (one-liner, paragraph, full) summaries from a single completion."""
-    context = _article_context(title, url=url, author=author, published_at=published_at)
+    context = _article_context(
+        title, url=url, author=author, published_at=published_at, source_kind=source_kind
+    )
     note = _language_note(f"{title}\n{text}")
+    transcript = source_kind == "transcript"
+    system = SUMMARY_SYSTEM + (TRANSCRIPT_NOTE if transcript else "")
+    if instructions:
+        system += _instructions_note(instructions)
+    label = "Video transcript" if transcript else "Article text"
     raw = await _complete(
         [
-            {"role": "system", "content": SUMMARY_SYSTEM},
-            {"role": "user", "content": f"{context}\n\nArticle text:\n{text}{note}"},
+            {"role": "system", "content": system},
+            {"role": "user", "content": f"{context}\n\n{label}:\n{text}{note}"},
         ],
         max_tokens=1500,
         config=config,
@@ -462,15 +501,17 @@ async def summarize_screenshot(
     published_at: datetime | None = None,
     config: LLMConfig | None = None,
     usage: TokenUsage | None = None,
+    instructions: str | None = None,
 ) -> tuple[str, str, str]:
     """Same three-level summary, grounded on a screenshot of the rendered page
     instead of prose. Only called for vision-capable configs."""
     image_b64 = base64.b64encode(image_jpeg).decode()
     context = _article_context(title, url=url, author=author, published_at=published_at)
     note = _language_note(title)  # no text here; the title is the best signal
+    system = SUMMARY_SYSTEM + (_instructions_note(instructions) if instructions else "")
     raw = await _complete(
         [
-            {"role": "system", "content": SUMMARY_SYSTEM},
+            {"role": "system", "content": system},
             {
                 "role": "user",
                 "content": [

@@ -38,6 +38,13 @@ def test_parse_levels_full_structure():
     assert "point one" in full
 
 
+def test_parse_levels_drops_a_repeated_full_label():
+    # Seen in the wild: the model echoes the label on the next line, and the
+    # echo would otherwise be rendered as the first line of the summary.
+    raw = "ONELINER: gist\nPARAGRAPH: para.\nFULL:\nFULL:\nthe actual body"
+    assert llm._parse_levels(raw)[2] == "the actual body"
+
+
 def test_parse_levels_fallback_to_raw_when_no_full():
     short, medium, full = llm._parse_levels("just some unstructured text")
     assert full == "just some unstructured text"
@@ -99,6 +106,56 @@ async def test_summarize_names_detected_language(monkeypatch):
 
     await llm.summarize("Title", "plain English body text")
     assert "The article is in" not in captured["user"]
+
+
+async def test_summarize_transcripts_and_feed_instructions(monkeypatch):
+    captured = {}
+
+    async def fake_complete(messages, max_tokens, **kwargs):
+        captured["system"] = messages[0]["content"]
+        captured["user"] = messages[1]["content"]
+        return "ONELINER: g\nPARAGRAPH: p.\nFULL:\nf"
+
+    monkeypatch.setattr(llm, "_complete", fake_complete)
+
+    await llm.summarize("Title", "body", url="https://example.com/a", author="Ann")
+    assert "automatic transcript" not in captured["system"]
+    assert "reader_instructions" not in captured["system"]
+    assert "Article title: Title" in captured["user"]
+    assert "Source: example.com" in captured["user"]
+
+    await llm.summarize(
+        "Some video",
+        "spoken words",
+        url="https://www.youtube.com/watch?v=RsR6cbovMfI",
+        author="A Channel",
+        source_kind="transcript",
+        instructions="  Focus on benchmarks.  ",
+    )
+    assert "automatic transcript" in captured["system"]
+    assert (
+        "<reader_instructions>\nFocus on benchmarks.\n</reader_instructions>" in captured["system"]
+    )
+    # The channel, not "youtube.com", identifies the source of a video.
+    assert "Video title: Some video" in captured["user"]
+    assert "Channel: A Channel" in captured["user"]
+    assert "Source:" not in captured["user"]
+    assert "Video transcript:" in captured["user"]
+
+
+async def test_summarize_screenshot_carries_feed_instructions(monkeypatch):
+    captured = {}
+
+    async def fake_complete(messages, max_tokens, **kwargs):
+        captured["system"] = messages[0]["content"]
+        return "ONELINER: g\nPARAGRAPH: p.\nFULL:\nf"
+
+    monkeypatch.setattr(llm, "_complete", fake_complete)
+    await llm.summarize_screenshot("Comic", b"\xff\xd8", instructions="Name the punchline.")
+    assert "Name the punchline." in captured["system"]
+
+    await llm.summarize_screenshot("Comic", b"\xff\xd8")
+    assert "reader_instructions" not in captured["system"]
 
 
 async def test_summarize_screenshot_names_language_from_title(monkeypatch):

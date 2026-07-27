@@ -2075,6 +2075,8 @@ export interface components {
             image_gen_enabled?: boolean | null;
             /** Is Muted */
             is_muted?: boolean | null;
+            /** Summary Instructions */
+            summary_instructions?: string | null;
             /** Url */
             url: string;
         };
@@ -3224,6 +3226,8 @@ export interface components {
             site_url: string | null;
             /** Sort Order */
             sort_order?: ("newest" | "oldest") | null;
+            /** Summary Instructions */
+            summary_instructions?: string | null;
             /** Title */
             title: string;
             /** Title Override */
@@ -3253,6 +3257,8 @@ export interface components {
             retention_days?: number | null;
             /** Sort Order */
             sort_order?: ("newest" | "oldest") | null;
+            /** Summary Instructions */
+            summary_instructions?: string | null;
             /** Title Override */
             title_override?: string | null;
             /** View Override */
@@ -3656,6 +3662,19 @@ export interface components {
             target_type: "channel" | "group" | "dm" | "chat";
         };
         /**
+         * SmartFeedAlternative
+         * @description A runner-up match for an ambiguous topic (YouTube display names are not
+         *     unique). Picking one re-resolves it by its unambiguous URL.
+         */
+        SmartFeedAlternative: {
+            /** Title */
+            title: string;
+            /** Topic */
+            topic: string;
+            /** Url */
+            url: string;
+        };
+        /**
          * SmartFeedOut
          * @description A topic-parameterized feed source (e.g. any subreddit) the user can
          *     subscribe to by typing a topic — or pasting the topic's page URL.
@@ -3683,6 +3702,13 @@ export interface components {
         };
         /** SmartFeedResolveOut */
         SmartFeedResolveOut: {
+            /**
+             * Alternatives
+             * @default []
+             */
+            alternatives: components["schemas"]["SmartFeedAlternative"][];
+            /** Description */
+            description?: string | null;
             /** Key */
             key: string;
             /** Title */

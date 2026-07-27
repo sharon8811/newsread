@@ -388,6 +388,7 @@ describe("smart feeds", () => {
     topic: "rust",
     url: "https://www.reddit.com/r/rust/.rss",
     title: "r/rust",
+    alternatives: [],
   };
 
   function setSmartSwr(opts: {
@@ -508,6 +509,59 @@ describe("smart feeds", () => {
         method: "POST",
         body: { url: RESOLVE.url, ai_enabled: false },
       }),
+    );
+  });
+
+  it("sends per-feed summary instructions when subscribing", async () => {
+    setSmartSwr({ resolve: RESOLVE, preview: makeCatalogPreview() });
+    apiMock.mockResolvedValue(makeFeed({ id: 9 }));
+    render(<CatalogPage />);
+    const dialog = await openSmartModal();
+    await userEvent.type(within(dialog).getByLabelText("Subreddit"), "rust");
+    await waitFor(
+      () => expect(within(dialog).getByRole("button", { name: /Subscribe/ })).toBeEnabled(),
+      { timeout: 1000 },
+    );
+    await userEvent.click(within(dialog).getByRole("button", { name: "Summary instructions" }));
+    await userEvent.type(
+      within(dialog).getByLabelText("Summary instructions"),
+      "  Focus on the benchmarks.  ",
+    );
+    await userEvent.click(within(dialog).getByRole("button", { name: /Subscribe/ }));
+    await waitFor(() =>
+      expect(apiMock).toHaveBeenCalledWith("/feeds", {
+        method: "POST",
+        body: { url: RESOLVE.url, summary_instructions: "Focus on the benchmarks." },
+      }),
+    );
+  });
+
+  it("offers the runner-up channels an ambiguous name resolved to", async () => {
+    setSmartSwr({
+      resolve: {
+        ...RESOLVE,
+        description: "Observability, cheaply",
+        alternatives: [
+          {
+            topic: "https://www.youtube.com/channel/UCother",
+            title: "Life Stack",
+            url: "https://www.youtube.com/feeds/videos.xml?channel_id=UCother",
+          },
+        ],
+      },
+      preview: makeCatalogPreview(),
+    });
+    render(<CatalogPage />);
+    const dialog = await openSmartModal();
+    await userEvent.type(within(dialog).getByLabelText("Subreddit"), "rust");
+    await waitFor(() => expect(within(dialog).getByText("Did you mean:")).toBeInTheDocument(), {
+      timeout: 1000,
+    });
+    expect(within(dialog).getByText("Observability, cheaply")).toBeInTheDocument();
+    // Picking one re-resolves by its unambiguous channel URL, not its name.
+    await userEvent.click(within(dialog).getByRole("button", { name: "Life Stack" }));
+    expect(within(dialog).getByLabelText("Subreddit")).toHaveValue(
+      "https://www.youtube.com/channel/UCother",
     );
   });
 

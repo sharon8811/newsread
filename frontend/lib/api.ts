@@ -287,7 +287,7 @@ export type CatalogPreview = Schemas["CatalogPreviewOut"];
 // someone else already tuned doesn't silently reset their global switches.
 export type SubscribeOptions = Pick<
   Schemas["AddFeedIn"],
-  "ai_enabled" | "image_gen_enabled" | "is_muted"
+  "ai_enabled" | "image_gen_enabled" | "is_muted" | "summary_instructions"
 >;
 
 // A topic-parameterized feed source (subscribe to any subreddit, news query…).

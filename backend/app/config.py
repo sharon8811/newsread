@@ -155,6 +155,14 @@ class Settings(BaseSettings):
         ),
     )
 
+    # YouTube channel feeds. The key is optional: handles and channel URLs
+    # resolve by reading the channel page's <link rel="alternate"> feed tag.
+    # With a key, handles resolve through channels.list and a plain display
+    # name can be searched (search.list), which the page scrape cannot do.
+    youtube_api_key: str = Field(
+        default="", validation_alias=AliasChoices("NEWSREAD_YOUTUBE_API_KEY", "YOUTUBE_API_KEY")
+    )
+
     # Web tools for the Q&A agent. Without either, the agent still works,
     # just without web search/extract. SearXNG (self-hosted metasearch) wins
     # when both are configured — it's the local-deployment option.
