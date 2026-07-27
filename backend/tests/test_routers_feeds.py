@@ -630,6 +630,65 @@ async def test_unsubscribe_deletes_orphan_feed(client, users, data, session):
     assert await session.get(Feed, feed.id) is None
 
 
+async def test_unsubscribe_deletes_generated_image_objects(
+    client, users, data, session, media_store
+):
+    """generated_images rows cascade with the articles, but their bytes live
+    in the bucket — deleting the feed has to take them too."""
+    from app import media_storage
+    from app.models import GeneratedImage
+
+    user = await users.create()
+    feed = await data.feed()
+    await data.subscribe(user, feed)
+    article = await data.article(feed)
+    key = media_storage.generated_image_key(article.id, b"png")
+    await media_store.put(key, b"png", content_type="image/png")
+    session.add(
+        GeneratedImage(
+            article_id=article.id,
+            content_type="image/png",
+            object_key=key,
+            byte_size=3,
+            model="img-model",
+        )
+    )
+    await session.commit()
+
+    resp = await client.delete(f"/api/feeds/{feed.id}", headers=users.auth(user))
+    assert resp.status_code == 204
+    assert media_store.objects == {}
+
+
+async def test_unsubscribe_keeps_generated_images_of_a_surviving_feed(
+    client, users, data, session, media_store
+):
+    from app import media_storage
+    from app.models import GeneratedImage
+
+    u1 = await users.create()
+    u2 = await users.create()
+    feed = await data.feed()
+    await data.subscribe(u1, feed)
+    await data.subscribe(u2, feed)
+    article = await data.article(feed)
+    key = media_storage.generated_image_key(article.id, b"png")
+    await media_store.put(key, b"png", content_type="image/png")
+    session.add(
+        GeneratedImage(
+            article_id=article.id,
+            content_type="image/png",
+            object_key=key,
+            byte_size=3,
+            model="img-model",
+        )
+    )
+    await session.commit()
+
+    await client.delete(f"/api/feeds/{feed.id}", headers=users.auth(u1))
+    assert key in media_store.objects
+
+
 async def test_unsubscribe_keeps_feed_with_other_subscribers(client, users, data, session):
     u1 = await users.create()
     u2 = await users.create()

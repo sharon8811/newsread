@@ -6330,7 +6330,7 @@
     },
     "/api/articles/{article_id}/generated-image": {
       "get": {
-        "description": "Serves AI-generated article images. Unauthenticated on purpose: <img>\ntags can't send Authorization headers, and these illustrate public news\narticles just like the og:images we scrape.",
+        "description": "Serves AI-generated article images from the media bucket.\nUnauthenticated on purpose: <img> tags can't send Authorization headers,\nand these illustrate public news articles just like the og:images we\nscrape. The bytes are proxied rather than redirected \u2014 the object store is\nprivate and typically not reachable from browsers at all.",
         "operationId": "get_generated_image_api_articles__article_id__generated_image_get",
         "parameters": [
           {

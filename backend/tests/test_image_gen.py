@@ -7,8 +7,9 @@ import types
 import pytest
 from sqlalchemy import select
 
-from app import crypto, image_gen, llm
+from app import crypto, image_gen, llm, media_storage
 from app.models import Article, Feed, GeneratedImage, LLMUsage, UserAISettings
+from app.object_store import ObjectStoreError
 
 # --- prompt templating ---
 
@@ -303,7 +304,7 @@ async def _article(session):
     return article
 
 
-async def test_generate_for_article_stores_and_logs(session, users, monkeypatch):
+async def test_generate_for_article_stores_and_logs(session, users, monkeypatch, media_store):
     user = await users.create()
     article = await _article(session)
     usage = llm.TokenUsage()
@@ -317,7 +318,11 @@ async def test_generate_for_article_stores_and_logs(session, users, monkeypatch)
     await image_gen.generate_for_article(article.id, user.id, config, "p")
 
     image = await session.get(GeneratedImage, article.id)
-    assert image.data == PNG_BYTES
+    # The row points at the bucket; the bytes are not in Postgres.
+    assert image.object_key == media_storage.generated_image_key(article.id, PNG_BYTES)
+    assert image.byte_size == len(PNG_BYTES)
+    assert media_store.objects[image.object_key] == PNG_BYTES
+    assert media_store.content_types[image.object_key] == "image/png"
     await session.refresh(article)
     assert article.image_url.endswith(f"/api/articles/{article.id}/generated-image")
     row = (await session.scalars(select(LLMUsage))).one()
@@ -355,6 +360,33 @@ async def test_generate_for_article_failure_logs_error(session, users, monkeypat
     row = (await session.scalars(select(LLMUsage))).one()
     assert row.status == "error"
     assert "model unavailable" in row.error
+
+
+async def test_generate_for_article_storage_failure_writes_no_row(
+    session, users, monkeypatch, media_store
+):
+    """A generated image the bucket refuses must not leave a row pointing at
+    an object that isn't there — that would render as a permanently broken
+    image instead of a retryable miss."""
+    user = await users.create()
+    article = await _article(session)
+
+    async def fake_generate(config, prompt):
+        return PNG_BYTES, "image/png", llm.TokenUsage()
+
+    async def refuse(key, data, *, content_type="application/octet-stream"):
+        raise ObjectStoreError("could not store object: AccessDenied")
+
+    monkeypatch.setattr(image_gen, "generate", fake_generate)
+    monkeypatch.setattr(media_store, "put", refuse)
+    config = _openrouter_config(user_owned=True)  # usage is only logged for BYO keys
+    await image_gen.generate_for_article(article.id, user.id, config, "p")
+
+    assert await session.get(GeneratedImage, article.id) is None
+    assert media_store.objects == {}
+    row = (await session.scalars(select(LLMUsage))).one()
+    assert row.status == "error"
+    assert "image storage failed" in row.error
 
 
 def test_public_image_url_is_relative():

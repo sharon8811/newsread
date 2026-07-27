@@ -29,9 +29,11 @@ services:
       timeout: 3s
       retries: 20
 
-  # Apache-2.0 S3-compatible storage for encrypted browser-history bodies.
-  # `weed mini` runs a complete single-node cluster and creates the private
-  # bucket at startup. Only the S3 endpoint is bound to the host.
+  # Apache-2.0 S3-compatible storage for encrypted browser-history bodies and
+  # AI-generated article images. `weed mini` runs a complete single-node
+  # cluster and creates the history bucket at startup (the backend creates the
+  # media bucket itself). Only the S3 endpoint is bound to the host, so the
+  # images are served through the API rather than fetched by browsers.
   seaweedfs:
     image: chrislusf/seaweedfs:4.29
     command: ["mini", "-dir=/data"]
@@ -79,6 +81,7 @@ services:
       NEWSREAD_OBJECT_STORE_ACCESS_KEY: ${SEAWEEDFS_ACCESS_KEY:-newsread-seaweedfs}
       NEWSREAD_OBJECT_STORE_SECRET_KEY: ${SEAWEEDFS_SECRET_KEY:-newsread-seaweedfs-dev-secret}
       NEWSREAD_OBJECT_STORE_BUCKET: ${SEAWEEDFS_BUCKET:-newsread-history}
+      NEWSREAD_OBJECT_STORE_MEDIA_BUCKET: ${SEAWEEDFS_MEDIA_BUCKET:-newsread-media}
       NEWSREAD_HISTORY_ENCRYPTION_MASTER_KEY: ${NEWSREAD_HISTORY_ENCRYPTION_MASTER_KEY:-}
     volumes:
       - ./extension:/extension:ro
@@ -108,6 +111,7 @@ services:
       NEWSREAD_OBJECT_STORE_ACCESS_KEY: ${SEAWEEDFS_ACCESS_KEY:-newsread-seaweedfs}
       NEWSREAD_OBJECT_STORE_SECRET_KEY: ${SEAWEEDFS_SECRET_KEY:-newsread-seaweedfs-dev-secret}
       NEWSREAD_OBJECT_STORE_BUCKET: ${SEAWEEDFS_BUCKET:-newsread-history}
+      NEWSREAD_OBJECT_STORE_MEDIA_BUCKET: ${SEAWEEDFS_MEDIA_BUCKET:-newsread-media}
       NEWSREAD_HISTORY_ENCRYPTION_MASTER_KEY: ${NEWSREAD_HISTORY_ENCRYPTION_MASTER_KEY:-}
     depends_on:
       db:
