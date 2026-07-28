@@ -3895,6 +3895,11 @@ export interface components {
         /** UserOut */
         UserOut: {
             /**
+             * Assisted Scroll
+             * @default true
+             */
+            assisted_scroll: boolean;
+            /**
              * Default View
              * @default cards
              * @enum {string}
@@ -3925,6 +3930,8 @@ export interface components {
         };
         /** UserUpdateIn */
         UserUpdateIn: {
+            /** Assisted Scroll */
+            assisted_scroll?: boolean | null;
             /** Default View */
             default_view?: ("cards" | "list" | "stories") | null;
             /** Image Gen Monthly Limit */

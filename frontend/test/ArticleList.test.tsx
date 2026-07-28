@@ -19,6 +19,12 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ push: pushMock }) }));
 const { swrMock, mutateMock } = vi.hoisted(() => ({ swrMock: vi.fn(), mutateMock: vi.fn() }));
 vi.mock("swr", () => ({ default: swrMock, mutate: mutateMock }));
 
+// Reading mode reads the signed-in user's assisted-scrolling preference.
+const { authState } = vi.hoisted(() => ({
+  authState: { user: null as { assisted_scroll: boolean } | null },
+}));
+vi.mock("@/lib/auth", () => ({ useAuth: () => authState }));
+
 vi.mock("@/components/ShareModal", () => ({
   default: ({ onClose }: { onClose: () => void }) => (
     <div data-testid="share-modal" onClick={onClose} />
@@ -45,7 +51,10 @@ function okFetch() {
   return vi.fn().mockResolvedValue({ status: 200, ok: true, json: async () => ({}) });
 }
 
-beforeEach(() => clearReadingSessions());
+beforeEach(() => {
+  clearReadingSessions();
+  authState.user = { assisted_scroll: true };
+});
 
 describe("<ArticleList>", () => {
   beforeEach(() => {
@@ -436,6 +445,55 @@ describe("<ArticleList> reading mode", () => {
     expect(await screen.findByText("Mid List")).toBeInTheDocument();
     expect(screen.getByText("2 new ↑")).toBeInTheDocument();
     expect(screen.getByText(/loading earlier articles/)).toBeInTheDocument();
+  });
+
+  it("makes cards snap targets and snaps the shell scroller", async () => {
+    vi.stubGlobal(
+      "fetch",
+      readingFetch([makeArticle({ id: 1, title: "Snappy" })], {
+        "X-Unread-Count": "1",
+        "X-New-Above-Count": "0",
+      }),
+    );
+    const { container } = renderReading(
+      <ArticleList filter="unread" variant="cards" emptyTitle="Empty" />,
+    );
+    expect(await screen.findByText("Snappy")).toBeInTheDocument();
+    const card = container.querySelector('[data-article-id="1"]') as HTMLElement;
+    expect(card.hasAttribute("data-snap-item")).toBe(true);
+    expect(card.style.scrollSnapAlign).toBe("start");
+    expect(card.style.scrollSnapStop).toBe("always");
+    const scroller = container.querySelector("main") as HTMLElement;
+    await waitFor(() => expect(scroller.style.scrollSnapType).toBe("y mandatory"));
+  });
+
+  it("leaves list rows and opted-out readers free-scrolling", async () => {
+    vi.stubGlobal(
+      "fetch",
+      readingFetch([makeArticle({ id: 1, title: "Plain" })], {
+        "X-Unread-Count": "1",
+        "X-New-Above-Count": "0",
+      }),
+    );
+    const list = renderReading(
+      <ArticleList filter="unread" variant="list" emptyTitle="Empty" />,
+    );
+    expect(await screen.findByText("Plain")).toBeInTheDocument();
+    expect(
+      list.container.querySelector('[data-article-id="1"]')?.hasAttribute("data-snap-item"),
+    ).toBe(false);
+    expect((list.container.querySelector("main") as HTMLElement).style.scrollSnapType).toBe("");
+    list.unmount();
+
+    authState.user = { assisted_scroll: false };
+    const cards = renderReading(
+      <ArticleList filter="unread" variant="cards" emptyTitle="Empty" />,
+    );
+    expect(await screen.findByText("Plain")).toBeInTheDocument();
+    expect(
+      cards.container.querySelector('[data-article-id="1"]')?.hasAttribute("data-snap-item"),
+    ).toBe(false);
+    expect((cards.container.querySelector("main") as HTMLElement).style.scrollSnapType).toBe("");
   });
 
   it("shows 'All caught up' when nothing is unread", async () => {

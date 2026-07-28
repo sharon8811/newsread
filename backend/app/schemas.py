@@ -49,6 +49,7 @@ class UserOut(BaseModel):
     username: str
     name: str
     default_view: ViewMode = "cards"
+    assisted_scroll: bool = True
     image_gen_monthly_limit: int | None = None  # None = unlimited
 
     model_config = {"from_attributes": True}
@@ -56,6 +57,7 @@ class UserOut(BaseModel):
 
 class UserUpdateIn(BaseModel):
     default_view: ViewMode | None = None  # PATCH semantics: omitted/None = unchanged
+    assisted_scroll: bool | None = None
     # Template for generated article images; "" resets to the default prompt.
     image_prompt: str | None = Field(default=None, max_length=2000)
     # Monthly cap on image generations; explicit null = unlimited (this field

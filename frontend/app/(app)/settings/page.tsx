@@ -37,6 +37,7 @@ import {
 import AISettingsSection from "@/components/AISettingsSection";
 import BrowserHistorySettingsSection from "@/components/BrowserHistorySettingsSection";
 import NotInterestedSection from "@/components/NotInterestedSection";
+import ReadingSettingsSection from "@/components/ReadingSettingsSection";
 
 function PlatformIcon({ platform, size }: { platform: MessagingPlatform; size?: number }) {
   return platform === "slack" ? <SlackIcon size={size} /> : <TeamsIcon size={size} />;
@@ -421,6 +422,8 @@ function SettingsContent() {
         {config?.browser_history_enabled === true && (
           <BrowserHistorySettingsSection />
         )}
+
+        <ReadingSettingsSection />
 
         <NotInterestedSection />
 

@@ -14,6 +14,28 @@ async def test_update_me_none_leaves_unchanged(client, users):
     assert resp.json()["default_view"] == "stories"
 
 
+async def test_update_me_toggles_assisted_scroll(client, users):
+    user = await users.create()
+    resp = await client.patch(
+        "/api/users/me", json={"assisted_scroll": False}, headers=users.auth(user)
+    )
+    assert resp.status_code == 200
+    assert resp.json()["assisted_scroll"] is False
+
+    resp = await client.patch(
+        "/api/users/me", json={"assisted_scroll": True}, headers=users.auth(user)
+    )
+    assert resp.json()["assisted_scroll"] is True
+
+
+async def test_assisted_scroll_defaults_on_and_survives_other_patches(client, users):
+    user = await users.create()
+    resp = await client.patch(
+        "/api/users/me", json={"default_view": "list"}, headers=users.auth(user)
+    )
+    assert resp.json()["assisted_scroll"] is True
+
+
 async def test_update_me_invalid_view(client, users):
     user = await users.create()
     resp = await client.patch(
