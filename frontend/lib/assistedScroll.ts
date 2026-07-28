@@ -192,9 +192,12 @@ export function useAssistedScroll(opts: {
     let stepping = false;
     let lastStepAt = 0;
     let quietTimer: ReturnType<typeof setTimeout> | undefined;
+    // Ending a gesture only lifts the held-gesture pacing. Travel so far is
+    // deliberately kept: hardware that emits ticks smaller than the step
+    // threshold, further apart than the quiet window, would otherwise never
+    // reach it and the list could not be moved at all. A reversal clears it.
     const endGesture = () => {
       stepping = false;
-      accumulated = 0;
     };
 
     const onWheel = (event: WheelEvent) => {
@@ -207,7 +210,11 @@ export function useAssistedScroll(opts: {
       clearTimeout(quietTimer);
       quietTimer = setTimeout(endGesture, GESTURE_QUIET_MS);
 
-      accumulated += wheelPixels(event, scroller);
+      const pixels = wheelPixels(event, scroller);
+      if (accumulated !== 0 && Math.sign(pixels) !== Math.sign(accumulated)) {
+        accumulated = 0; // turned around: the old travel is not this intent
+      }
+      accumulated += pixels;
       const now = event.timeStamp;
       const threshold = stepping ? HELD_STEP_THRESHOLD : WHEEL_STEP_THRESHOLD;
       if (Math.abs(accumulated) < threshold) return;
@@ -267,12 +274,16 @@ export function useAssistedScroll(opts: {
     const onScroll = () => {
       if (!fenced) return;
       const top = scroller.scrollTop;
-      if (direction === 0) {
-        if (Math.abs(top - startTop) < 2) return;
-        direction = top > startTop ? 1 : -1;
-        limit = gestureLimit(scroller, headerRef.current, startTop, direction);
+      const moved = top - startTop;
+      // A gesture may set off one way and end up going the other (a nudge
+      // down, then a flick up). The fence follows: it is always one article
+      // from where the finger landed, in whichever direction it settles on.
+      const heading = Math.abs(moved) < 2 ? 0 : moved > 0 ? 1 : -1;
+      if (heading !== 0 && heading !== direction) {
+        direction = heading;
+        limit = gestureLimit(scroller, headerRef.current, startTop, heading);
       }
-      if (limit === null) return;
+      if (direction === 0 || limit === null) return;
       // Cutting the scroll short here also cancels the fling: a programmatic
       // scroll ends the browser's own animation.
       if (direction > 0 ? top > limit + 4 : top < limit - 4) {

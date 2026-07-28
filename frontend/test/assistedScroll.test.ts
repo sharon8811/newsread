@@ -223,6 +223,56 @@ describe("useAssistedScroll", () => {
     expect(scroller.scrollTo).toHaveBeenCalledTimes(2);
   });
 
+  it("adds up small ticks from hardware that never fills one gesture", () => {
+    vi.useFakeTimers();
+    try {
+      mount();
+      // 10px ticks, spaced further apart than the quiet window: each one ends
+      // its own gesture, and the list would never move if travel were dropped.
+      let stamp = 0;
+      for (let i = 0; i < 3; i++) {
+        act(() => {
+          wheel(scroller, 10, (stamp += 300));
+        });
+        act(() => {
+          vi.advanceTimersByTime(GESTURE_QUIET_MS + 10);
+        });
+      }
+      expect(scroller.scrollTo).toHaveBeenCalledWith({ top: 300, behavior: "smooth" });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("counts travel afresh when the wheel turns around", () => {
+    vi.useFakeTimers();
+    try {
+      scroller.remove();
+      scroller = buildScroller([
+        { top: HEADER - 300, height: 300 },
+        { top: HEADER, height: 300 },
+        { top: HEADER + 300, height: 300 },
+        { top: HEADER + 600, height: 300 },
+      ]);
+      (scroller as unknown as { scrollTop: number }).scrollTop = 300;
+      mount();
+      act(() => {
+        wheel(scroller, 20, 0); // half-hearted push down, no step
+      });
+      expect(scroller.scrollTo).not.toHaveBeenCalled();
+      act(() => {
+        vi.advanceTimersByTime(GESTURE_QUIET_MS + 10);
+      });
+      // Turning around: the abandoned 20px must not eat into this push.
+      act(() => {
+        wheel(scroller, -30, 300);
+      });
+      expect(scroller.scrollTo).toHaveBeenCalledWith({ top: 0, behavior: "smooth" });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("treats a fresh gesture after a pause as a fresh step", () => {
     vi.useFakeTimers();
     try {
@@ -311,6 +361,21 @@ describe("useAssistedScroll", () => {
     act(() => touch(scroller, "touchstart"));
     act(() => scrollTo(scroller, 560));
     act(() => scrollTo(scroller, 0)); // flung back to the top of the list
+    expect(scroller.scrollTo).toHaveBeenCalledWith({ top: 300, behavior: "auto" });
+  });
+
+  it("re-fences when a gesture turns around mid-swipe", () => {
+    scroller.remove();
+    scroller = buildScroller([
+      { top: HEADER, height: 300 },
+      { top: HEADER + 300, height: 300 },
+      { top: HEADER + 600, height: 300 },
+    ]);
+    (scroller as unknown as { scrollTop: number }).scrollTop = 600;
+    mount();
+    act(() => touch(scroller, "touchstart"));
+    act(() => scrollTo(scroller, 640)); // a nudge down…
+    act(() => scrollTo(scroller, 100)); // …then a flick the other way
     expect(scroller.scrollTo).toHaveBeenCalledWith({ top: 300, behavior: "auto" });
   });
 
