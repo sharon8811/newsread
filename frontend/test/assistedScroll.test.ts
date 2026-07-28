@@ -242,6 +242,24 @@ describe("useAssistedScroll", () => {
     }
   });
 
+  it("steps on a line-mode wheel tick, whose deltas are not pixels", () => {
+    mount();
+    // Firefox reports ~3 lines per tick; unscaled that never reaches the
+    // pixel threshold and the list would look frozen.
+    act(() => {
+      wheel(scroller, 3, 0, { deltaMode: 1 });
+    });
+    expect(scroller.scrollTo).toHaveBeenCalledWith({ top: 300, behavior: "smooth" });
+  });
+
+  it("steps on a page-mode wheel tick", () => {
+    mount();
+    act(() => {
+      wheel(scroller, 1, 0, { deltaMode: 2 });
+    });
+    expect(scroller.scrollTo).toHaveBeenCalledTimes(1);
+  });
+
   it("stays out of pinch-zoom and horizontal gestures", () => {
     mount();
     act(() => {
@@ -317,6 +335,21 @@ describe("useAssistedScroll", () => {
     pill.setAttribute(SCROLL_JUMP_ATTR, "");
     scroller.appendChild(pill);
     mount();
+    act(() => touch(pill, "touchstart"));
+    act(() => scrollTo(scroller, 2000));
+    expect(scroller.scrollTo).not.toHaveBeenCalled();
+  });
+
+  it("drops a live fence when a jump pill is tapped right after a swipe", () => {
+    const pill = document.createElement("button");
+    pill.setAttribute(SCROLL_JUMP_ATTR, "");
+    scroller.appendChild(pill);
+    mount();
+    // A swipe arms the fence at the next article…
+    act(() => touch(scroller, "touchstart"));
+    act(() => scrollTo(scroller, 200));
+    act(() => touch(scroller, "touchend"));
+    // …and the pill is tapped before the fence has settled.
     act(() => touch(pill, "touchstart"));
     act(() => scrollTo(scroller, 2000));
     expect(scroller.scrollTo).not.toHaveBeenCalled();

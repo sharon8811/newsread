@@ -582,11 +582,15 @@ function ReadingList({
     for (let attempt = 0; attempt < 2; attempt++) {
       const list = articlesLive.current;
       if (!list || !scroller) return;
-      const rootTop = scroller.getBoundingClientRect().top;
+      // "Below" means below the sticky header, not below the scroller's top
+      // edge: an article aligned right under the header is the one being read,
+      // so the pill has to skip it and reach the next one.
+      const rootTop =
+        scroller.getBoundingClientRect().top + Math.max(headerHeight, 56);
       for (const article of list) {
         if (article.is_read) continue;
         const el = itemEls.current.get(article.id);
-        if (el && el.getBoundingClientRect().top > rootTop + 60) {
+        if (el && el.getBoundingClientRect().top > rootTop + 4) {
           el.scrollIntoView({ behavior: "smooth", block: "start" });
           return;
         }
@@ -604,7 +608,7 @@ function ReadingList({
       await resetToTop();
       scrollerRef.current?.scrollTo({ top: 0 });
     }
-  }, [nextCursor, newAbove, loadNewer, resetToTop]);
+  }, [nextCursor, newAbove, headerHeight, loadNewer, resetToTop]);
 
   const jumpToNew = useCallback(async () => {
     await resetToTop();

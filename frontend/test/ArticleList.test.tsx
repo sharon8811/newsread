@@ -898,6 +898,50 @@ describe("<ArticleList> reading mode interactions", () => {
     }
   });
 
+  it("unread pill skips the article parked under the sticky header", async () => {
+    routedFetch([
+      {
+        match: isTopReadingRequest,
+        articles: [
+          makeArticle({ id: 1, title: "Read One", is_read: true }),
+          makeArticle({ id: 2, title: "Unread Two" }),
+          makeArticle({ id: 3, title: "Unread Three" }),
+        ],
+        headers: { "X-Unread-Count": "2" },
+      },
+    ]);
+    // Article 2 sits exactly under a 120px header — that is the article being
+    // read, so the pill must reach article 3 instead.
+    const origRect = Element.prototype.getBoundingClientRect;
+    Element.prototype.getBoundingClientRect = function () {
+      const el = this as Element;
+      if (el.hasAttribute?.("data-reading-header")) {
+        return { top: 0, bottom: 120, width: 400, height: 120 } as DOMRect;
+      }
+      const id = el.getAttribute?.("data-article-id");
+      if (id === "2") return { top: 120, bottom: 400, width: 400, height: 280 } as DOMRect;
+      if (id === "3") return { top: 400, bottom: 680, width: 400, height: 280 } as DOMRect;
+      return origRect.call(el);
+    };
+    const scrolled: (string | null)[] = [];
+    const origScroll = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = function () {
+      scrolled.push((this as Element).getAttribute?.("data-article-id") ?? null);
+    };
+    try {
+      renderReading(<ArticleList filter="all" variant="cards" emptyTitle="Empty" />);
+      await screen.findByText("Unread Three");
+      await waitFor(() => {
+        fireEvent.click(screen.getByText("2 unread ↓"));
+        expect(scrolled.filter(Boolean)).toContain("3");
+      });
+      expect(scrolled).not.toContain("2");
+    } finally {
+      Element.prototype.getBoundingClientRect = origRect;
+      Element.prototype.scrollIntoView = origScroll;
+    }
+  });
+
   it("unread pill falls back to the top when only new-above items remain", async () => {
     let topCalls = 0;
     const fetchMock = routedFetch([

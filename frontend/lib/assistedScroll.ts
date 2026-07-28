@@ -129,6 +129,21 @@ export function gestureLimit(
   return beyond ?? null;
 }
 
+/** Pixels per line for wheels that report their delta in lines (Firefox, and
+ * some Windows mouse drivers). Chrome's own wheel-to-pixel scale. */
+export const WHEEL_LINE_HEIGHT = 40;
+
+/**
+ * A wheel event's vertical travel in pixels. `deltaY` is only pixels when
+ * `deltaMode` says so — a line-mode tick is ~3, which would sit under the step
+ * threshold and leave the list looking frozen until several ticks piled up.
+ */
+export function wheelPixels(event: WheelEvent, scroller: HTMLElement): number {
+  if (event.deltaMode === 1) return event.deltaY * WHEEL_LINE_HEIGHT;
+  if (event.deltaMode === 2) return event.deltaY * (scroller.clientHeight || 800);
+  return event.deltaY;
+}
+
 function prefersReducedMotion(): boolean {
   return (
     typeof window !== "undefined" &&
@@ -192,7 +207,7 @@ export function useAssistedScroll(opts: {
       clearTimeout(quietTimer);
       quietTimer = setTimeout(endGesture, GESTURE_QUIET_MS);
 
-      accumulated += event.deltaY;
+      accumulated += wheelPixels(event, scroller);
       const now = event.timeStamp;
       const threshold = stepping ? HELD_STEP_THRESHOLD : WHEEL_STEP_THRESHOLD;
       if (Math.abs(accumulated) < threshold) return;
@@ -227,10 +242,22 @@ export function useAssistedScroll(opts: {
     let limit: number | null = null;
     let settleTimer: ReturnType<typeof setTimeout> | undefined;
 
+    const clearFence = () => {
+      fenced = false;
+      direction = 0;
+      limit = null;
+    };
+
     const onTouchStart = (event: TouchEvent) => {
       const target = event.target as HTMLElement | null;
-      if (target?.closest?.(`[${SCROLL_JUMP_ATTR}]`)) return;
       clearTimeout(settleTimer);
+      // Tapping a jump pill has to drop any fence left over from the swipe
+      // that preceded it, or the pill's own scroll gets clamped to that
+      // gesture's one-article limit.
+      if (target?.closest?.(`[${SCROLL_JUMP_ATTR}]`)) {
+        clearFence();
+        return;
+      }
       fenced = true;
       startTop = scroller.scrollTop;
       direction = 0;
@@ -255,9 +282,7 @@ export function useAssistedScroll(opts: {
 
     const onTouchEnd = () => {
       clearTimeout(settleTimer);
-      settleTimer = setTimeout(() => {
-        fenced = false;
-      }, TOUCH_SETTLE_MS);
+      settleTimer = setTimeout(clearFence, TOUCH_SETTLE_MS);
     };
 
     scroller.addEventListener("touchstart", onTouchStart, { passive: true });
