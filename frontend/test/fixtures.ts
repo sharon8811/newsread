@@ -21,7 +21,15 @@ import type {
 } from "@/lib/api";
 
 export function makeUser(over: Partial<User> = {}): User {
-  return { id: 1, email: "a@b.c", username: "alice", name: "Alice", default_view: "list", ...over };
+  return {
+    id: 1,
+    email: "a@b.c",
+    username: "alice",
+    name: "Alice",
+    default_view: "list",
+    assisted_scroll: true,
+    ...over,
+  };
 }
 
 export function makePublic(over: Partial<UserPublic> = {}): UserPublic {

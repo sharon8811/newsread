@@ -5427,6 +5427,11 @@
       },
       "UserOut": {
         "properties": {
+          "assisted_scroll": {
+            "default": true,
+            "title": "Assisted Scroll",
+            "type": "boolean"
+          },
           "default_view": {
             "default": "cards",
             "enum": [
@@ -5500,6 +5505,17 @@
       },
       "UserUpdateIn": {
         "properties": {
+          "assisted_scroll": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assisted Scroll"
+          },
           "default_view": {
             "anyOf": [
               {

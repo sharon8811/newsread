@@ -15,6 +15,12 @@ import {
   type Article,
   type DislikeRuleCreated,
 } from "@/lib/api";
+import {
+  SCROLL_JUMP_ATTR,
+  SNAP_ITEM_ATTR,
+  useAssistedScroll,
+} from "@/lib/assistedScroll";
+import { useAuth } from "@/lib/auth";
 import { keys } from "@/lib/keys";
 import {
   markArticleReadInReadingSessions,
@@ -254,11 +260,13 @@ const KEYS_HINT = "j / k to navigate · enter to open · s to save · m to toggl
 function ReadingListItem({
   articleId,
   variant,
+  snap,
   onElement,
   children,
 }: {
   articleId: number;
   variant: "cards" | "list";
+  snap: boolean;
   onElement: (id: number, el: HTMLElement | null) => void;
   children: React.ReactNode;
 }) {
@@ -270,6 +278,10 @@ function ReadingListItem({
     <div
       ref={refCallback}
       data-article-id={articleId}
+      {...(snap ? { [SNAP_ITEM_ATTR]: "" } : null)}
+      style={
+        snap ? { scrollSnapAlign: "start", scrollSnapStop: "always" } : undefined
+      }
       className={
         variant === "cards"
           ? "[content-visibility:auto] [contain-intrinsic-size:auto_380px]"
@@ -316,6 +328,7 @@ function ReadingList({
   const [recentPassed, setRecentPassed] = useState<number[]>([]);
   const [readFeedbackError, setReadFeedbackError] = useState<string | null>(null);
   const [overlayTop, setOverlayTop] = useState(120);
+  const [headerHeight, setHeaderHeight] = useState(0);
   const openDismiss = useCallback((a: Article) => setDismissing(startDismiss(a)), []);
 
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -374,6 +387,7 @@ function ReadingList({
 
     const connect = () => {
       const headerHeight = Math.ceil(header?.getBoundingClientRect().height ?? 0);
+      setHeaderHeight(headerHeight);
       setOverlayTop(
         Math.max(
           12,
@@ -438,6 +452,14 @@ function ReadingList({
       passObserver.current = null;
     };
   }, [markPassed]);
+
+  // Assisted scrolling is a cards-view affordance: one card is roughly one
+  // screen, so stepping between them reads as turning a page. List rows are
+  // ~72px tall and snapping each of them would fight ordinary scanning.
+  const { user } = useAuth();
+  const getScroller = useCallback(() => scrollerRef.current, []);
+  const assisted = variant === "cards" && (user?.assisted_scroll ?? true);
+  useAssistedScroll({ enabled: assisted, getScroller, headerHeight });
 
   useEffect(() => {
     if (recentPassed.length === 0 && !readFeedbackError) return;
@@ -560,11 +582,15 @@ function ReadingList({
     for (let attempt = 0; attempt < 2; attempt++) {
       const list = articlesLive.current;
       if (!list || !scroller) return;
-      const rootTop = scroller.getBoundingClientRect().top;
+      // "Below" means below the sticky header, not below the scroller's top
+      // edge: an article aligned right under the header is the one being read,
+      // so the pill has to skip it and reach the next one.
+      const rootTop =
+        scroller.getBoundingClientRect().top + Math.max(headerHeight, 56);
       for (const article of list) {
         if (article.is_read) continue;
         const el = itemEls.current.get(article.id);
-        if (el && el.getBoundingClientRect().top > rootTop + 60) {
+        if (el && el.getBoundingClientRect().top > rootTop + 4) {
           el.scrollIntoView({ behavior: "smooth", block: "start" });
           return;
         }
@@ -582,7 +608,7 @@ function ReadingList({
       await resetToTop();
       scrollerRef.current?.scrollTo({ top: 0 });
     }
-  }, [nextCursor, newAbove, loadNewer, resetToTop]);
+  }, [nextCursor, newAbove, headerHeight, loadNewer, resetToTop]);
 
   const jumpToNew = useCallback(async () => {
     await resetToTop();
@@ -636,6 +662,7 @@ function ReadingList({
         key={article.id}
         articleId={article.id}
         variant={variant}
+        snap={assisted}
         onElement={onItemElement}
       >
         {variant === "cards" ? <ArticleCard {...shared} /> : <ArticleRow {...shared} />}
@@ -685,6 +712,7 @@ function ReadingList({
       {newAbove > 0 && (
         <button
           onClick={jumpToNew}
+          {...{ [SCROLL_JUMP_ATTR]: "" }}
           className="fixed left-1/2 z-30 -translate-x-1/2 rounded-full border px-3.5 py-1.5 text-body-sm font-medium shadow-md transition-colors"
           style={{
             top: overlayTop,
@@ -729,6 +757,7 @@ function ReadingList({
       {unreadCount !== null && (
         <button
           onClick={jumpToNextUnread}
+          {...{ [SCROLL_JUMP_ATTR]: "" }}
           title={unreadCount > 0 ? "Jump to the next unread article" : undefined}
           className="font-mono-nr fixed bottom-5 left-1/2 z-30 -translate-x-1/2 rounded-full border px-3.5 py-1.5 text-label shadow-md transition-colors"
           style={{

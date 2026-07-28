@@ -32,6 +32,9 @@ class User(Base):
     name: Mapped[str] = mapped_column(String(120))
     password_hash: Mapped[str] = mapped_column(String(128))
     default_view: Mapped[str] = mapped_column(String(16), default="cards", server_default="cards")
+    # Assisted scrolling in the cards reading view: one gesture moves one
+    # article and the viewport snaps to it. On by default; opt out per user.
+    assisted_scroll: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
     # Template for generated article images ({article_title}/{article_excerpt}
     # tags); NULL = image_gen.DEFAULT_IMAGE_PROMPT.
     image_prompt: Mapped[str | None] = mapped_column(Text)

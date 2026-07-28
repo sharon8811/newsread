@@ -35,6 +35,20 @@ vi.mock("next/navigation", () => ({
   useRouter: () => router,
   useSearchParams: () => searchParams.value,
 }));
+// The Reading section reads the signed-in user's scrolling preference.
+vi.mock("@/lib/auth", () => ({
+  useAuth: () => ({
+    user: {
+      id: 1,
+      email: "a@b.c",
+      username: "alice",
+      name: "Alice",
+      default_view: "cards",
+      assisted_scroll: true,
+    },
+    updateUser: vi.fn(),
+  }),
+}));
 
 function mockSWRData({
   integrations = [

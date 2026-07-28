@@ -17,7 +17,14 @@ const wrapper = ({ children }: { children: React.ReactNode }) => (
   <AuthProvider>{children}</AuthProvider>
 );
 
-const USER = { id: 1, email: "a@b.c", username: "alice", name: "Alice", default_view: "list" };
+const USER = {
+  id: 1,
+  email: "a@b.c",
+  username: "alice",
+  name: "Alice",
+  default_view: "list",
+  assisted_scroll: true,
+};
 
 describe("useAuth", () => {
   beforeEach(() => setToken(null));

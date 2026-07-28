@@ -16,6 +16,8 @@ async def update_me(
 ):
     if body.default_view is not None:
         user.default_view = body.default_view
+    if body.assisted_scroll is not None:
+        user.assisted_scroll = body.assisted_scroll
     if body.image_prompt is not None:
         user.image_prompt = body.image_prompt.strip() or None
     # Presence-based PATCH: an explicit null means "back to unlimited".
