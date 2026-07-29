@@ -219,6 +219,13 @@ describe("ArticlePage", () => {
     expect(screen.queryByTestId("assistant-drawer")).not.toBeInTheDocument();
   });
 
+  it("keeps the back control reachable while the detail is still loading", async () => {
+    swrMock.mockReturnValue({ data: undefined, error: undefined });
+    render(<ArticlePage />);
+    await userEvent.click(screen.getByRole("button", { name: "Back" }));
+    expect(routerMock.back).toHaveBeenCalled();
+  });
+
   it("offers a floating back control for the full-screen phone layout", async () => {
     swrMock.mockReturnValue({ data: makeArticleDetail() });
     render(<ArticlePage />);

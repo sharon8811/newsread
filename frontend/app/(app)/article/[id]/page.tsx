@@ -42,6 +42,26 @@ import { isYouTubeVideoUrl } from "@/lib/youtube";
 import { markArticleReadInReadingSessions } from "@/lib/readingSession";
 import { useReadingTimer } from "@/lib/useReadingTimer";
 
+/** The phone view has no app bar on this route, so this chip is the way back —
+ * including while the detail is still loading. */
+function BackChip({ onBack }: { onBack: () => void }) {
+  return (
+    <button
+      aria-label="Back"
+      onClick={onBack}
+      className="fixed left-3 z-30 flex h-10 w-10 items-center justify-center rounded-full md:hidden"
+      style={{
+        top: "calc(env(safe-area-inset-top) + 12px)",
+        background: "rgba(10,11,15,0.55)",
+        backdropFilter: "blur(8px)",
+        color: "#fff",
+      }}
+    >
+      <ArrowLeftIcon size={18} />
+    </button>
+  );
+}
+
 export default function ArticlePage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
@@ -143,7 +163,8 @@ export default function ArticlePage() {
 
   if (!article) {
     return (
-      <div className="mx-auto max-w-[680px] px-8 py-14">
+      <div className="mx-auto max-w-[680px] px-8 py-14 max-md:pt-16">
+        <BackChip onBack={() => router.back()} />
         <div className="h-9 w-3/4 rounded-md" style={{ background: "var(--bg-hover)" }} />
         <div className="mt-4 h-4 w-1/3 rounded" style={{ background: "var(--bg-hover)" }} />
       </div>
@@ -177,21 +198,7 @@ export default function ArticlePage() {
         ← back
       </button>
 
-      {/* Always reachable: the article is full-screen on phones and this is its
-          only exit besides the browser's own back gesture. */}
-      <button
-        aria-label="Back"
-        onClick={() => router.back()}
-        className="fixed left-3 z-30 flex h-10 w-10 items-center justify-center rounded-full md:hidden"
-        style={{
-          top: "calc(env(safe-area-inset-top) + 12px)",
-          background: "rgba(10,11,15,0.55)",
-          backdropFilter: "blur(8px)",
-          color: "#fff",
-        }}
-      >
-        <ArrowLeftIcon size={18} />
-      </button>
+      <BackChip onBack={() => router.back()} />
 
       <p className="mono-label mt-7">{article.feed_title}</p>
       <h1 className="font-serif-nr mt-2.5 text-[27px] font-medium leading-[1.18] sm:text-[34px]">
