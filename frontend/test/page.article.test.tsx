@@ -219,6 +219,28 @@ describe("ArticlePage", () => {
     expect(screen.queryByTestId("assistant-drawer")).not.toBeInTheDocument();
   });
 
+  it("offers a floating back control for the full-screen phone layout", async () => {
+    swrMock.mockReturnValue({ data: makeArticleDetail() });
+    render(<ArticlePage />);
+    await userEvent.click(screen.getByRole("button", { name: "Back" }));
+    expect(routerMock.back).toHaveBeenCalled();
+  });
+
+  it("leaves room for the floating back control when there is no hero image", () => {
+    swrMock.mockReturnValue({
+      data: makeArticleDetail({ image_url: null, image_pending: false }),
+    });
+    const { container } = render(<ArticlePage />);
+    expect(container.querySelector("article")).toHaveClass("pt-16");
+  });
+
+  it("runs the hero to the screen edge on phones", () => {
+    swrMock.mockReturnValue({ data: makeArticleDetail({ image_url: "/i.png" }) });
+    const { container } = render(<ArticlePage />);
+    expect(container.querySelector("article")).toHaveClass("pt-0");
+    expect(container.querySelector("article > div.relative")).toHaveClass("max-md:-mx-5");
+  });
+
   it("navigates back", async () => {
     swrMock.mockReturnValue({ data: makeArticleDetail({ is_read: true }), error: undefined });
     render(<ArticlePage />);

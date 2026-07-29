@@ -312,6 +312,25 @@ export function MenuIcon(p: IconProps) {
   );
 }
 
+export function MoreIcon(p: IconProps) {
+  return (
+    <svg {...base(p)}>
+      <circle cx="5" cy="12" r="1" />
+      <circle cx="12" cy="12" r="1" />
+      <circle cx="19" cy="12" r="1" />
+    </svg>
+  );
+}
+
+export function ArrowLeftIcon(p: IconProps) {
+  return (
+    <svg {...base(p)}>
+      <path d="M19 12H5" />
+      <path d="m12 19-7-7 7-7" />
+    </svg>
+  );
+}
+
 export function SlackIcon(p: IconProps) {
   return (
     <svg {...base(p)}>

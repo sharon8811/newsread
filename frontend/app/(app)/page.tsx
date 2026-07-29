@@ -4,11 +4,21 @@ import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import ArticleList, { mutateArticleLists } from "@/components/ArticleList";
 import FeedSettingsModal from "@/components/FeedSettingsModal";
+import InboxMenuSheet from "@/components/InboxMenuSheet";
 import StoriesView from "@/components/StoriesView";
 import ViewSwitcher from "@/components/ViewSwitcher";
-import { CheckAllIcon, GearIcon, RefreshIcon, SearchIcon } from "@/components/icons";
+import {
+  CheckAllIcon,
+  GearIcon,
+  MenuIcon,
+  MoreIcon,
+  RefreshIcon,
+  SearchIcon,
+  XIcon,
+} from "@/components/icons";
 import { useAuth } from "@/lib/auth";
 import { api, type Feed, type ViewMode } from "@/lib/api";
+import { useOpenMobileNav } from "@/lib/mobileNav";
 import { useFeeds } from "@/lib/queries";
 
 const VIEW_MODES = ["cards", "list", "stories"] as const;
@@ -59,6 +69,9 @@ function Inbox() {
   const [q, setQ] = useState("");
   const [refreshing, setRefreshing] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const openNav = useOpenMobileNav();
 
   useEffect(() => {
     const t = setTimeout(() => setQ(search.trim()), 250);
@@ -90,13 +103,89 @@ function Inbox() {
     <>
       <header
         data-reading-header
-        className="sticky top-0 z-20 border-b px-4 pb-3.5 pt-4 sm:px-6 sm:pt-5"
+        className="sticky top-0 z-20 border-b"
         style={{
           background: "var(--bg-header)",
           backdropFilter: "blur(10px)",
           borderColor: "var(--line-soft)",
         }}
       >
+        {/* Phones: one 48px row, the app's only bar. Its height never changes —
+            opening search swaps the row's contents rather than adding one — so
+            the reading-viewport offset that assisted scrolling and scroll-past
+            auto-read measure from this header stays put. */}
+        <div className="flex h-12 items-center gap-1 px-2 md:hidden">
+          {searchOpen ? (
+            <>
+              <div className="relative min-w-0 flex-1">
+                <SearchIcon
+                  size={13}
+                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2"
+                />
+                <input
+                  className="input"
+                  style={{ paddingLeft: 32, paddingTop: 6, paddingBottom: 6 }}
+                  placeholder="Search articles…"
+                  autoFocus
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              </div>
+              <button
+                className="icon-btn"
+                aria-label="Close search"
+                onClick={() => {
+                  setSearchOpen(false);
+                  setSearch("");
+                }}
+              >
+                <XIcon size={16} />
+              </button>
+            </>
+          ) : (
+            <>
+              <button className="icon-btn" aria-label="Open navigation" onClick={openNav}>
+                <MenuIcon size={18} />
+              </button>
+              <h1 className="min-w-0 flex-1 truncate text-lead font-semibold tracking-tight">
+                {feed ? feed.title : "Inbox"}
+              </h1>
+              {pendingCount > 0 && (
+                <span
+                  role="status"
+                  aria-label={`Enriching ${pendingCount} article${pendingCount === 1 ? "" : "s"}`}
+                  style={{ color: "var(--accent)" }}
+                >
+                  <RefreshIcon size={12} className="spinning" />
+                </span>
+              )}
+              {feed && (
+                <span
+                  className="font-mono-nr whitespace-nowrap text-label"
+                  style={{ color: "var(--ink-faint)" }}
+                >
+                  {feed.unread_count}
+                </span>
+              )}
+              <button
+                className="icon-btn"
+                aria-label="Search articles"
+                onClick={() => setSearchOpen(true)}
+              >
+                <SearchIcon size={16} />
+              </button>
+              <button
+                className="icon-btn"
+                aria-label="More actions"
+                onClick={() => setMenuOpen(true)}
+              >
+                <MoreIcon size={18} />
+              </button>
+            </>
+          )}
+        </div>
+
+        <div className="hidden px-4 pb-3.5 pt-4 sm:px-6 sm:pt-5 md:block">
         <div className="flex items-center gap-3">
           <h1 className="min-w-0 truncate text-title font-semibold leading-none tracking-tight">
             {feed ? feed.title : "Inbox"}
@@ -180,6 +269,7 @@ function Inbox() {
             />
           </div>
         </div>
+        </div>
       </header>
 
       {view === "stories" ? (
@@ -205,6 +295,19 @@ function Inbox() {
                 ? "New articles land here as your feeds refresh."
                 : "Subscribe to a feed from the sidebar to start reading."
           }
+        />
+      )}
+      {menuOpen && (
+        <InboxMenuSheet
+          feed={feed ?? null}
+          view={view}
+          tab={tab}
+          onTab={setTab}
+          onView={setLocalView}
+          onRefresh={refresh}
+          onSettings={() => setSettingsOpen(true)}
+          onMarkAllRead={markAllRead}
+          onClose={() => setMenuOpen(false)}
         />
       )}
       {settingsOpen && feed && (

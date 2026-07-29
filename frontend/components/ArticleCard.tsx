@@ -45,7 +45,9 @@ function ArticleCard({
       onClick={() =>
         onOpen ? onOpen(article) : router.push(`/article/${article.id}`)
       }
-      className="group flex cursor-pointer flex-col overflow-hidden rounded-lg border transition-all duration-150 hover:-translate-y-0.5"
+      // Phones read one card at a time, so cards run edge to edge there and
+      // only pick up their rounded, inset frame from `sm` up.
+      className="group flex cursor-pointer flex-col overflow-hidden border-y transition-all duration-150 max-sm:border-x-0 sm:rounded-lg sm:border-x sm:hover:-translate-y-0.5"
       style={{
         borderColor: selected ? "var(--accent-border)" : "var(--line-soft)",
         background: "var(--bg-raised)",
