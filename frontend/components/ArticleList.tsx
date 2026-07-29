@@ -684,7 +684,7 @@ function ReadingList({
           </div>
         )}
         {variant === "cards" ? (
-          <div className="mx-auto flex w-full max-w-[720px] flex-col gap-6 p-4 sm:gap-7 sm:py-8">
+          <div className="mx-auto flex w-full max-w-[720px] flex-col gap-2 sm:gap-7 sm:p-4 sm:py-8">
             {items}
           </div>
         ) : (
@@ -759,8 +759,10 @@ function ReadingList({
           onClick={jumpToNextUnread}
           {...{ [SCROLL_JUMP_ATTR]: "" }}
           title={unreadCount > 0 ? "Jump to the next unread article" : undefined}
-          className="font-mono-nr fixed bottom-5 left-1/2 z-30 -translate-x-1/2 rounded-full border px-3.5 py-1.5 text-label shadow-md transition-colors"
+          className="font-mono-nr fixed left-1/2 z-30 -translate-x-1/2 rounded-full border px-3.5 py-1.5 text-label shadow-md transition-colors"
           style={{
+            // Clears the iOS home indicator on phones without a browser chrome.
+            bottom: "calc(1.25rem + env(safe-area-inset-bottom))",
             background: "var(--bg-raised)",
             borderColor: "var(--line)",
             color: unreadCount > 0 ? "var(--ink)" : "var(--ink-faint)",
@@ -856,7 +858,7 @@ function QueryList({
     <>
       <div className="fade-up">
         {variant === "cards" ? (
-          <div className="mx-auto flex w-full max-w-[720px] flex-col gap-6 p-4 sm:gap-7 sm:py-8">
+          <div className="mx-auto flex w-full max-w-[720px] flex-col gap-2 sm:gap-7 sm:p-4 sm:py-8">
             {articles.map((article, i) => (
               <ArticleCard
                 key={article.id}

@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import InboxPage from "@/app/(app)/page";
+import { MobileNavContext } from "@/lib/mobileNav";
 import { makeFeed, makeUser } from "./fixtures";
 
 const { swrMock, authState, searchState, listProps, viewSwitcherProps, mutateListsMock, pushMock, settingsProps } =
@@ -67,7 +68,9 @@ describe("InboxPage", () => {
   it("renders the Inbox header with no feed selected", () => {
     swrMock.mockReturnValue({ data: [makeFeed()] });
     render(<InboxPage />);
-    expect(screen.getByText("Inbox")).toBeInTheDocument();
+    // Two bars in the DOM: the phone bar and the desktop header, each hidden
+    // from the other's breakpoint by CSS.
+    expect(screen.getAllByText("Inbox")).toHaveLength(2);
     expect(screen.getByTestId("article-list")).toHaveTextContent("list:unread");
   });
 
@@ -75,7 +78,7 @@ describe("InboxPage", () => {
     searchState.params = new URLSearchParams("feed=1");
     swrMock.mockReturnValue({ data: [makeFeed({ id: 1, title: "Tech", unread_count: 5 })] });
     render(<InboxPage />);
-    expect(screen.getByText("Tech")).toBeInTheDocument();
+    expect(screen.getAllByText("Tech")).toHaveLength(2);
     expect(screen.getByText("5 unread")).toBeInTheDocument();
   });
 
@@ -155,13 +158,13 @@ describe("InboxPage", () => {
     swrMock.mockReturnValue({ data: [makeFeed({ id: 1 })] });
     render(<InboxPage />);
     // No feed matched -> header shows Inbox (feed is null)
-    expect(screen.getByText("Inbox")).toBeInTheDocument();
+    expect(screen.getAllByText("Inbox")).toHaveLength(2);
   });
 
   it("handles undefined feeds data", () => {
     swrMock.mockReturnValue({ data: undefined });
     render(<InboxPage />);
-    expect(screen.getByText("Inbox")).toBeInTheDocument();
+    expect(screen.getAllByText("Inbox")).toHaveLength(2);
   });
 
   it("stories onExit switches back to the list view", async () => {
@@ -196,12 +199,125 @@ describe("InboxPage", () => {
     expect(screen.queryByTitle("Feed settings")).not.toBeInTheDocument();
   });
 
+  it("opens the shell's nav drawer from the phone bar", async () => {
+    swrMock.mockReturnValue({ data: [makeFeed()] });
+    const openNav = vi.fn();
+    render(
+      <MobileNavContext.Provider value={openNav}>
+        <InboxPage />
+      </MobileNavContext.Provider>,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Open navigation" }));
+    expect(openNav).toHaveBeenCalled();
+  });
+
+  it("swaps the phone bar's contents for search instead of growing a row", async () => {
+    swrMock.mockReturnValue({ data: [makeFeed()] });
+    render(<InboxPage />);
+    // Only the desktop header's field to start with.
+    expect(screen.getAllByPlaceholderText("Search articles…")).toHaveLength(1);
+    await userEvent.click(screen.getByRole("button", { name: "Search articles" }));
+    expect(screen.getAllByPlaceholderText("Search articles…")).toHaveLength(2);
+    // The bar's other controls step aside rather than wrapping onto a new row.
+    expect(screen.queryByRole("button", { name: "Open navigation" })).not.toBeInTheDocument();
+
+    await userEvent.type(screen.getAllByPlaceholderText("Search articles…")[0], "rust");
+    await userEvent.click(screen.getByRole("button", { name: "Close search" }));
+    expect(screen.getAllByPlaceholderText("Search articles…")).toHaveLength(1);
+    await waitFor(() => expect(listProps.current?.q).toBe(""));
+  });
+
+  it("holds the filter, view and feed actions in the phone menu", async () => {
+    searchState.params = new URLSearchParams("feed=1");
+    swrMock.mockReturnValue({ data: [makeFeed({ id: 1, title: "Tech" })] });
+    const fetchMock = okFetch();
+    vi.stubGlobal("fetch", fetchMock);
+    render(<InboxPage />);
+    await userEvent.click(screen.getByRole("button", { name: "More actions" }));
+
+    const sheet = within(screen.getByRole("dialog"));
+    expect(sheet.getByText("Refresh feed")).toBeInTheDocument();
+    await userEvent.click(sheet.getByRole("button", { name: "all" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    expect(screen.getByTestId("article-list")).toHaveTextContent("list:all");
+  });
+
+  it("marks all read from the phone menu", async () => {
+    swrMock.mockReturnValue({ data: [makeFeed()] });
+    const fetchMock = okFetch();
+    vi.stubGlobal("fetch", fetchMock);
+    render(<InboxPage />);
+    await userEvent.click(screen.getByRole("button", { name: "More actions" }));
+    const sheet = within(screen.getByRole("dialog"));
+    // Feed-scoped entries stay out of the inbox-wide menu.
+    expect(sheet.queryByText("Refresh feed")).not.toBeInTheDocument();
+    expect(sheet.queryByText("Feed settings")).not.toBeInTheDocument();
+    await userEvent.click(sheet.getByRole("button", { name: /Mark all read/ }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    expect(fetchMock.mock.calls[0][0]).toContain("/articles/mark-all-read");
+  });
+
+  it("opens feed settings from the phone menu", async () => {
+    searchState.params = new URLSearchParams("feed=1");
+    swrMock.mockReturnValue({ data: [makeFeed({ id: 1, title: "Tech" })] });
+    vi.stubGlobal("fetch", okFetch());
+    render(<InboxPage />);
+    await userEvent.click(screen.getByRole("button", { name: "More actions" }));
+    await userEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: /Feed settings/ }),
+    );
+    expect(screen.getByTestId("feed-settings-modal")).toBeInTheDocument();
+  });
+
+  it("refreshes the feed from the phone menu", async () => {
+    searchState.params = new URLSearchParams("feed=1");
+    swrMock.mockReturnValue({ data: [makeFeed({ id: 1, title: "Tech" })] });
+    const fetchMock = okFetch();
+    vi.stubGlobal("fetch", fetchMock);
+    render(<InboxPage />);
+    await userEvent.click(screen.getByRole("button", { name: "More actions" }));
+    await userEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: /Refresh feed/ }),
+    );
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    expect(fetchMock.mock.calls[0][0]).toContain("/feeds/1/refresh");
+  });
+
+  it("drops the unread/all choice from the phone menu in stories view", async () => {
+    searchState.params = new URLSearchParams("view=stories");
+    swrMock.mockReturnValue({ data: [makeFeed()] });
+    render(<InboxPage />);
+    await userEvent.click(screen.getByRole("button", { name: "More actions" }));
+    expect(
+      within(screen.getByRole("dialog")).queryByRole("button", { name: "all" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("switches view from the phone menu", async () => {
+    swrMock.mockReturnValue({ data: [makeFeed()] });
+    render(<InboxPage />);
+    await userEvent.click(screen.getByRole("button", { name: "More actions" }));
+    const { act } = await import("@testing-library/react");
+    act(() => (viewSwitcherProps.current!.onSwitch as (v: string) => void)("cards"));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(screen.getByTestId("article-list")).toHaveTextContent("cards:unread");
+  });
+
+  it("shows a compact pending indicator on the phone bar", () => {
+    searchState.params = new URLSearchParams("feed=1");
+    swrMock.mockReturnValue({ data: [makeFeed({ id: 1, pending_count: 3 })] });
+    render(<InboxPage />);
+    expect(screen.getByLabelText("Enriching 3 articles")).toBeInTheDocument();
+  });
+
   it("discards the in-session view when the feed changes", async () => {
     swrMock.mockReturnValue({ data: [makeFeed({ id: 1 }), makeFeed({ id: 2, title: "Two" })] });
     searchState.params = new URLSearchParams("feed=1");
     const { rerender } = render(<InboxPage />);
     searchState.params = new URLSearchParams("feed=2");
     rerender(<InboxPage />);
-    expect(screen.getByText("Two")).toBeInTheDocument();
+    expect(screen.getAllByText("Two")).toHaveLength(2);
   });
 });

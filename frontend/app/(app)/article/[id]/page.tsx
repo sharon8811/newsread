@@ -25,6 +25,7 @@ import ProjectPickerModal from "@/components/ProjectPickerModal";
 import RelatedArticles from "@/components/RelatedArticles";
 import ShareModal from "@/components/ShareModal";
 import {
+  ArrowLeftIcon,
   BookmarkIcon,
   CommentIcon,
   ExternalIcon,
@@ -40,6 +41,26 @@ import { discussionRefFor } from "@/lib/discussions";
 import { isYouTubeVideoUrl } from "@/lib/youtube";
 import { markArticleReadInReadingSessions } from "@/lib/readingSession";
 import { useReadingTimer } from "@/lib/useReadingTimer";
+
+/** The phone view has no app bar on this route, so this chip is the way back —
+ * including while the detail is still loading. */
+function BackChip({ onBack }: { onBack: () => void }) {
+  return (
+    <button
+      aria-label="Back"
+      onClick={onBack}
+      className="fixed left-3 z-30 flex h-10 w-10 items-center justify-center rounded-full md:hidden"
+      style={{
+        top: "calc(env(safe-area-inset-top) + 12px)",
+        background: "rgba(10,11,15,0.55)",
+        backdropFilter: "blur(8px)",
+        color: "#fff",
+      }}
+    >
+      <ArrowLeftIcon size={18} />
+    </button>
+  );
+}
 
 export default function ArticlePage() {
   const { id } = useParams<{ id: string }>();
@@ -142,7 +163,8 @@ export default function ArticlePage() {
 
   if (!article) {
     return (
-      <div className="mx-auto max-w-[680px] px-8 py-14">
+      <div className="mx-auto max-w-[680px] px-8 py-14 max-md:pt-16">
+        <BackChip onBack={() => router.back()} />
         <div className="h-9 w-3/4 rounded-md" style={{ background: "var(--bg-hover)" }} />
         <div className="mt-4 h-4 w-1/3 rounded" style={{ background: "var(--bg-hover)" }} />
       </div>
@@ -153,13 +175,21 @@ export default function ArticlePage() {
   // primary action says where it actually goes.
   const isVideo = isYouTubeVideoUrl(article.url);
   const originalLabel = isVideo ? "Go to video" : "Read original";
+  // The shell hides its bar on this route (see lib/mobileNav), so on phones the
+  // hero runs to the top edge of the screen and the floating chip is the way
+  // back. Without a hero there is nothing to float over — leave it room.
+  const hasHero = Boolean(article.image_url || article.image_pending);
 
   return (
     <HackerNewsDiscussionController key={article.id} article={article}>
       {(discussion) => (
-        <article className="fade-up mx-auto max-w-[680px] px-5 pb-24 pt-6 sm:px-8 sm:pt-10">
+        <article
+          className={`fade-up mx-auto flex max-w-[680px] flex-col px-5 pb-24 md:px-8 md:pt-10 ${
+            hasHero ? "pt-0" : "pt-16"
+          }`}
+        >
       <button
-        className="font-mono-nr text-label transition-colors"
+        className="font-mono-nr text-label transition-colors max-md:hidden"
         style={{ color: "var(--ink-faint)" }}
         onMouseEnter={(e) => (e.currentTarget.style.color = "var(--ink)")}
         onMouseLeave={(e) => (e.currentTarget.style.color = "var(--ink-faint)")}
@@ -167,6 +197,8 @@ export default function ArticlePage() {
       >
         ← back
       </button>
+
+      <BackChip onBack={() => router.back()} />
 
       <p className="mono-label mt-7">{article.feed_title}</p>
       <h1 className="font-serif-nr mt-2.5 text-[27px] font-medium leading-[1.18] sm:text-[34px]">
@@ -184,7 +216,7 @@ export default function ArticlePage() {
           image and none on the way. */}
       {(article.image_url || article.image_pending) && (
         <div
-          className={`relative mt-6 aspect-[2/1] w-full overflow-hidden rounded-lg border ${
+          className={`relative aspect-[2/1] w-full overflow-hidden max-md:-order-1 max-md:-mx-5 max-md:w-auto md:mt-6 md:rounded-lg md:border ${
             article.image_url ? "" : "shimmer"
           }`}
           style={{ borderColor: "var(--line-soft)", background: "var(--bg-hover)" }}

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { render } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import AppLayout from "@/app/(app)/layout";
 import {
   clearReadingSessions,
@@ -101,5 +101,36 @@ describe("AppLayout reading return restoration", () => {
     );
 
     expect(getReadingReturnAnchor(key)).toBeNull();
+  });
+});
+
+describe("AppLayout mobile bar", () => {
+  beforeEach(() => {
+    pathnameState.value = "/";
+  });
+
+  it("stands down on reading routes, which bring their own bar", () => {
+    const { rerender } = render(<AppLayout>body</AppLayout>);
+    expect(screen.queryByRole("link", { name: /NewsRead/ })).not.toBeInTheDocument();
+
+    pathnameState.value = "/article/12";
+    rerender(<AppLayout>body</AppLayout>);
+    expect(screen.queryByRole("link", { name: /NewsRead/ })).not.toBeInTheDocument();
+  });
+
+  it("keeps its bar on every other route", () => {
+    pathnameState.value = "/settings";
+    render(<AppLayout>body</AppLayout>);
+    expect(screen.getByRole("link", { name: /NewsRead/ })).toBeInTheDocument();
+  });
+
+  it("opens the nav drawer from that bar", async () => {
+    const userEvent = (await import("@testing-library/user-event")).default;
+    pathnameState.value = "/settings";
+    const { container } = render(<AppLayout>body</AppLayout>);
+    const drawer = container.querySelector<HTMLElement>(".fixed.inset-y-0.left-0")!;
+    expect(drawer).toHaveStyle({ transform: "translateX(-100%)" });
+    await userEvent.click(screen.getByRole("button", { name: "Open navigation" }));
+    expect(drawer).toHaveStyle({ transform: "translateX(0)" });
   });
 });

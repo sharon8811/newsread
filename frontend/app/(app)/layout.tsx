@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { Suspense, useEffect, useLayoutEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useLayoutEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import Sidebar from "@/components/Sidebar";
 import { MenuIcon } from "@/components/icons";
 import { useAuth } from "@/lib/auth";
+import { MobileNavContext, ownsMobileChrome } from "@/lib/mobileNav";
 import {
   clearReadingReturnAnchor,
   getLatestReadingReturnAnchor,
@@ -16,6 +17,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const [navOpen, setNavOpen] = useState(false);
+  const openNav = useCallback(() => setNavOpen(true), []);
+  // Reading routes go full-screen on phones: they render their own compact bar
+  // (inbox) or none at all (article detail), so the shell's own bar stands down.
+  const pageOwnsBar = ownsMobileChrome(pathname);
 
   useEffect(() => {
     if (ready && !authed) router.replace("/login");
@@ -77,6 +82,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }
 
   return (
+    <MobileNavContext.Provider value={openNav}>
     <div className="flex">
       {/* Desktop: persistent sidebar */}
       <div className="hidden md:block">
@@ -110,29 +116,28 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       </div>
 
       <div className="flex h-dvh min-w-0 flex-1 flex-col">
-        {/* Mobile top bar */}
-        <header
-          className="flex shrink-0 items-center gap-1 border-b px-3 py-2 md:hidden"
-          style={{
-            background: "var(--bg-header)",
-            backdropFilter: "blur(10px)",
-            borderColor: "var(--line-soft)",
-          }}
-        >
-          <button
-            className="icon-btn"
-            aria-label="Open navigation"
-            onClick={() => setNavOpen(true)}
+        {/* Mobile top bar (reading routes bring their own) */}
+        {!pageOwnsBar && (
+          <header
+            className="flex shrink-0 items-center gap-1 border-b px-3 py-2 md:hidden"
+            style={{
+              background: "var(--bg-header)",
+              backdropFilter: "blur(10px)",
+              borderColor: "var(--line-soft)",
+            }}
           >
-            <MenuIcon size={18} />
-          </button>
-          <Link href="/" className="wordmark text-lead">
-            NewsRead<span className="dot">.</span>
-          </Link>
-        </header>
+            <button className="icon-btn" aria-label="Open navigation" onClick={openNav}>
+              <MenuIcon size={18} />
+            </button>
+            <Link href="/" className="wordmark text-lead">
+              NewsRead<span className="dot">.</span>
+            </Link>
+          </header>
+        )}
 
         <main className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">{children}</main>
       </div>
     </div>
+    </MobileNavContext.Provider>
   );
 }
