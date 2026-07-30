@@ -22,7 +22,10 @@ export default function LanguagePickerModal({
   /** Offer "just this once" — only meaningful once a default exists. */
   allowOneOff?: boolean;
 }) {
-  const { data: languages } = useSWR<TranslationLanguage[]>(keys.translationLanguages, fetcher);
+  const { data: languages, error } = useSWR<TranslationLanguage[]>(
+    keys.translationLanguages,
+    fetcher,
+  );
   // Opened from "another language", so this pick is a one-off unless the
   // reader says otherwise. (On first use there is no checkbox: that pick
   // always becomes the default.)
@@ -31,6 +34,12 @@ export default function LanguagePickerModal({
   return (
     <Modal onClose={onClose} contentClassName="p-5">
       <ModalHeader eyebrow="Translate summary" title="Choose a language" />
+
+      {(error || languages?.length === 0) && (
+        <p className="mt-4 text-body" style={{ color: "var(--ink-dim)" }}>
+          Couldn’t load the language list. Check your connection and try again.
+        </p>
+      )}
 
       <ul className="mt-4 max-h-[52vh] overflow-y-auto">
         {(languages ?? []).map((language) => (

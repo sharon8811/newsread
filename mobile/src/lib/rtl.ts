@@ -7,7 +7,15 @@
 
 // Hebrew, Arabic (+ supplement and extended), Syriac, Thaana, NKo, and the
 // Hebrew/Arabic presentation forms.
-const RTL_RANGES = "\\u0590-\\u05FF\\u0600-\\u07BF\\u08A0-\\u08FF\\uFB1D-\\uFDFF\\uFE70-\\uFEFF";
+//
+// Two deliberate holes, so this agrees with the browser's dir="auto": the
+// Arabic-Indic digits (U+0660-0669, U+06F0-06F9) are weak, not strong — a
+// headline numbered in them is still whatever script follows — and U+FEFF at
+// the end of the presentation-forms block is the byte-order mark, which is
+// invisible and must never decide a paragraph's direction.
+const RTL_RANGES =
+  "\\u0590-\\u05FF\\u0600-\\u065F\\u066A-\\u06EF\\u06FA-\\u07FF" +
+  "\\u08A0-\\u08FF\\uFB1D-\\uFDFF\\uFE70-\\uFEFE";
 // Strong left-to-right letters we actually see: Latin (incl. accents), Greek,
 // Cyrillic, Devanagari, CJK, kana and Hangul.
 const LTR_RANGES =

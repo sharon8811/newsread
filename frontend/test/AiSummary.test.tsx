@@ -321,6 +321,24 @@ describe("<AiSummary> translation", () => {
     await waitFor(() => expect(screen.getByText("ההצבעה נדחתה")).toBeInTheDocument());
   });
 
+  it("says so when the language list can't be loaded", async () => {
+    stubStatus(true, { translation: true });
+    swrMock.mockImplementation((key: string | null) => {
+      if (key === null) return { data: undefined };
+      if (key === "/translation/languages")
+        return { data: undefined, error: new Error("offline") };
+      return { data: { configured: true, model: "m", search: false, translation: true } };
+    });
+    vi.stubGlobal("fetch", okFetch());
+    render(<AiSummary article={makeArticleDetail({ summary: "the original summary" })} />);
+
+    await userEvent.click(screen.getByText("translate summary"));
+
+    expect(
+      screen.getByText("Couldn’t load the language list. Check your connection and try again."),
+    ).toBeInTheDocument();
+  });
+
   it("renders nothing when neither model is configured", () => {
     stubStatus(false, { translation: false });
     const { container } = render(

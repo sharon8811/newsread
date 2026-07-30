@@ -56,6 +56,7 @@ _COPY_FIELDS = (
     "summary_model",
     "summary_generated_at",
     "summary_skipped_reason",
+    "summary_language",
 )
 
 

@@ -135,15 +135,19 @@ export default function TranslatableSummary({
         {body}
       </Markdown>
 
-      <LanguagePicker
-        visible={picking}
-        colors={colors}
-        languages={languages ?? []}
-        current={saved}
-        allowOneOff={Boolean(saved)}
-        onPick={translate}
-        onClose={() => setPicking(false)}
-      />
+      {/* Mounted only while open, so "make this my default" starts unticked
+          every time — a sticky tick would silently move the saved language on
+          a later one-off pick. */}
+      {picking && (
+        <LanguagePicker
+          colors={colors}
+          languages={languages ?? []}
+          current={saved}
+          allowOneOff={Boolean(saved)}
+          onPick={translate}
+          onClose={() => setPicking(false)}
+        />
+      )}
     </View>
   );
 }
@@ -163,7 +167,6 @@ function directionalStyles(base: MarkdownProps["style"], text: string): Markdown
 }
 
 function LanguagePicker({
-  visible,
   colors,
   languages,
   current,
@@ -171,7 +174,6 @@ function LanguagePicker({
   onPick,
   onClose,
 }: {
-  visible: boolean;
   colors: Palette;
   languages: TranslationLanguage[];
   current: string | null;
@@ -184,7 +186,7 @@ function LanguagePicker({
   const [makeDefault, setMakeDefault] = useState(false);
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+    <Modal visible animationType="slide" transparent onRequestClose={onClose}>
       <Pressable style={styles.scrim} onPress={onClose} />
       <View style={[styles.sheet, { backgroundColor: colors.background, borderColor: colors.border }]}>
         <View style={styles.sheetHeader}>
@@ -197,6 +199,11 @@ function LanguagePicker({
         <FlatList
           data={languages}
           keyExtractor={(item) => item.code}
+          ListEmptyComponent={
+            <Text style={[styles.empty, { color: colors.muted }]}>
+              Couldn't load the language list. Check your connection and try again.
+            </Text>
+          }
           renderItem={({ item }) => (
             <Pressable
               style={styles.row}
@@ -259,6 +266,7 @@ const styles = StyleSheet.create({
   },
   sheetTitle: { fontSize: 17, fontWeight: "700" },
   row: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 16, paddingVertical: 12 },
+  empty: { fontSize: 14, paddingHorizontal: 16, paddingVertical: 12 },
   defaultRow: {
     flexDirection: "row",
     alignItems: "center",
