@@ -321,6 +321,17 @@ describe("<AiSummary> translation", () => {
     await waitFor(() => expect(screen.getByText("ההצבעה נדחתה")).toBeInTheDocument());
   });
 
+  it("does not name the translation model in the reading view", async () => {
+    stubStatus(true, { translation: true });
+    authState.user = makeUser({ translation_language: "he" });
+    vi.stubGlobal("fetch", translatedFetch());
+    render(<AiSummary article={makeArticleDetail({ summary: "the original summary" })} />);
+
+    await userEvent.click(screen.getByText("translate to hebrew"));
+    await waitFor(() => expect(screen.getByText("ההצבעה נדחתה")).toBeInTheDocument());
+    expect(screen.queryByText("free-model")).not.toBeInTheDocument();
+  });
+
   it("says so when the language list can't be loaded", async () => {
     stubStatus(true, { translation: true });
     swrMock.mockImplementation((key: string | null) => {
