@@ -70,19 +70,29 @@ export default function RelatedArticles({ article }: { article: ArticleDetail })
             style={{ borderColor: "var(--line)", background: "var(--bg-raised)" }}
             onClick={() => router.push(`/article/${item.id}`)}
           >
-            <div className="flex items-center gap-2">
-              {!item.is_read && <span className="dot-unread shrink-0" />}
-              <p className="font-serif-nr min-w-0 flex-1 truncate text-lead">
+            {/* Sans, not the editorial serif: these are compact reference rows
+                rather than headlines, and they stay legible at phone widths
+                where a truncated serif line reads as noise. */}
+            <div className="flex items-start gap-2">
+              {!item.is_read && <span className="dot-unread mt-[7px] shrink-0" />}
+              <p className="line-clamp-2 min-w-0 flex-1 text-body-lg font-medium leading-snug">
                 {item.title}
+              </p>
+            </div>
+            {/* The tier badge rides the metadata line so the title keeps the
+                full width for both of its lines. */}
+            <div className="mt-1.5 flex items-center gap-2">
+              <p
+                className="font-mono-nr min-w-0 truncate text-label"
+                style={{ color: "var(--ink-dim)" }}
+              >
+                {item.feed_title}
+                {item.published_at ? ` · ${timeAgo(item.published_at)}` : ""}
               </p>
               {item.tier === "same_story" && (
                 <Badge tone="accent-strong" className="text-caption">SAME STORY</Badge>
               )}
             </div>
-            <p className="font-mono-nr mt-1 text-label" style={{ color: "var(--ink-faint)" }}>
-              {item.feed_title}
-              {item.published_at ? ` · ${timeAgo(item.published_at)}` : ""}
-            </p>
           </div>
         ))}
       </div>
