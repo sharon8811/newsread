@@ -593,6 +593,11 @@
               }
             ],
             "title": "Source"
+          },
+          "translation": {
+            "default": false,
+            "title": "Translation",
+            "type": "boolean"
           }
         },
         "required": [
@@ -3969,6 +3974,34 @@
         "title": "IntegrationStatusOut",
         "type": "object"
       },
+      "LanguageOut": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "native_name": {
+            "title": "Native Name",
+            "type": "string"
+          },
+          "rtl": {
+            "default": false,
+            "title": "Rtl",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "code",
+          "name",
+          "native_name"
+        ],
+        "title": "LanguageOut",
+        "type": "object"
+      },
       "LoginIn": {
         "properties": {
           "identifier": {
@@ -5204,6 +5237,71 @@
         "title": "TokenOut",
         "type": "object"
       },
+      "TranslateIn": {
+        "properties": {
+          "language": {
+            "maxLength": 16,
+            "minLength": 2,
+            "title": "Language",
+            "type": "string"
+          }
+        },
+        "required": [
+          "language"
+        ],
+        "title": "TranslateIn",
+        "type": "object"
+      },
+      "TranslationOut": {
+        "properties": {
+          "cached": {
+            "default": false,
+            "title": "Cached",
+            "type": "boolean"
+          },
+          "language": {
+            "title": "Language",
+            "type": "string"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "source_language": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Language"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "translated": {
+            "default": true,
+            "title": "Translated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "language",
+          "text"
+        ],
+        "title": "TranslationOut",
+        "type": "object"
+      },
       "UnseenCountOut": {
         "properties": {
           "count": {
@@ -5466,6 +5564,17 @@
             "title": "Name",
             "type": "string"
           },
+          "translation_language": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Translation Language"
+          },
           "username": {
             "title": "Username",
             "type": "string"
@@ -5556,6 +5665,18 @@
               }
             ],
             "title": "Image Prompt"
+          },
+          "translation_language": {
+            "anyOf": [
+              {
+                "maxLength": 16,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Translation Language"
           }
         },
         "title": "UserUpdateIn",
@@ -6700,6 +6821,64 @@
           }
         ],
         "summary": "Summarize Article",
+        "tags": [
+          "ai"
+        ]
+      }
+    },
+    "/api/articles/{article_id}/translate": {
+      "post": {
+        "description": "Translate an article's AI summary. Nothing about the article changes:\ntranslations live in their own table, so a failure here can never cost the\nreader the original summary.",
+        "operationId": "translate_summary_api_articles__article_id__translate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "article_id",
+            "required": true,
+            "schema": {
+              "title": "Article Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TranslateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TranslationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Translate Summary",
         "tags": [
           "ai"
         ]
@@ -10978,6 +11157,37 @@
         "summary": "Mark Seen",
         "tags": [
           "shares"
+        ]
+      }
+    },
+    "/api/translation/languages": {
+      "get": {
+        "description": "The target languages the pickers offer, so web and mobile agree on both\nthe list and how each language spells its own name.",
+        "operationId": "translation_languages_api_translation_languages_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/LanguageOut"
+                  },
+                  "title": "Response Translation Languages Api Translation Languages Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Translation Languages",
+        "tags": [
+          "ai"
         ]
       }
     },

@@ -8,6 +8,8 @@ export type User = {
   username: string;
   name: string;
   default_view: ViewMode;
+  // Default target language for translating AI summaries; null until picked.
+  translation_language?: string | null;
 };
 
 export type TokenOut = {
@@ -121,6 +123,25 @@ export type AiStatus = {
   model: string | null;
   search: boolean;
   search_provider: "searxng" | "tavily" | null;
+  // A model is configured for translating summaries (GET /ai/status).
+  translation?: boolean;
+};
+
+export type TranslationLanguage = {
+  code: string;
+  name: string;
+  native_name: string;
+  rtl: boolean;
+};
+
+export type SummaryTranslation = {
+  language: string;
+  text: string;
+  model: string | null;
+  cached: boolean;
+  // False when the summary was already in that language: `text` is the original.
+  translated: boolean;
+  source_language: string | null;
 };
 
 export type RelatedArticle = {

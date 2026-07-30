@@ -38,6 +38,7 @@ import AISettingsSection from "@/components/AISettingsSection";
 import BrowserHistorySettingsSection from "@/components/BrowserHistorySettingsSection";
 import NotInterestedSection from "@/components/NotInterestedSection";
 import ReadingSettingsSection from "@/components/ReadingSettingsSection";
+import TranslationSettingsSection from "@/components/TranslationSettingsSection";
 
 function PlatformIcon({ platform, size }: { platform: MessagingPlatform; size?: number }) {
   return platform === "slack" ? <SlackIcon size={size} /> : <TeamsIcon size={size} />;
@@ -424,6 +425,8 @@ function SettingsContent() {
         )}
 
         <ReadingSettingsSection />
+
+        <TranslationSettingsSection />
 
         <NotInterestedSection />
 

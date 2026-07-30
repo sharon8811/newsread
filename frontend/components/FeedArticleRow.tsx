@@ -30,7 +30,10 @@ export default function FeedArticleRow({
     >
       <div className="flex items-start gap-2">
         {!isRead && <span className="dot-unread mt-[7px]" />}
-        <p className="line-clamp-2 min-w-0 flex-1 text-body-lg font-medium leading-snug">
+        <p
+          dir="auto"
+          className="line-clamp-2 min-w-0 flex-1 text-body-lg font-medium leading-snug"
+        >
           {title}
         </p>
       </div>

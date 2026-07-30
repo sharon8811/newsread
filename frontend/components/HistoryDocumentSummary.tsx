@@ -154,7 +154,7 @@ export default function HistoryDocumentSummary({
         </div>
       ) : summary?.state === "ready" && summary.markdown ? (
         <>
-          <div className="summary-md mt-4">
+          <div className="summary-md mt-4" dir="auto">
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
               components={{

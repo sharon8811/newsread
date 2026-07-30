@@ -1,9 +1,10 @@
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import or_, select
 
 from ..deps import CurrentUser, DbSession
 from ..models import User
 from ..schemas import UserOut, UserPublic, UserUpdateIn
+from ..translation import language_for
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -23,6 +24,19 @@ async def update_me(
     # Presence-based PATCH: an explicit null means "back to unlimited".
     if "image_gen_monthly_limit" in body.model_fields_set:
         user.image_gen_monthly_limit = body.image_gen_monthly_limit
+    # Same: an explicit null clears the saved translation language, so the next
+    # translate asks again.
+    if "translation_language" in body.model_fields_set:
+        if body.translation_language is None:
+            user.translation_language = None
+        else:
+            language = language_for(body.translation_language)
+            if language is None:
+                raise HTTPException(status_code=422, detail="That language isn't available.")
+            # Store the canonical code, not what was typed: language_for accepts
+            # " HE ", but both clients match the saved preference against exact
+            # codes, so anything else would read back as "no language set".
+            user.translation_language = language.code
     session.add(user)
     await session.commit()
     await session.refresh(user)

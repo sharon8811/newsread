@@ -51,6 +51,7 @@ class UserOut(BaseModel):
     default_view: ViewMode = "cards"
     assisted_scroll: bool = True
     image_gen_monthly_limit: int | None = None  # None = unlimited
+    translation_language: str | None = None  # None = never picked one
 
     model_config = {"from_attributes": True}
 
@@ -63,6 +64,9 @@ class UserUpdateIn(BaseModel):
     # Monthly cap on image generations; explicit null = unlimited (this field
     # is applied only when present in the request — see users.update_me).
     image_gen_monthly_limit: int | None = Field(default=None, ge=0, le=100_000)
+    # Default target language for summary translation; explicit null clears it
+    # (also applied only when present — see users.update_me).
+    translation_language: str | None = Field(default=None, max_length=16)
 
 
 class UserPublic(BaseModel):
@@ -1018,6 +1022,7 @@ class AiStatusOut(BaseModel):
     search: bool = False  # web search/extract tools available to the Q&A agent
     search_provider: str | None = None  # "searxng" | "tavily" | None
     source: Literal["user", "system"] | None = None  # whose key interactive calls run on
+    translation: bool = False  # a model is configured for translating summaries
 
 
 AIProvider = Literal["openai", "anthropic", "custom"]
@@ -1124,6 +1129,28 @@ class SummaryOut(BaseModel):
     model: str | None
     generated_at: datetime | None
     skipped_reason: Literal["too_short", "needs_full_page"] | None = None
+
+
+class TranslateIn(BaseModel):
+    language: str = Field(min_length=2, max_length=16)
+
+
+class TranslationOut(BaseModel):
+    language: str
+    text: str
+    model: str | None = None
+    cached: bool = False
+    # False means the summary was already in the target language and `text` is
+    # the original — no model was called.
+    translated: bool = True
+    source_language: str | None = None
+
+
+class LanguageOut(BaseModel):
+    code: str
+    name: str
+    native_name: str
+    rtl: bool = False
 
 
 class SynthesisTimelineItem(BaseModel):

@@ -356,6 +356,11 @@ export type BrowserHistoryCitation = Schemas["BrowserHistoryCitationOut"];
 
 export type AiStatus = Schemas["AiStatusOut"];
 
+// ——— summary translation ———
+
+export type TranslationLanguage = Schemas["LanguageOut"];
+export type SummaryTranslation = Schemas["TranslationOut"];
+
 // ——— Bring-your-own LLM key ———
 
 export type AIProvider = NonNullable<Schemas["AISettingsOut"]["provider"]>;

@@ -19,6 +19,7 @@ import { api, imageSrc, sendReadBatch } from "@/lib/api";
 import { useArticles, type ArticleFilter } from "@/lib/articles";
 import { useAuth } from "@/lib/auth";
 import { timeAgo } from "@/lib/format";
+import { textDirection } from "@/lib/rtl";
 import { nextUnreadIndex, useReadingList } from "@/lib/readingList";
 import { usePalette, type Palette } from "@/lib/theme";
 import type { Article, ViewMode } from "@/lib/types";
@@ -52,13 +53,24 @@ function ListRow({ article, colors, onPress }: {
     >
       <View style={styles.rowBody}>
         <Text
-          style={[styles.rowTitle, { color: dim ? colors.muted : colors.text }]}
+          style={[
+            styles.rowTitle,
+            { color: dim ? colors.muted : colors.text },
+            textDirection(article.title),
+          ]}
           numberOfLines={2}
         >
           {article.title}
         </Text>
         {(article.summary_short || article.excerpt) !== "" && (
-          <Text style={[styles.rowExcerpt, { color: colors.muted }]} numberOfLines={2}>
+          <Text
+            style={[
+              styles.rowExcerpt,
+              { color: colors.muted },
+              textDirection(article.summary_short || article.excerpt),
+            ]}
+            numberOfLines={2}
+          >
             {article.summary_short || article.excerpt}
           </Text>
         )}
@@ -119,13 +131,24 @@ function CardRow({ article, colors, onPress }: {
           {article.is_saved ? " · Saved" : ""}
         </Text>
         <Text
-          style={[styles.cardTitle, { color: dim ? colors.muted : colors.text }]}
+          style={[
+            styles.cardTitle,
+            { color: dim ? colors.muted : colors.text },
+            textDirection(article.title),
+          ]}
           numberOfLines={3}
         >
           {article.title}
         </Text>
         {(article.summary_short || article.excerpt) !== "" && (
-          <Text style={[styles.cardExcerpt, { color: colors.muted }]} numberOfLines={3}>
+          <Text
+            style={[
+              styles.cardExcerpt,
+              { color: colors.muted },
+              textDirection(article.summary_short || article.excerpt),
+            ]}
+            numberOfLines={3}
+          >
             {article.summary_short || article.excerpt}
           </Text>
         )}

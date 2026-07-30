@@ -35,7 +35,14 @@ const panelProps = {
 };
 
 function makeStatus(over: Partial<AiStatus> = {}): AiStatus {
-  return { configured: true, model: "m", search: false, search_provider: null, ...over };
+  return {
+    configured: true,
+    model: "m",
+    search: false,
+    search_provider: null,
+    translation: false,
+    ...over,
+  };
 }
 
 function makeMsg(over: Partial<ChatMessage> = {}): ChatMessage {

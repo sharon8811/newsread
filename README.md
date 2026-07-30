@@ -32,6 +32,8 @@ It's fully self-hosted: your server, your database, your choice of LLM (any Open
 
 **Summaries that respect the source.** Every article gets AI teasers at three depths — a one-liner in the feed, a paragraph inline, a full Markdown summary in the article view — grounded in the full extracted text and built to send you to the original, not replace it. Ask the article follow-up questions and get answers that admit when the article doesn't say.
 
+Summaries are written in the source's own language; one tap translates the full summary into yours and keeps the original a tap away. Translations are cached per article and language, so the second reader asking for Hebrew pays nothing — cheap enough to run on a free model (`TRANSLATION_MODEL`).
+
 <p align="center">
   <img src="assets/readme/shot-summary.png" width="100%" alt="Article view with a Markdown AI summary: bold lead, bullet points, and inline code, above the original article text">
 </p>

@@ -40,6 +40,10 @@ class User(Base):
     image_prompt: Mapped[str | None] = mapped_column(Text)
     # Cap on image generations started per calendar month; NULL = unlimited.
     image_gen_monthly_limit: Mapped[int | None] = mapped_column(Integer)
+    # Default target language for translating AI summaries (a code from
+    # translation.LANGUAGES). NULL = never chosen one; the first translate
+    # asks and saves it.
+    translation_language: Mapped[str | None] = mapped_column(String(16))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -626,6 +630,11 @@ class Article(Base):
     summary: Mapped[str] = mapped_column(Text, default="", server_default="")
     summary_model: Mapped[str | None] = mapped_column(String(120))
     summary_generated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Language the summary was written in (summaries follow the source's
+    # language), detected at generation time so the translate action can skip
+    # a no-op call. NULL on rows summarized before this column existed —
+    # translation.py re-detects on demand for those.
+    summary_language: Mapped[str | None] = mapped_column(String(32))
     # Explicit terminal state for articles whose source is already shorter
     # than a useful summary. NULL means summary generation remains eligible.
     summary_skipped_reason: Mapped[str | None] = mapped_column(String(32))
@@ -643,6 +652,28 @@ class Article(Base):
     )
 
     feed: Mapped[Feed] = relationship(back_populates="articles")
+
+
+class SummaryTranslation(Base):
+    """One article's FULL summary rendered in one language. Global, not
+    per-user: the same translation serves everyone who asks for that language.
+
+    `source_hash` is the hash of the summary text this was translated from, so
+    a regenerated summary simply misses the cache instead of serving a stale
+    translation — the row is left behind, unread, rather than invalidated."""
+
+    __tablename__ = "summary_translations"
+    __table_args__ = (UniqueConstraint("article_id", "language", "source_hash"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    article_id: Mapped[int] = mapped_column(
+        ForeignKey("articles.id", ondelete="CASCADE"), index=True
+    )
+    language: Mapped[str] = mapped_column(String(16))
+    source_hash: Mapped[str] = mapped_column(String(64))
+    text: Mapped[str] = mapped_column(Text)
+    model: Mapped[str | None] = mapped_column(String(120))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class GeneratedImage(Base):

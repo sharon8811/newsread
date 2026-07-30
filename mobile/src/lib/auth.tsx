@@ -48,6 +48,9 @@ type AuthContextValue = {
   login: (identifier: string, password: string) => Promise<void>;
   register: (fields: RegisterFields) => Promise<void>;
   logout: () => Promise<void>;
+  /** Replace the signed-in user after a settings change (e.g. the saved
+   * translation language), so screens reading it re-render. */
+  updateUser: (user: User) => void;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -94,6 +97,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       status,
       serverUrl,
       user,
+      updateUser: setUser,
       setServer: async (input: string) => {
         const url = normalizeServerUrl(input);
         await probeServer(url);
