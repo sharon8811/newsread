@@ -10,7 +10,7 @@ import {
   type CoverageSynthesis,
 } from "@/lib/api";
 import { useAiStatus, useRelatedArticles } from "@/lib/queries";
-import { timeAgo } from "@/lib/format";
+import FeedArticleRow from "./FeedArticleRow";
 import { SparkleIcon } from "./icons";
 import Badge from "./ui/Badge";
 import ErrorText from "./ui/ErrorText";
@@ -64,26 +64,19 @@ export default function RelatedArticles({ article }: { article: ArticleDetail })
 
       <div className="mt-4 flex flex-col gap-2">
         {related.map((item) => (
-          <div
+          <FeedArticleRow
             key={item.id}
-            className="cursor-pointer rounded-md border p-3.5 transition-colors hover:bg-[var(--bg-hover)]"
-            style={{ borderColor: "var(--line)", background: "var(--bg-raised)" }}
-            onClick={() => router.push(`/article/${item.id}`)}
-          >
-            <div className="flex items-center gap-2">
-              {!item.is_read && <span className="dot-unread shrink-0" />}
-              <p className="font-serif-nr min-w-0 flex-1 truncate text-lead">
-                {item.title}
-              </p>
-              {item.tier === "same_story" && (
+            title={item.title}
+            feedTitle={item.feed_title}
+            publishedAt={item.published_at}
+            isRead={item.is_read}
+            badge={
+              item.tier === "same_story" ? (
                 <Badge tone="accent-strong" className="text-caption">SAME STORY</Badge>
-              )}
-            </div>
-            <p className="font-mono-nr mt-1 text-label" style={{ color: "var(--ink-faint)" }}>
-              {item.feed_title}
-              {item.published_at ? ` · ${timeAgo(item.published_at)}` : ""}
-            </p>
-          </div>
+              ) : undefined
+            }
+            onClick={() => router.push(`/article/${item.id}`)}
+          />
         ))}
       </div>
 

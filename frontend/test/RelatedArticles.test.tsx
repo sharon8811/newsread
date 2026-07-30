@@ -58,6 +58,29 @@ describe("<RelatedArticles>", () => {
     expect(container.querySelectorAll(".dot-unread").length).toBe(1);
   });
 
+  it("wraps titles to two lines and keeps the timestamp out of the truncating feed name", () => {
+    stubSWR([makeRelatedArticle({ tier: "same_story" })]);
+    render(<RelatedArticles article={makeArticleDetail()} />);
+
+    // Titles clamp at two lines instead of truncating after a few words.
+    const title = screen.getByText("Related headline");
+    expect(title).toHaveClass("line-clamp-2");
+    expect(title).not.toHaveClass("truncate");
+
+    // Only the feed name truncates: a long feed title must not push the time
+    // out of the row.
+    const feed = screen.getByText("Other Feed");
+    const time = screen.getByText(/ago$/);
+    expect(feed).toHaveClass("truncate");
+    expect(time).not.toBe(feed);
+    expect(time).toHaveClass("shrink-0");
+
+    // The tier badge rides the metadata line, not the title line.
+    const badge = screen.getByText("SAME STORY");
+    expect(badge.parentElement).toContainElement(feed);
+    expect(badge.parentElement).not.toContainElement(title);
+  });
+
   it("navigates on row click", async () => {
     stubSWR([makeRelatedArticle({ id: 42 })]);
     render(<RelatedArticles article={makeArticleDetail()} />);
