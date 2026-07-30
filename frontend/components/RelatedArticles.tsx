@@ -133,7 +133,7 @@ export default function RelatedArticles({ article }: { article: ArticleDetail })
             </span>
           </div>
 
-          <div className="summary-md mt-3.5">
+          <div className="summary-md mt-3.5" dir="auto">
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{synthesis.overview}</ReactMarkdown>
           </div>
 
@@ -161,7 +161,7 @@ export default function RelatedArticles({ article }: { article: ArticleDetail })
             </div>
           )}
           {!synthesis.timeline && synthesis.timeline_raw && (
-            <div className="summary-md mt-4">
+            <div className="summary-md mt-4" dir="auto">
               <p className="mono-label" style={{ color: "var(--accent)" }}>
                 Timeline
               </p>
@@ -172,7 +172,7 @@ export default function RelatedArticles({ article }: { article: ArticleDetail })
           )}
 
           {synthesis.perspectives && (
-            <div className="summary-md mt-4">
+            <div className="summary-md mt-4" dir="auto">
               <p className="mono-label" style={{ color: "var(--accent)" }}>
                 Perspectives
               </p>

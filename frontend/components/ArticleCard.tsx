@@ -111,6 +111,7 @@ function ArticleCard({
         </p>
 
         <h3
+          dir="auto"
           className="font-serif-nr mt-2 text-title leading-snug sm:text-title"
           style={{
             color: article.is_read ? "var(--ink-dim)" : "var(--ink)",
@@ -122,6 +123,7 @@ function ArticleCard({
 
         {summary && (
           <p
+            dir="auto"
             className="mt-2 line-clamp-3 text-body-lg leading-relaxed"
             style={{ color: "var(--ink-dim)" }}
           >

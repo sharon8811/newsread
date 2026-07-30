@@ -99,6 +99,10 @@ async def generate_summaries(
     article.summary_short = short
     article.summary_medium = medium
     article.summary = full
+    # Summaries are written in the source's language, so this is what the
+    # translate action compares its target against. Detected here (in-process,
+    # no LLM call) so it is stored alongside the text it describes.
+    article.summary_language = llm.detect_language(full)
     article.summary_model = config.model if config is not None else settings.openai_model
     article.summary_generated_at = datetime.now(UTC)
     article.summary_skipped_reason = None

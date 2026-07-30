@@ -147,6 +147,18 @@ export function RefreshIcon(p: IconProps) {
   );
 }
 
+export function TranslateIcon(p: IconProps) {
+  return (
+    <svg {...base(p)}>
+      <path d="M4 5h10" />
+      <path d="M9 3v2c0 5-2.5 8-6 9" />
+      <path d="M6.5 11c1.5 2 3.5 3.5 6 4.5" />
+      <path d="M12 21l4.5-11 4.5 11" />
+      <path d="M13.8 17.5h5.4" />
+    </svg>
+  );
+}
+
 export function CheckIcon(p: IconProps) {
   return (
     <svg {...base(p)}>

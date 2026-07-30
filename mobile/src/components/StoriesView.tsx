@@ -10,6 +10,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { imageSrc } from "@/lib/api";
 import { timeAgo } from "@/lib/format";
+import { textDirection } from "@/lib/rtl";
 import type { Article } from "@/lib/types";
 
 const SCRIM = "rgba(8, 10, 14, 0.55)";
@@ -100,9 +101,9 @@ export default function StoriesView({ articles, onOpen, onMarkRead, onExit }: Pr
             {article.feed_title}
             {article.published_at ? ` · ${timeAgo(article.published_at)}` : ""}
           </Text>
-          <Text style={styles.title}>{article.title}</Text>
+          <Text style={[styles.title, textDirection(article.title)]}>{article.title}</Text>
           {blurb !== "" && (
-            <Text style={styles.blurb} numberOfLines={6}>
+            <Text style={[styles.blurb, textDirection(blurb)]} numberOfLines={6}>
               {blurb}
             </Text>
           )}

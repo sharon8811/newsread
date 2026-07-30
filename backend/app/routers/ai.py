@@ -8,7 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from .. import crypto, llm, qa_agent
+from .. import crypto, llm, qa_agent, translation
 from ..access import accessible_article
 from ..deps import CurrentUser, DbSession
 from ..enrichers import badge_for
@@ -39,6 +39,7 @@ from ..schemas import (
     AiStatusOut,
     AskIn,
     DiscussionAskIn,
+    LanguageOut,
     MessageOut,
     ShareMessageIn,
     ShareMessageOut,
@@ -46,6 +47,8 @@ from ..schemas import (
     SynthesisOut,
     SynthesisSourceOut,
     SynthesisTimelineItem,
+    TranslateIn,
+    TranslationOut,
 )
 from ..summarizer import SummarySkipped, ThinContentError, generate_summaries
 from .articles import related_articles
@@ -85,6 +88,7 @@ async def ai_status(
         search=qa_agent.search_enabled(),
         search_provider=qa_agent.search_provider(),
         source=("user" if config.user_owned else "system") if config else None,
+        translation=llm.translation_config() is not None,
     )
 
 
@@ -130,6 +134,52 @@ def _summary_out(article: Article) -> SummaryOut:
         generated_at=article.summary_generated_at,
         skipped_reason=article.summary_skipped_reason,
     )
+
+
+@router.get("/translation/languages", response_model=list[LanguageOut])
+async def translation_languages(user: CurrentUser):
+    """The target languages the pickers offer, so web and mobile agree on both
+    the list and how each language spells its own name."""
+    return [LanguageOut(**vars(language)) for language in translation.LANGUAGES]
+
+
+@router.post("/articles/{article_id}/translate", response_model=TranslationOut)
+async def translate_summary(
+    article_id: int,
+    body: TranslateIn,
+    user: CurrentUser,
+    session: DbSession,
+):
+    """Translate an article's AI summary. Nothing about the article changes:
+    translations live in their own table, so a failure here can never cost the
+    reader the original summary."""
+    article = await accessible_article(session, user.id, article_id)
+    config = llm.translation_config()
+    if config is None:
+        raise HTTPException(
+            status_code=503,
+            detail="No translation model is configured. Set NEWSREAD_TRANSLATION_MODEL "
+            "(and its key) or the server-wide OPENAI_* settings.",
+        )
+    try:
+        async with llm.usage_tracker(
+            session,
+            user_id=user.id,
+            feature="translation",
+            config=config,
+            log_label=f"Translation of article {article.id} into {body.language}",
+            passthrough=(translation.UnknownLanguage, translation.NothingToTranslate),
+        ) as usage:
+            result = await translation.translate_summary(
+                session, article, body.language, config=config, usage=usage
+            )
+    except translation.UnknownLanguage:
+        raise HTTPException(status_code=422, detail="That language isn't available.") from None
+    except translation.NothingToTranslate:
+        raise HTTPException(
+            status_code=422, detail="This article has no summary to translate yet."
+        ) from None
+    return TranslationOut(**vars(result))
 
 
 @router.post("/ai/share-message", response_model=ShareMessageOut)

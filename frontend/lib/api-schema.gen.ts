@@ -393,6 +393,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/articles/{article_id}/translate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Translate Summary
+         * @description Translate an article's AI summary. Nothing about the article changes:
+         *     translations live in their own table, so a failure here can never cost the
+         *     reader the original summary.
+         */
+        post: operations["translate_summary_api_articles__article_id__translate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/login": {
         parameters: {
             query?: never;
@@ -1811,6 +1833,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/translation/languages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Translation Languages
+         * @description The target languages the pickers offer, so web and mobile agree on both
+         *     the list and how each language spells its own name.
+         */
+        get: operations["translation_languages_api_translation_languages_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/usage/events": {
         parameters: {
             query?: never;
@@ -2097,6 +2140,11 @@ export interface components {
             search_provider?: string | null;
             /** Source */
             source?: ("user" | "system") | null;
+            /**
+             * Translation
+             * @default false
+             */
+            translation: boolean;
         };
         /** ArticleDetail */
         ArticleDetail: {
@@ -3316,6 +3364,20 @@ export interface components {
             /** Workspace Name */
             workspace_name?: string | null;
         };
+        /** LanguageOut */
+        LanguageOut: {
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /** Native Name */
+            native_name: string;
+            /**
+             * Rtl
+             * @default false
+             */
+            rtl: boolean;
+        };
         /** LoginIn */
         LoginIn: {
             /** Identifier */
@@ -3805,6 +3867,32 @@ export interface components {
             token_type: string;
             user: components["schemas"]["UserOut"];
         };
+        /** TranslateIn */
+        TranslateIn: {
+            /** Language */
+            language: string;
+        };
+        /** TranslationOut */
+        TranslationOut: {
+            /**
+             * Cached
+             * @default false
+             */
+            cached: boolean;
+            /** Language */
+            language: string;
+            /** Model */
+            model?: string | null;
+            /** Source Language */
+            source_language?: string | null;
+            /** Text */
+            text: string;
+            /**
+             * Translated
+             * @default true
+             */
+            translated: boolean;
+        };
         /** UnseenCountOut */
         UnseenCountOut: {
             /** Count */
@@ -3916,6 +4004,8 @@ export interface components {
             image_gen_monthly_limit?: number | null;
             /** Name */
             name: string;
+            /** Translation Language */
+            translation_language?: string | null;
             /** Username */
             username: string;
         };
@@ -3938,6 +4028,8 @@ export interface components {
             image_gen_monthly_limit?: number | null;
             /** Image Prompt */
             image_prompt?: string | null;
+            /** Translation Language */
+            translation_language?: string | null;
         };
         /** ValidationError */
         ValidationError: {
@@ -4594,6 +4686,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SummaryOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    translate_summary_api_articles__article_id__translate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                article_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TranslateIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TranslationOut"];
                 };
             };
             /** @description Validation Error */
@@ -7316,6 +7443,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    translation_languages_api_translation_languages_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LanguageOut"][];
                 };
             };
         };

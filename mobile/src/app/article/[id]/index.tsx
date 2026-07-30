@@ -13,16 +13,17 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
-import Markdown from "react-native-markdown-display";
 import RenderHTML, { type MixedStyleDeclaration } from "react-native-render-html";
 import useSWR from "swr";
 
 import EntityChips from "@/components/EntityChips";
 import GeneratingImage from "@/components/GeneratingImage";
 import RelatedCoverage from "@/components/RelatedCoverage";
+import TranslatableSummary from "@/components/TranslatableSummary";
 import { api, imageSrc } from "@/lib/api";
 import { discussionRefFor, fetchHNItem } from "@/lib/discussions";
 import { timeAgo } from "@/lib/format";
+import { textDirection } from "@/lib/rtl";
 import { useReadingTimer } from "@/lib/useReadingTimer";
 import { usePalette, type Palette } from "@/lib/theme";
 import type { AiStatus, ArticleDetail } from "@/lib/types";
@@ -176,7 +177,9 @@ export default function ArticleScreen() {
         <ActivityIndicator style={styles.center} color={colors.tint} />
       ) : (
         <ScrollView contentContainerStyle={styles.content}>
-          <Text style={[styles.title, { color: colors.text }]}>{data.title}</Text>
+          <Text style={[styles.title, { color: colors.text }, textDirection(data.title)]}>
+            {data.title}
+          </Text>
           <Text style={[styles.byline, { color: colors.muted }]}>
             {[data.feed_title, data.author, timeAgo(data.published_at)]
               .filter(Boolean)
@@ -199,24 +202,30 @@ export default function ArticleScreen() {
           ) : null}
 
           {data.summary !== "" && (
-            <View style={[styles.summary, { borderColor: colors.border }]}>
-              <Text style={[styles.summaryLabel, { color: colors.muted }]}>AI summary</Text>
-              <Markdown
-                style={summaryStyles}
-                onLinkPress={(url) => {
-                  openLink(url);
-                  return false;
-                }}
-              >
-                {asMarkdown(data.summary)}
-              </Markdown>
-            </View>
+            <TranslatableSummary
+              articleId={data.id}
+              summary={asMarkdown(data.summary)}
+              colors={colors}
+              markdownStyles={summaryStyles}
+              translatable={ai?.translation === true}
+              onLinkPress={(url) => {
+                openLink(url);
+                return false;
+              }}
+            />
           )}
 
           <RenderHTML
             contentWidth={width - 32}
             source={{ html: data.content_html || `<p>${data.excerpt}</p>` }}
-            baseStyle={{ color: colors.text, fontSize: 17, lineHeight: 26 }}
+            // The article body carries the publisher's own direction; the
+            // title is the reliable sample for it (the HTML starts with tags).
+            baseStyle={{
+              color: colors.text,
+              fontSize: 17,
+              lineHeight: 26,
+              ...textDirection(data.title),
+            }}
             tagsStyles={tagsStyles}
             renderersProps={{ a: { onPress: (_event, href) => openLink(href) } }}
             defaultTextProps={{ selectable: true }}
@@ -273,13 +282,6 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     marginBottom: 16,
     overflow: "hidden",
-  },
-  summary: { borderWidth: 1, borderRadius: 12, padding: 14, marginBottom: 16, gap: 8 },
-  summaryLabel: {
-    fontSize: 12,
-    fontWeight: "600",
-    textTransform: "uppercase",
-    letterSpacing: 0.6,
   },
   links: { marginTop: 24, paddingTop: 16, borderTopWidth: StyleSheet.hairlineWidth, gap: 14 },
   linkRow: { flexDirection: "row", alignItems: "center", gap: 8 },

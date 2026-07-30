@@ -2,13 +2,34 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import AiSummary from "@/components/AiSummary";
-import { makeArticleDetail } from "./fixtures";
+import type { User } from "@/lib/api";
+import { makeArticleDetail, makeUser } from "./fixtures";
 
-const { swrMock, mutateMock } = vi.hoisted(() => ({ swrMock: vi.fn(), mutateMock: vi.fn() }));
+const { swrMock, mutateMock, updateUserMock } = vi.hoisted(() => ({
+  swrMock: vi.fn(),
+  mutateMock: vi.fn(),
+  updateUserMock: vi.fn(),
+}));
 vi.mock("swr", () => ({ default: swrMock, mutate: mutateMock }));
 
-function stubStatus(configured: boolean) {
-  swrMock.mockReturnValue({ data: { configured, model: "m", search: false, search_provider: null } });
+const authState: { user: User | null } = { user: makeUser() };
+vi.mock("@/lib/auth", () => ({
+  useAuth: () => ({ user: authState.user, updateUser: updateUserMock }),
+}));
+
+const LANGUAGES = [
+  { code: "he", name: "Hebrew", native_name: "עברית", rtl: true },
+  { code: "fr", name: "French", native_name: "Français", rtl: false },
+];
+
+/** The component reads two SWR keys (status, languages), so the mock answers
+ * by key rather than returning one shape for every call. */
+function stubStatus(configured: boolean, { translation = false } = {}) {
+  swrMock.mockImplementation((key: string | null) => {
+    if (key === null) return { data: undefined }; // SWR skips null keys
+    if (key === "/translation/languages") return { data: LANGUAGES };
+    return { data: { configured, model: "m", search: false, search_provider: null, translation } };
+  });
 }
 
 function okFetch() {
@@ -19,6 +40,8 @@ describe("<AiSummary>", () => {
   beforeEach(() => {
     swrMock.mockReset();
     mutateMock.mockClear();
+    updateUserMock.mockClear();
+    authState.user = makeUser();
   });
 
   it("renders nothing when AI is not configured", () => {
@@ -116,5 +139,177 @@ describe("<AiSummary>", () => {
     await waitFor(() => expect(screen.getByText("LLM failed")).toBeInTheDocument());
     await userEvent.click(screen.getByText("Try again"));
     await waitFor(() => expect(mutateMock).toHaveBeenCalled());
+  });
+});
+
+describe("<AiSummary> translation", () => {
+  beforeEach(() => {
+    swrMock.mockReset();
+    mutateMock.mockClear();
+    updateUserMock.mockClear();
+    authState.user = makeUser();
+  });
+
+  function translatedFetch(text = "ההצבעה נדחתה") {
+    return vi.fn().mockImplementation((url: string) => {
+      if (String(url).includes("/translate"))
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            language: "he",
+            text,
+            model: "free-model",
+            cached: false,
+            translated: true,
+            source_language: "English",
+          }),
+          headers: new Headers(),
+        });
+      return Promise.resolve({ ok: true, status: 200, json: async () => makeUser({ translation_language: "he" }), headers: new Headers() });
+    });
+  }
+
+  it("offers no translate control when no translation model is configured", () => {
+    stubStatus(true, { translation: false });
+    vi.stubGlobal("fetch", okFetch());
+    render(<AiSummary article={makeArticleDetail({ summary: "the summary" })} />);
+    expect(screen.queryByText("translate summary")).not.toBeInTheDocument();
+  });
+
+  it("asks for a language the first time, then translates and saves the default", async () => {
+    stubStatus(true, { translation: true });
+    const fetchMock = translatedFetch();
+    vi.stubGlobal("fetch", fetchMock);
+    render(<AiSummary article={makeArticleDetail({ summary: "the original summary" })} />);
+
+    await userEvent.click(screen.getByText("translate summary"));
+    await userEvent.click(screen.getByText("Hebrew"));
+
+    await waitFor(() => expect(screen.getByText("ההצבעה נדחתה")).toBeInTheDocument());
+    const translateCall = fetchMock.mock.calls.find(([u]) => String(u).includes("/translate"))!;
+    expect(JSON.parse(translateCall[1].body)).toEqual({ language: "he" });
+    // ...and the choice becomes the reader's default, so it is asked only once.
+    const patchCall = fetchMock.mock.calls.find(([u]) => String(u).includes("/users/me"))!;
+    expect(JSON.parse(patchCall[1].body)).toEqual({ translation_language: "he" });
+    expect(updateUserMock).toHaveBeenCalled();
+  });
+
+  it("uses the saved language without asking again", async () => {
+    stubStatus(true, { translation: true });
+    authState.user = makeUser({ translation_language: "he" });
+    const fetchMock = translatedFetch();
+    vi.stubGlobal("fetch", fetchMock);
+    render(<AiSummary article={makeArticleDetail({ summary: "the original summary" })} />);
+
+    await userEvent.click(screen.getByText("translate to hebrew"));
+
+    await waitFor(() => expect(screen.getByText("ההצבעה נדחתה")).toBeInTheDocument());
+    expect(screen.queryByText("Choose a language")).not.toBeInTheDocument();
+    // A repeat translation must not re-save the default it already matches.
+    expect(fetchMock.mock.calls.some(([u]) => String(u).includes("/users/me"))).toBe(false);
+  });
+
+  it("switches back to the original and forward again", async () => {
+    stubStatus(true, { translation: true });
+    authState.user = makeUser({ translation_language: "he" });
+    vi.stubGlobal("fetch", translatedFetch());
+    render(<AiSummary article={makeArticleDetail({ summary: "the original summary" })} />);
+
+    await userEvent.click(screen.getByText("translate to hebrew"));
+    await waitFor(() => expect(screen.getByText("ההצבעה נדחתה")).toBeInTheDocument());
+
+    await userEvent.click(screen.getByText("show original"));
+    expect(screen.getByText("the original summary")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByText("show hebrew"));
+    expect(screen.getByText("ההצבעה נדחתה")).toBeInTheDocument();
+  });
+
+  it("keeps the original summary when the translation fails", async () => {
+    stubStatus(true, { translation: true });
+    authState.user = makeUser({ translation_language: "he" });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 502,
+        json: async () => ({ detail: "The LLM request failed" }),
+        headers: new Headers(),
+      }),
+    );
+    render(<AiSummary article={makeArticleDetail({ summary: "the original summary" })} />);
+
+    await userEvent.click(screen.getByText("translate to hebrew"));
+
+    await waitFor(() => expect(screen.getByText("The LLM request failed")).toBeInTheDocument());
+    expect(screen.getByText("the original summary")).toBeInTheDocument();
+  });
+
+  it("says so when the summary is already in the target language", async () => {
+    stubStatus(true, { translation: true });
+    authState.user = makeUser({ translation_language: "he" });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          language: "he",
+          text: "הסיכום המקורי",
+          model: null,
+          cached: false,
+          translated: false,
+          source_language: "Hebrew",
+        }),
+        headers: new Headers(),
+      }),
+    );
+    render(<AiSummary article={makeArticleDetail({ summary: "הסיכום המקורי" })} />);
+
+    await userEvent.click(screen.getByText("translate to hebrew"));
+
+    await waitFor(() =>
+      expect(screen.getByText("This summary is already in Hebrew.")).toBeInTheDocument(),
+    );
+  });
+
+  it("lets the reader pick another language without changing the default", async () => {
+    stubStatus(true, { translation: true });
+    authState.user = makeUser({ translation_language: "he" });
+    const fetchMock = translatedFetch("la traduction");
+    vi.stubGlobal("fetch", fetchMock);
+    render(<AiSummary article={makeArticleDetail({ summary: "the original summary" })} />);
+
+    await userEvent.click(screen.getByText("another language"));
+    await userEvent.click(screen.getByText("French"));
+
+    await waitFor(() => expect(screen.getByText("la traduction")).toBeInTheDocument());
+    expect(fetchMock.mock.calls.some(([u]) => String(u).includes("/users/me"))).toBe(false);
+  });
+
+  it("can promote a one-off language to the default", async () => {
+    stubStatus(true, { translation: true });
+    authState.user = makeUser({ translation_language: "he" });
+    const fetchMock = translatedFetch("la traduction");
+    vi.stubGlobal("fetch", fetchMock);
+    render(<AiSummary article={makeArticleDetail({ summary: "the original summary" })} />);
+
+    await userEvent.click(screen.getByText("another language"));
+    await userEvent.click(screen.getByLabelText("Make this my default language"));
+    await userEvent.click(screen.getByText("French"));
+
+    await waitFor(() => expect(screen.getByText("la traduction")).toBeInTheDocument());
+    const patchCall = fetchMock.mock.calls.find(([u]) => String(u).includes("/users/me"))!;
+    expect(JSON.parse(patchCall[1].body)).toEqual({ translation_language: "fr" });
+  });
+
+  it("renders the summary with automatic text direction", () => {
+    stubStatus(true, { translation: true });
+    vi.stubGlobal("fetch", okFetch());
+    const { container } = render(
+      <AiSummary article={makeArticleDetail({ summary: "the summary" })} />,
+    );
+    expect(container.querySelector(".summary-md")).toHaveAttribute("dir", "auto");
   });
 });

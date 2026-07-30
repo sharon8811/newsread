@@ -49,6 +49,24 @@ async def test_generate_summaries_success(session, monkeypatch):
     assert art.summary_skipped_reason is None
 
 
+async def test_generate_summaries_stamps_the_summary_language(session, monkeypatch):
+    """Detected once, at generation time, so the translate action can tell a
+    Hebrew summary from an English one without paying for a model call."""
+    art = await _make_article(session)
+
+    async def fake_ensure(session_, article, allow_refetch=True):
+        return "x" * 500
+
+    async def fake_summarize(title, text, **kwargs):
+        return ("קצר", "בינוני", "ההצבעה בכנסת נדחתה בשבוע, והקואליציה מחפשת רוב חדש.")
+
+    monkeypatch.setattr(summarizer, "ensure_full_text", fake_ensure)
+    monkeypatch.setattr(summarizer.llm, "summarize", fake_summarize)
+
+    await generate_summaries(session, art)
+    assert art.summary_language == "Hebrew"
+
+
 async def test_generate_summaries_passes_feed_instructions_and_transcript_kind(
     session, monkeypatch
 ):

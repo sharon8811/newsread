@@ -25,6 +25,7 @@ export const keys = {
 
   aiStatus: "/ai/status",
   aiSettings: "/ai/settings",
+  translationLanguages: "/translation/languages",
 
   sharesSent: "/shares/sent",
   sharesReceived: "/shares/received",

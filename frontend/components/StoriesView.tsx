@@ -278,6 +278,7 @@ export default function StoriesView({
             {a.is_read ? " · read" : ""}
           </p>
           <h2
+            dir="auto"
             className="font-serif-nr text-[28px] leading-tight sm:text-[34px]"
             style={{ color: "var(--ink)" }}
           >
@@ -290,6 +291,7 @@ export default function StoriesView({
           )}
           {summaryText && (
             <p
+              dir="auto"
               className="mt-3 line-clamp-6 text-body-lg leading-relaxed"
               style={{ color: "var(--ink-dim)" }}
             >

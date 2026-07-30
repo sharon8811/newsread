@@ -159,6 +159,27 @@ class Settings(BaseSettings):
         ),
     )
 
+    # Server-wide model for translating AI summaries into the reader's
+    # language. Deliberately its own endpoint: translation is a cheap,
+    # high-volume, globally cached job that suits a free model, while
+    # summarization wants the good one. Unset model -> translation runs on the
+    # main openai_* model, so a self-hoster gets the feature with no extra
+    # config. The base URL defaults to OpenRouter because that is where the
+    # free models the feature is designed around live.
+    translation_base_url: str = Field(
+        default="https://openrouter.ai/api/v1",
+        validation_alias=AliasChoices("NEWSREAD_TRANSLATION_BASE_URL", "TRANSLATION_BASE_URL"),
+    )
+    translation_model: str = Field(
+        default="",
+        validation_alias=AliasChoices("NEWSREAD_TRANSLATION_MODEL", "TRANSLATION_MODEL"),
+    )
+    # Falls back to openai_api_key when the endpoint is the same one.
+    translation_api_key: str = Field(
+        default="",
+        validation_alias=AliasChoices("NEWSREAD_TRANSLATION_API_KEY", "TRANSLATION_API_KEY"),
+    )
+
     # YouTube channel feeds. The key is optional: handles and channel URLs
     # resolve by reading the channel page's <link rel="alternate"> feed tag.
     # With a key, handles resolve through channels.list and a plain display
