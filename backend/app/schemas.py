@@ -688,6 +688,11 @@ class ArticleListItem(BaseModel):
     summary: str = ""
     summary_short: str = ""
     summary_medium: str = ""
+    # This article reads right to left. Server-side because it comes from the
+    # language detector, not from guessing at the text: a Hebrew headline that
+    # opens with "OpenAI" is still Hebrew. False when the language isn't known
+    # yet — the clients fall back to the browser's own guess there.
+    rtl: bool = False
     entities: list[EntityBadge] = []
 
 
@@ -1138,6 +1143,9 @@ class TranslateIn(BaseModel):
 class TranslationOut(BaseModel):
     language: str
     text: str
+    # The target language's writing direction, so the client sets it from the
+    # language rather than inferring it from the text.
+    rtl: bool = False
     model: str | None = None
     cached: bool = False
     # False means the summary was already in the target language and `text` is

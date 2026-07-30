@@ -700,6 +700,11 @@
             ],
             "title": "Published At"
           },
+          "rtl": {
+            "default": false,
+            "title": "Rtl",
+            "type": "boolean"
+          },
           "summary": {
             "default": "",
             "title": "Summary",
@@ -856,6 +861,11 @@
               }
             ],
             "title": "Published At"
+          },
+          "rtl": {
+            "default": false,
+            "title": "Rtl",
+            "type": "boolean"
           },
           "summary": {
             "default": "",
@@ -5273,6 +5283,11 @@
               }
             ],
             "title": "Model"
+          },
+          "rtl": {
+            "default": false,
+            "title": "Rtl",
+            "type": "boolean"
           },
           "source_language": {
             "anyOf": [

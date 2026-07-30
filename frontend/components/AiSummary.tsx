@@ -15,6 +15,7 @@ import {
 } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { keys } from "@/lib/keys";
+import { dirOf } from "@/lib/dir";
 import { RefreshIcon, SparkleIcon, TranslateIcon } from "./icons";
 import LanguagePickerModal from "./LanguagePickerModal";
 import ErrorText from "./ui/ErrorText";
@@ -250,10 +251,11 @@ function SummaryBody({ article, translatable }: { article: ArticleDetail; transl
         </p>
       )}
 
-      {/* dir="auto" so a right-to-left summary — the original from a Hebrew or
-          Arabic feed, or a translation into one — lays itself out correctly
-          inside the otherwise left-to-right page. */}
-      <div className="summary-md mt-3.5" dir="auto">
+      {/* Direction comes from a language, never from the text: a translation
+          knows its target language, and the article carries the one the
+          detector found. Guessing from the text gets "OpenAI משיקה…" wrong —
+          a Hebrew sentence that opens with a Latin brand name. */}
+      <div className="summary-md mt-3.5" dir={dirOf(showingTranslation ? translation.rtl : article.rtl)}>
         <ReactMarkdown remarkPlugins={[remarkGfm]}>{asMarkdown(body)}</ReactMarkdown>
       </div>
 

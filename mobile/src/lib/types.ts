@@ -87,6 +87,9 @@ export type Article = {
   summary: string;
   summary_short: string;
   summary_medium: string;
+  // This article reads right to left, per the server's language detection.
+  // React Native has no dir="auto", so this is how direction gets here.
+  rtl: boolean;
   entities: EntityBadge[];
 };
 
@@ -137,6 +140,8 @@ export type TranslationLanguage = {
 export type SummaryTranslation = {
   language: string;
   text: string;
+  /** The target language's writing direction, decided server-side. */
+  rtl: boolean;
   model: string | null;
   cached: boolean;
   // False when the summary was already in that language: `text` is the original.

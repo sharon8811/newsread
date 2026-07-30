@@ -1,5 +1,6 @@
 "use client";
 
+import { dirOf } from "@/lib/dir";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import useSWR from "swr";
@@ -278,7 +279,7 @@ export default function StoriesView({
             {a.is_read ? " · read" : ""}
           </p>
           <h2
-            dir="auto"
+            dir={dirOf(a.rtl)}
             className="font-serif-nr text-[28px] leading-tight sm:text-[34px]"
             style={{ color: "var(--ink)" }}
           >
@@ -291,7 +292,7 @@ export default function StoriesView({
           )}
           {summaryText && (
             <p
-              dir="auto"
+              dir={dirOf(a.rtl)}
               className="mt-3 line-clamp-6 text-body-lg leading-relaxed"
               style={{ color: "var(--ink-dim)" }}
             >

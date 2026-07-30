@@ -2186,6 +2186,11 @@ export interface components {
             /** Published At */
             published_at: string | null;
             /**
+             * Rtl
+             * @default false
+             */
+            rtl: boolean;
+            /**
              * Summary
              * @default
              */
@@ -2246,6 +2251,11 @@ export interface components {
             is_saved: boolean;
             /** Published At */
             published_at: string | null;
+            /**
+             * Rtl
+             * @default false
+             */
+            rtl: boolean;
             /**
              * Summary
              * @default
@@ -3883,6 +3893,11 @@ export interface components {
             language: string;
             /** Model */
             model?: string | null;
+            /**
+             * Rtl
+             * @default false
+             */
+            rtl: boolean;
             /** Source Language */
             source_language?: string | null;
             /** Text */

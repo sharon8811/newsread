@@ -358,12 +358,53 @@ describe("<AiSummary> translation", () => {
     expect(container.firstChild).toBeNull();
   });
 
-  it("renders the summary with automatic text direction", () => {
+  it("lays the original out in the article's own direction", () => {
     stubStatus(true, { translation: true });
     vi.stubGlobal("fetch", okFetch());
-    const { container } = render(
-      <AiSummary article={makeArticleDetail({ summary: "the summary" })} />,
+    const { container, rerender } = render(
+      <AiSummary article={makeArticleDetail({ summary: "the summary", rtl: false })} />,
     );
-    expect(container.querySelector(".summary-md")).toHaveAttribute("dir", "auto");
+    expect(container.querySelector(".summary-md")).toHaveAttribute("dir", "ltr");
+
+    rerender(<AiSummary article={makeArticleDetail({ summary: "הסיכום", rtl: true })} />);
+    expect(container.querySelector(".summary-md")).toHaveAttribute("dir", "rtl");
+  });
+
+  it("lays a translation out in its target language's direction", async () => {
+    // The reported bug: a Hebrew translation that opens with a Latin brand
+    // name ("OpenAI משיקה…") rendered left to right, because the direction was
+    // inferred from the text's first strong character rather than the language.
+    stubStatus(true, { translation: true });
+    authState.user = makeUser({ translation_language: "he" });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          language: "he",
+          text: "OpenAI משיקה יכולות פרסום ישירות בתוך ChatGPT",
+          rtl: true,
+          model: "free-model",
+          cached: false,
+          translated: true,
+          source_language: "English",
+        }),
+        headers: new Headers(),
+      }),
+    );
+    const { container } = render(
+      <AiSummary article={makeArticleDetail({ summary: "OpenAI launches ads", rtl: false })} />,
+    );
+    expect(container.querySelector(".summary-md")).toHaveAttribute("dir", "ltr");
+
+    await userEvent.click(screen.getByText("translate to hebrew"));
+
+    await waitFor(() =>
+      expect(container.querySelector(".summary-md")).toHaveAttribute("dir", "rtl"),
+    );
+    // ...and back to the English original, left to right again.
+    await userEvent.click(screen.getByText("show original"));
+    expect(container.querySelector(".summary-md")).toHaveAttribute("dir", "ltr");
   });
 });

@@ -9,7 +9,7 @@ from sqlalchemy import and_, exists, func, literal_column, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .. import crypto, embeddings, image_gen, media_storage, ranking
+from .. import crypto, embeddings, image_gen, media_storage, ranking, translation
 from ..access import accessible_article
 from ..config import settings
 from ..deps import CurrentUser, DbSession
@@ -106,6 +106,10 @@ def to_list_item(
         summary=article.summary,
         summary_short=article.summary_short,
         summary_medium=article.summary_medium,
+        # Read from the stored language only: detection is ~7ms, which would be
+        # a third of a second on a 50-row page. Articles summarized since the
+        # column landed have it; the rest fill in when opened.
+        rtl=translation.is_rtl_language(article.summary_language),
         entities=entities or [],
     )
 
@@ -873,6 +877,12 @@ async def get_article(
                     snapshots=[EntitySnapshotOut.model_validate(s) for s in snapshots],
                 )
             )
+
+    # One article, so the detector's few milliseconds are affordable here — and
+    # paid once, since it stores what it finds. Articles predating the column
+    # get their direction the first time anyone opens them.
+    if not article.summary_language and translation.article_language(article) is not None:
+        await session.commit()
 
     item = to_list_item(article, feed.display_title, state)
     return ArticleDetail(

@@ -177,7 +177,7 @@ export default function ArticleScreen() {
         <ActivityIndicator style={styles.center} color={colors.tint} />
       ) : (
         <ScrollView contentContainerStyle={styles.content}>
-          <Text style={[styles.title, { color: colors.text }, textDirection(data.title)]}>
+          <Text style={[styles.title, { color: colors.text }, textDirection(data.rtl)]}>
             {data.title}
           </Text>
           <Text style={[styles.byline, { color: colors.muted }]}>
@@ -205,6 +205,7 @@ export default function ArticleScreen() {
             <TranslatableSummary
               articleId={data.id}
               summary={asMarkdown(data.summary)}
+              articleRtl={data.rtl === true}
               colors={colors}
               markdownStyles={summaryStyles}
               translatable={ai?.translation === true}
@@ -224,7 +225,7 @@ export default function ArticleScreen() {
               color: colors.text,
               fontSize: 17,
               lineHeight: 26,
-              ...textDirection(data.title),
+              ...textDirection(data.rtl),
             }}
             tagsStyles={tagsStyles}
             renderersProps={{ a: { onPress: (_event, href) => openLink(href) } }}
