@@ -61,6 +61,129 @@ async def test_translate_prompt_names_the_target_language(monkeypatch):
     assert captured["user"] == "the summary"
 
 
+async def test_create_refuses_a_cut_off_answer(monkeypatch):
+    """The other half of the production bug: the reply was also truncated, so
+    the stored "translation" ended mid-sentence."""
+
+    class _Client:
+        class chat:  # noqa: N801 - mirrors the SDK's shape
+            class completions:  # noqa: N801
+                @staticmethod
+                async def create(**kwargs):
+                    message = type("M", (), {"content": "half a transl"})()
+                    choice = type("C", (), {"message": message, "finish_reason": "length"})()
+                    return type("R", (), {"usage": None, "choices": [choice]})()
+
+    with pytest.raises(llm.EmptyResponseError):
+        await llm._create(_Client(), "m", [], 10, None, None, True)
+
+    # Without the flag the same reply is returned — summaries tolerate it.
+    assert await llm._create(_Client(), "m", [], 10, None) == "half a transl"
+
+
+async def test_extra_params_ride_along_as_extra_body(monkeypatch):
+    captured = {}
+
+    class _Client:
+        class chat:  # noqa: N801
+            class completions:  # noqa: N801
+                @staticmethod
+                async def create(**kwargs):
+                    captured.update(kwargs)
+                    message = type("M", (), {"content": "ok"})()
+                    choice = type("C", (), {"message": message, "finish_reason": "stop"})()
+                    return type("R", (), {"usage": None, "choices": [choice]})()
+
+    monkeypatch.setattr(llm, "user_client", lambda config: _AsyncCtx(_Client()))
+    config = llm.LLMConfig(
+        provider="custom",
+        api_key="k",
+        base_url="https://openrouter.ai/api/v1",
+        model="m",
+        extra_params={"reasoning": {"enabled": False}},
+    )
+    await llm._complete([{"role": "user", "content": "x"}], 10, config=config)
+    assert captured["extra_body"] == {"reasoning": {"enabled": False}}
+
+
+class _AsyncCtx:
+    def __init__(self, client):
+        self.client = client
+
+    async def __aenter__(self):
+        return self.client
+
+    async def __aexit__(self, *args):
+        return False
+
+
+async def test_translate_rejects_thinking_that_leaked_into_the_answer(monkeypatch):
+    """The bug from production: a reasoning model streamed its deliberation as
+    plain prose into the content, so the reader saw "We need to translate the
+    given English summary into Hebrew, preserving markdown..." instead of a
+    translation — and it got cached under the summary."""
+    source = "The cabinet approved the package." * 3
+
+    async def fake_complete(messages, max_tokens, **kwargs):
+        return "We need to translate the given English summary into Hebrew, " * 40
+
+    monkeypatch.setattr(llm, "_complete", fake_complete)
+    with pytest.raises(llm.EmptyResponseError):
+        await llm.translate(source, "Hebrew")
+
+
+async def test_translate_accepts_a_translation_that_grew_a_little(monkeypatch):
+    """The bloat guard must not fire on languages that legitimately expand."""
+    source = "The cabinet approved a package to rebuild the north."
+
+    async def fake_complete(messages, max_tokens, **kwargs):
+        return "Das Kabinett hat ein Paket zum Wiederaufbau des Nordens genehmigt." * 2
+
+    monkeypatch.setattr(llm, "_complete", fake_complete)
+    assert await llm.translate(source, "German")
+
+
+async def test_translate_asks_for_a_complete_answer(monkeypatch):
+    """A truncated translation is a half-translated document, so the call is
+    made with require_complete and the cut-off answer never reaches the cache."""
+    captured = {}
+
+    async def fake_complete(messages, max_tokens, **kwargs):
+        captured.update(kwargs, max_tokens=max_tokens)
+        return "fine"
+
+    monkeypatch.setattr(llm, "_complete", fake_complete)
+    await llm.translate("source", "Hebrew")
+    assert captured["require_complete"] is True
+    assert captured["max_tokens"] >= 3000
+
+
+async def test_translate_drops_an_unclosed_think_block(monkeypatch):
+    async def fake_complete(messages, max_tokens, **kwargs):
+        return "<think>Hmm, the user wants Hebrew, let me consider the table"
+
+    monkeypatch.setattr(llm, "_complete", fake_complete)
+    with pytest.raises(llm.EmptyResponseError):
+        await llm.translate("The vote was delayed.", "Hebrew")
+
+
+def test_translation_config_turns_reasoning_off_on_openrouter(monkeypatch):
+    """Free reasoning models are the point of this setting, and their thinking
+    does not reliably stay inside a <think> block."""
+    monkeypatch.setattr(llm.settings, "translation_model", "free/model")
+    monkeypatch.setattr(llm.settings, "translation_api_key", "sk-or")
+    monkeypatch.setattr(llm.settings, "translation_base_url", "https://openrouter.ai/api/v1")
+    assert llm.translation_config().extra_params == {"reasoning": {"enabled": False}}
+
+
+def test_translation_config_sends_no_openrouter_params_elsewhere(monkeypatch):
+    """`reasoning` is an OpenRouter parameter; another endpoint could 400 on it."""
+    monkeypatch.setattr(llm.settings, "translation_model", "local/model")
+    monkeypatch.setattr(llm.settings, "translation_api_key", "sk-local")
+    monkeypatch.setattr(llm.settings, "translation_base_url", "http://vllm.local/v1")
+    assert llm.translation_config().extra_params == {}
+
+
 async def test_translate_rejects_an_empty_answer(monkeypatch):
     async def fake_complete(messages, max_tokens, **kwargs):
         return "   "
@@ -93,7 +216,16 @@ async def test_translation_runs_on_its_own_endpoint(monkeypatch):
 
                     class _Response:
                         usage = None
-                        choices = [type("C", (), {"message": type("M", (), {"content": "ok"})()})()]
+                        choices = [
+                            type(
+                                "C",
+                                (),
+                                {
+                                    "message": type("M", (), {"content": "ok"})(),
+                                    "finish_reason": "stop",
+                                },
+                            )()
+                        ]
 
                     return _Response()
 

@@ -235,11 +235,6 @@ function SummaryBody({ article, translatable }: { article: ArticleDetail; transl
               another language
             </button>
           )}
-          {showingTranslation && translation.model && (
-            <span className="font-mono-nr text-caption" style={{ color: "var(--ink-faint)" }}>
-              {translation.model}
-            </span>
-          )}
         </div>
       )}
 
