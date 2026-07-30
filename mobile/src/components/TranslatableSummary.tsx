@@ -20,6 +20,7 @@ import type { SummaryTranslation, TranslationLanguage, User } from "@/lib/types"
 export default function TranslatableSummary({
   articleId,
   summary,
+  articleRtl,
   colors,
   markdownStyles,
   translatable,
@@ -27,6 +28,8 @@ export default function TranslatableSummary({
 }: {
   articleId: number;
   summary: string;
+  /** The article's own direction, from the server's language detection. */
+  articleRtl: boolean;
   colors: Palette;
   markdownStyles: MarkdownProps["style"];
   translatable: boolean;
@@ -131,7 +134,10 @@ export default function TranslatableSummary({
         </Text>
       )}
 
-      <Markdown style={directionalStyles(markdownStyles, body)} onLinkPress={onLinkPress}>
+      <Markdown
+        style={directionalStyles(markdownStyles, showingTranslation ? translation.rtl : articleRtl)}
+        onLinkPress={onLinkPress}
+      >
         {body}
       </Markdown>
 
@@ -155,9 +161,8 @@ export default function TranslatableSummary({
 /** Markdown styles laid out in the text's own direction. `writingDirection`
  * only affects text runs — the bullet column and table rows are flex rows that
  * React Native still lays out left-to-right, so they are mirrored explicitly. */
-function directionalStyles(base: MarkdownProps["style"], text: string): MarkdownProps["style"] {
-  const direction = textDirection(text);
-  const rtl = direction.writingDirection === "rtl";
+function directionalStyles(base: MarkdownProps["style"], rtl: boolean): MarkdownProps["style"] {
+  const direction = textDirection(rtl);
   return {
     ...base,
     body: { ...base?.body, ...direction },

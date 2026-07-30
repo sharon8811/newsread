@@ -101,9 +101,9 @@ export default function StoriesView({ articles, onOpen, onMarkRead, onExit }: Pr
             {article.feed_title}
             {article.published_at ? ` · ${timeAgo(article.published_at)}` : ""}
           </Text>
-          <Text style={[styles.title, textDirection(article.title)]}>{article.title}</Text>
+          <Text style={[styles.title, textDirection(article.rtl)]}>{article.title}</Text>
           {blurb !== "" && (
-            <Text style={[styles.blurb, textDirection(blurb)]} numberOfLines={6}>
+            <Text style={[styles.blurb, textDirection(article.rtl)]} numberOfLines={6}>
               {blurb}
             </Text>
           )}

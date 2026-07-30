@@ -393,6 +393,61 @@ async def test_article_without_a_summary_rejected(data):
         await translation.translate_summary(data.session, art, "he")
 
 
+# --- article direction ---
+
+
+def test_rtl_language_names_match_the_detector():
+    """`is_rtl_language` reads names the detector produced, so the two
+    vocabularies have to agree or every Hebrew article would read as LTR."""
+    from lingua import Language as LinguaLanguage
+
+    known = {language.name.title() for language in LinguaLanguage.all()}
+    assert translation.RTL_LANGUAGE_NAMES <= known
+    assert translation.is_rtl_language("Hebrew") is True
+    assert translation.is_rtl_language("French") is False
+    assert translation.is_rtl_language(None) is False
+
+
+async def test_article_language_is_detected_once_and_remembered(data):
+    art = await _article(data, summary=HEBREW, summary_language=None)
+    assert translation.article_language(art) == "Hebrew"
+    assert art.summary_language == "Hebrew"  # stored, so the next read is free
+
+
+async def test_article_language_falls_back_to_the_title(data):
+    """Headline-only feeds have no summary, but still have a direction."""
+    feed = await data.feed()
+    art = await data.article(
+        feed, title="הכנסת דחתה את ההצבעה בשבוע נוסף", summary="", summary_language=None
+    )
+    assert translation.article_language(art) == "Hebrew"
+
+
+async def test_article_list_reports_direction_without_detecting(client, users, data, monkeypatch):
+    """Lists must never call the detector — 7ms a row is a third of a second on
+    a 50-row page — so the flag comes from the stored language."""
+    user, art = await _subscribed(users, data, summary_language="Hebrew")
+    monkeypatch.setattr(
+        llm, "detect_language", lambda text: pytest.fail("detected a language while listing")
+    )
+
+    resp = await client.get("/api/articles", headers=users.auth(user))
+
+    assert resp.status_code == 200
+    assert resp.json()[0]["rtl"] is True
+
+
+async def test_opening_an_article_fills_in_a_missing_language(client, users, data):
+    """Articles summarized before the column existed heal on first open."""
+    user, art = await _subscribed(users, data, summary=HEBREW, summary_language=None)
+
+    resp = await client.get(f"/api/articles/{art.id}", headers=users.auth(user))
+
+    assert resp.json()["rtl"] is True
+    await data.session.refresh(art)
+    assert art.summary_language == "Hebrew"
+
+
 # --- API ---
 
 
@@ -400,7 +455,8 @@ async def _subscribed(users, data, **kwargs):
     user = await users.create()
     feed = await data.feed()
     await data.subscribe(user, feed)
-    art = await data.article(feed, summary="The vote was delayed.", **kwargs)
+    kwargs.setdefault("summary", "The vote was delayed.")
+    art = await data.article(feed, **kwargs)
     return user, art
 
 
@@ -419,6 +475,7 @@ async def test_translate_endpoint(client, users, data, monkeypatch):
     assert resp.json() == {
         "language": "he",
         "text": "הצבעה נדחתה",
+        "rtl": True,  # a fact about Hebrew, not a guess about the text
         "model": "free-model",
         "cached": False,
         "translated": True,
@@ -446,6 +503,20 @@ async def test_translate_failure_leaves_the_summary_intact(client, users, data, 
     assert art.summary == "The vote was delayed."
     rows = (await data.session.execute(select(func.count(SummaryTranslation.id)))).scalar_one()
     assert rows == 0
+
+
+async def test_translation_reports_the_language_direction(data, monkeypatch):
+    """The reported bug: a Hebrew translation starting with a Latin brand name
+    ("OpenAI משיקה…") rendered left to right, because the client was inferring
+    direction from the first strong character instead of from the language."""
+    art = await _article(data, summary_language="English")
+    monkeypatch.setattr(llm, "translate", _Recorder("OpenAI משיקה יכולות פרסום"))
+
+    hebrew = await translation.translate_summary(data.session, art, "he")
+    french = await translation.translate_summary(data.session, art, "fr")
+
+    assert hebrew.rtl is True
+    assert french.rtl is False
 
 
 async def test_translate_unconfigured_is_503(client, users, data, monkeypatch):

@@ -1,5 +1,6 @@
 "use client";
 
+import { dirOf } from "@/lib/dir";
 import { memo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { imageSrc, type Article } from "@/lib/api";
@@ -67,7 +68,7 @@ function ArticleRow({
       )}
       <div className="min-w-0 flex-1">
         <h3
-          dir="auto"
+          dir={dirOf(article.rtl)}
           className="font-serif-nr text-lead leading-snug sm:text-title"
           style={{
             color: article.is_read ? "var(--ink-dim)" : "var(--ink)",
@@ -101,7 +102,7 @@ function ArticleRow({
 
         {oneLiner && (
           <p
-            dir="auto"
+            dir={dirOf(article.rtl)}
             className="mt-2 line-clamp-2 text-body-lg leading-relaxed"
             style={{ color: "var(--ink-dim)" }}
           >
@@ -132,7 +133,7 @@ function ArticleRow({
 
         {expanded && readMore && (
           <p
-            dir="auto"
+            dir={dirOf(article.rtl)}
             className="fade-up mt-2 border-l pl-3 text-body-lg leading-relaxed"
             style={{ color: "var(--ink)", borderColor: "var(--accent-border)" }}
           >

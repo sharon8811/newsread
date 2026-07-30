@@ -64,6 +64,30 @@ LANGUAGES: tuple[Language, ...] = (
 
 _BY_CODE = {language.code: language for language in LANGUAGES}
 
+# Language *names* as lingua reports them, for the languages written right to
+# left. The detector and this table share a vocabulary (checked by a test), so
+# a stored `summary_language` answers "which way does this article read?"
+# without re-detecting anything.
+RTL_LANGUAGE_NAMES = frozenset(language.name for language in LANGUAGES if language.rtl)
+
+
+def is_rtl_language(name: str | None) -> bool:
+    return name in RTL_LANGUAGE_NAMES
+
+
+def article_language(article: Article) -> str | None:
+    """Detect and remember an article's language, from its summary when there
+    is one and its title otherwise. Detection costs milliseconds, which is
+    nothing once per article and far too much per row of a list — so callers
+    must be on a single-article path, and the answer is stored."""
+    if article.summary_language:
+        return article.summary_language
+    sample = article.summary or f"{article.title}\n{article.excerpt}"
+    detected = llm.detect_language(sample)
+    if detected is not None:
+        article.summary_language = detected
+    return detected
+
 
 def language_for(code: str) -> Language | None:
     return _BY_CODE.get(code.strip().lower())
@@ -86,6 +110,11 @@ class TranslationResult:
     language: str
     text: str
     model: str | None
+    # Whether the target language is written right to left. Sent to the client
+    # because the direction of a translation is a fact about the language we
+    # translated into — never something to guess from the text, which routinely
+    # opens with a Latin brand name ("OpenAI משיקה…").
+    rtl: bool
     cached: bool
     # False when the summary was already in the target language: `text` is the
     # original, untouched, and no model was called.
@@ -130,6 +159,7 @@ async def translate_summary(
             language=language.code,
             text=article.summary,
             model=None,
+            rtl=language.rtl,
             cached=False,
             translated=False,
             source_language=source,
@@ -142,6 +172,7 @@ async def translate_summary(
             language=language.code,
             text=cached.text,
             model=cached.model,
+            rtl=language.rtl,
             cached=True,
             translated=True,
             source_language=source,
@@ -154,6 +185,7 @@ async def translate_summary(
         language=language.code,
         text=text,
         model=model,
+        rtl=language.rtl,
         cached=False,
         translated=True,
         source_language=source,

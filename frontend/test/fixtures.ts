@@ -153,6 +153,7 @@ export function makeArticle(over: Partial<Article> = {}): Article {
     summary: "",
     summary_short: "",
     summary_medium: "",
+    rtl: false,
     entities: [],
     ...over,
   };

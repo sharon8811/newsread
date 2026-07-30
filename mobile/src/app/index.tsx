@@ -56,7 +56,7 @@ function ListRow({ article, colors, onPress }: {
           style={[
             styles.rowTitle,
             { color: dim ? colors.muted : colors.text },
-            textDirection(article.title),
+            textDirection(article.rtl),
           ]}
           numberOfLines={2}
         >
@@ -67,7 +67,7 @@ function ListRow({ article, colors, onPress }: {
             style={[
               styles.rowExcerpt,
               { color: colors.muted },
-              textDirection(article.summary_short || article.excerpt),
+              textDirection(article.rtl),
             ]}
             numberOfLines={2}
           >
@@ -134,7 +134,7 @@ function CardRow({ article, colors, onPress }: {
           style={[
             styles.cardTitle,
             { color: dim ? colors.muted : colors.text },
-            textDirection(article.title),
+            textDirection(article.rtl),
           ]}
           numberOfLines={3}
         >
@@ -145,7 +145,7 @@ function CardRow({ article, colors, onPress }: {
             style={[
               styles.cardExcerpt,
               { color: colors.muted },
-              textDirection(article.summary_short || article.excerpt),
+              textDirection(article.rtl),
             ]}
             numberOfLines={3}
           >

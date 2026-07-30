@@ -1,5 +1,6 @@
 "use client";
 
+import { dirOf } from "@/lib/dir";
 import { memo } from "react";
 import { useRouter } from "next/navigation";
 import { imageSrc, type Article } from "@/lib/api";
@@ -111,7 +112,7 @@ function ArticleCard({
         </p>
 
         <h3
-          dir="auto"
+          dir={dirOf(article.rtl)}
           className="font-serif-nr mt-2 text-title leading-snug sm:text-title"
           style={{
             color: article.is_read ? "var(--ink-dim)" : "var(--ink)",
@@ -123,7 +124,7 @@ function ArticleCard({
 
         {summary && (
           <p
-            dir="auto"
+            dir={dirOf(article.rtl)}
             className="mt-2 line-clamp-3 text-body-lg leading-relaxed"
             style={{ color: "var(--ink-dim)" }}
           >

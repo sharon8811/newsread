@@ -1,5 +1,6 @@
 "use client";
 
+import { dirOf } from "@/lib/dir";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { useParams, useRouter } from "next/navigation";
@@ -202,7 +203,7 @@ export default function ArticlePage() {
 
       <p className="mono-label mt-7">{article.feed_title}</p>
       <h1
-        dir="auto"
+        dir={dirOf(article.rtl)}
         className="font-serif-nr mt-2.5 text-[27px] font-medium leading-[1.18] sm:text-[34px]"
       >
         {article.title}
@@ -304,7 +305,7 @@ export default function ArticlePage() {
 
       {article.content_html ? (
         <div
-          dir="auto"
+          dir={dirOf(article.rtl)}
           className="reader mt-8"
           dangerouslySetInnerHTML={{ __html: article.content_html }}
         />
