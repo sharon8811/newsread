@@ -2,7 +2,7 @@
 
 import { useParams, useRouter } from "next/navigation";
 import { useEntityPage } from "@/lib/queries";
-import { timeAgo } from "@/lib/format";
+import FeedArticleRow from "@/components/FeedArticleRow";
 import { ExternalIcon } from "@/components/icons";
 
 const KIND_LABELS: Record<string, string> = {
@@ -71,23 +71,14 @@ export default function EntityPage() {
         ) : (
           <div className="mt-3 flex flex-col gap-2">
             {entity.articles.map((item) => (
-              <div
+              <FeedArticleRow
                 key={item.id}
-                className="cursor-pointer rounded-md border p-3.5 transition-colors hover:bg-[var(--bg-hover)]"
-                style={{ borderColor: "var(--line)", background: "var(--bg-raised)" }}
+                title={item.title}
+                feedTitle={item.feed_title}
+                publishedAt={item.published_at}
+                isRead={item.is_read}
                 onClick={() => router.push(`/article/${item.id}`)}
-              >
-                <div className="flex items-center gap-2">
-                  {!item.is_read && <span className="dot-unread shrink-0" />}
-                  <p className="font-serif-nr min-w-0 flex-1 truncate text-lead">
-                    {item.title}
-                  </p>
-                </div>
-                <p className="font-mono-nr mt-1 text-label" style={{ color: "var(--ink-faint)" }}>
-                  {item.feed_title}
-                  {item.published_at ? ` · ${timeAgo(item.published_at)}` : ""}
-                </p>
-              </div>
+              />
             ))}
           </div>
         )}

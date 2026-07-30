@@ -10,7 +10,7 @@ import {
   type CoverageSynthesis,
 } from "@/lib/api";
 import { useAiStatus, useRelatedArticles } from "@/lib/queries";
-import { timeAgo } from "@/lib/format";
+import FeedArticleRow from "./FeedArticleRow";
 import { SparkleIcon } from "./icons";
 import Badge from "./ui/Badge";
 import ErrorText from "./ui/ErrorText";
@@ -64,36 +64,19 @@ export default function RelatedArticles({ article }: { article: ArticleDetail })
 
       <div className="mt-4 flex flex-col gap-2">
         {related.map((item) => (
-          <div
+          <FeedArticleRow
             key={item.id}
-            className="cursor-pointer rounded-md border p-3.5 transition-colors hover:bg-[var(--bg-hover)]"
-            style={{ borderColor: "var(--line)", background: "var(--bg-raised)" }}
-            onClick={() => router.push(`/article/${item.id}`)}
-          >
-            {/* Sans, not the editorial serif: these are compact reference rows
-                rather than headlines, and they stay legible at phone widths
-                where a truncated serif line reads as noise. */}
-            <div className="flex items-start gap-2">
-              {!item.is_read && <span className="dot-unread mt-[7px] shrink-0" />}
-              <p className="line-clamp-2 min-w-0 flex-1 text-body-lg font-medium leading-snug">
-                {item.title}
-              </p>
-            </div>
-            {/* The tier badge rides the metadata line so the title keeps the
-                full width for both of its lines. */}
-            <div className="mt-1.5 flex items-center gap-2">
-              <p
-                className="font-mono-nr min-w-0 truncate text-label"
-                style={{ color: "var(--ink-dim)" }}
-              >
-                {item.feed_title}
-                {item.published_at ? ` · ${timeAgo(item.published_at)}` : ""}
-              </p>
-              {item.tier === "same_story" && (
+            title={item.title}
+            feedTitle={item.feed_title}
+            publishedAt={item.published_at}
+            isRead={item.is_read}
+            badge={
+              item.tier === "same_story" ? (
                 <Badge tone="accent-strong" className="text-caption">SAME STORY</Badge>
-              )}
-            </div>
-          </div>
+              ) : undefined
+            }
+            onClick={() => router.push(`/article/${item.id}`)}
+          />
         ))}
       </div>
 
