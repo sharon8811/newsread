@@ -304,6 +304,31 @@ describe("<AiSummary> translation", () => {
     expect(JSON.parse(patchCall[1].body)).toEqual({ translation_language: "fr" });
   });
 
+  it("still shows a stored summary when only translation is configured", async () => {
+    // A server can have a translation model but no summarizing one: the stored
+    // summary and its translate action must not disappear with it.
+    stubStatus(false, { translation: true });
+    authState.user = makeUser({ translation_language: "he" });
+    const fetchMock = translatedFetch();
+    vi.stubGlobal("fetch", fetchMock);
+    render(<AiSummary article={makeArticleDetail({ summary: "the original summary" })} />);
+
+    expect(screen.getByText("the original summary")).toBeInTheDocument();
+    // ...but there is no model to regenerate with, so that action stays hidden.
+    expect(screen.queryByTitle("Regenerate summary")).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByText("translate to hebrew"));
+    await waitFor(() => expect(screen.getByText("ההצבעה נדחתה")).toBeInTheDocument());
+  });
+
+  it("renders nothing when neither model is configured", () => {
+    stubStatus(false, { translation: false });
+    const { container } = render(
+      <AiSummary article={makeArticleDetail({ summary: "the original summary" })} />,
+    );
+    expect(container.firstChild).toBeNull();
+  });
+
   it("renders the summary with automatic text direction", () => {
     stubStatus(true, { translation: true });
     vi.stubGlobal("fetch", okFetch());

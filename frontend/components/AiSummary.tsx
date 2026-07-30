@@ -31,6 +31,11 @@ export default function AiSummary({ article }: { article: ArticleDetail }) {
   const [error, setError] = useState<string | null>(null);
   const requestedRef = useRef(false);
   const skippedAsTooShort = article.summary_skipped_reason === "too_short";
+  // A server can have a translation model but no summarizing one. Stored
+  // summaries — and their translate action — still belong on screen there;
+  // only generating and regenerating need the summarizing model.
+  const canGenerate = status?.configured === true;
+  const canTranslate = status?.translation === true;
 
   async function generate(force: boolean) {
     setGenerating(true);
@@ -73,7 +78,7 @@ export default function AiSummary({ article }: { article: ArticleDetail }) {
     );
   }
 
-  if (!status?.configured) return null;
+  if (!canGenerate && !(canTranslate && article.summary)) return null;
 
   return (
     <section
@@ -90,7 +95,7 @@ export default function AiSummary({ article }: { article: ArticleDetail }) {
             {article.summary_model}
           </span>
         )}
-        {article.summary && !generating && (
+        {article.summary && canGenerate && !generating && (
           <button
             className="icon-btn ml-auto"
             style={{ width: 24, height: 24 }}
@@ -129,7 +134,7 @@ export default function AiSummary({ article }: { article: ArticleDetail }) {
           </button>
         </div>
       ) : article.summary ? (
-        <SummaryBody article={article} translatable={status?.translation === true} />
+        <SummaryBody article={article} translatable={canTranslate} />
       ) : null}
     </section>
   );

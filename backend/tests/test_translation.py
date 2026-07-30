@@ -160,6 +160,7 @@ async def test_cache_is_shared_between_users(client, users, data, monkeypatch):
     await data.subscribe(second, feed)
     translate = _Recorder()
     monkeypatch.setattr(llm, "translate", translate)
+    monkeypatch.setattr(llm, "translation_config", lambda: llm.LLMConfig("custom", "k", None, "m"))
 
     for user in (first, second):
         resp = await client.post(
@@ -393,6 +394,17 @@ async def test_saving_and_clearing_the_default_language(client, users):
     assert resp.json()["translation_language"] is None
 
 
+async def test_default_language_is_stored_canonically(client, users):
+    """language_for() accepts " HE ", but both clients match the saved value
+    against exact codes — so what lands in the column must be "he"."""
+    user = await users.create()
+    resp = await client.patch(
+        "/api/users/me", json={"translation_language": " HE "}, headers=users.auth(user)
+    )
+    assert resp.status_code == 200
+    assert resp.json()["translation_language"] == "he"
+
+
 async def test_default_language_must_be_one_we_offer(client, users):
     user = await users.create()
     resp = await client.patch(
@@ -427,11 +439,43 @@ def test_translation_config_prefers_its_own_endpoint(monkeypatch):
     assert config.user_owned is False  # never billed to a reader's own key
 
 
-def test_translation_config_borrows_the_main_key(monkeypatch):
+def test_translation_config_borrows_the_main_key_on_the_same_endpoint(monkeypatch):
     monkeypatch.setattr(llm.settings, "translation_model", "free/model")
     monkeypatch.setattr(llm.settings, "translation_api_key", "")
+    monkeypatch.setattr(llm.settings, "translation_base_url", "https://openrouter.ai/api/v1/")
+    monkeypatch.setattr(llm.settings, "openai_base_url", "https://openrouter.ai/api/v1")
     monkeypatch.setattr(llm.settings, "openai_api_key", "sk-main")
     assert llm.translation_config().api_key == "sk-main"
+
+
+def test_translation_config_never_sends_the_main_key_to_another_provider(monkeypatch):
+    """A key issued for api.openai.com must not be posted to OpenRouter just
+    because TRANSLATION_MODEL was set without a key of its own."""
+    monkeypatch.setattr(llm.settings, "translation_model", "free/model")
+    monkeypatch.setattr(llm.settings, "translation_api_key", "")
+    monkeypatch.setattr(llm.settings, "translation_base_url", "https://openrouter.ai/api/v1")
+    monkeypatch.setattr(llm.settings, "openai_base_url", "")  # the OpenAI default
+    monkeypatch.setattr(llm.settings, "openai_api_key", "sk-main")
+    assert llm.translation_config() is None
+
+
+def test_translation_config_borrows_the_main_key_on_the_openai_default(monkeypatch):
+    """Both unset means both talk to api.openai.com — still the same endpoint."""
+    monkeypatch.setattr(llm.settings, "translation_model", "gpt-4o-mini")
+    monkeypatch.setattr(llm.settings, "translation_api_key", "")
+    monkeypatch.setattr(llm.settings, "translation_base_url", "")
+    monkeypatch.setattr(llm.settings, "openai_base_url", "")
+    monkeypatch.setattr(llm.settings, "openai_api_key", "sk-main")
+    assert llm.translation_config().api_key == "sk-main"
+
+
+def test_translation_config_none_without_any_key(monkeypatch):
+    monkeypatch.setattr(llm.settings, "translation_model", "free/model")
+    monkeypatch.setattr(llm.settings, "translation_api_key", "")
+    monkeypatch.setattr(llm.settings, "translation_base_url", "")
+    monkeypatch.setattr(llm.settings, "openai_base_url", "")
+    monkeypatch.setattr(llm.settings, "openai_api_key", "")
+    assert llm.translation_config() is None
 
 
 def test_translation_falls_back_to_the_system_model(monkeypatch):

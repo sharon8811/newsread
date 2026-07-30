@@ -87,12 +87,36 @@ def translation_config() -> LLMConfig | None:
     whoever happened to click first."""
     if not settings.translation_model:
         return system_config()
+    api_key = settings.translation_api_key
+    if not api_key:
+        # Borrowing the main key is only safe when it is the same endpoint.
+        # The translation base URL defaults to OpenRouter while OPENAI_API_KEY
+        # usually belongs to api.openai.com, so falling back unconditionally
+        # would hand the operator's key to a provider they never named.
+        if not _same_endpoint(settings.translation_base_url, settings.openai_base_url):
+            logger.warning(
+                "Translation is off: NEWSREAD_TRANSLATION_MODEL is set without "
+                "NEWSREAD_TRANSLATION_API_KEY, and its endpoint (%s) is not the one the "
+                "main key belongs to (%s). Set a translation key to enable it.",
+                settings.translation_base_url or "the OpenAI default",
+                settings.openai_base_url or "the OpenAI default",
+            )
+            return None
+        api_key = settings.openai_api_key
+    if not api_key:
+        return None
     return LLMConfig(
         provider="custom",
-        api_key=settings.translation_api_key or settings.openai_api_key,
+        api_key=api_key,
         base_url=settings.translation_base_url or None,
         model=settings.translation_model,
     )
+
+
+def _same_endpoint(one: str, other: str) -> bool:
+    """Whether two base URLs address the same API. Empty on both sides means
+    the SDK default (api.openai.com), which is still a match."""
+    return one.rstrip("/") == other.rstrip("/")
 
 
 def resolve_base_url(provider: str, base_url: str | None) -> str | None:

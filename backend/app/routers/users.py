@@ -27,12 +27,16 @@ async def update_me(
     # Same: an explicit null clears the saved translation language, so the next
     # translate asks again.
     if "translation_language" in body.model_fields_set:
-        if (
-            body.translation_language is not None
-            and language_for(body.translation_language) is None
-        ):
-            raise HTTPException(status_code=422, detail="That language isn't available.")
-        user.translation_language = body.translation_language
+        if body.translation_language is None:
+            user.translation_language = None
+        else:
+            language = language_for(body.translation_language)
+            if language is None:
+                raise HTTPException(status_code=422, detail="That language isn't available.")
+            # Store the canonical code, not what was typed: language_for accepts
+            # " HE ", but both clients match the saved preference against exact
+            # codes, so anything else would read back as "no language set".
+            user.translation_language = language.code
     session.add(user)
     await session.commit()
     await session.refresh(user)
