@@ -7,7 +7,7 @@ administration features and manages regular users, 'user' is normal
 application access.
 """
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .models import User
@@ -27,18 +27,27 @@ class FinalOwnerError(Exception):
     """Raised when a change would leave the instance without an active owner."""
 
 
-async def _other_active_owners(session: AsyncSession, user: User) -> int:
-    return (
-        await session.scalar(
-            select(func.count())
-            .select_from(User)
-            .where(
-                User.role == ROLE_OWNER,
-                User.status == STATUS_ACTIVE,
-                User.id != user.id,
-            )
+# App-wide advisory key serializing owner demotion/suspension: two concurrent
+# mutations could otherwise each count the other as the remaining active
+# owner and together leave the instance ownerless. The xact lock is held
+# until the caller's commit, so the loser recounts against committed state.
+_OWNER_GUARD_LOCK_KEY = 0x4F574E52
+
+
+async def _leaves_no_active_owner(session: AsyncSession, user: User) -> bool:
+    await session.execute(
+        text("SELECT pg_advisory_xact_lock(:key)"), {"key": _OWNER_GUARD_LOCK_KEY}
+    )
+    others = await session.scalar(
+        select(func.count())
+        .select_from(User)
+        .where(
+            User.role == ROLE_OWNER,
+            User.status == STATUS_ACTIVE,
+            User.id != user.id,
         )
-    ) or 0
+    )
+    return not others
 
 
 async def change_role(session: AsyncSession, user: User, role: str) -> None:
@@ -49,7 +58,7 @@ async def change_role(session: AsyncSession, user: User, role: str) -> None:
     if (
         user.role == ROLE_OWNER
         and role != ROLE_OWNER
-        and await _other_active_owners(session, user) == 0
+        and await _leaves_no_active_owner(session, user)
     ):
         raise FinalOwnerError("cannot demote the only owner; promote another owner first")
     user.role = role
@@ -63,7 +72,7 @@ async def change_status(session: AsyncSession, user: User, status: str) -> None:
     if (
         status == STATUS_SUSPENDED
         and user.role == ROLE_OWNER
-        and await _other_active_owners(session, user) == 0
+        and await _leaves_no_active_owner(session, user)
     ):
         raise FinalOwnerError("cannot suspend the only owner; promote another owner first")
     user.status = status

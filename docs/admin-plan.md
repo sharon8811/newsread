@@ -46,22 +46,33 @@ Reuse transactional tables where possible (`users.created_at`,
    couldn't reconstruct trends.
 2. **System-key LLM metering** — drop the `user_owned` gate in
    `llm.record_usage`; add `llm_usage.billing_source` (`user` | `system`)
-   and make `user_id` nullable (worker batch summaries have no acting user).
-   Add the missing call sites: worker batch summarization, translation,
-   topics fallback, system-key image generation. Add index on
-   (`billing_source`, `created_at`) or plain `created_at` for instance-wide
-   range scans.
-3. **Processing outcomes** — new `article_processing_events` table
+   and make `user_id` nullable. Per-user spend is the point (hosted margins
+   are modeled from it), so system-key calls keep the acting `user_id`
+   whenever a user triggered them (on-demand summary, QA, chat, share,
+   translation request, import); worker batch/cron work that no single user
+   triggered is recorded with `user_id` NULL as instance overhead. A user is
+   never charged for cached or shared results — a cache/copy hit makes no
+   LLM call, so no row is written. Add the missing call sites: worker batch
+   summarization, translation, topics fallback, system-key image generation.
+   Add index on (`billing_source`, `created_at`) or plain `created_at` for
+   instance-wide range scans.
+3. **BYO keys become self-hosted-only** — new derived flag
+   `byo_llm_keys_enabled` (default: on for self_hosted, off for
+   staging/prod). Hosted users all run on the system key so their usage is
+   meterable and margins are controllable; the user AI-settings surface is
+   hidden/read-only when the flag is off. Existing hosted BYO rows keep
+   working until the operator clears them (documented).
+4. **Processing outcomes** — new `article_processing_events` table
    (`article_id`, `stage` enrich|summarize|embed, `outcome` ok|failed|skipped,
    `detail` short code only — never error text with user content,
    `created_at`). Written where the worker currently only logs
    (`_for_each_article`, `_summarize_quietly`, extractor failures). Success
    rows for summarize/enrich are optional — successes are already derivable
    from article timestamps; failures/retries are not.
-4. **Semantics** — documented per metric: articles processed are global
+5. **Semantics** — documented per metric: articles processed are global
    (articles are shared); articles read/consumed are per-user. Straight
    PostgreSQL aggregation first; daily rollups only if it gets slow.
-5. **Indexes** — `users.created_at`, `subscriptions.created_at`,
+6. **Indexes** — `users.created_at`, `subscriptions.created_at`,
    `articles.fetched_at`, `user_article_states.read_at` (partial, WHERE
    read_at IS NOT NULL), `llm_usage.created_at`.
 
@@ -124,14 +135,24 @@ Reuse transactional tables where possible (`users.created_at`,
 - Admin: tier column + filter in `/admin/users`, tier change (audited),
   effective allowance + reset date on the user detail.
 
+## Decisions (2026-08-01)
+
+1. **Per-user spend, not just instance totals** — the operator models hosted
+   margins from per-user token spend, so system-key calls are attributed to
+   the acting user (see #115 item 2). Cached and shared articles never count
+   toward a user's spend or quota: only work actually performed for that
+   user is charged, and a cache/copy hit performs none.
+2. **BYO LLM keys are self-hosted-only** — hosted users all run on the
+   system key (#115 item 3), keeping hosted usage fully meterable.
+3. **Quota timezone** — UTC everywhere (matches image-gen budget and
+   `llm_usage` bucketing).
+4. **Suspended UX** — #117 shows a dedicated "account suspended" screen when
+   the API answers 403 `Account suspended` (instead of a bare error).
+
 ## Open decisions
 
-1. **#119 qualifying event** — recommendation above (first AI-processed
-   delivery per user per article); alternatives considered: charge on read
-   (undercounts the processing NewsRead pays for), charge on ingest into a
-   subscribed feed (charges for articles the user never sees; punishing for
-   high-volume feeds).
-2. **Quota timezone** — UTC everywhere (matches image-gen budget and
-   `llm_usage` bucketing) vs. user-local. Recommendation: UTC.
-3. **Suspended UX** — currently a bare 403; #117 could map it to a
-   dedicated "account suspended" screen.
+1. **#119 qualifying event, final shape** — direction locked: charge only
+   work actually performed for the user, never cached/shared results. To pin
+   down in the #119 PR: attribution when the batch worker summarizes an
+   article whose feed has several subscribers (charge subscribers on first
+   delivery of the fresh summary vs. charge the processing trigger only).

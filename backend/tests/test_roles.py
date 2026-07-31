@@ -85,6 +85,29 @@ async def test_suspended_user_cannot_refresh(client, users):
     assert resp.status_code == 403
 
 
+async def test_suspended_user_browser_token_rejected(client, users):
+    """Suspension also covers the extension's scoped nrh_ tokens — a paired
+    browser must not keep syncing history for a suspended account."""
+    user = await users.create(username="mallory")
+    paired = await client.post(
+        "/api/history/connections", json={"name": "Chrome"}, headers=users.auth(user)
+    )
+    assert paired.status_code == 201
+    token = paired.json()["token"]
+
+    browser_headers = {"Authorization": f"Bearer {token}"}
+    assert (
+        await client.get("/api/history/sync/status", headers=browser_headers)
+    ).status_code == 200
+
+    user.status = "suspended"
+    await users.session.commit()
+
+    resp = await client.get("/api/history/sync/status", headers=browser_headers)
+    assert resp.status_code == 403
+    assert "suspended" in resp.json()["detail"].lower()
+
+
 # --- Admin / owner dependencies ---
 
 
