@@ -1,4 +1,5 @@
 import asyncio
+import html
 import logging
 from pathlib import Path
 
@@ -174,9 +175,49 @@ async def _skip_existing_short_summaries(conn) -> None:
         )
 
 
+_HTML_ENTITY_SQL_RE = r"&(#[0-9]+|#[xX][0-9a-fA-F]+|[A-Za-z][A-Za-z0-9]*);"
+
+
+async def _unescape_plain_text_entities(conn) -> None:
+    """Decode HTML entities that ingestion used to leave in plain-text fields.
+
+    strip_html once returned nh3's entity-escaped output, so a headline like
+    "S&P" was stored as "S&amp;P" (issue #75). One unescape pass converges each
+    row to exactly what the fixed ingestion path would store, including feeds
+    whose publishers double-escape.
+    """
+    rows = (
+        await conn.execute(
+            text("SELECT id, title, excerpt FROM articles WHERE title ~ :re OR excerpt ~ :re"),
+            {"re": _HTML_ENTITY_SQL_RE},
+        )
+    ).mappings()
+    for row in rows:
+        await conn.execute(
+            text("UPDATE articles SET title = :title, excerpt = :excerpt WHERE id = :id"),
+            {
+                "id": row["id"],
+                "title": html.unescape(row["title"] or ""),
+                "excerpt": html.unescape(row["excerpt"] or ""),
+            },
+        )
+    rows = (
+        await conn.execute(
+            text("SELECT id, description FROM feeds WHERE description ~ :re"),
+            {"re": _HTML_ENTITY_SQL_RE},
+        )
+    ).mappings()
+    for row in rows:
+        await conn.execute(
+            text("UPDATE feeds SET description = :description WHERE id = :id"),
+            {"id": row["id"], "description": html.unescape(row["description"])},
+        )
+
+
 ONE_SHOT_REPAIRS = {
     "clean_hnrss_boilerplate_lxml": _clean_hnrss_content,
     "skip_existing_short_summaries": _skip_existing_short_summaries,
+    "unescape_plain_text_entities": _unescape_plain_text_entities,
 }
 
 
