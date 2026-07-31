@@ -1,9 +1,8 @@
 import type { Metadata } from "next";
 import {
-  Frank_Ruhl_Libre,
   Geist,
   Geist_Mono,
-  Heebo,
+  Noto_Sans_Hebrew,
   Source_Serif_4,
 } from "next/font/google";
 import { AuthProvider } from "@/lib/auth";
@@ -29,17 +28,12 @@ const geistMono = Geist_Mono({
 });
 
 // Geist and Source Serif 4 carry no Hebrew glyphs, so Hebrew fell through to
-// browser defaults and looked out of place. These sit behind them in the CSS
-// stacks (font fallback is per-glyph): Heebo matches Geist's geometric UI
-// voice, Frank Ruhl Libre is the classic Hebrew news serif for headlines.
-const heebo = Heebo({
+// browser defaults and looked out of place. Noto Sans Hebrew sits behind them
+// in every CSS stack (font fallback is per-glyph) — one Hebrew face for
+// headlines, reader body, and UI alike, matching modern Hebrew news sites.
+const notoSansHebrew = Noto_Sans_Hebrew({
   subsets: ["hebrew"],
-  variable: "--font-sans-hebrew",
-});
-
-const frankRuhl = Frank_Ruhl_Libre({
-  subsets: ["hebrew"],
-  variable: "--font-serif-hebrew",
+  variable: "--font-hebrew",
 });
 
 export const metadata: Metadata = {
@@ -54,7 +48,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${sourceSerif.variable} ${geist.variable} ${geistMono.variable} ${heebo.variable} ${frankRuhl.variable}`}
+      className={`${sourceSerif.variable} ${geist.variable} ${geistMono.variable} ${notoSansHebrew.variable}`}
     >
       <body>
         <AuthProvider>
