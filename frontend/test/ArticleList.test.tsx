@@ -853,6 +853,61 @@ describe("<ArticleList> reading mode", () => {
     expect(created).toHaveLength(1);
   });
 
+  it("warms a pending image once the poll delivers its URL", async () => {
+    vi.useFakeTimers();
+    try {
+      const created: { src: string }[] = [];
+      class MockImage {
+        src = "";
+        constructor() {
+          created.push(this);
+        }
+      }
+      vi.stubGlobal("Image", MockImage);
+      // The row enters the look-ahead band while its AI illustration is
+      // still rendering; the pending-image poll later merges the finished
+      // URL into the same keyed row, with no fresh intersection to observe.
+      const pending = makeArticle({
+        id: 8,
+        title: "Rendering",
+        image_pending: true,
+      });
+      let served: unknown = pending;
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockImplementation((url: string) => {
+          if (String(url).includes("/state/batch")) {
+            return Promise.resolve({ ok: true, status: 204, json: async () => ({}) });
+          }
+          return Promise.resolve(pageResponse([served], { "X-Unread-Count": "1" }));
+        }),
+      );
+      const { container } = renderReading(
+        <ArticleList filter="unread" emptyTitle="Empty" />,
+      );
+      await vi.waitFor(() =>
+        expect(container.querySelector('[data-article-id="8"]')).toBeTruthy(),
+      );
+      const row = container.querySelector('[data-article-id="8"]')!;
+      const io = await prefetchIoFor(row);
+      act(() => {
+        io.callback([{ isIntersecting: true, target: row }]);
+      });
+      // Nothing to warm yet — but the row must not be forgotten.
+      expect(created).toHaveLength(0);
+
+      served = { ...pending, image_url: "/api/media/8.png", image_pending: false };
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(4100); // pending-image poll tick
+      });
+      expect(created.map((image) => image.src)).toEqual([
+        expect.stringContaining("/api/media/8.png"),
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("shows the reading-mode empty state when the window is empty", async () => {
     vi.stubGlobal(
       "fetch",

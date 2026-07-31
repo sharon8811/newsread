@@ -519,6 +519,19 @@ function ReadingList({
   // back from the HTTP cache even offline.
   const prefetchObserver = useRef<IntersectionObserver | null>(null);
   const prefetchedImages = useRef(new Set<string>());
+  // Rows that entered the look-ahead band while their AI illustration was
+  // still rendering. The poll merges the finished URL into the same keyed
+  // row — no ref churn, no fresh intersection — so the effect below is what
+  // warms these the moment the URL lands.
+  const awaitingImage = useRef(new Set<number>());
+
+  const warmImage = useCallback((url: string | null) => {
+    const src = imageSrc(url);
+    if (!src || prefetchedImages.current.has(src)) return;
+    prefetchedImages.current.add(src);
+    new Image().src = src;
+  }, []);
+
   useEffect(() => {
     const root = scrollerRef.current;
     if (!root) return;
@@ -528,11 +541,12 @@ function ReadingList({
           if (!entry.isIntersecting) continue;
           observer.unobserve(entry.target);
           const id = Number((entry.target as HTMLElement).dataset.articleId);
-          const url = articlesLive.current?.find((a) => a.id === id)?.image_url;
-          const src = imageSrc(url ?? null);
-          if (!src || prefetchedImages.current.has(src)) continue;
-          prefetchedImages.current.add(src);
-          new Image().src = src;
+          const article = articlesLive.current?.find((a) => a.id === id);
+          if (article && !article.image_url && article.image_pending) {
+            awaitingImage.current.add(id);
+          } else {
+            warmImage(article?.image_url ?? null);
+          }
         }
       },
       { root, rootMargin: `0px 0px ${IMAGE_PREFETCH_MARGIN_PX}px 0px` },
@@ -543,7 +557,21 @@ function ReadingList({
       observer.disconnect();
       prefetchObserver.current = null;
     };
-  }, []);
+  }, [warmImage]);
+
+  useEffect(() => {
+    if (awaitingImage.current.size === 0 || !articles) return;
+    for (const article of articles) {
+      if (!awaitingImage.current.has(article.id)) continue;
+      if (article.image_url) {
+        awaitingImage.current.delete(article.id);
+        warmImage(article.image_url);
+      } else if (!article.image_pending) {
+        // Generation gave up; nothing will ever land for this row.
+        awaitingImage.current.delete(article.id);
+      }
+    }
+  }, [articles, warmImage]);
 
   const onItemElement = useCallback((id: number, el: HTMLElement | null) => {
     const map = itemEls.current;
