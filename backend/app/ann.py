@@ -39,7 +39,7 @@ import hashlib
 import logging
 
 from pgvector.sqlalchemy import HALFVEC
-from sqlalchemy import text
+from sqlalchemy import bindparam, text
 
 from . import db, embeddings
 from .config import settings
@@ -69,8 +69,29 @@ def knn_distance(column, query_vector):
     """Cosine distance whose cast matches the HNSW index expression, so
     ORDER BY knn_distance(...) LIMIT n is index-served once the index exists
     (and an exact halfvec scan until then). Top-K queries only: an HNSW scan
-    ends early, so ranking every row still needs plain cosine_distance."""
+    ends early, so ranking every row still needs plain cosine_distance.
+
+    Until the capability probe has confirmed pgvector >= 0.8 this returns the
+    plain vector expression — servers before 0.7 don't even define the
+    halfvec type, and the cast would turn every semantic search into an
+    error instead of the pre-index exact scan. Call sites await relax_scan()
+    (which probes) before building their statement."""
+    if not _capable:
+        return column.cosine_distance(query_vector)
     return column.cast(HALFVEC(len(query_vector))).cosine_distance(query_vector)
+
+
+def model_filter(column):
+    """`model == <configured model>` with the value inlined as a literal at
+    execution, not bound: the planner can only prove the partial HNSW index
+    predicate (WHERE model = '…') when it sees the value, and asyncpg's
+    prepared statements switch to generic plans — parameter opaque, partial
+    index unusable, silent seq-scan — after a handful of executions. The
+    model is server configuration, not user data, so inlining is safe. Every
+    KNN query site must filter through this."""
+    return column == bindparam(
+        None, settings.openai_embedding_model, literal_execute=True, unique=True
+    )
 
 
 async def _iterative_scan_available(session) -> bool:
@@ -93,7 +114,10 @@ async def relax_scan(session) -> None:
     index scan going past ef_search (in exact distance order) until the LIMIT
     is satisfied. Without it, the joins and filters layered on every KNN
     query here would thin the candidate pool to ef_search (default 40).
-    No-op below pgvector 0.8 — where no index exists to scan anyway."""
+    No-op below pgvector 0.8 — where no index exists to scan anyway.
+
+    Await this BEFORE building the statement: the probe it runs also decides
+    whether knn_distance() emits the halfvec cast or the plain fallback."""
     if await _iterative_scan_available(session):
         await session.execute(text("SET LOCAL hnsw.iterative_scan = 'strict_order'"))
 

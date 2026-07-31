@@ -56,9 +56,15 @@ metadata), the next worker cycle recreates them.
 - `related_articles` and history search were restructured around index-served
   KNN pool subqueries (`RELATED_KNN_POOL`, `HISTORY_CHUNK_POOL`) because their
   outer ordering (NER-boosted score, per-document `min(distance)`) is not a
-  bare distance. The history pool keeps the `user_id` filter *inside* the KNN
-  subquery — the filtered-search caveat from #81 — so the iterative scan keeps
-  pulling until the pool holds that user's chunks.
+  bare distance. Every selective filter lives *inside* the pool subquery —
+  the related pool carries the full inbox scope + recency window, the history
+  pool the `user_id` and hostname/date filters (the filtered-search caveat
+  from #81) — so out-of-scope neighbors can't crowd the pool slots and the
+  iterative scan keeps pulling until the pool holds real candidates.
+- Before the capability probe confirms pgvector ≥ 0.8, `knn_distance` emits
+  the plain `cosine_distance` (servers before 0.7 don't define `halfvec`, and
+  the cast would error rather than fall back) — hence "await `relax_scan`
+  before building the statement".
 
 ## Requirements and ops
 

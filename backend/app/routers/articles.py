@@ -372,10 +372,25 @@ async def related_articles(
     seen = [row.article.id for row in rows]
     await ann.relax_scan(session)
     knn = ann.knn_distance(ArticleEmbedding.embedding, source.embedding)
+    # The pool carries the full inbox scope and recency window, not just the
+    # model filter: nearest neighbors cluster semantically, so unsubscribed,
+    # muted, suppressed, or out-of-window articles would otherwise crowd the
+    # 200 slots and evict this user's actual candidates. The iterative scan
+    # (relax_scan) keeps the index feeding rows until the pool fills
+    # post-filter. Model filter also matches the partial HNSW index predicate.
     pool = (
-        select(ArticleEmbedding.article_id.label("article_id"), knn.label("distance"))
-        # Same-model only, and it matches the partial HNSW index predicate.
-        .where(ArticleEmbedding.model == settings.openai_embedding_model)
+        _related_scope(user_id, article.id)
+        .with_only_columns(
+            ArticleEmbedding.article_id.label("article_id"),
+            knn.label("distance"),
+            maintain_column_froms=True,
+        )
+        .join(ArticleEmbedding, ArticleEmbedding.article_id == Article.id)
+        .where(
+            ann.model_filter(ArticleEmbedding.model),
+            Article.fetched_at >= cutoff,
+            Article.id.notin_(seen),
+        )
         .order_by(knn)
         .limit(RELATED_KNN_POOL)
         .subquery()
@@ -476,7 +491,7 @@ async def _hybrid_search_ids(
         .join(ArticleEmbedding, ArticleEmbedding.article_id == Article.id)
         # Model filter keeps dimensions consistent mid re-embed after a model
         # switch — and matches the partial HNSW index predicate (ann.py).
-        .where(ArticleEmbedding.model == settings.openai_embedding_model)
+        .where(ann.model_filter(ArticleEmbedding.model))
         .order_by(ann.knn_distance(ArticleEmbedding.embedding, query_vector))
         .limit(ranking.SEARCH_POOL)
     )

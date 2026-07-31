@@ -8,7 +8,6 @@ from sqlalchemy import case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import ann, embeddings, history_embeddings, ranking
-from .config import settings
 from .models import (
     BrowserHistoryDocument,
     BrowserHistoryDocumentEmbedding,
@@ -206,9 +205,29 @@ async def _document_vector_ids(
 ) -> list[int]:
     await ann.relax_scan(session)
     knn = ann.knn_distance(BrowserHistoryDocumentEmbedding.embedding, query_vector)
-    # The user filter lives INSIDE the KNN subquery: this is the filtered-ANN
-    # path from #81, and the iterative scan keeps pulling candidates until the
-    # pool holds this user's chunks rather than the global nearest neighbors.
+    # The user AND location filters live INSIDE the KNN subquery: this is the
+    # filtered-ANN path from #81, and the iterative scan keeps pulling
+    # candidates until the pool holds chunks that actually satisfy the search
+    # — otherwise other users, hosts, or dates would crowd the 400 slots and
+    # leave the semantic leg empty. EXISTS rather than a page join so a
+    # multi-page document doesn't spend several pool slots on one chunk.
+    location_match = (
+        select(BrowserHistoryPageDocument.id)
+        .join(
+            BrowserHistoryPage,
+            BrowserHistoryPage.id == BrowserHistoryPageDocument.page_id,
+        )
+        .where(
+            BrowserHistoryPageDocument.document_id == BrowserHistoryDocumentEmbedding.document_id,
+            *location_filters(
+                user_id,
+                hostname=hostname,
+                date_from=date_from,
+                date_to=date_to,
+            ),
+        )
+        .exists()
+    )
     chunk_pool = (
         select(
             BrowserHistoryDocumentEmbedding.document_id.label("document_id"),
@@ -220,7 +239,8 @@ async def _document_vector_ids(
         )
         .where(
             BrowserHistoryDocument.user_id == user_id,
-            BrowserHistoryDocumentEmbedding.model == settings.openai_embedding_model,
+            ann.model_filter(BrowserHistoryDocumentEmbedding.model),
+            location_match,
         )
         .order_by(knn)
         .limit(HISTORY_CHUNK_POOL)

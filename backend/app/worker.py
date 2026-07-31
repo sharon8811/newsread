@@ -161,6 +161,12 @@ async def enrich_and_summarize(ctx: dict | None = None, feed_id: int | None = No
         extracted = 0
         logger.warning("Entity extraction stage failed: %s", exc)
 
+    # Before the LLM gate: embeddings can be configured without a generation
+    # model (embeddings.is_configured is independent of llm.is_configured),
+    # and catalog/history vectors written elsewhere still deserve their HNSW
+    # indexes. A no-op when the indexes already match the configured model.
+    await ann.ensure_indexes()
+
     if not llm.is_configured():
         # Entity rules must still materialize on LLM-less installs (the
         # vector leg no-ops without embeddings).
@@ -204,9 +210,6 @@ async def enrich_and_summarize(ctx: dict | None = None, feed_id: int | None = No
     tagged = await extract_named_entities_batch(feed_id=feed_id)
     embedded = await embed_articles_batch(feed_id=feed_id)
     history_documents_embedded = await embed_history_documents_batch()
-    # After the embed stages so a first batch under a new model gets its
-    # HNSW index the same cycle; a no-op when the indexes already match.
-    await ann.ensure_indexes()
     suppressed = await suppress_articles_batch(feed_id=feed_id)
 
     if (

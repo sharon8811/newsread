@@ -256,6 +256,32 @@ async def test_relax_scan_gated_on_capability(monkeypatch):
     await ann.ensure_indexes()
 
 
+def test_knn_distance_falls_back_before_capability(monkeypatch):
+    """Servers before pgvector 0.7 don't define halfvec: until the probe
+    confirms >= 0.8, the expression must stay the plain exact-scan one."""
+    monkeypatch.setattr(ann, "_capable", None)
+    assert "halfvec" not in str(ann.knn_distance(ArticleEmbedding.embedding, [1.0, 0.0])).lower()
+    monkeypatch.setattr(ann, "_capable", False)
+    assert "halfvec" not in str(ann.knn_distance(ArticleEmbedding.embedding, [1.0, 0.0])).lower()
+    monkeypatch.setattr(ann, "_capable", True)
+    assert "halfvec" in str(ann.knn_distance(ArticleEmbedding.embedding, [1.0, 0.0])).lower()
+
+
+def test_model_filter_inlines_literal(monkeypatch):
+    """The partial-index predicate is only provable with the model inlined:
+    a bound parameter goes opaque once asyncpg flips to a generic plan and
+    the index silently stops being used."""
+    from sqlalchemy.dialects import postgresql
+
+    monkeypatch.setattr(ann.settings, "openai_embedding_model", "emb")
+    compiled = (
+        select(ArticleEmbedding.article_id)
+        .where(ann.model_filter(ArticleEmbedding.model))
+        .compile(dialect=postgresql.dialect(), compile_kwargs={"render_postcompile": True})
+    )
+    assert "'emb'" in str(compiled)
+
+
 def test_index_names_fit_postgres_limit():
     for table in ann.INDEXED_TABLES:
         assert len(ann.index_name(table, "m" * 120, 4000)) <= 63

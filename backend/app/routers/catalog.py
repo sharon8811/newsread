@@ -305,7 +305,7 @@ async def _hybrid_catalog_ids(
             .join(CatalogEntryEmbedding)
             .where(
                 *_catalog_filter(category),
-                CatalogEntryEmbedding.model == settings.openai_embedding_model,
+                ann.model_filter(CatalogEntryEmbedding.model),
             )
             .order_by(ann.knn_distance(CatalogEntryEmbedding.embedding, query_vector))
             .limit(ranking.SEARCH_POOL)

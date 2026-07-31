@@ -173,17 +173,26 @@ async def main() -> None:
             .join(Subscription, Subscription.feed_id == Article.feed_id)
             .where(Subscription.user_id == 1)
             .join(ArticleEmbedding, ArticleEmbedding.article_id == Article.id)
-            .where(ArticleEmbedding.model == MODEL)
+            .where(ann.model_filter(ArticleEmbedding.model))
             .order_by(knn)
             .limit(60)
         )
 
     def related_pool_stmt():
-        # Mirrors articles.related_articles' KNN candidate pool.
+        # Mirrors articles.related_articles' KNN candidate pool (inbox scope
+        # and recency window inside the pool, like the real call site).
+        from datetime import UTC, datetime, timedelta
+
         knn = ann.knn_distance(ArticleEmbedding.embedding, query_vector)
         return (
             select(ArticleEmbedding.article_id, knn.label("distance"))
-            .where(ArticleEmbedding.model == MODEL)
+            .join(Article, Article.id == ArticleEmbedding.article_id)
+            .join(Subscription, Subscription.feed_id == Article.feed_id)
+            .where(
+                Subscription.user_id == 1,
+                ann.model_filter(ArticleEmbedding.model),
+                Article.fetched_at >= datetime.now(UTC) - timedelta(days=90),
+            )
             .order_by(knn)
             .limit(RELATED_KNN_POOL)
         )
@@ -202,6 +211,10 @@ async def main() -> None:
         return list(await session.scalars(stmt))
 
     async def measure(runner, *, exact: bool):
+        # Fresh pool per phase: cached plans on pooled connections outlive
+        # SET LOCAL, so the exact phase's enable_indexscan=off seq-scan plans
+        # would otherwise be replayed verbatim during the indexed phase.
+        await db.engine.dispose()
         timings, result = [], None
         for _ in range(2 + args.runs):
             async with db.SessionLocal() as session:
@@ -215,18 +228,11 @@ async def main() -> None:
 
     vector_literal = "[" + ",".join(f"{x:.6f}" for x in query_vector) + "]"
 
-    async def uses_index(order_only: bool) -> bool:
+    async def uses_index(limit: int) -> bool:
         # Hand-built SQL (a pgvector bind can't render as a literal) with the
-        # same cast expression the app statements produce.
-        knn_sql = f"(embedding::halfvec({args.dim})) <=> '{vector_literal}'::halfvec({args.dim})"
-        scope = (
-            ""
-            if order_only
-            else (
-                "JOIN articles a ON a.id = e.article_id "
-                "JOIN subscriptions s ON s.feed_id = a.feed_id AND s.user_id = 1 "
-            )
-        )
+        # same cast expression, scope joins, and literal model filter the app
+        # statements produce.
+        knn_sql = f"(e.embedding::halfvec({args.dim})) <=> '{vector_literal}'::halfvec({args.dim})"
         async with db.SessionLocal() as session:
             await ann.relax_scan(session)
             plan = "\n".join(
@@ -234,8 +240,10 @@ async def main() -> None:
                     await session.scalars(
                         text(
                             f"EXPLAIN SELECT e.article_id FROM article_embeddings e "
-                            f"{scope}WHERE e.model = '{MODEL}' "
-                            f"ORDER BY {knn_sql} LIMIT {60 if not order_only else RELATED_KNN_POOL}"
+                            f"JOIN articles a ON a.id = e.article_id "
+                            f"JOIN subscriptions s ON s.feed_id = a.feed_id AND s.user_id = 1 "
+                            f"WHERE e.model = '{MODEL}' "
+                            f"ORDER BY {knn_sql} LIMIT {limit}"
                         )
                     )
                 ).all()
@@ -243,11 +251,11 @@ async def main() -> None:
         return "hnsw_" in plan
 
     shapes = [
-        ("article search (scoped, LIMIT 60)", lambda s: run_stmt(s, article_search_stmt()), False),
+        ("article search (scoped, LIMIT 60)", lambda s: run_stmt(s, article_search_stmt()), 60),
         (
             f"related KNN pool (LIMIT {RELATED_KNN_POOL})",
             lambda s: run_stmt(s, related_pool_stmt()),
-            True,
+            RELATED_KNN_POOL,
         ),
         ("history search (per-user, grouped)", run_history, None),
     ]
@@ -273,12 +281,12 @@ async def main() -> None:
 
     print("\n| shape | exact ms | indexed ms | recall | index used |")
     print("|---|---|---|---|---|")
-    for name, runner, order_only in shapes:
+    for name, runner, limit in shapes:
         exact_ms, _ = await measure(runner, exact=True)
         indexed_ms, rows = await measure(runner, exact=False)
         exact_rows = exact_results[name]
         recall = len(set(rows) & set(exact_rows)) / len(exact_rows) if exact_rows else 1.0
-        used = await uses_index(order_only) if order_only is not None else "n/a"
+        used = await uses_index(limit) if limit is not None else "n/a"
         print(f"| {name} | {exact_ms:.1f} | {indexed_ms:.1f} | {recall:.3f} | {used} |")
 
     await db.engine.dispose()
