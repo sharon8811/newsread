@@ -29,11 +29,17 @@
   --line-soft: #e5e5e1;
   --shadow-modal: 0 24px 80px rgba(28, 30, 34, 0.28);
   /* Fallback is per-glyph: Latin renders from the primary font, Hebrew falls
-     through to the Hebrew companion, anything else to system fonts (which
-     cover Arabic/CJK/etc. natively). */
-  --serif: var(--font-serif), var(--font-hebrew), Georgia, serif;
-  --sans: var(--font-sans), var(--font-hebrew), system-ui, ui-sans-serif, sans-serif;
-  --mono: var(--font-mono), var(--font-hebrew), ui-monospace, monospace;
+     through to Noto Sans Hebrew, anything else to system fonts (which cover
+     Arabic/CJK/etc. natively).
+     Literal family names, NOT the var(--font-*) composites: next/font bakes
+     its synthesized "<Family> Fallback" faces (local Arial / Times New Roman,
+     no unicode-range) into those vars right after the primary, where they
+     swallow Hebrew glyphs before Noto is ever reached — and this Turbopack
+     build ignores adjustFontFallback: false. The Fallback names must stay
+     AFTER Noto Sans Hebrew. */
+  --serif: "Source Serif 4", "Noto Sans Hebrew", "Source Serif 4 Fallback", Georgia, serif;
+  --sans: "Geist", "Noto Sans Hebrew", "Geist Fallback", system-ui, ui-sans-serif, sans-serif;
+  --mono: "Geist Mono", "Noto Sans Hebrew", "Geist Mono Fallback", ui-monospace, monospace;
 }
 
 @media (prefers-color-scheme: dark) {
