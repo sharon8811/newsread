@@ -591,6 +591,45 @@ body {
   animation: spin 0.9s linear infinite;
 }
 
+/* Scroll-past read feedback: the ✓ pops in at the seam the card exited
+   through, then drifts up and fades — as if riding out with it. */
+@keyframes readStamp {
+  0% {
+    opacity: 0;
+    transform: translateY(6px) scale(0.6);
+  }
+  25% {
+    opacity: 1;
+    transform: translateY(0) scale(1.05);
+  }
+  45% {
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-14px) scale(0.9);
+  }
+}
+.read-stamp {
+  animation: readStamp 0.8s cubic-bezier(0.2, 0.7, 0.3, 1) both;
+}
+
+/* Unread-pill tally: the fresh count rolls in from above on each decrement. */
+@keyframes countTick {
+  from {
+    opacity: 0.35;
+    transform: translateY(-5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.count-tick {
+  display: inline-block;
+  animation: countTick 0.3s ease-out;
+}
+
 @keyframes blinkDot {
   0%,
   80%,
@@ -618,6 +657,9 @@ body {
   .dot-new,
   .spinning,
   .shimmer,
+  .count-tick,
+  /* still ✓, removed by the 1s cleanup */
+  .read-stamp,
   .typing-dot {
     animation: none;
   }

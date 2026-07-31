@@ -12,6 +12,7 @@ import useSWR, { mutate } from "swr";
 import {
   api,
   fetcher,
+  imageSrc,
   type Article,
   type DislikeRuleCreated,
 } from "@/lib/api";
@@ -251,6 +252,10 @@ function ItemModals({
 
 const KEYS_HINT = "j / k to navigate · enter to open · s to save · m to toggle read";
 
+// How far below the viewport upcoming card images are warmed (~8 cards), so a
+// connection drop mid-session doesn't turn the next reads into empty frames.
+const IMAGE_PREFETCH_MARGIN_PX = 4000;
+
 // Row wrapper for reading mode. Owning the ref callback here keeps its
 // identity stable per row (a fresh closure per parent render would make React
 // detach/re-attach every row's ref and churn the scroll-past observer), and
@@ -314,7 +319,6 @@ function ReadingList({
     loadNewer,
     resetToTop,
     markPassed,
-    undoPassed,
     toggleRead,
     markOpened,
     toggleSaved,
@@ -327,6 +331,9 @@ function ReadingList({
   const [dismissing, setDismissing] = useState<PendingDismiss | null>(null);
   const [recentPassed, setRecentPassed] = useState<number[]>([]);
   const [readFeedbackError, setReadFeedbackError] = useState<string | null>(null);
+  // Each scroll-past mark pops an ephemeral ✓ at the seam where the card left;
+  // the counter keys the element so a rapid fling restarts the animation.
+  const [readStamp, setReadStamp] = useState(0);
   const [overlayTop, setOverlayTop] = useState(120);
   const [headerHeight, setHeaderHeight] = useState(0);
   const openDismiss = useCallback((a: Article) => setDismissing(startDismiss(a)), []);
@@ -420,6 +427,7 @@ function ReadingList({
               const id = Number((entry.target as HTMLElement).dataset.articleId);
               if (id && markPassed(id)) {
                 setReadFeedbackError(null);
+                setReadStamp((count) => count + 1);
                 setRecentPassed((current) =>
                   current.includes(id) ? current : [...current, id],
                 );
@@ -470,15 +478,25 @@ function ReadingList({
     return () => clearTimeout(timer);
   }, [recentPassed, readFeedbackError]);
 
-  const handleUndoPassed = useCallback(async () => {
-    const ids = recentPassed;
-    setRecentPassed([]);
-    try {
-      await undoPassed(ids);
-    } catch {
-      setReadFeedbackError("Could not undo. Use Mark as unread on the article.");
+  // The stamp outlives its animation just long enough to be cleaned up; a
+  // fresh mark during that window re-keys the element and restarts it.
+  useEffect(() => {
+    if (readStamp === 0) return;
+    const timer = setTimeout(() => setReadStamp(0), 1000);
+    return () => clearTimeout(timer);
+  }, [readStamp]);
+
+  // The unread pill doubles as the running tally: when a mark drops the
+  // count, re-key its label so the new number rolls in.
+  const prevUnreadRef = useRef(unreadCount);
+  const [pillTick, setPillTick] = useState(0);
+  useEffect(() => {
+    const previous = prevUnreadRef.current;
+    prevUnreadRef.current = unreadCount;
+    if (previous !== null && unreadCount !== null && unreadCount < previous) {
+      setPillTick((tick) => tick + 1);
     }
-  }, [recentPassed, undoPassed]);
+  }, [unreadCount]);
 
   const handleToggleRead = useCallback(
     async (article: Article) => {
@@ -494,13 +512,78 @@ function ReadingList({
     [toggleRead],
   );
 
+  // Warm upcoming card images well before they render: lazy loading plus
+  // content-visibility means an image is not even requested until its card
+  // nears the viewport, so a connection drop would leave the next cards
+  // imageless. Generated images are served immutable, so a warmed URL comes
+  // back from the HTTP cache even offline.
+  const prefetchObserver = useRef<IntersectionObserver | null>(null);
+  const prefetchedImages = useRef(new Set<string>());
+  // Rows that entered the look-ahead band while their AI illustration was
+  // still rendering. The poll merges the finished URL into the same keyed
+  // row — no ref churn, no fresh intersection — so the effect below is what
+  // warms these the moment the URL lands.
+  const awaitingImage = useRef(new Set<number>());
+
+  const warmImage = useCallback((url: string | null) => {
+    const src = imageSrc(url);
+    if (!src || prefetchedImages.current.has(src)) return;
+    prefetchedImages.current.add(src);
+    new Image().src = src;
+  }, []);
+
+  useEffect(() => {
+    const root = scrollerRef.current;
+    if (!root) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
+          observer.unobserve(entry.target);
+          const id = Number((entry.target as HTMLElement).dataset.articleId);
+          const article = articlesLive.current?.find((a) => a.id === id);
+          if (article && !article.image_url && article.image_pending) {
+            awaitingImage.current.add(id);
+          } else {
+            warmImage(article?.image_url ?? null);
+          }
+        }
+      },
+      { root, rootMargin: `0px 0px ${IMAGE_PREFETCH_MARGIN_PX}px 0px` },
+    );
+    prefetchObserver.current = observer;
+    itemEls.current.forEach((el) => observer.observe(el));
+    return () => {
+      observer.disconnect();
+      prefetchObserver.current = null;
+    };
+  }, [warmImage]);
+
+  useEffect(() => {
+    if (awaitingImage.current.size === 0 || !articles) return;
+    for (const article of articles) {
+      if (!awaitingImage.current.has(article.id)) continue;
+      if (article.image_url) {
+        awaitingImage.current.delete(article.id);
+        warmImage(article.image_url);
+      } else if (!article.image_pending) {
+        // Generation gave up; nothing will ever land for this row.
+        awaitingImage.current.delete(article.id);
+      }
+    }
+  }, [articles, warmImage]);
+
   const onItemElement = useCallback((id: number, el: HTMLElement | null) => {
     const map = itemEls.current;
     const existing = map.get(id);
-    if (existing && existing !== el) passObserver.current?.unobserve(existing);
+    if (existing && existing !== el) {
+      passObserver.current?.unobserve(existing);
+      prefetchObserver.current?.unobserve(existing);
+    }
     if (el) {
       map.set(id, el);
       passObserver.current?.observe(el);
+      prefetchObserver.current?.observe(el);
     } else {
       map.delete(id);
     }
@@ -571,7 +654,10 @@ function ReadingList({
       (entries) => {
         if (entries.some((e) => e.isIntersecting)) loadNewer();
       },
-      { root, rootMargin: "400px" },
+      // Generous look-ahead: with a 50-article page already in memory, pulling
+      // the next page this early keeps a whole page of upcoming reads loaded
+      // before the connection can matter.
+      { root, rootMargin: "2000px" },
     );
     observer.observe(el);
     return () => observer.disconnect();
@@ -724,34 +810,46 @@ function ReadingList({
           {newAbove} new ↑
         </button>
       )}
-      {(recentPassed.length > 0 || readFeedbackError) && (
+      {/* Scroll-past feedback: a transient ✓ pops at the seam where the read
+          card just left and rides out after it — no bubble covering the next
+          card. Undoing is the card's own read toggle, a scroll-back away. A
+          visually hidden live region keeps the announcement for screen
+          readers, who get no joy from the stamp. */}
+      {readStamp > 0 && (
+        <div
+          key={readStamp}
+          aria-hidden="true"
+          className="pointer-events-none fixed left-1/2 z-40 -translate-x-1/2"
+          style={{ top: overlayTop }}
+        >
+          <span
+            className="read-stamp flex h-7 w-7 items-center justify-center rounded-full shadow-md"
+            style={{ background: "var(--accent)", color: "#fff" }}
+          >
+            <CheckIcon size={14} />
+          </span>
+        </div>
+      )}
+      {recentPassed.length > 0 && (
+        <span className="sr-only" role="status" aria-live="polite">
+          {recentPassed.length === 1
+            ? "Marked read"
+            : `${recentPassed.length} marked read`}
+        </span>
+      )}
+      {readFeedbackError && (
         <div
           className="font-mono-nr fixed left-1/2 z-40 flex max-w-[calc(100vw-24px)] -translate-x-1/2 items-center gap-2 rounded-md border px-3 py-2 text-label shadow-lg"
           style={{
             top: overlayTop + (newAbove > 0 ? 44 : 0),
             background: "var(--bg-raised)",
-            borderColor: readFeedbackError ? "var(--danger)" : "var(--line)",
-            color: readFeedbackError ? "var(--danger)" : "var(--ink)",
+            borderColor: "var(--danger)",
+            color: "var(--danger)",
           }}
           role="status"
           aria-live="polite"
         >
-          {!readFeedbackError && <CheckIcon size={14} />}
-          <span className="whitespace-nowrap">
-            {readFeedbackError ??
-              (recentPassed.length === 1
-                ? "Marked read"
-                : `${recentPassed.length} marked read`)}
-          </span>
-          {!readFeedbackError && (
-            <button
-              className="ml-1 border-l pl-2 font-semibold"
-              style={{ borderColor: "var(--line)", color: "var(--accent)" }}
-              onClick={handleUndoPassed}
-            >
-              Undo
-            </button>
-          )}
+          <span className="whitespace-nowrap">{readFeedbackError}</span>
         </div>
       )}
       {unreadCount !== null && (
@@ -768,7 +866,10 @@ function ReadingList({
             color: unreadCount > 0 ? "var(--ink)" : "var(--ink-faint)",
           }}
         >
-          {unreadCount > 0 ? `${unreadCount} unread ↓` : "All caught up ✓"}
+          {/* Re-keyed on every decrement so the fresh count rolls in. */}
+          <span key={pillTick} className="count-tick">
+            {unreadCount > 0 ? `${unreadCount} unread ↓` : "All caught up ✓"}
+          </span>
         </button>
       )}
 
