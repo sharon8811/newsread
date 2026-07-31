@@ -12,7 +12,7 @@ from sqlalchemy import and_, case, func, literal_column, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .. import embeddings, ranking, youtube
+from .. import ann, embeddings, ranking, youtube
 from ..config import settings
 from ..deps import CurrentUser, DbSession
 from ..fetcher import FeedParseError, FeedRateLimited, fetch_feed_data, strip_html
@@ -298,6 +298,7 @@ async def _hybrid_catalog_ids(
     except Exception as exc:
         logger.warning("Catalog query embedding failed, using full-text search: %s", exc)
         return (text_ids, {entry_id: "Keyword match" for entry_id in text_ids})
+    await ann.relax_scan(session)
     vector_ids = list(
         await session.scalars(
             select(CatalogEntry.id)
@@ -306,7 +307,7 @@ async def _hybrid_catalog_ids(
                 *_catalog_filter(category),
                 CatalogEntryEmbedding.model == settings.openai_embedding_model,
             )
-            .order_by(CatalogEntryEmbedding.embedding.cosine_distance(query_vector))
+            .order_by(ann.knn_distance(CatalogEntryEmbedding.embedding, query_vector))
             .limit(ranking.SEARCH_POOL)
         )
     )
@@ -357,6 +358,8 @@ async def _recommended_ids(session: AsyncSession, user_id: int, category: str | 
                 CatalogEntryEmbedding.model == settings.openai_embedding_model,
                 Subscription.id.is_(None),
             )
+            # Full ranking with no LIMIT: an HNSW scan ends early and would
+            # silently drop entries, so this stays an exact scan on purpose.
             .order_by(CatalogEntryEmbedding.embedding.cosine_distance(centroid))
         )
     )

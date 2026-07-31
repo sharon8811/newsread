@@ -105,6 +105,10 @@ async def apply_vector_rules(
         .where(
             UserDislikeRule.kind.in_(("topic", "story")),
             or_(UserDislikeRule.expires_at.is_(None), UserDislikeRule.expires_at > func.now()),
+            # Threshold join between two columns, not a top-K: the HNSW
+            # indexes (ann.py) only accelerate ORDER BY … LIMIT, so this is
+            # an exact articles×rules scan, bounded by SUPPRESS_WINDOW. If it
+            # ever hurts, reformulate as per-rule KNN with a distance cutoff.
             ArticleEmbedding.embedding.cosine_distance(DislikeRuleEmbedding.embedding)
             < UserDislikeRule.threshold,
         ),

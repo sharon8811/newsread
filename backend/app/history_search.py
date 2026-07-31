@@ -7,7 +7,7 @@ from datetime import date
 from sqlalchemy import case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from . import embeddings, history_embeddings, ranking
+from . import ann, embeddings, history_embeddings, ranking
 from .config import settings
 from .models import (
     BrowserHistoryDocument,
@@ -19,6 +19,9 @@ from .models import (
 logger = logging.getLogger(__name__)
 
 HISTORY_SEARCH_POOL = 200
+# Chunk-level KNN candidates feeding the semantic leg — larger than the
+# document pool because a document contributes several chunks.
+HISTORY_CHUNK_POOL = 400
 
 
 @dataclass(frozen=True)
@@ -201,7 +204,28 @@ async def _document_vector_ids(
     date_from: date | None,
     date_to: date | None,
 ) -> list[int]:
-    distance = BrowserHistoryDocumentEmbedding.embedding.cosine_distance(query_vector)
+    await ann.relax_scan(session)
+    knn = ann.knn_distance(BrowserHistoryDocumentEmbedding.embedding, query_vector)
+    # The user filter lives INSIDE the KNN subquery: this is the filtered-ANN
+    # path from #81, and the iterative scan keeps pulling candidates until the
+    # pool holds this user's chunks rather than the global nearest neighbors.
+    chunk_pool = (
+        select(
+            BrowserHistoryDocumentEmbedding.document_id.label("document_id"),
+            knn.label("distance"),
+        )
+        .join(
+            BrowserHistoryDocument,
+            BrowserHistoryDocument.id == BrowserHistoryDocumentEmbedding.document_id,
+        )
+        .where(
+            BrowserHistoryDocument.user_id == user_id,
+            BrowserHistoryDocumentEmbedding.model == settings.openai_embedding_model,
+        )
+        .order_by(knn)
+        .limit(HISTORY_CHUNK_POOL)
+        .subquery()
+    )
     statement = (
         _scoped_document_ids(
             user_id,
@@ -209,13 +233,9 @@ async def _document_vector_ids(
             date_from=date_from,
             date_to=date_to,
         )
-        .join(
-            BrowserHistoryDocumentEmbedding,
-            BrowserHistoryDocumentEmbedding.document_id == BrowserHistoryDocument.id,
-        )
-        .where(BrowserHistoryDocumentEmbedding.model == settings.openai_embedding_model)
+        .join(chunk_pool, chunk_pool.c.document_id == BrowserHistoryDocument.id)
         .order_by(
-            func.min(distance),
+            func.min(chunk_pool.c.distance),
             func.max(BrowserHistoryPage.last_visited_at).desc(),
             BrowserHistoryDocument.id.desc(),
         )

@@ -14,6 +14,7 @@ from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.orm import selectinload
 
 from . import (
+    ann,
     catalog_embeddings,
     db,
     embeddings,
@@ -203,6 +204,9 @@ async def enrich_and_summarize(ctx: dict | None = None, feed_id: int | None = No
     tagged = await extract_named_entities_batch(feed_id=feed_id)
     embedded = await embed_articles_batch(feed_id=feed_id)
     history_documents_embedded = await embed_history_documents_batch()
+    # After the embed stages so a first batch under a new model gets its
+    # HNSW index the same cycle; a no-op when the indexes already match.
+    await ann.ensure_indexes()
     suppressed = await suppress_articles_batch(feed_id=feed_id)
 
     if (
