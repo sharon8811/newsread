@@ -21,6 +21,19 @@ class SummarySkipped(Exception):
     """The source is already shorter than a useful summary; no LLM call was made."""
 
 
+# The user-facing explanation for ThinContentError raisers that don't carry
+# their own message. Shared with error_handlers so the streaming endpoint and
+# the 422 handler tell the reader the same thing.
+THIN_CONTENT_DETAIL = (
+    "Couldn't fetch the article's full text — the site may block automated "
+    "readers. Open the original instead."
+)
+
+_CAPTIONS_THROTTLED_DETAIL = (
+    "YouTube is throttling caption requests for this video — try again in a few minutes."
+)
+
+
 def transcript_still_owed(article: Article) -> bool:
     """A video whose captions have not been fetched yet. Enrichment stamps
     full_text_fetched_at even when it comes up empty, so an unstamped video is
@@ -56,16 +69,9 @@ async def generate_summaries(
         # Anything stored now is permanent — a summary is never regenerated and
         # a "too_short" stamp blocks even a manual retry — so the video would be
         # stuck with its description long after the captions became available.
-        raise ThinContentError(
-            "YouTube is throttling caption requests for this video — try again in a few minutes."
-        )
+        raise ThinContentError(_CAPTIONS_THROTTLED_DETAIL)
     if is_too_short_to_summarize(text):
-        article.summary_short = ""
-        article.summary_medium = ""
-        article.summary = ""
-        article.summary_model = None
-        article.summary_generated_at = None
-        article.summary_skipped_reason = "too_short"
+        _mark_skipped(article, "too_short")
         await session.commit()
         raise SummarySkipped()
     # Read here rather than passed in, so every caller — the batch worker, the
@@ -73,29 +79,119 @@ async def generate_summaries(
     # without threading them through three call sites.
     feed = await session.get(Feed, article.feed_id)
     instructions = feed.summary_instructions if feed is not None else None
-    if is_thin(text):
-        short, medium, full = await _summarize_from_screenshot(
-            article, allow_vision, config=config, usage=usage, instructions=instructions
-        )
-    else:
-        # Videos reach this point only with captions behind them (extractor
-        # puts the transcript in full_text); without any, `text` is the feed's
-        # own description and reads like an article.
-        transcript = bool(youtube.video_id(article.url)) and bool(article.full_text)
-        short, medium, full = await llm.summarize(
-            article.title,
-            clip_for_llm(text),
-            url=article.url,
-            author=article.author,
-            published_at=article.published_at,
-            config=config,
-            usage=usage,
-            instructions=instructions,
-            source_kind="transcript" if transcript else "article",
-        )
+    try:
+        if is_thin(text):
+            short, medium, full = await _summarize_from_screenshot(
+                article, allow_vision, config=config, usage=usage, instructions=instructions
+            )
+        else:
+            # Videos reach this point only with captions behind them (extractor
+            # puts the transcript in full_text); without any, `text` is the feed's
+            # own description and reads like an article.
+            transcript = bool(youtube.video_id(article.url)) and bool(article.full_text)
+            short, medium, full = await llm.summarize(
+                article.title,
+                clip_for_llm(text),
+                url=article.url,
+                author=article.author,
+                published_at=article.published_at,
+                config=config,
+                usage=usage,
+                instructions=instructions,
+                source_kind="transcript" if transcript else "article",
+            )
+    except llm.UnusableContentError as exc:
+        # The model was handed a page that isn't the article (a 404 screen, a
+        # paywall, a bot check) and said so instead of summarizing it. Stamp
+        # the reason — the batch worker stops retrying, the clients explain
+        # the failure — and return normally so the tokens spent finding out
+        # are still metered as a completed call.
+        logger.info("Article %s page is unusable (%s); summary skipped", article.id, exc)
+        _mark_skipped(article, "unusable_page")
+        await session.commit()
+        return
     if not full:
         raise RuntimeError("LLM returned an empty summary")
 
+    _store_summary(article, short, medium, full, config)
+    await session.commit()
+
+
+async def stream_summaries(
+    session: AsyncSession,
+    article: Article,
+    *,
+    config: llm.LLMConfig | None = None,
+    usage: llm.TokenUsage | None = None,
+):
+    """generate_summaries as an event stream for the SSE endpoint: yields
+    status / delta / skipped / done dicts while persisting exactly what the
+    non-streaming path would. Refetch and vision are always allowed — this
+    only runs on demand from an open article view."""
+    yield {"type": "status", "stage": "reading"}
+    text = await ensure_full_text(session, article, allow_refetch=True)
+    if transcript_still_owed(article):
+        raise ThinContentError(_CAPTIONS_THROTTLED_DETAIL)
+    if is_too_short_to_summarize(text):
+        _mark_skipped(article, "too_short")
+        await session.commit()
+        yield {"type": "skipped", "reason": "too_short"}
+        return
+    feed = await session.get(Feed, article.feed_id)
+    instructions = feed.summary_instructions if feed is not None else None
+    try:
+        if is_thin(text):
+            # The vision fallback answers in one piece; the reader still gets
+            # a stage change and the finished text as a single delta.
+            yield {"type": "status", "stage": "rendering"}
+            short, medium, full = await _summarize_from_screenshot(
+                article, True, config=config, usage=usage, instructions=instructions
+            )
+            yield {"type": "delta", "text": full}
+        else:
+            yield {"type": "status", "stage": "summarizing"}
+            transcript = bool(youtube.video_id(article.url)) and bool(article.full_text)
+            short = medium = full = ""
+            async for event in llm.summarize_stream(
+                article.title,
+                clip_for_llm(text),
+                url=article.url,
+                author=article.author,
+                published_at=article.published_at,
+                config=config,
+                usage=usage,
+                instructions=instructions,
+                source_kind="transcript" if transcript else "article",
+            ):
+                if event["type"] == "delta":
+                    yield event
+                else:
+                    short, medium, full = event["levels"]
+    except llm.UnusableContentError as exc:
+        logger.info("Article %s page is unusable (%s); summary skipped", article.id, exc)
+        _mark_skipped(article, "unusable_page")
+        await session.commit()
+        yield {"type": "skipped", "reason": "unusable_page"}
+        return
+    if not full:
+        raise RuntimeError("LLM returned an empty summary")
+    _store_summary(article, short, medium, full, config)
+    await session.commit()
+    yield {"type": "done"}
+
+
+def _mark_skipped(article: Article, reason: str) -> None:
+    article.summary_short = ""
+    article.summary_medium = ""
+    article.summary = ""
+    article.summary_model = None
+    article.summary_generated_at = None
+    article.summary_skipped_reason = reason
+
+
+def _store_summary(
+    article: Article, short: str, medium: str, full: str, config: llm.LLMConfig | None
+) -> None:
     article.summary_short = short
     article.summary_medium = medium
     article.summary = full
@@ -106,7 +202,6 @@ async def generate_summaries(
     article.summary_model = config.model if config is not None else settings.openai_model
     article.summary_generated_at = datetime.now(UTC)
     article.summary_skipped_reason = None
-    await session.commit()
 
 
 async def _summarize_from_screenshot(

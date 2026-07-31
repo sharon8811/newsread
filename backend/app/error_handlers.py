@@ -13,7 +13,7 @@ from fastapi.responses import JSONResponse
 from .crypto import TokenCryptoError
 from .fetcher import FeedRateLimited
 from .llm import LLMRequestFailed
-from .summarizer import ThinContentError
+from .summarizer import THIN_CONTENT_DETAIL, ThinContentError
 
 
 def register(app: FastAPI) -> None:
@@ -29,11 +29,7 @@ def register(app: FastAPI) -> None:
         # the rest get the generic reason.
         return JSONResponse(
             status_code=422,
-            content={
-                "detail": str(exc)
-                or "Couldn't fetch the article's full text — the site may "
-                "block automated readers. Open the original instead."
-            },
+            content={"detail": str(exc) or THIN_CONTENT_DETAIL},
         )
 
     @app.exception_handler(TokenCryptoError)

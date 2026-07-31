@@ -639,8 +639,11 @@ class Article(Base):
     # a no-op call. NULL on rows summarized before this column existed —
     # translation.py re-detects on demand for those.
     summary_language: Mapped[str | None] = mapped_column(String(32))
-    # Explicit terminal state for articles whose source is already shorter
-    # than a useful summary. NULL means summary generation remains eligible.
+    # Explicit skip state; NULL means summary generation remains eligible.
+    # "too_short": source already shorter than a useful summary (terminal).
+    # "needs_full_page": batch worker found no usable text; on-demand retries.
+    # "unusable_page": the model reported the page isn't the article (404,
+    # paywall, bot check); only an explicit force-regenerate retries it.
     summary_skipped_reason: Mapped[str | None] = mapped_column(String(32))
     entities_extracted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # LLM named-entity tagging (see ner.py); separate stamp because it runs

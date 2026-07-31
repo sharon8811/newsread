@@ -7,6 +7,7 @@ import useSWR, { mutate } from "swr";
 import {
   api,
   fetcher,
+  streamSummary,
   type AiStatus,
   type ArticleDetail,
   type SummaryTranslation,
@@ -26,12 +27,23 @@ function asMarkdown(summary: string): string {
   return summary.replace(/^[ \t]*•\s*/gm, "- ");
 }
 
+const STAGE_LABELS = {
+  reading: "Reading the full article…",
+  rendering: "Rendering the page…",
+  summarizing: "Summarizing…",
+} as const;
+
 export default function AiSummary({ article }: { article: ArticleDetail }) {
   const { data: status } = useSWR<AiStatus>(keys.aiStatus, fetcher);
   const [generating, setGenerating] = useState(false);
+  const [stage, setStage] = useState<keyof typeof STAGE_LABELS>("reading");
+  const [streamText, setStreamText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const requestedRef = useRef(false);
   const skippedAsTooShort = article.summary_skipped_reason === "too_short";
+  // The page turned out not to be the article (404, paywall, bot check).
+  // Never auto-retried — only the explicit button forces another attempt.
+  const failedAsUnusable = article.summary_skipped_reason === "unusable_page";
   // A server can have a translation model but no summarizing one. Stored
   // summaries — and their translate action — still belong on screen there;
   // only generating and regenerating need the summarizing model.
@@ -41,24 +53,37 @@ export default function AiSummary({ article }: { article: ArticleDetail }) {
   async function generate(force: boolean) {
     setGenerating(true);
     setError(null);
+    setStage("reading");
+    setStreamText("");
     try {
-      await api(`/articles/${article.id}/summarize${force ? "?force=true" : ""}`, {
-        method: "POST",
+      await streamSummary(article.id, force, (event) => {
+        if (event.type === "status") setStage(event.stage);
+        else if (event.type === "delta") setStreamText((text) => text + event.text);
       });
+      // The stream persisted the outcome (summary or skip reason); the
+      // refreshed article is what every branch below renders from.
       await mutate(keys.article(article.id));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Summarization failed");
     } finally {
       setGenerating(false);
+      setStreamText("");
     }
   }
 
   useEffect(() => {
-    if (!status?.configured || article.summary || skippedAsTooShort || requestedRef.current) return;
+    if (
+      !status?.configured ||
+      article.summary ||
+      skippedAsTooShort ||
+      failedAsUnusable ||
+      requestedRef.current
+    )
+      return;
     requestedRef.current = true;
     generate(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status?.configured, article.id, skippedAsTooShort]);
+  }, [status?.configured, article.id, skippedAsTooShort, failedAsUnusable]);
 
   if (skippedAsTooShort) {
     return (
@@ -75,6 +100,31 @@ export default function AiSummary({ article }: { article: ArticleDetail }) {
         <p className="mt-3 text-body" style={{ color: "var(--ink-dim)" }}>
           This post is already short, so there’s no AI summary.
         </p>
+      </section>
+    );
+  }
+
+  if (failedAsUnusable && !generating && !error) {
+    return (
+      <section
+        className="fade-up mt-7 rounded-md border p-5"
+        style={{ borderColor: "var(--line)", background: "var(--paper-raised)" }}
+      >
+        <div className="flex items-center gap-2">
+          <SparkleIcon size={13} className="shrink-0" />
+          <span className="mono-label" style={{ color: "var(--ink-dim)" }}>
+            AI Summary
+          </span>
+        </div>
+        <p className="mt-3 text-body" style={{ color: "var(--ink-dim)" }}>
+          We couldn’t summarize this article — its page appears to be unavailable (a missing
+          page, paywall, or bot check). Use “Read original” above.
+        </p>
+        {canGenerate && (
+          <button className="btn mt-3" onClick={() => generate(true)}>
+            Try again
+          </button>
+        )}
       </section>
     );
   }
@@ -109,22 +159,36 @@ export default function AiSummary({ article }: { article: ArticleDetail }) {
       </div>
 
       {generating ? (
-        <div className="mt-3.5 flex flex-col gap-2.5">
-          {[92, 100, 64].map((w, i) => (
-            <div
-              key={i}
-              className="h-3.5 animate-pulse rounded"
-              style={{
-                width: `${w}%`,
-                background: "var(--line)",
-                animationDelay: `${i * 150}ms`,
-              }}
-            />
-          ))}
-          <p className="font-mono-nr mt-1 text-label" style={{ color: "var(--ink-faint)" }}>
-            Reading the full article…
-          </p>
-        </div>
+        streamText ? (
+          // The summary as the model writes it. Partial markdown renders
+          // fine; the persisted result replaces it the moment the stream
+          // ends, so any half-open construct is short-lived.
+          <div aria-live="polite">
+            <div className="summary-md mt-3.5" dir={dirOf(article.rtl)}>
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{asMarkdown(streamText)}</ReactMarkdown>
+            </div>
+            <p className="font-mono-nr mt-2 text-label" style={{ color: "var(--ink-faint)" }}>
+              Summarizing…
+            </p>
+          </div>
+        ) : (
+          <div className="mt-3.5 flex flex-col gap-2.5" aria-live="polite">
+            {[92, 100, 64].map((w, i) => (
+              <div
+                key={i}
+                className="h-3.5 animate-pulse rounded"
+                style={{
+                  width: `${w}%`,
+                  background: "var(--line)",
+                  animationDelay: `${i * 150}ms`,
+                }}
+              />
+            ))}
+            <p className="font-mono-nr mt-1 text-label" style={{ color: "var(--ink-faint)" }}>
+              {STAGE_LABELS[stage]}
+            </p>
+          </div>
+        )
       ) : error ? (
         <div className="mt-3">
           <ErrorText>

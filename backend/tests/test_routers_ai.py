@@ -175,6 +175,132 @@ async def test_summarize_article_not_found(client, users, data):
     assert resp.status_code == 404
 
 
+# --- summarize stream ---
+
+
+async def test_summarize_unusable_cached_skip_short_circuits(client, users, data, monkeypatch):
+    user, feed, art = await _setup(users, data)
+    art.summary_skipped_reason = "unusable_page"
+    await data.session.commit()
+
+    async def fail_resolve(*args, **kwargs):  # pragma: no cover - must not be reached
+        raise AssertionError("cached unusable skip attempted to resolve an LLM")
+
+    monkeypatch.setattr(ai_router, "_resolve_llm", fail_resolve)
+    resp = await client.post(f"/api/articles/{art.id}/summarize", headers=users.auth(user))
+    assert resp.status_code == 200
+    assert resp.json()["skipped_reason"] == "unusable_page"
+
+
+async def test_summarize_stream_success(client, users, data, monkeypatch):
+    user, feed, art = await _setup(users, data)
+    monkeypatch.setattr(llm, "is_configured", lambda: True)
+
+    async def fake_stream(session_, article, **kwargs):
+        yield {"type": "status", "stage": "summarizing"}
+        yield {"type": "delta", "text": "Streamed "}
+        yield {"type": "delta", "text": "full."}
+        article.summary = "Streamed full."
+        article.summary_short = "s"
+        article.summary_medium = "m"
+        article.summary_model = "m1"
+        await session_.commit()
+        yield {"type": "done"}
+
+    monkeypatch.setattr(ai_router, "stream_summaries", fake_stream)
+    resp = await client.post(f"/api/articles/{art.id}/summarize/stream", headers=users.auth(user))
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("text/event-stream")
+    events = _parse_sse(resp.text)
+    assert [e["type"] for e in events] == ["status", "delta", "delta", "done"]
+    assert events[-1]["summary"]["summary"] == "Streamed full."
+    assert events[-1]["summary"]["model"] == "m1"
+
+
+async def test_summarize_stream_replays_a_stored_summary(client, users, data, monkeypatch):
+    user, feed, art = await _setup(users, data)
+    art.summary = "stored full"
+    art.summary_short = "stored short"
+    await data.session.commit()
+
+    async def fail_resolve(*args, **kwargs):  # pragma: no cover - must not be reached
+        raise AssertionError("stored summary attempted to resolve an LLM")
+
+    monkeypatch.setattr(ai_router, "_resolve_llm", fail_resolve)
+    resp = await client.post(f"/api/articles/{art.id}/summarize/stream", headers=users.auth(user))
+    events = _parse_sse(resp.text)
+    assert [e["type"] for e in events] == ["done"]
+    assert events[0]["summary"]["summary"] == "stored full"
+
+
+async def test_summarize_stream_replays_a_stored_skip(client, users, data, monkeypatch):
+    user, feed, art = await _setup(users, data)
+    art.summary_skipped_reason = "unusable_page"
+    await data.session.commit()
+    resp = await client.post(f"/api/articles/{art.id}/summarize/stream", headers=users.auth(user))
+    events = _parse_sse(resp.text)
+    assert events == [{"type": "skipped", "reason": "unusable_page"}]
+
+
+async def test_summarize_stream_passes_a_fresh_skip_through(client, users, data, monkeypatch):
+    user, feed, art = await _setup(users, data)
+    monkeypatch.setattr(llm, "is_configured", lambda: True)
+
+    async def fake_stream(session_, article, **kwargs):
+        yield {"type": "status", "stage": "reading"}
+        yield {"type": "skipped", "reason": "unusable_page"}
+
+    monkeypatch.setattr(ai_router, "stream_summaries", fake_stream)
+    resp = await client.post(f"/api/articles/{art.id}/summarize/stream", headers=users.auth(user))
+    events = _parse_sse(resp.text)
+    assert events[-1] == {"type": "skipped", "reason": "unusable_page"}
+
+
+async def test_summarize_stream_thin_content_reports_the_domain_detail(
+    client, users, data, monkeypatch
+):
+    user, feed, art = await _setup(users, data)
+    monkeypatch.setattr(llm, "is_configured", lambda: True)
+
+    async def fake_stream(session_, article, **kwargs):
+        raise ThinContentError()
+        yield  # pragma: no cover - makes this an async generator
+
+    monkeypatch.setattr(ai_router, "stream_summaries", fake_stream)
+    resp = await client.post(f"/api/articles/{art.id}/summarize/stream", headers=users.auth(user))
+    events = _parse_sse(resp.text)
+    assert events[-1]["type"] == "error"
+    assert "block automated readers" in events[-1]["detail"]
+
+
+async def test_summarize_stream_failure_never_leaks_internals(client, users, data, monkeypatch):
+    user, feed, art = await _setup(users, data)
+    monkeypatch.setattr(llm, "is_configured", lambda: True)
+
+    async def fake_stream(session_, article, **kwargs):
+        yield {"type": "status", "stage": "summarizing"}
+        raise RuntimeError("connection to 10.0.0.5:8000 refused")
+
+    monkeypatch.setattr(ai_router, "stream_summaries", fake_stream)
+    resp = await client.post(f"/api/articles/{art.id}/summarize/stream", headers=users.auth(user))
+    events = _parse_sse(resp.text)
+    assert events[-1] == {"type": "error", "detail": "The AI summary failed. Try again."}
+    assert "10.0.0.5" not in resp.text
+
+
+async def test_summarize_stream_no_llm(client, users, data, monkeypatch):
+    user, feed, art = await _setup(users, data)
+    monkeypatch.setattr(llm, "is_configured", lambda: False)
+    resp = await client.post(f"/api/articles/{art.id}/summarize/stream", headers=users.auth(user))
+    assert resp.status_code == 503
+
+
+async def test_summarize_stream_article_not_found(client, users, data):
+    user, feed, art = await _setup(users, data)
+    resp = await client.post("/api/articles/99999/summarize/stream", headers=users.auth(user))
+    assert resp.status_code == 404
+
+
 # --- get conversation ---
 
 

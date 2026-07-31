@@ -15,7 +15,7 @@ from datetime import UTC, datetime
 from functools import lru_cache
 from urllib.parse import urlparse
 
-from openai import AsyncOpenAI
+from openai import AsyncOpenAI, BadRequestError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import crypto
@@ -200,6 +200,14 @@ class EmptyResponseError(LLMRequestFailed):
     """The model answered, but with nothing usable. Message is user-facing."""
 
 
+class UnusableContentError(Exception):
+    """The model reported that the page it was given is not the article — a
+    404 screen, paywall, bot check or empty shell. Deliberately not an
+    LLMRequestFailed: the call succeeded, the *page* is the problem, and
+    callers record it as a skip instead of answering 502. Carries the model's
+    short reason for the logs; it is never shown to a reader."""
+
+
 def ms_since(started: float) -> int:
     return int((time.monotonic() - started) * 1000)
 
@@ -350,6 +358,61 @@ async def _create(
     return _clean(choice.message.content or "")
 
 
+async def _stream_content(
+    messages: list[dict],
+    max_tokens: int,
+    *,
+    config: LLMConfig | None = None,
+    usage: TokenUsage | None = None,
+):
+    """Yield the content deltas of one streaming chat completion."""
+    model = config.model if config is not None else settings.openai_model
+    extra_body = config.extra_params if config is not None else None
+    if config is not None and config.provider != "system":
+        async with user_client(config) as client:
+            async for piece in _stream_create(
+                client, model, messages, max_tokens, usage, extra_body
+            ):
+                yield piece
+    else:
+        async for piece in _stream_create(
+            get_client(), model, messages, max_tokens, usage, extra_body
+        ):
+            yield piece
+
+
+async def _stream_create(
+    client: AsyncOpenAI,
+    model: str,
+    messages: list[dict],
+    max_tokens: int,
+    usage: TokenUsage | None,
+    extra_body: dict | None = None,
+):
+    kwargs = {
+        "model": model,
+        "messages": messages,
+        "max_tokens": max_tokens,
+        "temperature": 0.3,
+        "stream": True,
+        # Servers that honor it send token counts in a final chunk.
+        "stream_options": {"include_usage": True},
+        **({"extra_body": extra_body} if extra_body else {}),
+    }
+    try:
+        stream = await client.chat.completions.create(**kwargs)
+    except BadRequestError:
+        # Not every OpenAI-compatible server accepts stream_options; losing
+        # the token counts beats losing the stream.
+        del kwargs["stream_options"]
+        stream = await client.chat.completions.create(**kwargs)
+    async for chunk in stream:
+        if usage is not None and getattr(chunk, "usage", None) is not None:
+            usage.add(chunk.usage.prompt_tokens, chunk.usage.completion_tokens)
+        if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
+            yield chunk.choices[0].delta.content
+
+
 SUMMARY_SYSTEM = """You summarize news articles for a busy reader, at three levels of depth.
 
 Output EXACTLY this structure:
@@ -361,7 +424,9 @@ One or two short paragraphs, at most 120 words total. Give the reader the key fa
 
 Be concrete and specific. State the content directly instead of narrating the article — no "the author notes", "the article discusses"; name the specific person, company or site when attribution matters. Never pad, never editorialize, never mention that you are summarizing.
 
-Write every level in the language the article is written in (a Hebrew article gets Hebrew summaries, a French one French) — only the ONELINER/PARAGRAPH/FULL labels stay in English. Ignore the language of these instructions and of any site boilerplate around the article."""
+Write every level in the language the article is written in (a Hebrew article gets Hebrew summaries, a French one French) — only the ONELINER/PARAGRAPH/FULL labels stay in English. Ignore the language of these instructions and of any site boilerplate around the article.
+
+Sometimes what you are given is not the article at all: a 404 / "page not found" error, a paywall or subscription prompt, a login wall, a bot-verification or CAPTCHA page, a cookie-consent shell, or an empty template with no real content. Never summarize such a page and never describe it as if it were the story. Instead output exactly one line — UNUSABLE: followed by two to six English words naming what the page actually is (for example "UNUSABLE: 404 page not found") — and nothing else."""
 
 # Appended to SUMMARY_SYSTEM when the source is captions rather than prose.
 TRANSCRIPT_NOTE = """
@@ -386,6 +451,11 @@ _ONELINER_RE = re.compile(r"ONELINER:\s*(.+)")
 _PARAGRAPH_RE = re.compile(r"PARAGRAPH:\s*(.+?)(?=\n\s*FULL:|\Z)", re.DOTALL)
 _FULL_RE = re.compile(r"FULL:\s*\n?(.+)", re.DOTALL)
 
+# The SUMMARY_SYSTEM escape hatch for pages that aren't the article (404,
+# paywall, bot check). Matched at the start of the answer — or of a level, for
+# models that keep the ONELINER/PARAGRAPH/FULL structure while refusing.
+_UNUSABLE_RE = re.compile(r"^\s*UNUSABLE\b\s*:?\s*(.*)", re.IGNORECASE | re.DOTALL)
+
 
 def _parse_levels(raw: str) -> tuple[str, str, str]:
     short = medium = full = ""
@@ -401,6 +471,18 @@ def _parse_levels(raw: str) -> tuple[str, str, str]:
     # the first one, so the echo would otherwise be rendered as body text.
     while full.upper().startswith("FULL:"):
         full = full[len("FULL:") :].strip()
+    return short, medium, full
+
+
+def _levels_or_unusable(raw: str) -> tuple[str, str, str]:
+    """Parse the three levels, raising UnusableContentError when the model
+    flagged the page instead of summarizing it."""
+    if match := _UNUSABLE_RE.match(raw.strip()):
+        raise UnusableContentError(match.group(1).split("\n")[0].strip() or "unusable page")
+    short, medium, full = _parse_levels(raw)
+    for level in (short, full):
+        if match := _UNUSABLE_RE.match(level):
+            raise UnusableContentError(match.group(1).split("\n")[0].strip() or "unusable page")
     return short, medium, full
 
 
@@ -475,6 +557,31 @@ def _language_note(detection_text: str) -> str:
     )
 
 
+def _summary_messages(
+    title: str,
+    text: str,
+    *,
+    url: str | None,
+    author: str | None,
+    published_at: datetime | None,
+    instructions: str | None,
+    source_kind: str,
+) -> list[dict]:
+    context = _article_context(
+        title, url=url, author=author, published_at=published_at, source_kind=source_kind
+    )
+    note = _language_note(f"{title}\n{text}")
+    transcript = source_kind == "transcript"
+    system = SUMMARY_SYSTEM + (TRANSCRIPT_NOTE if transcript else "")
+    if instructions:
+        system += _instructions_note(instructions)
+    label = "Video transcript" if transcript else "Article text"
+    return [
+        {"role": "system", "content": system},
+        {"role": "user", "content": f"{context}\n\n{label}:\n{text}{note}"},
+    ]
+
+
 async def summarize(
     title: str,
     text: str,
@@ -488,25 +595,89 @@ async def summarize(
     source_kind: str = "article",
 ) -> tuple[str, str, str]:
     """Return (one-liner, paragraph, full) summaries from a single completion."""
-    context = _article_context(
-        title, url=url, author=author, published_at=published_at, source_kind=source_kind
-    )
-    note = _language_note(f"{title}\n{text}")
-    transcript = source_kind == "transcript"
-    system = SUMMARY_SYSTEM + (TRANSCRIPT_NOTE if transcript else "")
-    if instructions:
-        system += _instructions_note(instructions)
-    label = "Video transcript" if transcript else "Article text"
     raw = await _complete(
-        [
-            {"role": "system", "content": system},
-            {"role": "user", "content": f"{context}\n\n{label}:\n{text}{note}"},
-        ],
+        _summary_messages(
+            title,
+            text,
+            url=url,
+            author=author,
+            published_at=published_at,
+            instructions=instructions,
+            source_kind=source_kind,
+        ),
         max_tokens=1500,
         config=config,
         usage=usage,
     )
-    return _parse_levels(raw)
+    return _levels_or_unusable(raw)
+
+
+# Deltas are held back until the FULL section is provably prose: "UNUSABLE"
+# is 8 characters, so 16 visible characters that don't match the sentinel
+# can't turn into it later.
+_STREAM_HOLDBACK_CHARS = 16
+
+
+def _streamable_full(visible: str) -> str:
+    """The FULL section of a partial answer, or "" while it can't be shown yet
+    (label not reached, or the text may still be the UNUSABLE sentinel)."""
+    match = _FULL_RE.search(visible)
+    if not match:
+        return ""
+    candidate = match.group(1).lstrip()
+    while candidate.upper().startswith("FULL:"):
+        candidate = candidate[len("FULL:") :].lstrip()
+    if _UNUSABLE_RE.match(candidate):
+        return ""
+    return candidate
+
+
+def _visible(raw: str) -> str:
+    """The part of a partial answer safe to expose: think blocks — balanced or
+    still open — never leave the server."""
+    return _strip_unclosed_think(_THINK_RE.sub("", raw)).strip()
+
+
+async def summarize_stream(
+    title: str,
+    text: str,
+    *,
+    url: str | None = None,
+    author: str | None = None,
+    published_at: datetime | None = None,
+    config: LLMConfig | None = None,
+    usage: TokenUsage | None = None,
+    instructions: str | None = None,
+    source_kind: str = "article",
+):
+    """summarize() as an event stream: yields {"type": "delta", "text": ...}
+    for the FULL section as the model writes it, then one final
+    {"type": "result", "levels": (short, medium, full)} after the whole answer
+    has been parsed. Raises UnusableContentError like summarize()."""
+    messages = _summary_messages(
+        title,
+        text,
+        url=url,
+        author=author,
+        published_at=published_at,
+        instructions=instructions,
+        source_kind=source_kind,
+    )
+    raw = ""
+    sent = ""
+    async for piece in _stream_content(messages, max_tokens=1500, config=config, usage=usage):
+        raw += piece
+        full_so_far = _streamable_full(_visible(raw))
+        if len(full_so_far) < _STREAM_HOLDBACK_CHARS:
+            continue
+        if full_so_far.startswith(sent):
+            delta = full_so_far[len(sent) :]
+            if delta:
+                sent = full_so_far
+                yield {"type": "delta", "text": delta}
+        # else: the visible text was re-derived differently (a think block
+        # closed late); stop appending and let the result event replace it.
+    yield {"type": "result", "levels": _levels_or_unusable(_clean(raw))}
 
 
 TRANSLATION_SYSTEM = """You translate a short news summary into {language}.
@@ -637,7 +808,9 @@ async def summarize_history_document(
 _SCREENSHOT_NOTE = (
     "The article's page has no extractable text — attached is a screenshot of "
     "the rendered page (often a comic, chart or infographic). Read the image "
-    "and summarize what it shows."
+    "and summarize what it shows. If the screenshot shows an error page, "
+    "paywall, login wall or bot check instead of real content, apply the "
+    "UNUSABLE rule."
 )
 
 
@@ -676,7 +849,7 @@ async def summarize_screenshot(
         config=config,
         usage=usage,
     )
-    return _parse_levels(raw)
+    return _levels_or_unusable(raw)
 
 
 SHARE_MESSAGE_SYSTEM = """You write the short note someone sends alongside a news link in a work chat (Slack or Microsoft Teams).

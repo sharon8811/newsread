@@ -305,3 +305,164 @@ async def test_thin_screenshot_failure_raises_thin(session, monkeypatch):
     monkeypatch.setattr(summarizer.screenshot, "capture", fake_capture)
     with pytest.raises(ThinContentError):
         await generate_summaries(session, art, config=_vision_config(), allow_vision=True)
+
+
+# --- unusable pages (the model refused to summarize a 404/paywall/bot page) ---
+
+
+async def test_generate_summaries_unusable_page_is_recorded_not_raised(session, monkeypatch):
+    art = await _make_article(session)
+    art.summary = "old"
+    art.summary_short = "old short"
+
+    async def fake_ensure(session_, article, allow_refetch=True):
+        return "x" * 500
+
+    async def fake_summarize(title, text, **kwargs):
+        raise summarizer.llm.UnusableContentError("404 page not found")
+
+    monkeypatch.setattr(summarizer, "ensure_full_text", fake_ensure)
+    monkeypatch.setattr(summarizer.llm, "summarize", fake_summarize)
+
+    # Returns normally: the LLM call succeeded — the *page* is the problem —
+    # so callers meter the spent tokens instead of recording an error.
+    await generate_summaries(session, art)
+    assert art.summary == ""
+    assert art.summary_short == ""
+    assert art.summary_model is None
+    assert art.summary_generated_at is None
+    assert art.summary_skipped_reason == "unusable_page"
+
+
+async def test_screenshot_unusable_page_is_recorded(session, monkeypatch):
+    art = await _make_article(session)
+
+    async def fake_ensure(session_, article, allow_refetch=True):
+        return "You need to enable JavaScript to run this app."
+
+    async def fake_capture(url):
+        return b"jpeg"
+
+    async def fake_summarize_screenshot(title, shot, **kwargs):
+        raise summarizer.llm.UnusableContentError("404 error screen")
+
+    monkeypatch.setattr(summarizer, "ensure_full_text", fake_ensure)
+    monkeypatch.setattr(summarizer.screenshot, "capture", fake_capture)
+    monkeypatch.setattr(summarizer.llm, "summarize_screenshot", fake_summarize_screenshot)
+
+    await generate_summaries(session, art, config=_vision_config(), allow_vision=True)
+    assert art.summary == ""
+    assert art.summary_skipped_reason == "unusable_page"
+
+
+# --- stream_summaries (the SSE path must persist exactly like the batch one) ---
+
+
+async def _collect(stream):
+    return [event async for event in stream]
+
+
+async def test_stream_summaries_streams_and_persists(session, monkeypatch):
+    art = await _make_article(session)
+
+    async def fake_ensure(session_, article, allow_refetch=True):
+        return "x" * 500
+
+    async def fake_stream(title, text, **kwargs):
+        yield {"type": "delta", "text": "full "}
+        yield {"type": "delta", "text": "three"}
+        yield {"type": "result", "levels": ("short one", "medium two", "full three")}
+
+    monkeypatch.setattr(summarizer, "ensure_full_text", fake_ensure)
+    monkeypatch.setattr(summarizer.llm, "summarize_stream", fake_stream)
+    monkeypatch.setattr(summarizer.settings, "openai_model", "test-model")
+
+    events = await _collect(summarizer.stream_summaries(session, art))
+    assert [e["type"] for e in events] == ["status", "status", "delta", "delta", "done"]
+    assert [e["stage"] for e in events[:2]] == ["reading", "summarizing"]
+    assert art.summary == "full three"
+    assert art.summary_short == "short one"
+    assert art.summary_medium == "medium two"
+    assert art.summary_model == "test-model"
+    assert art.summary_generated_at is not None
+    assert art.summary_skipped_reason is None
+
+
+async def test_stream_summaries_too_short_yields_skipped(session, monkeypatch):
+    art = await _make_article(session)
+
+    async def fake_ensure(session_, article, allow_refetch=True):
+        return "Seed7 is a GPL-licensed open source programming language."
+
+    monkeypatch.setattr(summarizer, "ensure_full_text", fake_ensure)
+
+    events = await _collect(summarizer.stream_summaries(session, art))
+    assert events[-1] == {"type": "skipped", "reason": "too_short"}
+    assert art.summary_skipped_reason == "too_short"
+
+
+async def test_stream_summaries_unusable_yields_skipped(session, monkeypatch):
+    art = await _make_article(session)
+
+    async def fake_ensure(session_, article, allow_refetch=True):
+        return "x" * 500
+
+    async def fake_stream(title, text, **kwargs):
+        raise summarizer.llm.UnusableContentError("404 page")
+        yield  # pragma: no cover - makes this an async generator
+
+    monkeypatch.setattr(summarizer, "ensure_full_text", fake_ensure)
+    monkeypatch.setattr(summarizer.llm, "summarize_stream", fake_stream)
+
+    events = await _collect(summarizer.stream_summaries(session, art))
+    assert events[-1] == {"type": "skipped", "reason": "unusable_page"}
+    assert art.summary_skipped_reason == "unusable_page"
+
+
+async def test_stream_summaries_thin_page_streams_the_vision_answer_whole(session, monkeypatch):
+    art = await _make_article(session)
+
+    async def fake_ensure(session_, article, allow_refetch=True):
+        return "You need to enable JavaScript to run this app."
+
+    async def fake_capture(url):
+        return b"jpeg"
+
+    async def fake_summarize_screenshot(title, shot, **kwargs):
+        return ("short", "medium", "full from image")
+
+    monkeypatch.setattr(summarizer, "ensure_full_text", fake_ensure)
+    monkeypatch.setattr(summarizer.screenshot, "capture", fake_capture)
+    monkeypatch.setattr(summarizer.llm, "summarize_screenshot", fake_summarize_screenshot)
+
+    events = await _collect(summarizer.stream_summaries(session, art, config=_vision_config()))
+    assert [e["type"] for e in events] == ["status", "status", "delta", "done"]
+    assert events[1]["stage"] == "rendering"
+    assert events[2]["text"] == "full from image"
+    assert art.summary == "full from image"
+
+
+async def test_stream_summaries_refuses_a_video_whose_captions_are_still_owed(session, monkeypatch):
+    art = await _make_article(session, url="https://www.youtube.com/watch?v=RsR6cbovMfI")
+
+    async def fake_ensure(session_, article, allow_refetch=True):
+        return "x" * 500
+
+    monkeypatch.setattr(summarizer, "ensure_full_text", fake_ensure)
+    with pytest.raises(ThinContentError, match="throttling caption requests"):
+        await _collect(summarizer.stream_summaries(session, art))
+
+
+async def test_stream_summaries_empty_summary_raises(session, monkeypatch):
+    art = await _make_article(session)
+
+    async def fake_ensure(session_, article, allow_refetch=True):
+        return "x" * 500
+
+    async def fake_stream(title, text, **kwargs):
+        yield {"type": "result", "levels": ("", "", "")}
+
+    monkeypatch.setattr(summarizer, "ensure_full_text", fake_ensure)
+    monkeypatch.setattr(summarizer.llm, "summarize_stream", fake_stream)
+    with pytest.raises(RuntimeError):
+        await _collect(summarizer.stream_summaries(session, art))

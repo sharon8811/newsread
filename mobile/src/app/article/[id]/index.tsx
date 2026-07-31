@@ -18,6 +18,7 @@ import useSWR from "swr";
 
 import EntityChips from "@/components/EntityChips";
 import GeneratingImage from "@/components/GeneratingImage";
+import PendingSummary from "@/components/PendingSummary";
 import RelatedCoverage from "@/components/RelatedCoverage";
 import TranslatableSummary from "@/components/TranslatableSummary";
 import { api, imageSrc } from "@/lib/api";
@@ -201,7 +202,7 @@ export default function ArticleScreen() {
             <GeneratingImage colors={colors} style={styles.hero} />
           ) : null}
 
-          {data.summary !== "" && (
+          {data.summary !== "" ? (
             <TranslatableSummary
               articleId={data.id}
               summary={asMarkdown(data.summary)}
@@ -214,7 +215,17 @@ export default function ArticleScreen() {
                 return false;
               }}
             />
-          )}
+          ) : ai?.configured && data.summary_skipped_reason !== "too_short" ? (
+            // No summary yet: trigger generation and show its progress — or
+            // its failure — instead of an unexplained gap. A too-short post
+            // just has no summary; that needs no explanation here.
+            <PendingSummary
+              articleId={data.id}
+              skippedReason={data.summary_skipped_reason}
+              colors={colors}
+              onSettled={() => mutate()}
+            />
+          ) : null}
 
           <RenderHTML
             contentWidth={width - 32}

@@ -89,3 +89,59 @@ async def test_skip_existing_short_summaries_preserves_visual_summary_and_entiti
     assert visual.summary == "useful visual summary"
     assert visual.summary_skipped_reason is None
     assert await session.scalar(select(ArticleEntity).where(ArticleEntity.article_id == short.id))
+
+
+async def test_clear_error_page_summaries_resets_only_failure_prose(session):
+    from sqlalchemy import text as sql_text
+
+    feed = Feed(url="https://feed/error-page-summaries")
+    session.add(feed)
+    await session.flush()
+    now = datetime.now(UTC)
+    garbage = Article(
+        feed_id=feed.id,
+        guid="garbage",
+        url="https://example.com/dead",
+        title="DeepSeek V4 Flash",
+        summary_short="The URL is broken",
+        summary_medium="The link 404s",
+        summary=(
+            "The provided URL leads to a dead end rather than the promised "
+            "analysis. The page renders a standard 404 error screen, "
+            "indicating the content is missing or the link is invalid."
+        ),
+        summary_model="vllm/some-model",
+        summary_generated_at=now,
+        summary_language="English",
+    )
+    legit = Article(
+        feed_id=feed.id,
+        guid="legit",
+        url="https://example.com/fine",
+        title="OpenAI launches",
+        summary_short="OpenAI launched a model.",
+        summary_medium="OpenAI launched a new model this week.",
+        summary="OpenAI launches a new model with better latency and pricing for developers.",
+        summary_model="vllm/some-model",
+        summary_generated_at=now,
+        summary_language="English",
+    )
+    session.add_all([garbage, legit])
+    await session.commit()
+
+    for statement in db.ONE_SHOT_MIGRATIONS["clear_error_page_summaries"]:
+        await session.execute(sql_text(statement))
+    await session.commit()
+    await session.refresh(garbage)
+    await session.refresh(legit)
+
+    # Cleared back to "never summarized": the worker regenerates under the
+    # UNUSABLE prompt, which either succeeds or stamps unusable_page.
+    assert garbage.summary == ""
+    assert garbage.summary_short == ""
+    assert garbage.summary_model is None
+    assert garbage.summary_generated_at is None
+    assert garbage.summary_language is None
+    assert garbage.summary_skipped_reason is None
+    assert legit.summary.startswith("OpenAI launches a new model")
+    assert legit.summary_model == "vllm/some-model"

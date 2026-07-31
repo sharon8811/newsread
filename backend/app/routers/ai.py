@@ -50,7 +50,13 @@ from ..schemas import (
     TranslateIn,
     TranslationOut,
 )
-from ..summarizer import SummarySkipped, ThinContentError, generate_summaries
+from ..summarizer import (
+    THIN_CONTENT_DETAIL,
+    SummarySkipped,
+    ThinContentError,
+    generate_summaries,
+    stream_summaries,
+)
 from .articles import related_articles
 from .projects import _member_or_404, visible_pins
 
@@ -100,9 +106,7 @@ async def summarize_article(
     force: bool = False,
 ):
     article = await accessible_article(session, user.id, article_id)
-    if not force and (
-        (article.summary and article.summary_short) or article.summary_skipped_reason == "too_short"
-    ):
+    if not force and _summary_settled(article):
         return _summary_out(article)
     config = await _resolve_llm(session, user)
 
@@ -125,6 +129,18 @@ async def summarize_article(
     return _summary_out(article)
 
 
+def _summary_settled(article: Article) -> bool:
+    """Nothing for a non-force request to do: a summary is stored, or the
+    article was skipped for a reason retrying wouldn't change ("too_short"
+    forever; "unusable_page" until someone explicitly forces a retry).
+    "needs_full_page" stays eligible — the on-demand path may still succeed
+    with a refetch or a rendered screenshot."""
+    return bool(article.summary and article.summary_short) or article.summary_skipped_reason in (
+        "too_short",
+        "unusable_page",
+    )
+
+
 def _summary_out(article: Article) -> SummaryOut:
     return SummaryOut(
         summary=article.summary,
@@ -134,6 +150,81 @@ def _summary_out(article: Article) -> SummaryOut:
         generated_at=article.summary_generated_at,
         skipped_reason=article.summary_skipped_reason,
     )
+
+
+@router.post("/articles/{article_id}/summarize/stream")
+async def summarize_article_stream(
+    article_id: int,
+    user: CurrentUser,
+    session: DbSession,
+    force: bool = False,
+):
+    """Generate the article's summary, streaming SSE progress:
+
+    status | delta | skipped | done | error
+
+    `delta` carries FULL-summary text as the model writes it; `done` carries
+    the stored SummaryOut. `error.detail` is always a user-facing sentence —
+    model output and internal errors never pass through."""
+    article = await accessible_article(session, user.id, article_id)
+
+    if not force and _summary_settled(article):
+
+        async def replay():
+            if article.summary:
+                yield _sse({"type": "done", "summary": _summary_dump(article)})
+            else:
+                yield _sse({"type": "skipped", "reason": article.summary_skipped_reason})
+
+        return _stream_response(replay())
+
+    config = await _resolve_llm(session, user)
+    user_id = user.id  # by value: error paths roll the session back
+
+    async def event_source():
+        usage = llm.TokenUsage()
+        started = time.monotonic()
+        try:
+            async for event in stream_summaries(session, article, config=config, usage=usage):
+                if event["type"] == "done":
+                    event = {"type": "done", "summary": _summary_dump(article)}
+                yield _sse(event)
+        except ThinContentError as exc:
+            # A domain refusal, not an LLM failure — mirror the 422 the
+            # non-streaming endpoint answers, and record nothing: no LLM
+            # call produced tokens.
+            yield _sse({"type": "error", "detail": str(exc) or THIN_CONTENT_DETAIL})
+        except Exception as exc:
+            logger.warning("Streamed summarization of article %s failed: %s", article_id, exc)
+            await session.rollback()
+            await llm.record_usage(
+                session,
+                user_id=user_id,
+                feature="summary",
+                config=config,
+                usage=usage,
+                duration_ms=llm.ms_since(started),
+                status="error",
+                error=str(exc),
+            )
+            yield _sse({"type": "error", "detail": "The AI summary failed. Try again."})
+            return
+        else:
+            if usage.prompt_tokens or usage.completion_tokens:
+                await llm.record_usage(
+                    session,
+                    user_id=user_id,
+                    feature="summary",
+                    config=config,
+                    usage=usage,
+                    duration_ms=llm.ms_since(started),
+                )
+
+    return _stream_response(event_source())
+
+
+def _summary_dump(article: Article) -> dict:
+    return _summary_out(article).model_dump(mode="json")
 
 
 @router.get("/translation/languages", response_model=list[LanguageOut])
@@ -432,6 +523,14 @@ def _sse(payload: dict) -> str:
     return f"data: {json.dumps(payload)}\n\n"
 
 
+def _stream_response(source) -> StreamingResponse:
+    return StreamingResponse(
+        source,
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
 def _qa_stream_response(
     session: AsyncSession,
     *,
@@ -517,11 +616,7 @@ def _qa_stream_response(
         message = MessageOut.model_validate(assistant).model_dump(mode="json")
         yield _sse({"type": "done", "message": message})
 
-    return StreamingResponse(
-        event_source(),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-    )
+    return _stream_response(event_source())
 
 
 @router.post("/articles/{article_id}/qa/stream")

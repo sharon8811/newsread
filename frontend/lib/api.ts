@@ -202,16 +202,45 @@ export function streamHistoryQA(
   );
 }
 
-async function streamSSE(
+function streamSSE(
   path: string,
   content: string,
   onEvent: (event: QAStreamEvent) => void,
   extra: Record<string, unknown> = {},
 ): Promise<void> {
+  return postSSE<QAStreamEvent>(path, { content, ...extra }, onEvent);
+}
+
+// ——— Summary streaming (same SSE transport, its own event vocabulary) ———
+
+export type SummaryStreamEvent =
+  | { type: "status"; stage: "reading" | "rendering" | "summarizing" }
+  | { type: "delta"; text: string }
+  | { type: "skipped"; reason: NonNullable<ArticleDetail["summary_skipped_reason"]> }
+  | { type: "done"; summary: Summary }
+  | { type: "error"; detail: string };
+
+export function streamSummary(
+  articleId: number,
+  force: boolean,
+  onEvent: (event: SummaryStreamEvent) => void,
+): Promise<void> {
+  return postSSE<SummaryStreamEvent>(
+    `/articles/${articleId}/summarize/stream${force ? "?force=true" : ""}`,
+    {},
+    onEvent,
+  );
+}
+
+async function postSSE<E extends { type: string }>(
+  path: string,
+  body: unknown,
+  onEvent: (event: E) => void,
+): Promise<void> {
   const res = await fetch(`${API_URL}/api${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders() },
-    body: JSON.stringify({ content, ...extra }),
+    body: JSON.stringify(body),
   });
   if (!res.ok || !res.body) {
     const data = await res.json().catch(() => null);
@@ -231,8 +260,9 @@ async function streamSSE(
       buffer = buffer.slice(frameEnd + 2);
       for (const line of frame.split("\n")) {
         if (!line.startsWith("data: ")) continue;
-        const event = JSON.parse(line.slice(6)) as QAStreamEvent;
-        if (event.type === "error") throw new ApiError(event.detail, 502);
+        const event = JSON.parse(line.slice(6)) as E;
+        if (event.type === "error")
+          throw new ApiError((event as { detail?: string }).detail ?? "The request failed", 502);
         onEvent(event);
       }
     }
@@ -309,6 +339,7 @@ export type Article = Omit<Schemas["ArticleListItem"], "entities"> & {
 export type ArticleDetail = Omit<Schemas["ArticleDetail"], "entities"> & {
   entities: EntityFull[];
 };
+export type Summary = Schemas["SummaryOut"];
 
 export type RelatedArticle = Schemas["RelatedArticleItem"];
 export type RelatedTier = RelatedArticle["tier"]; // same_story = near-duplicate coverage
