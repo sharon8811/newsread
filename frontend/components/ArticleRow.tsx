@@ -108,7 +108,7 @@ function ArticleRow({
           >
             {article.summary_short && (
               <span
-                className="font-mono-nr mr-1.5 text-caption"
+                className="font-mono-nr me-1.5 text-caption"
                 style={{ color: "var(--accent)" }}
               >
                 ✦

@@ -298,7 +298,7 @@ export default function StoriesView({
             >
               {isAiSummary && (
                 <span
-                  className="font-mono-nr mr-1.5 text-caption"
+                  className="font-mono-nr me-1.5 text-caption"
                   style={{ color: "var(--accent)" }}
                 >
                   ✦
