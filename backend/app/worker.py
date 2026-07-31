@@ -14,6 +14,7 @@ from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.orm import selectinload
 
 from . import (
+    ann,
     catalog_embeddings,
     db,
     embeddings,
@@ -159,6 +160,12 @@ async def enrich_and_summarize(ctx: dict | None = None, feed_id: int | None = No
     except Exception as exc:
         extracted = 0
         logger.warning("Entity extraction stage failed: %s", exc)
+
+    # Before the LLM gate: embeddings can be configured without a generation
+    # model (embeddings.is_configured is independent of llm.is_configured),
+    # and catalog/history vectors written elsewhere still deserve their HNSW
+    # indexes. A no-op when the indexes already match the configured model.
+    await ann.ensure_indexes()
 
     if not llm.is_configured():
         # Entity rules must still materialize on LLM-less installs (the

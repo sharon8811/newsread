@@ -9,7 +9,7 @@ from sqlalchemy import and_, exists, func, literal_column, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .. import crypto, embeddings, image_gen, media_storage, ranking, translation
+from .. import ann, crypto, embeddings, image_gen, media_storage, ranking, translation
 from ..access import accessible_article
 from ..config import settings
 from ..deps import CurrentUser, DbSession
@@ -75,6 +75,12 @@ RELATED_DISPLAY_SCORE = 0.60
 # News-recency window: an old article at a close distance is rarely what
 # "related coverage" means; it also bounds the entity-overlap leg.
 RELATED_WINDOW = timedelta(days=90)
+# KNN candidate pool for related coverage. The HNSW index (ann.py) can order
+# by raw distance but not by the NER-boosted score, so the index serves a
+# distance-ordered pool and the score reranks inside it. Results match the
+# old full scan exactly unless more than this many rows sit inside
+# RELATED_MAX_DISTANCE — and rank ~200 by distance is noise, not coverage.
+RELATED_KNN_POOL = 200
 
 
 def to_list_item(
@@ -364,7 +370,32 @@ async def related_articles(
     if source is None:
         return rows
     seen = [row.article.id for row in rows]
-    distance = ArticleEmbedding.embedding.cosine_distance(source.embedding)
+    await ann.relax_scan(session)
+    knn = ann.knn_distance(ArticleEmbedding.embedding, source.embedding)
+    # The pool carries the full inbox scope and recency window, not just the
+    # model filter: nearest neighbors cluster semantically, so unsubscribed,
+    # muted, suppressed, or out-of-window articles would otherwise crowd the
+    # 200 slots and evict this user's actual candidates. The iterative scan
+    # (relax_scan) keeps the index feeding rows until the pool fills
+    # post-filter. Model filter also matches the partial HNSW index predicate.
+    pool = (
+        _related_scope(user_id, article.id)
+        .with_only_columns(
+            ArticleEmbedding.article_id.label("article_id"),
+            knn.label("distance"),
+            maintain_column_froms=True,
+        )
+        .join(ArticleEmbedding, ArticleEmbedding.article_id == Article.id)
+        .where(
+            ann.model_filter(ArticleEmbedding.model),
+            Article.fetched_at >= cutoff,
+            Article.id.notin_(seen),
+        )
+        .order_by(knn)
+        .limit(RELATED_KNN_POOL)
+        .subquery()
+    )
+    distance = pool.c.distance
     shared_ner = (
         select(
             ArticleEntity.article_id.label("article_id"),
@@ -384,10 +415,9 @@ async def related_articles(
     stmt = (
         _related_scope(user_id, article.id)
         .add_columns(distance.label("distance"))
-        .join(ArticleEmbedding, ArticleEmbedding.article_id == Article.id)
+        .join(pool, pool.c.article_id == Article.id)
         .outerjoin(shared_ner, shared_ner.c.article_id == Article.id)
         .where(
-            ArticleEmbedding.model == settings.openai_embedding_model,
             Article.fetched_at >= cutoff,
             Article.id.notin_(seen),
             distance < RELATED_MAX_DISTANCE,
@@ -455,12 +485,14 @@ async def _hybrid_search_ids(
         logger.warning("Query embedding failed, falling back to keyword search: %s", exc)
         return None
 
+    await ann.relax_scan(session)
     vector_stmt = (
         _scoped_article_ids(user_id, feed_id, filter)
         .join(ArticleEmbedding, ArticleEmbedding.article_id == Article.id)
-        # Model filter keeps dimensions consistent mid re-embed after a model switch.
-        .where(ArticleEmbedding.model == settings.openai_embedding_model)
-        .order_by(ArticleEmbedding.embedding.cosine_distance(query_vector))
+        # Model filter keeps dimensions consistent mid re-embed after a model
+        # switch — and matches the partial HNSW index predicate (ann.py).
+        .where(ann.model_filter(ArticleEmbedding.model))
+        .order_by(ann.knn_distance(ArticleEmbedding.embedding, query_vector))
         .limit(ranking.SEARCH_POOL)
     )
     # search_tsv is a generated column owned by the Alembic baseline,

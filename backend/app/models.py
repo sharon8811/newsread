@@ -355,7 +355,9 @@ class BrowserHistoryPageConnection(Base):
 
 
 class BrowserHistoryDocumentEmbedding(Base):
-    """One semantic-search chunk for a private history document."""
+    """One semantic-search chunk for a private history document. Dimension-
+    less vector with a runtime-managed partial HNSW index, like
+    ArticleEmbedding (see ann.py)."""
 
     __tablename__ = "browser_history_document_embeddings"
     __table_args__ = (
@@ -572,7 +574,9 @@ class CatalogEntry(Base):
 
 class CatalogEntryEmbedding(Base):
     """One embedding per catalog entry. The content hash avoids re-embedding
-    unchanged feed metadata while the model field makes model switches safe."""
+    unchanged feed metadata while the model field makes model switches safe.
+    Dimension-less vector with a runtime-managed partial HNSW index, like
+    ArticleEmbedding (see ann.py)."""
 
     __tablename__ = "catalog_entry_embeddings"
 
@@ -699,9 +703,10 @@ class ArticleEmbedding(Base):
     """One vector per article for semantic search, embedded from title +
     summary/excerpt. `model` records the embedding model so a model switch
     re-embeds; queries must filter on it (dimensions may differ across models).
-    The vector column is dimension-less on purpose: search does exact scans
-    (no ANN index needed at this scale), and the dimension follows whatever
-    model the OpenAI-compatible endpoint serves."""
+    The vector column is dimension-less on purpose — the dimension follows
+    whatever model the OpenAI-compatible endpoint serves. Top-K search is
+    served by a partial HNSW expression index over the configured model's
+    rows, managed at runtime by ann.py (not by Alembic; see there)."""
 
     __tablename__ = "article_embeddings"
 
@@ -866,7 +871,9 @@ class DislikeRuleEmbedding(Base):
     """Vector leg of a topic/story rule, split from the rule row (mirroring
     ArticleEmbedding) so user_dislike_rules still exists without pgvector.
     Matching joins on `model` — a model switch silently un-matches old rules
-    (fail-open) until they are re-embedded from their stored phrase."""
+    (fail-open) until they are re-embedded from their stored phrase.
+    Deliberately NOT HNSW-indexed: its only consumer is the threshold join
+    in suppressions.py, which an ANN index cannot serve (see ann.py)."""
 
     __tablename__ = "dislike_rule_embeddings"
 
