@@ -6,6 +6,42 @@ from app import db
 from app.models import Article, ArticleEntity, Entity, Feed
 
 
+async def test_unescape_plain_text_entities_repairs_titles_excerpts_and_feeds(session):
+    feed = Feed(url="https://feed/entity-repair", description="News &amp; analysis")
+    clean_feed = Feed(url="https://feed/entity-clean", description="Plain description")
+    session.add_all([feed, clean_feed])
+    await session.flush()
+    damaged = Article(
+        feed_id=feed.id,
+        guid="damaged",
+        url="https://example.com/sp",
+        title="S&amp;P downgrades Oracle to BBB &#8211; one notch above junk",
+        excerpt="Q&amp;A about the &lt;cloud&gt;",
+    )
+    untouched = Article(
+        feed_id=feed.id,
+        guid="untouched",
+        url="https://example.com/plain",
+        title="Cats & dogs live together",
+        excerpt="No entities here, not even AT&T-style ampersands alone",
+    )
+    session.add_all([damaged, untouched])
+    await session.commit()
+
+    await db._unescape_plain_text_entities(session)
+    await session.commit()
+    await session.refresh(damaged)
+    await session.refresh(untouched)
+    await session.refresh(feed)
+    await session.refresh(clean_feed)
+
+    assert damaged.title == "S&P downgrades Oracle to BBB – one notch above junk"
+    assert damaged.excerpt == "Q&A about the <cloud>"
+    assert untouched.title == "Cats & dogs live together"
+    assert feed.description == "News & analysis"
+    assert clean_feed.description == "Plain description"
+
+
 async def test_skip_existing_short_summaries_preserves_visual_summary_and_entities(session):
     feed = Feed(url="https://feed/summary-repair")
     session.add(feed)

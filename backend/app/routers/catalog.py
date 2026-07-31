@@ -1,4 +1,3 @@
-import html
 import logging
 import re
 import time
@@ -475,8 +474,7 @@ async def list_categories(
 
 
 def _preview_summary(content_html: str) -> str | None:
-    # nh3 re-escapes entities when stripping tags; this text renders as-is.
-    text = html.unescape(strip_html(content_html))
+    text = strip_html(content_html)
     if not text:
         return None
     if len(text) <= PREVIEW_SUMMARY_CHARS:

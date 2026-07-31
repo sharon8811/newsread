@@ -47,6 +47,16 @@ def test_sanitize_and_strip_html():
     assert strip_html("") == ""
 
 
+def test_strip_html_decodes_entities():
+    # A feed title arrives entity-decoded ("S&P"); nh3 re-escapes it and
+    # strip_html must undo that so plain-text fields never carry markup.
+    assert strip_html("S&P downgrades Oracle") == "S&P downgrades Oracle"
+    assert (
+        strip_html("<p>Ben &amp; Jerry &lt;3 &#39;ice cream&#39;</p>")
+        == "Ben & Jerry <3 'ice cream'"
+    )
+
+
 def test_derive_excerpt_truncates():
     text = "word " * 200
     out = derive_excerpt(f"<p>{text}</p>", max_len=50)

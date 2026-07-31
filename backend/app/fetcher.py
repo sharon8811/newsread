@@ -93,8 +93,14 @@ def sanitize_html(html: str) -> str:
     return nh3.clean(html or "")
 
 
-def strip_html(html: str) -> str:
-    text = nh3.clean(html or "", tags=set())
+def strip_html(source: str) -> str:
+    """Plain text from HTML: tags dropped and entities decoded.
+
+    nh3 entity-escapes the text it keeps, so without the unescape a feed
+    title like "S&P" would come out as "S&amp;P" (issue #75). Callers treat
+    the result as plain text, never markup.
+    """
+    text = html.unescape(nh3.clean(source or "", tags=set()))
     return re.sub(r"\s+", " ", text).strip()
 
 
