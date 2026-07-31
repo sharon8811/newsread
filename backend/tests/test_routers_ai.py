@@ -288,6 +288,59 @@ async def test_summarize_stream_failure_never_leaks_internals(client, users, dat
     assert "10.0.0.5" not in resp.text
 
 
+async def test_summarize_stream_records_user_key_usage_even_without_counts(
+    client, users, data, session, monkeypatch
+):
+    # Not every OpenAI-compatible server reports token usage on a stream; a
+    # successful summary on the user's own key must land in llm_usage anyway.
+    user, feed, art = await _setup(users, data)
+    config = llm.LLMConfig(
+        provider="openai", api_key="sk-x", base_url=None, model="m", user_owned=True
+    )
+
+    async def fake_resolve(session_, user_):
+        return config
+
+    monkeypatch.setattr(ai_router, "_resolve_llm", fake_resolve)
+
+    async def fake_stream(session_, article, **kwargs):
+        yield {"type": "status", "stage": "summarizing"}
+        yield {"type": "done"}
+
+    monkeypatch.setattr(ai_router, "stream_summaries", fake_stream)
+    resp = await client.post(f"/api/articles/{art.id}/summarize/stream", headers=users.auth(user))
+    assert _parse_sse(resp.text)[-1]["type"] == "done"
+    rows = (await session.scalars(select(LLMUsage).where(LLMUsage.feature == "summary"))).all()
+    assert len(rows) == 1
+    assert rows[0].status == "ok"
+    assert (rows[0].prompt_tokens, rows[0].completion_tokens) == (0, 0)
+
+
+async def test_summarize_stream_too_short_skip_records_no_usage(
+    client, users, data, session, monkeypatch
+):
+    # The too-short skip never called the LLM, so nothing belongs in llm_usage.
+    user, feed, art = await _setup(users, data)
+    config = llm.LLMConfig(
+        provider="openai", api_key="sk-x", base_url=None, model="m", user_owned=True
+    )
+
+    async def fake_resolve(session_, user_):
+        return config
+
+    monkeypatch.setattr(ai_router, "_resolve_llm", fake_resolve)
+
+    async def fake_stream(session_, article, **kwargs):
+        yield {"type": "status", "stage": "reading"}
+        yield {"type": "skipped", "reason": "too_short"}
+
+    monkeypatch.setattr(ai_router, "stream_summaries", fake_stream)
+    resp = await client.post(f"/api/articles/{art.id}/summarize/stream", headers=users.auth(user))
+    assert _parse_sse(resp.text)[-1] == {"type": "skipped", "reason": "too_short"}
+    rows = (await session.scalars(select(LLMUsage).where(LLMUsage.feature == "summary"))).all()
+    assert rows == []
+
+
 async def test_summarize_stream_no_llm(client, users, data, monkeypatch):
     user, feed, art = await _setup(users, data)
     monkeypatch.setattr(llm, "is_configured", lambda: False)

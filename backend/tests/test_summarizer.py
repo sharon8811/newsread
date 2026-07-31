@@ -148,11 +148,10 @@ async def test_generate_summaries_treats_a_captionless_video_as_an_article(sessi
 async def test_generate_summaries_skips_real_short_source_without_llm_or_vision(
     session, monkeypatch
 ):
+    # No stored summary: a genuinely short post gets the terminal stamp.
+    # (A short source *under* a stored summary is rot, not a short post —
+    # see test_generate_summaries_short_refetch_keeps_an_existing_summary.)
     art = await _make_article(session)
-    art.summary_short = "old short"
-    art.summary_medium = "old medium"
-    art.summary = "old full"
-    art.summary_model = "old-model"
 
     async def fake_ensure(session_, article, allow_refetch=True):
         return "Seed7 is a GPL-licensed open source programming language."
@@ -312,8 +311,6 @@ async def test_thin_screenshot_failure_raises_thin(session, monkeypatch):
 
 async def test_generate_summaries_unusable_page_is_recorded_not_raised(session, monkeypatch):
     art = await _make_article(session)
-    art.summary = "old"
-    art.summary_short = "old short"
 
     async def fake_ensure(session_, article, allow_refetch=True):
         return "x" * 500
@@ -331,6 +328,59 @@ async def test_generate_summaries_unusable_page_is_recorded_not_raised(session, 
     assert art.summary_short == ""
     assert art.summary_model is None
     assert art.summary_generated_at is None
+    assert art.summary_skipped_reason == "unusable_page"
+
+
+async def test_generate_summaries_unusable_page_keeps_an_existing_summary(session, monkeypatch):
+    # A force-regenerate of an article whose page rotted away since: the
+    # stored summary is the only good copy left and must survive the attempt.
+    art = await _make_article(session)
+    art.summary = "old full"
+    art.summary_short = "old short"
+    art.summary_medium = "old medium"
+    art.summary_model = "old-model"
+    await session.commit()
+
+    async def fake_ensure(session_, article, allow_refetch=True):
+        return "x" * 500
+
+    async def fake_summarize(title, text, **kwargs):
+        raise summarizer.llm.UnusableContentError("404 page not found")
+
+    monkeypatch.setattr(summarizer, "ensure_full_text", fake_ensure)
+    monkeypatch.setattr(summarizer.llm, "summarize", fake_summarize)
+
+    await generate_summaries(session, art)
+    assert art.summary == "old full"
+    assert art.summary_short == "old short"
+    assert art.summary_model == "old-model"
+    # Stamped so worker-eligible legacy rows (summary but no summary_short)
+    # don't re-attempt — and burn an LLM call — every cycle.
+    assert art.summary_skipped_reason == "unusable_page"
+
+
+async def test_generate_summaries_short_refetch_keeps_an_existing_summary(session, monkeypatch):
+    # The too_short leg of the same rule: a regenerate whose refetch comes
+    # back a stub (the page died) must not trade a stored summary for a
+    # terminal "too_short" stamp.
+    art = await _make_article(session)
+    art.summary = "old full"
+    art.summary_short = "old short"
+    await session.commit()
+
+    async def fake_ensure(session_, article, allow_refetch=True):
+        return "Page not found. Check the URL or head back to the homepage."
+
+    async def fail(*args, **kwargs):  # pragma: no cover - must not be reached
+        raise AssertionError("stub page attempted an LLM call")
+
+    monkeypatch.setattr(summarizer, "ensure_full_text", fake_ensure)
+    monkeypatch.setattr(summarizer.llm, "summarize", fail)
+
+    with pytest.raises(SummarySkipped):
+        await generate_summaries(session, art)
+    assert art.summary == "old full"
+    assert art.summary_short == "old short"
     assert art.summary_skipped_reason == "unusable_page"
 
 
@@ -416,6 +466,45 @@ async def test_stream_summaries_unusable_yields_skipped(session, monkeypatch):
 
     events = await _collect(summarizer.stream_summaries(session, art))
     assert events[-1] == {"type": "skipped", "reason": "unusable_page"}
+    assert art.summary_skipped_reason == "unusable_page"
+
+
+async def test_stream_summaries_unusable_keeps_an_existing_summary(session, monkeypatch):
+    art = await _make_article(session)
+    art.summary = "old full"
+    art.summary_short = "old short"
+    await session.commit()
+
+    async def fake_ensure(session_, article, allow_refetch=True):
+        return "x" * 500
+
+    async def fake_stream(title, text, **kwargs):
+        raise summarizer.llm.UnusableContentError("404 page")
+        yield  # pragma: no cover - makes this an async generator
+
+    monkeypatch.setattr(summarizer, "ensure_full_text", fake_ensure)
+    monkeypatch.setattr(summarizer.llm, "summarize_stream", fake_stream)
+
+    events = await _collect(summarizer.stream_summaries(session, art))
+    assert events[-1] == {"type": "error", "detail": summarizer.SUMMARY_KEPT_DETAIL}
+    assert art.summary == "old full"
+    assert art.summary_skipped_reason == "unusable_page"
+
+
+async def test_stream_summaries_short_refetch_keeps_an_existing_summary(session, monkeypatch):
+    art = await _make_article(session)
+    art.summary = "old full"
+    art.summary_short = "old short"
+    await session.commit()
+
+    async def fake_ensure(session_, article, allow_refetch=True):
+        return "Page not found. Check the URL or head back to the homepage."
+
+    monkeypatch.setattr(summarizer, "ensure_full_text", fake_ensure)
+
+    events = await _collect(summarizer.stream_summaries(session, art))
+    assert events[-1] == {"type": "error", "detail": summarizer.SUMMARY_KEPT_DETAIL}
+    assert art.summary == "old full"
     assert art.summary_skipped_reason == "unusable_page"
 
 

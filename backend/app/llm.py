@@ -453,8 +453,10 @@ _FULL_RE = re.compile(r"FULL:\s*\n?(.+)", re.DOTALL)
 
 # The SUMMARY_SYSTEM escape hatch for pages that aren't the article (404,
 # paywall, bot check). Matched at the start of the answer — or of a level, for
-# models that keep the ONELINER/PARAGRAPH/FULL structure while refusing.
-_UNUSABLE_RE = re.compile(r"^\s*UNUSABLE\b\s*:?\s*(.*)", re.IGNORECASE | re.DOTALL)
+# models that keep the ONELINER/PARAGRAPH/FULL structure while refusing. The
+# colon is required: the prompt mandates it, and without it a real summary
+# opening with the word "Unusable …" would read as a refusal.
+_UNUSABLE_RE = re.compile(r"^\s*UNUSABLE\s*:\s*(.*)", re.IGNORECASE | re.DOTALL)
 
 
 def _parse_levels(raw: str) -> tuple[str, str, str]:
@@ -634,8 +636,13 @@ def _streamable_full(visible: str) -> str:
 
 def _visible(raw: str) -> str:
     """The part of a partial answer safe to expose: think blocks — balanced or
-    still open — never leave the server."""
-    return _strip_unclosed_think(_THINK_RE.sub("", raw)).strip()
+    still open, wherever they appear — never leave the server. Truncating at
+    an unclosed <think> (rather than only stripping one at the start) covers
+    models that interleave reasoning mid-answer."""
+    text = _THINK_RE.sub("", raw)
+    if (open_think := text.find("<think>")) != -1:
+        text = text[:open_think]
+    return text.strip()
 
 
 async def summarize_stream(

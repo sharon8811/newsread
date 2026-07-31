@@ -43,7 +43,9 @@ export default function AiSummary({ article }: { article: ArticleDetail }) {
   const skippedAsTooShort = article.summary_skipped_reason === "too_short";
   // The page turned out not to be the article (404, paywall, bot check).
   // Never auto-retried — only the explicit button forces another attempt.
-  const failedAsUnusable = article.summary_skipped_reason === "unusable_page";
+  // A kept summary can carry the stamp too (a failed regenerate preserves
+  // the stored copy); showing that summary beats showing a failure box.
+  const failedAsUnusable = article.summary_skipped_reason === "unusable_page" && !article.summary;
   // A server can have a translation model but no summarizing one. Stored
   // summaries — and their translate action — still belong on screen there;
   // only generating and regenerating need the summarizing model.

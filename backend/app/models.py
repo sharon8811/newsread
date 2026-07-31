@@ -643,7 +643,9 @@ class Article(Base):
     # "too_short": source already shorter than a useful summary (terminal).
     # "needs_full_page": batch worker found no usable text; on-demand retries.
     # "unusable_page": the model reported the page isn't the article (404,
-    # paywall, bot check); only an explicit force-regenerate retries it.
+    # paywall, bot check); only an explicit force-regenerate retries it. May
+    # coexist with a non-empty summary — a failed regenerate keeps the stored
+    # copy and stamps the reason so the batch worker stops re-attempting.
     summary_skipped_reason: Mapped[str | None] = mapped_column(String(32))
     entities_extracted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # LLM named-entity tagging (see ner.py); separate stamp because it runs

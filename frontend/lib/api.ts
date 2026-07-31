@@ -220,16 +220,25 @@ export type SummaryStreamEvent =
   | { type: "done"; summary: Summary }
   | { type: "error"; detail: string };
 
-export function streamSummary(
+export async function streamSummary(
   articleId: number,
   force: boolean,
   onEvent: (event: SummaryStreamEvent) => void,
 ): Promise<void> {
-  return postSSE<SummaryStreamEvent>(
+  // A summary stream must end in a terminal event. A connection that drops
+  // mid-way (a proxy timing out the long-running request) would otherwise
+  // read as success and leave a silently empty summary slot.
+  let settled = false;
+  await postSSE<SummaryStreamEvent>(
     `/articles/${articleId}/summarize/stream${force ? "?force=true" : ""}`,
     {},
-    onEvent,
+    (event) => {
+      if (event.type === "done" || event.type === "skipped") settled = true;
+      onEvent(event);
+    },
   );
+  if (!settled)
+    throw new ApiError("The connection dropped before the summary finished. Try again.", 502);
 }
 
 async function postSSE<E extends { type: string }>(

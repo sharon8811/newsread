@@ -145,8 +145,29 @@ describe("<AiSummary>", () => {
     );
     await waitFor(() => expect(screen.getByText("Streaming tokens.")).toBeInTheDocument());
 
+    controller.enqueue(
+      encoder.encode('data: {"type":"done","summary":{"summary":"Streaming tokens."}}\n\n'),
+    );
     controller.close();
     await waitFor(() => expect(mutateMock).toHaveBeenCalledWith("/articles/1"));
+  });
+
+  it("shows a kept summary even when the last regenerate found the page unusable", async () => {
+    stubStatus(true);
+    const fetchMock = streamFetch();
+    vi.stubGlobal("fetch", fetchMock);
+    render(
+      <AiSummary
+        article={makeArticleDetail({
+          summary: "the kept summary",
+          summary_skipped_reason: "unusable_page",
+        })}
+      />,
+    );
+    expect(screen.getByText("the kept summary")).toBeInTheDocument();
+    expect(screen.queryByText(/couldn’t summarize this article/i)).not.toBeInTheDocument();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("explains an unusable page without auto-retrying, and forces on demand", async () => {
@@ -207,6 +228,23 @@ describe("<AiSummary>", () => {
     await waitFor(() => expect(screen.getByText("LLM failed")).toBeInTheDocument());
     await userEvent.click(screen.getByText("Try again"));
     await waitFor(() => expect(mutateMock).toHaveBeenCalled());
+  });
+
+  it("treats a stream that drops before finishing as an error, not success", async () => {
+    // A proxy timing out the SSE mid-way must not read as "done": that would
+    // clear the streamed text and leave a blank slot with no retry.
+    stubStatus(true);
+    const fetchMock = streamFetch([
+      { type: "status", stage: "summarizing" },
+      { type: "delta", text: "Half a summary that never fin" },
+    ]);
+    vi.stubGlobal("fetch", fetchMock);
+    render(<AiSummary article={makeArticleDetail({ summary: "" })} />);
+    await waitFor(() =>
+      expect(screen.getByText(/connection dropped before the summary finished/i)).toBeInTheDocument(),
+    );
+    expect(mutateMock).not.toHaveBeenCalled();
+    expect(screen.getByText("Try again")).toBeInTheDocument();
   });
 
   it("surfaces a mid-stream error event as the error state", async () => {

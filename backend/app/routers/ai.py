@@ -184,8 +184,15 @@ async def summarize_article_stream(
     async def event_source():
         usage = llm.TokenUsage()
         started = time.monotonic()
+        # "reading" precedes any LLM call; "summarizing"/"rendering" are
+        # yielded right before one. This is what decides whether to record
+        # usage — token counts can't, because not every OpenAI-compatible
+        # server reports them on a stream (see _stream_create's fallback).
+        called_llm = False
         try:
             async for event in stream_summaries(session, article, config=config, usage=usage):
+                if event["type"] == "status" and event.get("stage") != "reading":
+                    called_llm = True
                 if event["type"] == "done":
                     event = {"type": "done", "summary": _summary_dump(article)}
                 yield _sse(event)
@@ -210,7 +217,7 @@ async def summarize_article_stream(
             yield _sse({"type": "error", "detail": "The AI summary failed. Try again."})
             return
         else:
-            if usage.prompt_tokens or usage.completion_tokens:
+            if called_llm:
                 await llm.record_usage(
                     session,
                     user_id=user_id,

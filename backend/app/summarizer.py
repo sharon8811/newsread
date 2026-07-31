@@ -33,6 +33,14 @@ _CAPTIONS_THROTTLED_DETAIL = (
     "YouTube is throttling caption requests for this video — try again in a few minutes."
 )
 
+# Streamed to the reader when a force-regenerate finds the page unusable but a
+# good summary is already stored: nothing was lost, and this says why nothing
+# changed either.
+SUMMARY_KEPT_DETAIL = (
+    "The article's page can't be read right now — it may be missing or blocked "
+    "— so the existing summary was kept."
+)
+
 
 def transcript_still_owed(article: Article) -> bool:
     """A video whose captions have not been fetched yet. Enrichment stamps
@@ -71,6 +79,15 @@ async def generate_summaries(
         # stuck with its description long after the captions became available.
         raise ThinContentError(_CAPTIONS_THROTTLED_DETAIL)
     if is_too_short_to_summarize(text):
+        if article.summary:
+            # The page rotted to a stub under a stored summary (typically a
+            # force-regenerate of a screenshot-summarized article, whose
+            # full_text was always empty). Keep the summary — it's the only
+            # good copy left — and stamp the reason so the batch worker
+            # doesn't pick legacy rows up again every cycle.
+            article.summary_skipped_reason = "unusable_page"
+            await session.commit()
+            raise SummarySkipped()
         _mark_skipped(article, "too_short")
         await session.commit()
         raise SummarySkipped()
@@ -106,6 +123,18 @@ async def generate_summaries(
         # the reason — the batch worker stops retrying, the clients explain
         # the failure — and return normally so the tokens spent finding out
         # are still metered as a completed call.
+        if article.summary:
+            # A force-regenerate of an article whose page has since rotted
+            # away (screenshot-summarized pages re-render the live page every
+            # time). The stored summary is the only good copy left — keep it,
+            # and stamp the reason so worker-eligible legacy rows (summary
+            # but no summary_short) don't burn an LLM call every cycle.
+            logger.info(
+                "Article %s page is unusable (%s); keeping the existing summary", article.id, exc
+            )
+            article.summary_skipped_reason = "unusable_page"
+            await session.commit()
+            return
         logger.info("Article %s page is unusable (%s); summary skipped", article.id, exc)
         _mark_skipped(article, "unusable_page")
         await session.commit()
@@ -133,6 +162,13 @@ async def stream_summaries(
     if transcript_still_owed(article):
         raise ThinContentError(_CAPTIONS_THROTTLED_DETAIL)
     if is_too_short_to_summarize(text):
+        if article.summary:
+            # Same preservation rule as generate_summaries: the refetch came
+            # back a stub, so the stored summary is the only good copy left.
+            article.summary_skipped_reason = "unusable_page"
+            await session.commit()
+            yield {"type": "error", "detail": SUMMARY_KEPT_DETAIL}
+            return
         _mark_skipped(article, "too_short")
         await session.commit()
         yield {"type": "skipped", "reason": "too_short"}
@@ -168,6 +204,17 @@ async def stream_summaries(
                 else:
                     short, medium, full = event["levels"]
     except llm.UnusableContentError as exc:
+        if article.summary:
+            # Same preservation rule as generate_summaries: a regenerate that
+            # hit a rotted page must not trade a good summary for a skip. The
+            # error event tells the reader why nothing changed.
+            logger.info(
+                "Article %s page is unusable (%s); keeping the existing summary", article.id, exc
+            )
+            article.summary_skipped_reason = "unusable_page"
+            await session.commit()
+            yield {"type": "error", "detail": SUMMARY_KEPT_DETAIL}
+            return
         logger.info("Article %s page is unusable (%s); summary skipped", article.id, exc)
         _mark_skipped(article, "unusable_page")
         await session.commit()
