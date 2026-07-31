@@ -117,6 +117,36 @@ Public deployments must set `NEWSREAD_DEPLOYMENT=prod` **and** a real
 </details>
 
 <details>
+<summary><b>Instance administration (owner/admin roles)</b></summary>
+
+Every account has an instance role stored on the user record: `owner`
+(manages admins and instance settings), `admin` (administration features),
+or `user`. Authorization is enforced server-side from this role — the
+deployment mode only picks defaults and never grants access.
+
+Getting an owner:
+
+- **New self-hosted install** — the first account registered becomes the
+  owner automatically (`NEWSREAD_FIRST_ACCOUNT_OWNER`, default on for
+  `self_hosted`, off for `staging`/`prod` so public signup can never mint an
+  owner).
+- **Hosted deployments and existing installations** — promote your account
+  once from the server shell:
+
+  ```bash
+  cd backend
+  PYTHONPATH=. .venv/bin/python scripts/set_role.py --user you@example.com --role owner
+  # inspect current owners/admins
+  PYTHONPATH=. .venv/bin/python scripts/set_role.py --list
+  ```
+
+The final active owner can never be demoted or suspended (the API and the
+script both refuse). Suspended accounts are rejected on every request, even
+with a previously issued, still-valid JWT.
+
+</details>
+
+<details>
 <summary><b>Local development</b></summary>
 
 ```bash

@@ -34,6 +34,11 @@ class Settings(BaseSettings):
     # operator has read the privacy doc and runs the instance deliberately),
     # off for self_hosted until explicitly enabled. Explicit env var wins.
     browser_history_enabled: bool | None = None  # NEWSREAD_BROWSER_HISTORY_ENABLED
+    # Whether the first account registered on an empty instance becomes the
+    # owner. On for self_hosted (the person installing is the operator); off
+    # for hosted modes, where public signup must never mint an owner — hosted
+    # and existing installations promote via `scripts/set_role.py` instead.
+    first_account_owner: bool | None = None  # NEWSREAD_FIRST_ACCOUNT_OWNER
     # Packaged Chrome extension served from Settings → Browser history. Empty
     # means the in-repo default (extension/newsread-history-extension.zip,
     # produced by `npm run build` there); the download link hides when the
@@ -229,6 +234,8 @@ class Settings(BaseSettings):
             self.messaging_enabled = not is_self_hosted
         if self.browser_history_enabled is None:
             self.browser_history_enabled = not is_self_hosted
+        if self.first_account_owner is None:
+            self.first_account_owner = is_self_hosted
         if self.browser_history_content_enabled:
             required = {
                 "NEWSREAD_OBJECT_STORE_ENDPOINT": self.object_store_endpoint,

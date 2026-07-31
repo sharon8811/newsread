@@ -4045,6 +4045,12 @@ export interface components {
             image_gen_monthly_limit?: number | null;
             /** Name */
             name: string;
+            /**
+             * Role
+             * @default user
+             * @enum {string}
+             */
+            role: "owner" | "admin" | "user";
             /** Translation Language */
             translation_language?: string | null;
             /** Username */

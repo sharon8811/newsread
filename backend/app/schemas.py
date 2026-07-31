@@ -48,6 +48,7 @@ class UserOut(BaseModel):
     email: EmailStr
     username: str
     name: str
+    role: Literal["owner", "admin", "user"] = "user"
     default_view: ViewMode = "cards"
     assisted_scroll: bool = True
     image_gen_monthly_limit: int | None = None  # None = unlimited
