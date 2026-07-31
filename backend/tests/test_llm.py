@@ -1,5 +1,8 @@
 import types
 
+import httpx
+import pytest
+
 from app import llm
 
 
@@ -467,3 +470,191 @@ async def test_history_summary_repair_replays_the_rejected_reply(monkeypatch):
     ]
     assert captured["messages"][2]["content"] == "not json at all"
     assert "summary output is not valid JSON" in captured["messages"][3]["content"]
+
+
+# --- unusable-page sentinel ---
+
+
+def test_levels_or_unusable_passes_normal_output():
+    raw = "ONELINER: g\nPARAGRAPH: p.\nFULL:\nbody"
+    assert llm._levels_or_unusable(raw) == ("g", "p.", "body")
+
+
+def test_levels_or_unusable_detects_the_bare_sentinel():
+    with pytest.raises(llm.UnusableContentError, match="404 page not found"):
+        llm._levels_or_unusable("UNUSABLE: 404 page not found")
+
+
+def test_levels_or_unusable_detects_the_sentinel_inside_the_structure():
+    raw = "ONELINER: UNUSABLE: paywall\nPARAGRAPH: n/a\nFULL:\nUNUSABLE: paywall"
+    with pytest.raises(llm.UnusableContentError):
+        llm._levels_or_unusable(raw)
+
+
+async def test_summarize_raises_on_unusable(monkeypatch):
+    monkeypatch.setattr(llm, "get_client", lambda: _fake_client("UNUSABLE: bot check page"))
+    with pytest.raises(llm.UnusableContentError):
+        await llm.summarize("Title", "body text")
+
+
+# --- summarize_stream ---
+
+
+def _fake_stream_content(pieces):
+    async def gen(messages, max_tokens, *, config=None, usage=None):
+        for piece in pieces:
+            yield piece
+
+    return gen
+
+
+async def _collect_stream(stream):
+    return [event async for event in stream]
+
+
+async def test_summarize_stream_emits_only_the_full_section(monkeypatch):
+    pieces = [
+        "ONELINER: g\nPARA",
+        "GRAPH: p.\nFULL:\nThe full body of ",
+        "the summary, streamed.",
+    ]
+    monkeypatch.setattr(llm, "_stream_content", _fake_stream_content(pieces))
+    events = await _collect_stream(llm.summarize_stream("T", "body"))
+    deltas = "".join(e["text"] for e in events if e["type"] == "delta")
+    assert deltas == "The full body of the summary, streamed."
+    assert "ONELINER" not in deltas
+    assert events[-1] == {
+        "type": "result",
+        "levels": ("g", "p.", "The full body of the summary, streamed."),
+    }
+
+
+async def test_summarize_stream_never_leaks_think_blocks(monkeypatch):
+    pieces = [
+        "<think>the page might say FULL: of traps",
+        "</think>ONELINER: g\nPARAGRAPH: p.\nFULL:\n",
+        "A streamed body long enough to emit.",
+    ]
+    monkeypatch.setattr(llm, "_stream_content", _fake_stream_content(pieces))
+    events = await _collect_stream(llm.summarize_stream("T", "body"))
+    deltas = "".join(e["text"] for e in events if e["type"] == "delta")
+    assert "traps" not in deltas
+    assert deltas == "A streamed body long enough to emit."
+
+
+async def test_summarize_stream_flags_unusable_without_streaming_it(monkeypatch):
+    pieces = ["UNUSABLE: 404", " page not found"]
+    monkeypatch.setattr(llm, "_stream_content", _fake_stream_content(pieces))
+    collected = []
+    with pytest.raises(llm.UnusableContentError):
+        async for event in llm.summarize_stream("T", "body"):
+            collected.append(event)
+    assert collected == []
+
+
+async def test_summarize_stream_holds_back_unusable_in_the_full_slot(monkeypatch):
+    import pytest
+
+    # A structure-keeping refusal: the sentinel sits after the FULL label and
+    # must never reach the reader as streamed text.
+    pieces = ["FULL:\nUNUSABLE: paywalled subscription page"]
+    monkeypatch.setattr(llm, "_stream_content", _fake_stream_content(pieces))
+    collected = []
+    with pytest.raises(llm.UnusableContentError):
+        async for event in llm.summarize_stream("T", "body"):
+            collected.append(event)
+    assert collected == []
+
+
+async def test_summarize_stream_unstructured_answer_arrives_only_in_the_result(monkeypatch):
+    pieces = ["Just a plain paragraph ", "without labels."]
+    monkeypatch.setattr(llm, "_stream_content", _fake_stream_content(pieces))
+    events = await _collect_stream(llm.summarize_stream("T", "body"))
+    assert [e["type"] for e in events] == ["result"]
+    assert events[0]["levels"][2] == "Just a plain paragraph without labels."
+
+
+def _stream_chunk(content=None, usage=None):
+    delta = types.SimpleNamespace(content=content)
+    choices = [types.SimpleNamespace(delta=delta)] if content is not None else []
+    return types.SimpleNamespace(choices=choices, usage=usage)
+
+
+def _fake_streaming_client(chunks, reject_stream_options=False):
+    calls = []
+
+    async def create(**kwargs):
+        calls.append(kwargs)
+        if reject_stream_options and "stream_options" in kwargs:
+            raise llm.BadRequestError(
+                "stream_options not supported",
+                response=httpx.Response(400, request=httpx.Request("POST", "http://t")),
+                body=None,
+            )
+
+        async def aiter():
+            for chunk in chunks:
+                yield chunk
+
+        return aiter()
+
+    client = types.SimpleNamespace(
+        chat=types.SimpleNamespace(completions=types.SimpleNamespace(create=create))
+    )
+    return client, calls
+
+
+async def test_stream_create_accumulates_usage_from_the_final_chunk(monkeypatch):
+    chunks = [
+        _stream_chunk("FULL:\n"),
+        _stream_chunk("a body streamed in parts"),
+        _stream_chunk(usage=types.SimpleNamespace(prompt_tokens=5, completion_tokens=7)),
+    ]
+    client, calls = _fake_streaming_client(chunks)
+    monkeypatch.setattr(llm, "get_client", lambda: client)
+    usage = llm.TokenUsage()
+    pieces = [
+        piece
+        async for piece in llm._stream_content(
+            [{"role": "user", "content": "x"}], max_tokens=10, usage=usage
+        )
+    ]
+    assert "".join(pieces) == "FULL:\na body streamed in parts"
+    assert (usage.prompt_tokens, usage.completion_tokens) == (5, 7)
+    assert calls[0]["stream"] is True
+
+
+async def test_stream_create_retries_without_stream_options(monkeypatch):
+    chunks = [_stream_chunk("hello")]
+    client, calls = _fake_streaming_client(chunks, reject_stream_options=True)
+    monkeypatch.setattr(llm, "get_client", lambda: client)
+    pieces = [
+        piece
+        async for piece in llm._stream_content([{"role": "user", "content": "x"}], max_tokens=10)
+    ]
+    assert pieces == ["hello"]
+    assert "stream_options" in calls[0] and "stream_options" not in calls[1]
+
+
+async def test_stream_content_uses_a_user_client_for_user_configs(monkeypatch):
+    chunks = [_stream_chunk("hi")]
+    client, _ = _fake_streaming_client(chunks)
+
+    class FakeUserClient:
+        async def __aenter__(self):
+            return client
+
+        async def __aexit__(self, *args):
+            return False
+
+    config = llm.LLMConfig(
+        provider="openai", api_key="sk-x", base_url=None, model="gpt-5", user_owned=True
+    )
+    monkeypatch.setattr(llm, "user_client", lambda cfg: FakeUserClient())
+    pieces = [
+        piece
+        async for piece in llm._stream_content(
+            [{"role": "user", "content": "x"}], max_tokens=10, config=config
+        )
+    ]
+    assert pieces == ["hi"]

@@ -736,7 +736,8 @@
               {
                 "enum": [
                   "too_short",
-                  "needs_full_page"
+                  "needs_full_page",
+                  "unusable_page"
                 ],
                 "type": "string"
               },
@@ -5047,7 +5048,8 @@
               {
                 "enum": [
                   "too_short",
-                  "needs_full_page"
+                  "needs_full_page",
+                  "unusable_page"
                 ],
                 "type": "string"
               },
@@ -6836,6 +6838,62 @@
           }
         ],
         "summary": "Summarize Article",
+        "tags": [
+          "ai"
+        ]
+      }
+    },
+    "/api/articles/{article_id}/summarize/stream": {
+      "post": {
+        "description": "Generate the article's summary, streaming SSE progress:\n\nstatus | delta | skipped | done | error\n\n`delta` carries FULL-summary text as the model writes it; `done` carries\nthe stored SummaryOut. `error.detail` is always a user-facing sentence \u2014\nmodel output and internal errors never pass through.",
+        "operationId": "summarize_article_stream_api_articles__article_id__summarize_stream_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "article_id",
+            "required": true,
+            "schema": {
+              "title": "Article Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "force",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Force",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Summarize Article Stream",
         "tags": [
           "ai"
         ]

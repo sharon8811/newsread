@@ -36,6 +36,27 @@ function okFetch() {
   return vi.fn().mockResolvedValue({ status: 200, ok: true, json: async () => ({}) });
 }
 
+/** A finished SSE response body carrying the given events. */
+function sseResponse(events: unknown[]) {
+  const encoder = new TextEncoder();
+  const body = new ReadableStream({
+    start(controller) {
+      for (const event of events)
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+      controller.close();
+    },
+  });
+  return { ok: true, status: 200, body, json: async () => ({}) };
+}
+
+/** fetch that answers /summarize/stream with SSE and everything else with {}. */
+function streamFetch(events: unknown[] = [{ type: "done", summary: { summary: "s" } }]) {
+  return vi.fn().mockImplementation((url: string) => {
+    if (String(url).includes("/summarize/stream")) return Promise.resolve(sseResponse(events));
+    return Promise.resolve({ ok: true, status: 200, json: async () => ({}), headers: new Headers() });
+  });
+}
+
 describe("<AiSummary>", () => {
   beforeEach(() => {
     swrMock.mockReset();
@@ -90,14 +111,81 @@ describe("<AiSummary>", () => {
     expect(screen.getByText("Virginia")).toBeInTheDocument();
   });
 
-  it("auto-generates when there is no summary yet", async () => {
+  it("auto-generates (streaming) when there is no summary yet", async () => {
     stubStatus(true);
-    const fetchMock = okFetch();
+    const fetchMock = streamFetch();
     vi.stubGlobal("fetch", fetchMock);
     render(<AiSummary article={makeArticleDetail({ summary: "" })} />);
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-    expect(fetchMock.mock.calls[0][0]).toContain("/articles/1/summarize");
+    expect(fetchMock.mock.calls[0][0]).toContain("/articles/1/summarize/stream");
     await waitFor(() => expect(mutateMock).toHaveBeenCalledWith("/articles/1"));
+  });
+
+  it("streams the summary text as it arrives", async () => {
+    stubStatus(true);
+    const encoder = new TextEncoder();
+    let controller!: ReadableStreamDefaultController;
+    const body = new ReadableStream({
+      start(c) {
+        controller = c;
+      },
+    });
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, body });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<AiSummary article={makeArticleDetail({ summary: "" })} />);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+
+    controller.enqueue(encoder.encode('data: {"type":"status","stage":"summarizing"}\n\n'));
+    await waitFor(() => expect(screen.getByText("Summarizing…")).toBeInTheDocument());
+
+    controller.enqueue(
+      encoder.encode(
+        'data: {"type":"delta","text":"Streaming "}\n\ndata: {"type":"delta","text":"tokens."}\n\n',
+      ),
+    );
+    await waitFor(() => expect(screen.getByText("Streaming tokens.")).toBeInTheDocument());
+
+    controller.enqueue(
+      encoder.encode('data: {"type":"done","summary":{"summary":"Streaming tokens."}}\n\n'),
+    );
+    controller.close();
+    await waitFor(() => expect(mutateMock).toHaveBeenCalledWith("/articles/1"));
+  });
+
+  it("shows a kept summary even when the last regenerate found the page unusable", async () => {
+    stubStatus(true);
+    const fetchMock = streamFetch();
+    vi.stubGlobal("fetch", fetchMock);
+    render(
+      <AiSummary
+        article={makeArticleDetail({
+          summary: "the kept summary",
+          summary_skipped_reason: "unusable_page",
+        })}
+      />,
+    );
+    expect(screen.getByText("the kept summary")).toBeInTheDocument();
+    expect(screen.queryByText(/couldn’t summarize this article/i)).not.toBeInTheDocument();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("explains an unusable page without auto-retrying, and forces on demand", async () => {
+    stubStatus(true);
+    const fetchMock = streamFetch();
+    vi.stubGlobal("fetch", fetchMock);
+    render(
+      <AiSummary
+        article={makeArticleDetail({ summary: "", summary_skipped_reason: "unusable_page" })}
+      />,
+    );
+    expect(screen.getByText(/couldn’t summarize this article/i)).toBeInTheDocument();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByText("Try again"));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    expect(String(fetchMock.mock.calls[0][0])).toContain("force=true");
   });
 
   it("explains a too-short source without requesting a summary", async () => {
@@ -120,7 +208,7 @@ describe("<AiSummary>", () => {
 
   it("regenerates on the refresh button (force=true)", async () => {
     stubStatus(true);
-    const fetchMock = okFetch();
+    const fetchMock = streamFetch();
     vi.stubGlobal("fetch", fetchMock);
     render(<AiSummary article={makeArticleDetail({ summary: "old summary" })} />);
     await userEvent.click(screen.getByTitle("Regenerate summary"));
@@ -130,15 +218,47 @@ describe("<AiSummary>", () => {
 
   it("shows an error and retries", async () => {
     stubStatus(true);
+    const streaming = streamFetch();
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce({ status: 502, ok: false, json: async () => ({ detail: "LLM failed" }) })
-      .mockResolvedValue({ status: 200, ok: true, json: async () => ({}) });
+      .mockImplementation(streaming);
     vi.stubGlobal("fetch", fetchMock);
     render(<AiSummary article={makeArticleDetail({ summary: "" })} />);
     await waitFor(() => expect(screen.getByText("LLM failed")).toBeInTheDocument());
     await userEvent.click(screen.getByText("Try again"));
     await waitFor(() => expect(mutateMock).toHaveBeenCalled());
+  });
+
+  it("treats a stream that drops before finishing as an error, not success", async () => {
+    // A proxy timing out the SSE mid-way must not read as "done": that would
+    // clear the streamed text and leave a blank slot with no retry.
+    stubStatus(true);
+    const fetchMock = streamFetch([
+      { type: "status", stage: "summarizing" },
+      { type: "delta", text: "Half a summary that never fin" },
+    ]);
+    vi.stubGlobal("fetch", fetchMock);
+    render(<AiSummary article={makeArticleDetail({ summary: "" })} />);
+    await waitFor(() =>
+      expect(screen.getByText(/connection dropped before the summary finished/i)).toBeInTheDocument(),
+    );
+    expect(mutateMock).not.toHaveBeenCalled();
+    expect(screen.getByText("Try again")).toBeInTheDocument();
+  });
+
+  it("surfaces a mid-stream error event as the error state", async () => {
+    stubStatus(true);
+    const fetchMock = streamFetch([
+      { type: "status", stage: "reading" },
+      { type: "error", detail: "The AI summary failed. Try again." },
+    ]);
+    vi.stubGlobal("fetch", fetchMock);
+    render(<AiSummary article={makeArticleDetail({ summary: "" })} />);
+    await waitFor(() =>
+      expect(screen.getByText("The AI summary failed. Try again.")).toBeInTheDocument(),
+    );
+    expect(mutateMock).not.toHaveBeenCalled();
   });
 });
 

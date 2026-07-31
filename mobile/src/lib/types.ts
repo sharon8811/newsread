@@ -102,7 +102,22 @@ export type ArticleEntity = EntityBadge & {
 export type ArticleDetail = Omit<Article, "entities"> & {
   content_html: string;
   summary_model: string | null;
+  // Why there is no summary: "too_short" (nothing worth summarizing),
+  // "needs_full_page" (batch worker had no usable text; on-demand may still
+  // succeed), "unusable_page" (the page isn't the article — 404, paywall,
+  // bot check). null while a summary is still possible.
+  summary_skipped_reason: "too_short" | "needs_full_page" | "unusable_page" | null;
   entities: ArticleEntity[];
+};
+
+// POST /articles/{id}/summarize response.
+export type SummaryOut = {
+  summary: string;
+  summary_short: string;
+  summary_medium: string;
+  model: string | null;
+  generated_at: string | null;
+  skipped_reason: "too_short" | "needs_full_page" | "unusable_page" | null;
 };
 
 // The user's hidden "Imported" feed (pasted-URL articles live there).

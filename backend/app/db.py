@@ -110,6 +110,30 @@ ONE_SHOT_MIGRATIONS: dict[str, list[str]] = {
         "UPDATE articles SET image_url = '/api/articles/' || id || '/generated-image' "
         "WHERE image_url LIKE '%/api/articles/%/generated-image' AND image_url NOT LIKE '/api/%'",
     ],
+    # Summaries generated before the UNUSABLE contract sometimes describe the
+    # fetch failure itself ("The provided URL leads to a dead end… a standard
+    # 404 error screen") instead of the story. Clear the conservative matches
+    # so the worker regenerates them under the new prompt — a false positive
+    # (an article genuinely about 404s or paywalls) merely costs one
+    # re-summarization, which either succeeds again or lands on
+    # summary_skipped_reason = 'unusable_page'.
+    "clear_error_page_summaries": [
+        "UPDATE articles SET summary_short = '', summary_medium = '', summary = '', "
+        "summary_model = NULL, summary_generated_at = NULL, summary_language = NULL, "
+        "summary_skipped_reason = NULL "
+        "WHERE summary <> '' AND summary ~* "
+        "'(404 (error|page)|(error|page) 404"
+        "|page (was |could )?not (be )?found"
+        "|(leads?|led) (to )?a dead end"
+        "|error (page|screen|message)"
+        "|(cannot|can not|could not|couldn.t|can.t) be (accessed|retrieved|loaded|reached|displayed)"
+        "|unable to (access|load|retrieve|reach)"
+        "|the (provided|given|requested) (url|link|page)"
+        "|verify (that )?(you are|you.re) (a )?human|captcha|cookie consent"
+        "|(content|article|page) (is )?(behind|requires) (a )?(paywall|subscription|login|sign.?in)"
+        "|no (article|actual|accessible|readable) (content|text)"
+        "|javascript (is )?(required|disabled))'",
+    ],
 }
 
 

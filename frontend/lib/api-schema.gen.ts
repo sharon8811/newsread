@@ -393,6 +393,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/articles/{article_id}/summarize/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Summarize Article Stream
+         * @description Generate the article's summary, streaming SSE progress:
+         *
+         *     status | delta | skipped | done | error
+         *
+         *     `delta` carries FULL-summary text as the model writes it; `done` carries
+         *     the stored SummaryOut. `error.detail` is always a user-facing sentence —
+         *     model output and internal errors never pass through.
+         */
+        post: operations["summarize_article_stream_api_articles__article_id__summarize_stream_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/articles/{article_id}/translate": {
         parameters: {
             query?: never;
@@ -2208,7 +2234,7 @@ export interface components {
              */
             summary_short: string;
             /** Summary Skipped Reason */
-            summary_skipped_reason?: ("too_short" | "needs_full_page") | null;
+            summary_skipped_reason?: ("too_short" | "needs_full_page" | "unusable_page") | null;
             /** Title */
             title: string;
             /** Url */
@@ -3799,7 +3825,7 @@ export interface components {
             /** Model */
             model: string | null;
             /** Skipped Reason */
-            skipped_reason?: ("too_short" | "needs_full_page") | null;
+            skipped_reason?: ("too_short" | "needs_full_page" | "unusable_page") | null;
             /** Summary */
             summary: string;
             /**
@@ -4701,6 +4727,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SummaryOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    summarize_article_stream_api_articles__article_id__summarize_stream_post: {
+        parameters: {
+            query?: {
+                force?: boolean;
+            };
+            header?: never;
+            path: {
+                article_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

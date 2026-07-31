@@ -714,7 +714,9 @@ class ArticleDetail(ArticleListItem):
     # "too_short": nothing worth summarizing, on demand or otherwise.
     # "needs_full_page": the batch worker found no usable text; the on-demand
     # path may still succeed, with a refetch or a rendered screenshot.
-    summary_skipped_reason: Literal["too_short", "needs_full_page"] | None = None
+    # "unusable_page": the page turned out not to be the article (404,
+    # paywall, bot check); only a force-regenerate tries again.
+    summary_skipped_reason: Literal["too_short", "needs_full_page", "unusable_page"] | None = None
     entities: list[EntityFull] = []
 
 
@@ -1133,7 +1135,7 @@ class SummaryOut(BaseModel):
     summary_medium: str = ""
     model: str | None
     generated_at: datetime | None
-    skipped_reason: Literal["too_short", "needs_full_page"] | None = None
+    skipped_reason: Literal["too_short", "needs_full_page", "unusable_page"] | None = None
 
 
 class TranslateIn(BaseModel):
