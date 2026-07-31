@@ -11,20 +11,28 @@ import ErrorReporting from "@/components/ErrorReporting";
 import Toaster from "@/components/ui/Toaster";
 import "./globals.css";
 
+// adjustFontFallback: false because next/font's synthesized fallback faces
+// (local Arial / Times New Roman, no unicode-range) swallow Hebrew glyphs
+// before Noto Sans Hebrew is reached. The current Turbopack build ignores the
+// option and emits them anyway, so globals.css also orders the stacks by
+// literal family name with the "* Fallback" faces after Noto Sans Hebrew.
 const sourceSerif = Source_Serif_4({
   subsets: ["latin"],
   style: ["normal", "italic"],
   variable: "--font-serif",
+  adjustFontFallback: false,
 });
 
 const geist = Geist({
   subsets: ["latin"],
   variable: "--font-sans",
+  adjustFontFallback: false,
 });
 
 const geistMono = Geist_Mono({
   subsets: ["latin"],
   variable: "--font-mono",
+  adjustFontFallback: false,
 });
 
 // Geist and Source Serif 4 carry no Hebrew glyphs, so Hebrew fell through to
