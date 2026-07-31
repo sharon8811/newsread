@@ -79,8 +79,10 @@ metadata), the next worker cycle recreates them.
 - Benchmark + recall check: `cd backend && PYTHONPATH=. uv run python
   scripts/benchmark_ann.py --rows 100000` seeds a scratch `newsread_bench`
   database and prints exact-vs-indexed timings, recall, and whether EXPLAIN
-  uses the index. Note the recall column counts fp16 near-ties as misses, so
-  it is a lower bound; synthetic random vectors tie far more than real
-  embeddings.
+  uses the index. The synthetic vectors are clustered (1000 centers + noise)
+  on purpose: uniform random vectors concentrate every pairwise distance
+  around 1.0 at high dimension, turning top-K into a giant tie-band and any
+  recall figure into noise (measured: 0.2–0.35 "recall" on uniform data vs
+  1.000 on clustered — the former is tie-shuffling, not lost neighbors).
 - Models beyond 4000 dimensions are skipped (HNSW's halfvec ceiling) and stay
   on exact scans, logged once per worker cycle attempt.

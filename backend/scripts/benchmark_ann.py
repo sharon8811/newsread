@@ -64,11 +64,22 @@ SEED_SQL = [
        SELECT f.id, 'g' || i, 'https://bench.example/' || i, 'Article ' || i,
               '<p>x</p>', 'excerpt'
        FROM feeds f, generate_series(1, :rows) i""",
-    # 0*a.id correlates the subquery so every row gets its own random vector.
+    # Clustered vectors (1000 centers + per-row noise), not uniform noise:
+    # uniform random vectors at high dimension concentrate all distances
+    # around 1.0, which makes top-K a giant tie-band and any ANN recall
+    # number meaningless. Real embeddings cluster. The 0*c / 0*a.id terms
+    # correlate the subqueries so each row gets its own vector.
+    """CREATE TEMP TABLE bench_centers AS
+       SELECT c AS id,
+              (SELECT array_agg(random() * 2 - 1)
+               FROM generate_series(1, :dim + 0 * c)) AS center
+       FROM generate_series(1, 1000) c""",
     """INSERT INTO article_embeddings (article_id, model, embedding, input_hash)
        SELECT a.id, :model,
-              (SELECT array_agg(random() * 2 - 1)
-               FROM generate_series(1, :dim + 0 * a.id))::vector,
+              (SELECT array_agg(x + (random() - 0.5) * 0.4 ORDER BY ord)
+               FROM unnest((SELECT center FROM bench_centers
+                            WHERE id = 1 + (a.id % 1000))) WITH ORDINALITY t(x, ord)
+              )::vector,
               md5(a.id::text)
        FROM articles a""",
     """INSERT INTO browser_history_documents
@@ -93,8 +104,10 @@ SEED_SQL = [
     """INSERT INTO browser_history_document_embeddings
            (document_id, chunk_index, model, embedding, input_hash)
        SELECT d.id, c, :model,
-              (SELECT array_agg(random() * 2 - 1)
-               FROM generate_series(1, :dim + 0 * (d.id + c)))::vector,
+              (SELECT array_agg(x + (random() - 0.5) * 0.4 ORDER BY ord)
+               FROM unnest((SELECT center FROM bench_centers
+                            WHERE id = 1 + ((d.id + c) % 1000))) WITH ORDINALITY t(x, ord)
+              )::vector,
               md5(d.id || ':' || c) || md5('pad')
        FROM browser_history_documents d, generate_series(0, :chunks - 1) c""",
 ]
