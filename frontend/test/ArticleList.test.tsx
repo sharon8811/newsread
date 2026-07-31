@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { act, render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { act, render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import ArticleList, {
   articlesKey,
@@ -348,11 +348,30 @@ class MockIntersectionObserver {
   }
 }
 
+/** True for the image-prefetch observer, whose margin reaches far below. */
+function isPrefetchIo(io: MockIntersectionObserver) {
+  return (io.options?.rootMargin ?? "").includes("4000px");
+}
+
 /** The component observes its targets in an effect, which may not have
- * flushed when the test reaches for the observer — retry until it has. */
+ * flushed when the test reaches for the observer — retry until it has.
+ * Cards are watched by the scroll-past and the image-prefetch observers;
+ * these tests want the behavioral one, so the prefetcher is filtered out. */
 async function ioFor(el: Element): Promise<MockIntersectionObserver> {
   return await vi.waitFor(() => {
-    const io = MockIntersectionObserver.instances.find((i) => i.observed.has(el));
+    const io = MockIntersectionObserver.instances.find(
+      (i) => i.observed.has(el) && !isPrefetchIo(i),
+    );
+    expect(io).toBeTruthy();
+    return io!;
+  });
+}
+
+async function prefetchIoFor(el: Element): Promise<MockIntersectionObserver> {
+  return await vi.waitFor(() => {
+    const io = MockIntersectionObserver.instances.find(
+      (i) => i.observed.has(el) && isPrefetchIo(i),
+    );
     expect(io).toBeTruthy();
     return io!;
   });
@@ -543,14 +562,22 @@ describe("<ArticleList> reading mode", () => {
         ]);
       });
 
-      // Optimistic: the pill drops before any network flush.
+      // Optimistic: the pill drops before any network flush, its label rolls
+      // in re-keyed, the seam stamp pops, and the announcement is screen
+      // reader only — no visible bubble, no Undo button.
       await vi.waitFor(() => expect(screen.getByText("1 unread ↓")).toBeInTheDocument());
-      expect(screen.getByText("Marked read")).toBeInTheDocument();
+      expect(screen.getByText("1 unread ↓")).toHaveClass("count-tick");
+      expect(container.querySelector(".read-stamp")).toBeTruthy();
+      const announcement = screen.getByText("Marked read");
+      expect(announcement).toHaveClass("sr-only");
+      expect(screen.queryByText("Undo")).not.toBeInTheDocument();
       expect(screen.getByLabelText("Read")).toBeInTheDocument();
 
       await act(async () => {
         await vi.advanceTimersByTimeAsync(2000);
       });
+      // The stamp's 1s cleanup has passed; the ephemeral ✓ is gone.
+      expect(container.querySelector(".read-stamp")).toBeNull();
       const batchCall = fetchMock.mock.calls.find((c) =>
         String(c[0]).includes("/state/batch"),
       )!;
@@ -569,7 +596,7 @@ describe("<ArticleList> reading mode", () => {
     }
   });
 
-  it("coalesces scroll-past feedback and Undo restores every article", async () => {
+  it("coalesces scroll-past feedback and card toggles restore every article", async () => {
     vi.useFakeTimers();
     try {
       const fetchMock = readingFetch(
@@ -610,18 +637,26 @@ describe("<ArticleList> reading mode", () => {
       );
       expect(screen.getByText("All caught up ✓")).toBeInTheDocument();
 
-      await act(async () => {
-        fireEvent.click(screen.getByText("Undo"));
-        await Promise.resolve();
-      });
+      // Undo lives on the cards themselves now: scroll back, tap the toggle.
+      // (Rows render the toggle in two responsive slots; either one works.)
+      for (const id of [41, 42]) {
+        const row = container.querySelector(`[data-article-id="${id}"]`) as HTMLElement;
+        await act(async () => {
+          fireEvent.click(within(row).getAllByTitle("Mark as unread")[0]);
+          await Promise.resolve();
+        });
+      }
       await vi.waitFor(() => expect(screen.getByText("2 unread ↓")).toBeInTheDocument());
       expect(screen.getAllByLabelText("Unread")).toHaveLength(2);
-      const batches = fetchMock.mock.calls
-        .filter((call) => String(call[0]).includes("/state/batch"))
-        .map((call) => JSON.parse(call[1].body));
-      expect(batches).toEqual([
-        expect.objectContaining({ article_ids: [41, 42], is_read: false }),
+      const stateWrites = fetchMock.mock.calls
+        .filter((call) => /\/articles\/\d+\/state/.test(String(call[0])))
+        .map((call) => [String(call[0]), JSON.parse(call[1].body)]);
+      expect(stateWrites).toEqual([
+        [expect.stringContaining("/articles/41/state"), { is_read: false }],
+        [expect.stringContaining("/articles/42/state"), { is_read: false }],
       ]);
+      // The pending auto-read batch was emptied by the toggles: the delayed
+      // flush must not resurrect the marks.
       await act(async () => {
         await vi.advanceTimersByTimeAsync(2000);
       });
@@ -629,7 +664,7 @@ describe("<ArticleList> reading mode", () => {
         fetchMock.mock.calls.filter((call) =>
           String(call[0]).includes("/state/batch"),
         ),
-      ).toHaveLength(1);
+      ).toHaveLength(0);
     } finally {
       vi.useRealTimers();
     }
@@ -693,7 +728,7 @@ describe("<ArticleList> reading mode", () => {
       });
       await vi.waitFor(() => expect(screen.getByText("Marked read")).toBeInTheDocument());
       await act(async () => {
-        fireEvent.click(screen.getByText("Undo"));
+        fireEvent.click(screen.getAllByTitle("Mark as unread")[0]);
         await Promise.resolve();
       });
       await vi.waitFor(() => expect(screen.getByLabelText("Unread")).toBeInTheDocument());
@@ -766,6 +801,56 @@ describe("<ArticleList> reading mode", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("warms upcoming card images ahead of the viewport, once each", async () => {
+    const created: { src: string }[] = [];
+    class MockImage {
+      src = "";
+      constructor() {
+        created.push(this);
+      }
+    }
+    vi.stubGlobal("Image", MockImage);
+    vi.stubGlobal(
+      "fetch",
+      readingFetch(
+        [
+          makeArticle({ id: 5, title: "Pictured", image_url: "/api/media/5.png" }),
+          makeArticle({ id: 6, title: "Bare" }),
+        ],
+        { "X-Unread-Count": "2" },
+      ),
+    );
+    const { container } = renderReading(
+      <ArticleList filter="unread" emptyTitle="Empty" />,
+    );
+    await screen.findByText("Pictured");
+    const pictured = container.querySelector('[data-article-id="5"]')!;
+    const bare = container.querySelector('[data-article-id="6"]')!;
+    const io = await prefetchIoFor(pictured);
+
+    act(() => {
+      io.callback([
+        { isIntersecting: true, target: pictured },
+        // Not yet within the look-ahead band: untouched.
+        { isIntersecting: false, target: bare },
+      ]);
+    });
+    // Relative generated-image paths are resolved against the API base.
+    expect(created.map((image) => image.src)).toEqual([
+      expect.stringContaining("/api/media/5.png"),
+    ]);
+
+    act(() => {
+      io.callback([
+        // Re-delivered (observer churn): the URL is only ever warmed once.
+        { isIntersecting: true, target: pictured },
+        // No image to warm on this one.
+        { isIntersecting: true, target: bare },
+      ]);
+    });
+    expect(created).toHaveLength(1);
   });
 
   it("shows the reading-mode empty state when the window is empty", async () => {
