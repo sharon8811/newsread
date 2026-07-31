@@ -34,7 +34,8 @@ ANTHROPIC_COMPAT_BASE_URL = "https://api.anthropic.com/v1/"
 @dataclass(frozen=True)
 class LLMConfig:
     """One resolved endpoint+model to run a call against. `user_owned` marks
-    calls billed to the user's key — only those are logged to llm_usage."""
+    calls billed to the user's own key; everything else lands on the
+    operator's bill (llm_usage.billing_source records which)."""
 
     provider: str  # 'system' | 'openai' | 'anthropic' | 'custom'
     api_key: str
@@ -165,7 +166,7 @@ async def resolve_config(session: AsyncSession, user_id: int) -> LLMConfig | Non
 async def record_usage(
     session: AsyncSession,
     *,
-    user_id: int,
+    user_id: int | None,
     feature: str,
     config: LLMConfig | None,
     usage: TokenUsage | None = None,
@@ -173,15 +174,19 @@ async def record_usage(
     status: str = "ok",
     error: str | None = None,
 ) -> None:
-    """Log one call to llm_usage — a no-op unless it ran on the user's own key."""
-    if config is None or not config.user_owned:
-        return
+    """Log one call to llm_usage, whichever key it ran on. Calls on the
+    operator's server-wide key (config=None or not user_owned) are recorded
+    with billing_source='system' and keep the acting user_id so per-user
+    spend stays attributable; batch work no single user triggered passes
+    user_id=None."""
+    user_owned = config is not None and config.user_owned
     session.add(
         LLMUsage(
             user_id=user_id,
+            billing_source="user" if user_owned else "system",
             feature=feature,
-            provider=config.provider,
-            model=config.model,
+            provider=config.provider if config is not None else "system",
+            model=config.model if config is not None else settings.openai_model,
             prompt_tokens=usage.prompt_tokens if usage else 0,
             completion_tokens=usage.completion_tokens if usage else 0,
             duration_ms=duration_ms,
@@ -216,7 +221,7 @@ def ms_since(started: float) -> int:
 async def usage_tracker(
     session: AsyncSession,
     *,
-    user_id: int,
+    user_id: int | None,
     feature: str,
     config: LLMConfig | None,
     log_label: str,

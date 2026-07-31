@@ -6,6 +6,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from . import user_activity
 from .config import settings
 from .db import get_session
 from .models import User
@@ -56,6 +57,9 @@ async def get_current_user(
     # effect immediately — a previously issued, still-valid JWT is rejected.
     if user.status == STATUS_SUSPENDED:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account suspended")
+    # Daily-active tracking: a dict lookup on all but ~one request per user
+    # per hour (user_activity.record throttles and never raises).
+    await user_activity.record(user.id)
     return user
 
 

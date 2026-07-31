@@ -25,6 +25,7 @@ from . import (
     llm,
     media_storage,
     ner,
+    processing_events,
     push,
     queue,
     suppressions,
@@ -88,11 +89,11 @@ _SUMMARIZE_GATE = asyncio.Semaphore(SUMMARIZE_CONCURRENCY)
 _NER_GATE = asyncio.Semaphore(NER_CONCURRENCY)
 
 
-async def _for_each_article(ids, *, gate: asyncio.Semaphore, label: str, fn) -> None:
+async def _for_each_article(ids, *, gate: asyncio.Semaphore, label: str, stage: str, fn) -> None:
     """Run fn(session, article) for each id, each in its own session, at most
     `gate`'s limit at a time across every job in this worker. Failures are
-    logged per article and never stop the batch; fn owns any transaction
-    discipline beyond that."""
+    logged per article, recorded as processing events, and never stop the
+    batch; fn owns any transaction discipline beyond that."""
 
     async def one(article_id: int) -> None:
         async with gate:
@@ -108,6 +109,13 @@ async def _for_each_article(ids, *, gate: asyncio.Semaphore, label: str, fn) -> 
                     await fn(session, article)
             except Exception as exc:
                 logger.warning("%s of article %s failed: %s", label, article_id, exc)
+                # Own session: the failed one above may be poisoned/closed.
+                await processing_events.record_event(
+                    stage=stage,
+                    outcome=processing_events.OUTCOME_FAILED,
+                    article_id=article_id,
+                    detail=type(exc).__name__,
+                )
 
     # No return_exceptions: `one` already swallows Exception, and letting
     # BaseException (worker shutdown's CancelledError) propagate is correct.
@@ -122,9 +130,21 @@ async def _summarize_quietly(session, article) -> None:
         # permanently excluding an article whose captions are merely delayed.
         return
     try:
-        await generate_summaries(session, article, allow_refetch=False)
+        # Metered on the server-wide key with no acting user: batch summaries
+        # are instance overhead, not any subscriber's spend. Skips pass
+        # through unrecorded (no LLM call happened); real failures land as an
+        # error row and propagate to _for_each_article's handler.
+        async with llm.usage_tracker(
+            session,
+            user_id=None,
+            feature="summary",
+            config=None,
+            log_label=f"Batch summary of article {article.id}",
+            passthrough=(SummarySkipped, ThinContentError),
+        ) as usage:
+            await generate_summaries(session, article, allow_refetch=False, usage=usage)
     except SummarySkipped:
-        pass  # already stamped summary_skipped_reason
+        pass  # already stamped summary_skipped_reason (+ processing event)
     except ThinContentError:
         # No usable text, and the batch path spends neither a browser render
         # nor vision tokens to get some. Record it so the worker stops
@@ -132,6 +152,14 @@ async def _summarize_quietly(session, article) -> None:
         # reach zero. The detail view still summarizes it on demand, where a
         # refetch and vision are allowed — only "too_short" suppresses that.
         article.summary_skipped_reason = "needs_full_page"
+        processing_events.add_event(
+            session,
+            stage=processing_events.STAGE_SUMMARIZE,
+            outcome=processing_events.OUTCOME_SKIPPED,
+            article_id=article.id,
+            feed_id=article.feed_id,
+            detail="needs_full_page",
+        )
         await session.commit()
 
 
@@ -153,7 +181,13 @@ async def enrich_and_summarize(ctx: dict | None = None, feed_id: int | None = No
             enrich_query = enrich_query.where(Article.feed_id == feed_id)
         enrich_ids = list(await session.scalars(enrich_query))
 
-    await _for_each_article(enrich_ids, gate=_ENRICH_GATE, label="Enrichment", fn=enrich_article)
+    await _for_each_article(
+        enrich_ids,
+        gate=_ENRICH_GATE,
+        label="Enrichment",
+        stage=processing_events.STAGE_ENRICH,
+        fn=enrich_article,
+    )
 
     try:
         extracted = await extract_entities(feed_id=feed_id)
@@ -204,6 +238,7 @@ async def enrich_and_summarize(ctx: dict | None = None, feed_id: int | None = No
         summarize_ids,
         gate=_SUMMARIZE_GATE,
         label="Auto-summary",
+        stage=processing_events.STAGE_SUMMARIZE,
         fn=_summarize_quietly,
     )
 
@@ -234,11 +269,30 @@ async def enrich_and_summarize(ctx: dict | None = None, feed_id: int | None = No
 
 
 async def _ner_one(session, article) -> None:
+    article_id, feed_id = article.id, article.feed_id
     try:
-        await ner.extract_named(session, article)
+        async with llm.usage_tracker(
+            session,
+            user_id=None,
+            feature="ner",
+            config=None,
+            log_label=f"Entity tagging of article {article_id}",
+        ) as usage:
+            await ner.extract_named(session, article, usage=usage)
     except Exception as exc:
-        logger.warning("Entity tagging of article %s failed: %s", article.id, exc)
-        await session.rollback()
+        # The tracker already rolled back (if needed) and recorded the usage
+        # row; here the failure becomes a dated processing event. The cause
+        # names the real error — the tracker wraps it in LLMRequestFailed.
+        cause = exc.__cause__ or exc
+        logger.warning("Entity tagging of article %s failed: %s", article_id, cause)
+        processing_events.add_event(
+            session,
+            stage=processing_events.STAGE_NER,
+            outcome=processing_events.OUTCOME_FAILED,
+            article_id=article_id,
+            feed_id=feed_id,
+            detail=type(cause).__name__,
+        )
     # Always stamp: never re-tag on failure, never block the cycle.
     article.ner_extracted_at = datetime.now(UTC)
     await session.commit()
@@ -280,7 +334,13 @@ async def extract_named_entities_batch(feed_id: int | None = None) -> int:
         ids = list(await session.scalars(query))
     if not ids:
         return 0
-    await _for_each_article(ids, gate=_NER_GATE, label="Entity tagging", fn=_ner_one)
+    await _for_each_article(
+        ids,
+        gate=_NER_GATE,
+        label="Entity tagging",
+        stage=processing_events.STAGE_NER,
+        fn=_ner_one,
+    )
     return len(ids)
 
 
@@ -616,11 +676,20 @@ async def poll_feeds(ctx: dict) -> None:
             due = feed.last_fetched_at is None or feed.last_fetched_at + interval <= now
             if not due:
                 continue
+            # Captured before any rollback: expired ORM attributes must not
+            # be touched afterwards (async lazy-load blows up).
+            feed_id_value, feed_url = feed.id, feed.url
             try:
                 await refresh_feed(session, feed)
             except Exception as exc:
-                logger.warning("Polling feed %s failed: %s", feed.url, exc)
+                logger.warning("Polling feed %s failed: %s", feed_url, exc)
                 await session.rollback()
+                await processing_events.record_event(
+                    stage=processing_events.STAGE_POLL,
+                    outcome=processing_events.OUTCOME_FAILED,
+                    feed_id=feed_id_value,
+                    detail=type(exc).__name__,
+                )
     await enrich_and_summarize(ctx)
 
 
