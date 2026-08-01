@@ -39,6 +39,12 @@ class Settings(BaseSettings):
     # for hosted modes, where public signup must never mint an owner — hosted
     # and existing installations promote via `scripts/set_role.py` instead.
     first_account_owner: bool | None = None  # NEWSREAD_FIRST_ACCOUNT_OWNER
+    # Bring-your-own LLM keys. On for self_hosted (run AI on whatever you
+    # like); off for hosted modes, where everyone runs on the operator's key
+    # so usage stays meterable (llm_usage) and margins stay modelable.
+    # Turning it off gates *saving* keys — existing stored keys keep working
+    # until removed, so flipping the flag never silently breaks users.
+    byo_llm_keys_enabled: bool | None = None  # NEWSREAD_BYO_LLM_KEYS_ENABLED
     # Packaged Chrome extension served from Settings → Browser history. Empty
     # means the in-repo default (extension/newsread-history-extension.zip,
     # produced by `npm run build` there); the download link hides when the
@@ -236,6 +242,8 @@ class Settings(BaseSettings):
             self.browser_history_enabled = not is_self_hosted
         if self.first_account_owner is None:
             self.first_account_owner = is_self_hosted
+        if self.byo_llm_keys_enabled is None:
+            self.byo_llm_keys_enabled = is_self_hosted
         if self.browser_history_content_enabled:
             required = {
                 "NEWSREAD_OBJECT_STORE_ENDPOINT": self.object_store_endpoint,

@@ -10,6 +10,7 @@ async def test_config_is_unauthenticated(client):
         "allow_signup",
         "messaging_enabled",
         "browser_history_enabled",
+        "byo_llm_keys_enabled",
     }
 
 
@@ -20,6 +21,7 @@ async def test_config_reflects_open_flags(client):
         "allow_signup": True,
         "messaging_enabled": True,
         "browser_history_enabled": True,
+        "byo_llm_keys_enabled": True,
     }
 
 
@@ -46,3 +48,9 @@ async def test_browser_history_flag_reflected(client, monkeypatch):
     monkeypatch.setattr(settings, "browser_history_enabled", False)
     resp = await client.get("/api/config")
     assert resp.json()["browser_history_enabled"] is False
+
+
+async def test_byo_llm_keys_flag_reflected(client, monkeypatch):
+    monkeypatch.setattr(settings, "byo_llm_keys_enabled", False)
+    resp = await client.get("/api/config")
+    assert resp.json()["byo_llm_keys_enabled"] is False

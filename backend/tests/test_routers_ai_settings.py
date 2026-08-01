@@ -569,3 +569,48 @@ async def test_put_image_extra_params_must_be_json_object(client, users):
     body["image"]["extra_params"] = '["a", "list"]'
     resp = await client.put("/api/ai/settings", json=body, headers=users.auth(user))
     assert resp.status_code == 422
+
+
+# --- BYO gating (hosted deployments) ---
+
+
+async def test_put_forbidden_when_byo_disabled(client, users, session, monkeypatch):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "byo_llm_keys_enabled", False)
+    user = await users.create()
+    resp = await _put(client, users, user)
+    assert resp.status_code == 403
+    assert "disabled" in resp.json()["detail"]
+    assert await session.get(UserAISettings, user.id) is None
+
+
+async def test_test_endpoint_forbidden_when_byo_disabled(client, users, monkeypatch):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "byo_llm_keys_enabled", False)
+    user = await users.create()
+    resp = await client.post(
+        "/api/ai/settings/test",
+        json={"provider": "openai", "model": "m", "api_key": "sk-x-12345678"},
+        headers=users.auth(user),
+    )
+    assert resp.status_code == 403
+
+
+async def test_get_and_delete_still_work_when_byo_disabled(client, users, session, monkeypatch):
+    from app.config import settings
+
+    # A legacy key saved before the operator disabled BYO: still visible,
+    # still removable — only saving/testing is gated.
+    user = await users.create()
+    assert (await _put(client, users, user)).status_code == 200
+    monkeypatch.setattr(settings, "byo_llm_keys_enabled", False)
+
+    got = await client.get("/api/ai/settings", headers=users.auth(user))
+    assert got.status_code == 200
+    assert got.json()["configured"] is True
+
+    deleted = await client.delete("/api/ai/settings", headers=users.auth(user))
+    assert deleted.status_code == 204
+    assert await session.get(UserAISettings, user.id) is None

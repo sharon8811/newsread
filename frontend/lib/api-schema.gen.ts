@@ -3660,6 +3660,11 @@ export interface components {
             allow_signup: boolean;
             /** Browser History Enabled */
             browser_history_enabled: boolean;
+            /**
+             * Byo Llm Keys Enabled
+             * @default true
+             */
+            byo_llm_keys_enabled: boolean;
             /** Messaging Enabled */
             messaging_enabled: boolean;
         };

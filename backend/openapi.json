@@ -4618,6 +4618,11 @@
             "title": "Browser History Enabled",
             "type": "boolean"
           },
+          "byo_llm_keys_enabled": {
+            "default": true,
+            "title": "Byo Llm Keys Enabled",
+            "type": "boolean"
+          },
           "messaging_enabled": {
             "title": "Messaging Enabled",
             "type": "boolean"

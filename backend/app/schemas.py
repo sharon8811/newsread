@@ -947,6 +947,9 @@ class ServerConfigOut(BaseModel):
     allow_signup: bool
     messaging_enabled: bool
     browser_history_enabled: bool
+    # Whether users may save their own LLM API keys (off on hosted
+    # deployments: everyone runs on the metered system key).
+    byo_llm_keys_enabled: bool = True
 
 
 class IntegrationStatusOut(BaseModel):

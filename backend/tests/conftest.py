@@ -68,6 +68,7 @@ for _var in (
 os.environ["NEWSREAD_DEPLOYMENT"] = "self_hosted"
 os.environ["NEWSREAD_ALLOW_SIGNUP"] = "true"
 os.environ["NEWSREAD_FIRST_ACCOUNT_OWNER"] = "false"
+os.environ["NEWSREAD_BYO_LLM_KEYS_ENABLED"] = "true"
 os.environ["NEWSREAD_MESSAGING_ENABLED"] = "true"
 os.environ["NEWSREAD_BROWSER_HISTORY_ENABLED"] = "true"
 os.environ["NEWSREAD_BROWSER_HISTORY_CONTENT_ENABLED"] = "false"
