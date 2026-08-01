@@ -52,11 +52,14 @@ export default function AISettingsSection() {
   const { data: settings } = useAiSettings();
   const { data: config } = useServerConfig();
   // The form initializes its state from the stored settings, so it only
-  // mounts once they're known; afterwards the user's edits win until save.
-  if (!settings) return null;
-  // Hosted deployments disable personal keys (the server enforces it); only
-  // an explicit false hides the form, so older servers keep the full one.
-  const byoEnabled = config?.byo_llm_keys_enabled !== false;
+  // mounts once both are known. Waiting for config matters: rendering
+  // before it loads would default to the BYO-enabled form on a hosted
+  // server, where "System default" + Save deletes a stored legacy key the
+  // disabled state deliberately keeps behind an explicit "Remove key".
+  if (!settings || !config) return null;
+  // Only a loaded response lacking the field (an older server) or an
+  // explicit true enables the key form; the server enforces either way.
+  const byoEnabled = config.byo_llm_keys_enabled !== false;
   return <AISettingsForm settings={settings} byoEnabled={byoEnabled} />;
 }
 

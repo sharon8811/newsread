@@ -497,3 +497,15 @@ describe("BYO keys disabled (hosted)", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
+
+describe("server config loading", () => {
+  it("renders nothing until the config is known", () => {
+    // A hosted server must never flash the BYO form (whose "System default"
+    // + Save deletes a stored key) while /config is still in flight.
+    swrMock.mockImplementation((key: unknown) =>
+      key === "/config" ? { data: undefined } : { data: CONFIGURED },
+    );
+    const { container } = render(<AISettingsSection />);
+    expect(container).toBeEmptyDOMElement();
+  });
+});
