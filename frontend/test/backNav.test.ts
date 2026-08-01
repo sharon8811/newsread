@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  BACK_NAV_STATE_KEY,
   isDetailPath,
   navigateBack,
   noteHistoryPop,
@@ -89,6 +90,35 @@ describe("backNav", () => {
     const router = makeRouter();
     navigateBack(router);
     expect(router.push).toHaveBeenCalledWith("/");
+  });
+
+  it("re-seeds depth from the entry's history state after an ordinary reload", () => {
+    // A reload recreates the JS context but keeps the entry (and its state):
+    // back must traverse real history, not push a duplicate list entry.
+    window.history.replaceState({ [BACK_NAV_STATE_KEY]: 1 }, "", window.location.href);
+    trackBackNav("/article/1", "");
+    const router = makeRouter();
+    navigateBack(router);
+    expect(router.back).toHaveBeenCalled();
+    expect(router.push).not.toHaveBeenCalled();
+  });
+
+  it("ignores a corrupt depth marker", () => {
+    window.history.replaceState(
+      { [BACK_NAV_STATE_KEY]: "bogus" },
+      "",
+      window.location.href,
+    );
+    trackBackNav("/article/1", "");
+    const router = makeRouter();
+    navigateBack(router);
+    expect(router.push).toHaveBeenCalledWith("/");
+  });
+
+  it("mirrors the depth onto the current history entry", () => {
+    trackBackNav("/", "");
+    trackBackNav("/article/1", "");
+    expect(window.history.state?.[BACK_NAV_STATE_KEY]).toBe(1);
   });
 
   it("does not record detail pages as the fallback origin", () => {
