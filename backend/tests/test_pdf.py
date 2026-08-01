@@ -1,5 +1,7 @@
 from io import BytesIO
 
+import pytest
+
 from app import pdf
 
 
@@ -54,6 +56,27 @@ async def test_extract_text_returns_the_metadata_title():
     text, title = await pdf.extract_text(_document(title="A Paper"))
     assert title == "A Paper"
     assert text == ""  # blank pages carry no text layer
+
+
+@pytest.mark.parametrize(
+    "stored",
+    [
+        "Microsoft Word - draft3.docx",
+        "untitled",
+        "Q3-report.indd",
+        "slide 1",
+    ],
+)
+async def test_extract_text_drops_a_producer_title(stored):
+    # The URL importer adopts this title outright; the authoring tool talking
+    # to itself must not become the article's headline.
+    _, title = await pdf.extract_text(_document(title=stored))
+    assert title is None
+
+
+async def test_extract_text_keeps_a_real_title_that_merely_mentions_a_tool():
+    _, title = await pdf.extract_text(_document(title="Writing well in Microsoft Word"))
+    assert title == "Writing well in Microsoft Word"
 
 
 async def test_extract_text_is_empty_for_an_encrypted_document():

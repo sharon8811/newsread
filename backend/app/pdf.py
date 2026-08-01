@@ -37,6 +37,17 @@ MAX_PAGES = 500
 
 _PDF_PATH = re.compile(r"\.pdf$", re.IGNORECASE)
 
+# A PDF's /Title is whatever produced it, and half the time that is the
+# authoring tool talking to itself — "Microsoft Word - draft3.docx", the
+# InDesign file name, LaTeX's "untitled". Those must not become the article's
+# headline (the URL importer adopts the title outright), and dropping one only
+# leaves the feed's own title in place.
+_PRODUCER_TITLE = re.compile(
+    r"^(microsoft word|microsoft powerpoint|untitled|document\d*|print|slide\s*\d+)\b"
+    r"|\.(docx?|pptx?|indd|tex|pages|rtf|qxd)$",
+    re.IGNORECASE,
+)
+
 
 def looks_like_pdf(url: str) -> bool:
     """True when the URL's path ends in .pdf.
@@ -81,7 +92,9 @@ def _extract(body: bytes) -> tuple[str, str | None]:
     try:
         meta = reader.metadata
         if meta and meta.title:
-            title = str(meta.title).strip() or None
+            candidate = str(meta.title).strip()
+            if candidate and not _PRODUCER_TITLE.search(candidate):
+                title = candidate
     except Exception:  # pypdf raises a variety of things on damaged metadata
         pass
 
