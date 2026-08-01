@@ -16,7 +16,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .db import get_session
 from .models import User
-from .security import get_current_user
+from .security import get_current_admin, get_current_owner, get_current_user
 
 DbSession = Annotated[AsyncSession, Depends(get_session)]
 CurrentUser = Annotated[User, Depends(get_current_user)]
+# Role gates for the administration surface: AdminUser admits owner+admin,
+# OwnerUser admits only owners. Both 403 for everyone else (security.py).
+AdminUser = Annotated[User, Depends(get_current_admin)]
+OwnerUser = Annotated[User, Depends(get_current_owner)]

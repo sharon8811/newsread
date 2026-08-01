@@ -1,13 +1,23 @@
 from fastapi import APIRouter, HTTPException
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, text
 
 from ..config import settings
 from ..deps import CurrentUser, DbSession
 from ..models import User
+from ..roles import ROLE_OWNER, ROLE_USER, STATUS_SUSPENDED
 from ..schemas import LoginIn, RegisterIn, TokenOut, UserOut
 from ..security import create_access_token, hash_password, verify_password
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+# Arbitrary app-wide key serializing "is this the first account?" checks so
+# two concurrent registrations on an empty instance can't both become owner
+# (or both slip past closed signups). Held until the transaction commits.
+_FIRST_ACCOUNT_LOCK_KEY = 0x52454749
+
+
+async def _user_count(session: DbSession) -> int:
+    return (await session.scalar(select(func.count()).select_from(User))) or 0
 
 
 async def signup_open(session: DbSession) -> bool:
@@ -17,12 +27,21 @@ async def signup_open(session: DbSession) -> bool:
     register form."""
     if settings.allow_signup:
         return True
-    return (await session.scalar(select(func.count()).select_from(User))) == 0
+    return await _user_count(session) == 0
 
 
 @router.post("/register", response_model=TokenOut, status_code=201)
 async def register(body: RegisterIn, session: DbSession):
-    if not await signup_open(session):
+    user_count = await _user_count(session)
+    if user_count == 0:
+        # The empty-instance paths below (first-account signup exception,
+        # first-account-becomes-owner) both decide on the count; serialize
+        # them and recount under the lock.
+        await session.execute(
+            text("SELECT pg_advisory_xact_lock(:key)"), {"key": _FIRST_ACCOUNT_LOCK_KEY}
+        )
+        user_count = await _user_count(session)
+    if not settings.allow_signup and user_count > 0:
         raise HTTPException(status_code=403, detail="Signups are disabled on this server")
     existing = await session.scalar(
         select(User).where(
@@ -41,6 +60,10 @@ async def register(body: RegisterIn, session: DbSession):
         username=body.username,
         name=body.name,
         password_hash=hash_password(body.password),
+        # Bootstrap: on self_hosted the first account is the operator and
+        # becomes owner (config.first_account_owner). Hosted deployments keep
+        # this off so public signup can never mint an owner.
+        role=ROLE_OWNER if settings.first_account_owner and user_count == 0 else ROLE_USER,
     )
     session.add(user)
     await session.commit()
@@ -61,6 +84,8 @@ async def login(body: LoginIn, session: DbSession):
     )
     if user is None or not verify_password(body.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid credentials")
+    if user.status == STATUS_SUSPENDED:
+        raise HTTPException(status_code=403, detail="Account suspended")
     return TokenOut(access_token=create_access_token(user.id), user=UserOut.model_validate(user))
 
 

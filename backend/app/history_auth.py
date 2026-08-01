@@ -12,7 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .config import settings
 from .db import get_session
-from .models import BrowserConnection
+from .models import BrowserConnection, User
+from .roles import STATUS_SUSPENDED
 
 TOKEN_PREFIX = "nrh_"
 _bearer = HTTPBearer(auto_error=False, scheme_name="BrowserHistoryToken")
@@ -70,17 +71,29 @@ async def get_browser_connection(
     prefix = browser_token_prefix(credentials.credentials)
     if prefix is None:
         raise _unauthorized()
-    connection = await session.scalar(
-        select(BrowserConnection).where(
-            BrowserConnection.token_prefix == prefix,
-            BrowserConnection.revoked_at.is_(None),
+    row = (
+        await session.execute(
+            select(BrowserConnection, User.status)
+            .join(User, User.id == BrowserConnection.user_id)
+            .where(
+                BrowserConnection.token_prefix == prefix,
+                BrowserConnection.revoked_at.is_(None),
+            )
         )
-    )
-    if connection is None or not hmac.compare_digest(
+    ).first()
+    if row is None:
+        raise _unauthorized()
+    connection, owner_status = row
+    if not hmac.compare_digest(
         connection.token_hash,
         hash_browser_token(credentials.credentials),
     ):
         raise _unauthorized()
+    # Suspension covers scoped tokens too: a suspended account's paired
+    # extension must not keep syncing history. Checked after the token
+    # digest so invalid tokens learn nothing about account state.
+    if owner_status == STATUS_SUSPENDED:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account suspended")
     return connection
 
 

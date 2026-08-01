@@ -31,6 +31,14 @@ class User(Base):
     username: Mapped[str] = mapped_column(String(30), unique=True, index=True)
     name: Mapped[str] = mapped_column(String(120))
     password_hash: Mapped[str] = mapped_column(String(128))
+    # Instance-level role (roles.py): 'owner' manages admins and instance
+    # settings, 'admin' accesses administration features, 'user' is normal
+    # application access. Authorization reads this column, never the
+    # deployment mode.
+    role: Mapped[str] = mapped_column(String(8), default="user", server_default="user")
+    # Account status: 'active' or 'suspended'. Suspended accounts are rejected
+    # by get_current_user even with a still-valid JWT.
+    status: Mapped[str] = mapped_column(String(12), default="active", server_default="active")
     default_view: Mapped[str] = mapped_column(String(16), default="cards", server_default="cards")
     # Assisted scrolling in the cards reading view: one gesture moves one
     # article and the viewport snaps to it. On by default; opt out per user.

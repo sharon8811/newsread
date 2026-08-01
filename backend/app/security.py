@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .config import settings
 from .db import get_session
 from .models import User
+from .roles import ADMIN_ROLES, ROLE_OWNER, STATUS_SUSPENDED
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -51,4 +52,23 @@ async def get_current_user(
     user = await session.get(User, user_id)
     if user is None:
         raise unauthorized
+    # The user row is loaded fresh on every request, so suspension takes
+    # effect immediately — a previously issued, still-valid JWT is rejected.
+    if user.status == STATUS_SUSPENDED:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account suspended")
+    return user
+
+
+async def get_current_admin(user: User = Depends(get_current_user)) -> User:
+    """Admin-or-owner gate for administration routes. Authorization lives on
+    users.role; the deployment mode never grants access."""
+    if user.role not in ADMIN_ROLES:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+    return user
+
+
+async def get_current_owner(user: User = Depends(get_current_user)) -> User:
+    """Owner-only gate (admin promotion/demotion, instance settings)."""
+    if user.role != ROLE_OWNER:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Owner access required")
     return user

@@ -67,6 +67,7 @@ for _var in (
 # gates themselves are tested by monkeypatching settings flags directly.
 os.environ["NEWSREAD_DEPLOYMENT"] = "self_hosted"
 os.environ["NEWSREAD_ALLOW_SIGNUP"] = "true"
+os.environ["NEWSREAD_FIRST_ACCOUNT_OWNER"] = "false"
 os.environ["NEWSREAD_MESSAGING_ENABLED"] = "true"
 os.environ["NEWSREAD_BROWSER_HISTORY_ENABLED"] = "true"
 os.environ["NEWSREAD_BROWSER_HISTORY_CONTENT_ENABLED"] = "false"
@@ -222,6 +223,8 @@ class UserFactory:
         name="Test User",
         password="password123",
         default_view="list",
+        role="user",
+        status="active",
     ) -> User:
         self._n += 1
         username = username or f"user{self._n}"
@@ -232,6 +235,8 @@ class UserFactory:
             name=name,
             password_hash=hash_password(password),
             default_view=default_view,
+            role=role,
+            status=status,
         )
         self.session.add(user)
         await self.session.commit()
