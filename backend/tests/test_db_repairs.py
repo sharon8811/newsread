@@ -145,3 +145,74 @@ async def test_clear_error_page_summaries_resets_only_failure_prose(session):
     assert garbage.summary_skipped_reason is None
     assert legit.summary.startswith("OpenAI launches a new model")
     assert legit.summary_model == "vllm/some-model"
+
+
+async def test_reprocess_binary_full_text_resets_only_the_mojibake(session):
+    """The sweep that catches a PDF read as text when it doesn't even start
+    with the signature — trafilatura often begins mid-stream, so the only tell
+    left is the decode damage: text decoded from binary is roughly half U+FFFD
+    replacement characters, real prose has none."""
+    from sqlalchemy import text as sql_text
+
+    feed = Feed(url="https://feed/binary-repair")
+    session.add(feed)
+    await session.flush()
+    now = datetime.now(UTC)
+    mojibake = Article(
+        feed_id=feed.id,
+        guid="mojibake",
+        url="https://www.gamedevs.org/uploads/introduction-to-data-oriented-design.pdf",
+        title="Introduction to Data-Oriented Design",
+        # Half replacement characters, and no "%PDF-" or "endobj" to match on.
+        full_text=("�" * 300) + ("x" * 300),
+        full_text_fetched_at=now,
+        summary_short="La fonta materialo estas teknika eraro.",
+        summary_medium="La fonta materialo estas teknika eraro, ne artikolo.",
+        # Lingua reads a language off the mojibake, so the model wrote the
+        # summary in it — this really happened, in Esperanto.
+        summary="La fonta materialo estas teknika eraro, ne artikolo.",
+        summary_model="vllm/some-model",
+        summary_generated_at=now,
+        summary_language="Esperanto",
+    )
+    prose = Article(
+        feed_id=feed.id,
+        guid="prose",
+        url="https://www.ti.com/lit/eb/slyy228/slyy228.pdf",
+        title="USB Type-C",
+        full_text="Introduction USB Type-C® is an industry-standard connector. " * 20,
+        full_text_fetched_at=now,
+        summary="A real summary of a real document.",
+        summary_model="vllm/some-model",
+        summary_generated_at=now,
+    )
+    # Refused by the old size cap: empty, stamped, no summary to protect.
+    oversized = Article(
+        feed_id=feed.id,
+        guid="oversized",
+        url="https://pagedout.institute/download/PagedOut_009.pdf",
+        title="Paged Out! #9",
+        full_text="",
+        full_text_fetched_at=now,
+    )
+    session.add_all([mojibake, prose, oversized])
+    await session.commit()
+
+    for statement in db.ONE_SHOT_MIGRATIONS["reprocess_binary_full_text"]:
+        await session.execute(sql_text(statement))
+    await session.commit()
+    for article in (mojibake, prose, oversized):
+        await session.refresh(article)
+
+    # Back to "never fetched": the worker re-enriches through the PDF branch.
+    assert mojibake.full_text == ""
+    assert mojibake.full_text_fetched_at is None
+    assert mojibake.summary == ""
+    assert mojibake.summary_language is None
+    assert mojibake.summary_skipped_reason is None
+    # A document that yielded real prose keeps it, and keeps its summary.
+    assert prose.full_text.startswith("Introduction USB Type-C")
+    assert prose.full_text_fetched_at is not None
+    assert prose.summary == "A real summary of a real document."
+    # And the one the cap turned away is queued for another attempt.
+    assert oversized.full_text_fetched_at is None
