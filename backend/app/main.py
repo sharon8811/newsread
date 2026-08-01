@@ -9,6 +9,7 @@ from .config import settings
 from .db import init_db
 from .routers import (
     activity,
+    admin,
     ai,
     ai_settings,
     articles,
@@ -73,6 +74,7 @@ app.include_router(devices.router, prefix="/api")
 app.include_router(entities.router, prefix="/api")
 app.include_router(integrations.router, prefix="/api")
 app.include_router(activity.router, prefix="/api")
+app.include_router(admin.router, prefix="/api")
 app.include_router(usage.router, prefix="/api")
 app.include_router(interests.router, prefix="/api")
 app.include_router(client_errors.router, prefix="/api")

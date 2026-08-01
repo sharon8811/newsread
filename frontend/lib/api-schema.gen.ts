@@ -42,6 +42,111 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Overview */
+        get: operations["overview_api_admin_overview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/trends": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Trends */
+        get: operations["trends_api_admin_trends_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Users */
+        get: operations["list_users_api_admin_users_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/users/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get User */
+        get: operations["get_user_api_admin_users__user_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/users/{user_id}/role": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Set User Role
+         * @description Owner-only: promoting/demoting administrators is the owner's call.
+         */
+        patch: operations["set_user_role_api_admin_users__user_id__role_patch"];
+        trace?: never;
+    };
+    "/api/admin/users/{user_id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Set User Status */
+        patch: operations["set_user_status_api_admin_users__user_id__status_patch"];
+        trace?: never;
+    };
     "/api/ai/settings": {
         parameters: {
             query?: never;
@@ -2151,6 +2256,208 @@ export interface components {
             /** Url */
             url: string;
         };
+        /** AdminOverviewOut */
+        AdminOverviewOut: {
+            /** Active 30D */
+            active_30d: number;
+            /** Active 7D */
+            active_7d: number;
+            /** Active Today */
+            active_today: number;
+            /** Articles Failed 24H */
+            articles_failed_24h: number;
+            /** Articles Ingested 24H */
+            articles_ingested_24h: number;
+            /** Articles Skipped 24H */
+            articles_skipped_24h: number;
+            /** Articles Summarized 24H */
+            articles_summarized_24h: number;
+            /** Articles Total */
+            articles_total: number;
+            /** Llm Calls 7D */
+            llm_calls_7d: number;
+            /** Llm Errors 7D */
+            llm_errors_7d: number;
+            /** Llm Tokens 7D */
+            llm_tokens_7d: number;
+            /** Llm Tokens 7D System */
+            llm_tokens_7d_system: number;
+            /** Llm Tokens 7D User */
+            llm_tokens_7d_user: number;
+            /** Subscriptions Total */
+            subscriptions_total: number;
+            /** Users New 7D */
+            users_new_7d: number;
+            /** Users Suspended */
+            users_suspended: number;
+            /** Users Total */
+            users_total: number;
+        };
+        /** AdminRoleIn */
+        AdminRoleIn: {
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "owner" | "admin" | "user";
+        };
+        /** AdminStatusIn */
+        AdminStatusIn: {
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "active" | "suspended";
+        };
+        /** AdminTrendDayOut */
+        AdminTrendDayOut: {
+            /**
+             * Active Users
+             * @default 0
+             */
+            active_users: number;
+            /**
+             * Articles Failed
+             * @default 0
+             */
+            articles_failed: number;
+            /**
+             * Articles Ingested
+             * @default 0
+             */
+            articles_ingested: number;
+            /**
+             * Articles Read
+             * @default 0
+             */
+            articles_read: number;
+            /**
+             * Articles Skipped
+             * @default 0
+             */
+            articles_skipped: number;
+            /**
+             * Articles Summarized
+             * @default 0
+             */
+            articles_summarized: number;
+            /**
+             * Day
+             * Format: date
+             */
+            day: string;
+            /**
+             * Llm Calls
+             * @default 0
+             */
+            llm_calls: number;
+            /**
+             * Llm Errors
+             * @default 0
+             */
+            llm_errors: number;
+            /**
+             * Llm Tokens
+             * @default 0
+             */
+            llm_tokens: number;
+            /**
+             * New Subscriptions
+             * @default 0
+             */
+            new_subscriptions: number;
+            /**
+             * New Users
+             * @default 0
+             */
+            new_users: number;
+            /**
+             * Reading Seconds
+             * @default 0
+             */
+            reading_seconds: number;
+        };
+        /** AdminTrendsOut */
+        AdminTrendsOut: {
+            /** Days */
+            days: components["schemas"]["AdminTrendDayOut"][];
+            /** Llm By Feature */
+            llm_by_feature: components["schemas"]["UsageFeatureOut"][];
+            /** Llm By Model */
+            llm_by_model: components["schemas"]["UsageModelOut"][];
+            /** Llm Tokens System */
+            llm_tokens_system: number;
+            /** Llm Tokens User */
+            llm_tokens_user: number;
+            /**
+             * Range
+             * @enum {string}
+             */
+            range: "week" | "month" | "year";
+        };
+        /** AdminUserOut */
+        AdminUserOut: {
+            /**
+             * Articles Read
+             * @default 0
+             */
+            articles_read: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Email
+             * Format: email
+             */
+            email: string;
+            /** Id */
+            id: number;
+            /** Last Active Day */
+            last_active_day?: string | null;
+            /**
+             * Llm Tokens
+             * @default 0
+             */
+            llm_tokens: number;
+            /**
+             * Llm Tokens System
+             * @default 0
+             */
+            llm_tokens_system: number;
+            /** Name */
+            name: string;
+            /**
+             * Reading Seconds
+             * @default 0
+             */
+            reading_seconds: number;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "owner" | "admin" | "user";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "active" | "suspended";
+            /**
+             * Subscription Count
+             * @default 0
+             */
+            subscription_count: number;
+            /** Username */
+            username: string;
+        };
+        /** AdminUsersPageOut */
+        AdminUsersPageOut: {
+            /** Total */
+            total: number;
+            /** Users */
+            users: components["schemas"]["AdminUserOut"][];
+        };
         /** AiStatusOut */
         AiStatusOut: {
             /** Configured */
@@ -4156,6 +4463,195 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ActivitySummaryOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    overview_api_admin_overview_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminOverviewOut"];
+                };
+            };
+        };
+    };
+    trends_api_admin_trends_get: {
+        parameters: {
+            query?: {
+                range?: "week" | "month" | "year";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminTrendsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_users_api_admin_users_get: {
+        parameters: {
+            query?: {
+                /** @description matches email/username/name */
+                query?: string | null;
+                role?: ("owner" | "admin" | "user") | null;
+                status?: ("active" | "suspended") | null;
+                sort?: "created_at" | "-created_at" | "username" | "last_active" | "-last_active";
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUsersPageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_user_api_admin_users__user_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUserOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_user_role_api_admin_users__user_id__role_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminRoleIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUserOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_user_status_api_admin_users__user_id__status_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminStatusIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUserOut"];
                 };
             };
             /** @description Validation Error */
