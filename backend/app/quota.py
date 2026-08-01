@@ -24,7 +24,7 @@ import logging
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 
-from sqlalchemy import and_, delete, func, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -170,18 +170,20 @@ async def try_charge(session: AsyncSession, user: User, article_id: int) -> Char
 async def refund(session: AsyncSession, user: User, article_id: int) -> None:
     """Undo a reservation whose processing delivered nothing (no summary was
     stored): you are only charged for articles actually processed for you.
-    Only a current-period charge is refundable — try_charge's already-
-    charged fast path returns charged=False, so callers never refund those.
-    Commits."""
-    period = current_period()
-    deleted = await session.execute(
-        delete(UserArticleCharge).where(
+    The charge's own recorded period is decremented — a reservation made
+    just before a UTC month boundary refunds correctly after it. Callers
+    only refund charges they made (ChargeResult.charged), so the row found
+    here is always this operation's reservation. Commits."""
+    charge = await session.scalar(
+        select(UserArticleCharge).where(
             UserArticleCharge.user_id == user.id,
             UserArticleCharge.article_id == article_id,
-            UserArticleCharge.period == period,
         )
     )
-    if deleted.rowcount:
+    if charge is not None:
+        period = charge.period
+        await session.delete(charge)
+        await session.flush()
         row = await _locked_period(session, user, period)
         row.used = max(0, row.used - 1)
     await session.commit()

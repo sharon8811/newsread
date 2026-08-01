@@ -108,8 +108,10 @@ async def summarize_article(
     article = await accessible_article(session, user.id, article_id)
     if not force and _summary_settled(article):
         return _summary_out(article)
-    charge = await _reserve_quota(session, user, article)
+    # Resolution first: a 503 (no usable LLM) or crypto error must fail
+    # before any allowance is reserved.
     config = await _resolve_llm(session, user)
+    charge = await _reserve_quota(session, user, article)
     user_id = user.id  # by value: refunds may run after a rollback expired the ORM row
 
     # Both domain exits pass through unrecorded because no LLM call happened.
@@ -222,8 +224,9 @@ async def summarize_article_stream(
 
         return _stream_response(replay())
 
-    charge = await _reserve_quota(session, user, article)
+    # Resolution first: a 503 must fail before any allowance is reserved.
     config = await _resolve_llm(session, user)
+    charge = await _reserve_quota(session, user, article)
     user_id = user.id  # by value: error paths roll the session back
 
     async def event_source():

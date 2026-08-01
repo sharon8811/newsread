@@ -389,3 +389,80 @@ async def test_summarize_skip_refunds_the_reservation(client, users, data, sessi
     # Nothing was delivered: the unit is back and usable elsewhere.
     assert await _used(session, user) == 0
     assert (await session.scalars(select(UserArticleCharge))).all() == []
+
+
+# --- review follow-ups: reservation ordering, boundary refunds, imports ---
+
+
+async def test_no_reservation_when_llm_unusable(client, users, data, session):
+    # llm.is_configured is False in tests unless patched: the 503 must fire
+    # before any allowance is reserved.
+    user, feed, art = await _ai_setup(users, data, session, allowance=1)
+    resp = await client.post(f"/api/articles/{art.id}/summarize", headers=users.auth(user))
+    assert resp.status_code == 503
+    assert await _used(session, user) == 0
+    assert (await session.scalars(select(UserArticleCharge))).all() == []
+
+
+async def test_refund_crosses_month_boundary(session, users, data, monkeypatch):
+    tier = await _tier(session, allowance=1)
+    user = await users.create()
+    user.tier_id = tier.id
+    await session.commit()
+    art = await data.article(await data.feed())
+
+    reservation_month = quota.current_period()
+    assert (await quota.try_charge(session, user, art.id)).charged
+    await session.commit()
+
+    # The month ticks over between the reservation and the failure.
+    monkeypatch.setattr(
+        quota, "current_period", lambda now=None: quota.next_reset(reservation_month)
+    )
+    await quota.refund(session, user, art.id)
+
+    assert (await session.scalars(select(UserArticleCharge))).all() == []
+    old = await session.get(UserQuotaPeriod, (user.id, reservation_month))
+    assert old.used == 0
+
+
+async def test_import_fetch_failure_refunds_reservation(session, users, data, monkeypatch):
+    from app.routers import imports as imports_router
+
+    tier = await _tier(session, allowance=1)
+    user = await users.create()
+    user.tier_id = tier.id
+    await session.commit()
+    feed = await data.feed()
+    art = await data.article(feed, full_text="", full_text_fetched_at=None)
+    assert (await quota.try_charge(session, user, art.id)).charged
+    await session.commit()
+
+    async def explode(url):
+        raise RuntimeError("dns failure")
+
+    monkeypatch.setattr(imports_router, "fetch_page", explode)
+    await imports_router.process_import(art.id, user.id, object(), refund_on_failure=True)
+    assert await _used(session, user) == 0
+    assert (await session.scalars(select(UserArticleCharge))).all() == []
+
+
+async def test_import_never_refunds_a_preexisting_charge(session, users, data, monkeypatch):
+    # refund_on_failure=False marks "this import reserved nothing": a charge
+    # from an earlier operation must survive any import failure.
+    from app.routers import imports as imports_router
+
+    tier = await _tier(session, allowance=1)
+    user = await users.create()
+    user.tier_id = tier.id
+    await session.commit()
+    art = await data.article(await data.feed(), full_text="", full_text_fetched_at=None)
+    assert (await quota.try_charge(session, user, art.id)).charged
+    await session.commit()
+
+    async def explode(url):
+        raise RuntimeError("dns failure")
+
+    monkeypatch.setattr(imports_router, "fetch_page", explode)
+    await imports_router.process_import(art.id, user.id, object(), refund_on_failure=False)
+    assert await _used(session, user) == 1

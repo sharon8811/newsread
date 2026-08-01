@@ -116,17 +116,41 @@ def _detail(article: Article, feed: Feed) -> ArticleDetail:
     )
 
 
-async def process_import(article_id: int, user_id: int, config: llm.LLMConfig | None) -> None:
+async def process_import(
+    article_id: int,
+    user_id: int,
+    config: llm.LLMConfig | None,
+    refund_on_failure: bool = False,
+) -> None:
     """Background stage of an import: fetch the page (unless the row was
     copied with text already), then summarize with the importer's LLM. NER
     and embeddings converge via the normal worker cycles. Failures leave a
-    row the article page can still render ("open original")."""
+    row the article page can still render ("open original").
+
+    `refund_on_failure` is set only when import_url actually reserved an
+    allowance unit for this article: every exit here that delivers no
+    summary must return exactly that reservation — and never touch a charge
+    from some earlier operation."""
     async with db.SessionLocal() as session:
         article = await session.get(Article, article_id)
         if article is None:
             return
         if article.full_text_fetched_at is None:
-            text, image, title = await fetch_page(article.url)
+            try:
+                text, image, title = await fetch_page(article.url)
+            except Exception as exc:
+                # DNS/HTTP/extraction failure before any AI work: log, count,
+                # and give the reservation back.
+                logger.warning("Import fetch for article %s failed: %s", article_id, exc)
+                await processing_events.record_event(
+                    stage=processing_events.STAGE_IMPORT,
+                    outcome=processing_events.OUTCOME_FAILED,
+                    article_id=article_id,
+                    detail=type(exc.__cause__ or exc).__name__,
+                )
+                if refund_on_failure:
+                    await _refund_import_charge(session, user_id, article_id)
+                return
             if title:
                 article.title = title
             if text:
@@ -138,8 +162,10 @@ async def process_import(article_id: int, user_id: int, config: llm.LLMConfig | 
             article.full_text_fetched_at = datetime.now(UTC)
             await session.commit()
         if article.summary and article.summary_short:
-            return
+            return  # delivered (copied or already summarized): charge stands
         if article.summary_skipped_reason is not None or config is None:
+            if refund_on_failure:
+                await _refund_import_charge(session, user_id, article_id)
             return
         try:
             async with llm.usage_tracker(
@@ -161,7 +187,8 @@ async def process_import(article_id: int, user_id: int, config: llm.LLMConfig | 
         except (ThinContentError, SummarySkipped):
             # Expected terminal states — the page falls back to the source,
             # and the import's reservation is returned (nothing delivered).
-            await _refund_import_charge(session, user_id, article_id)
+            if refund_on_failure:
+                await _refund_import_charge(session, user_id, article_id)
         except Exception as exc:
             # Background task: nothing upstream catches this, so log and leave
             # the article summariless (the on-demand summarize button remains).
@@ -172,17 +199,18 @@ async def process_import(article_id: int, user_id: int, config: llm.LLMConfig | 
                 article_id=article_id,
                 detail=type(exc.__cause__ or exc).__name__,
             )
-            await _refund_import_charge(session, user_id, article_id)
+            if refund_on_failure:
+                await _refund_import_charge(session, user_id, article_id)
         else:
-            if article.summary_skipped_reason is not None:
+            if article.summary_skipped_reason is not None and refund_on_failure:
                 # Unusable page stamped inside generate_summaries: no
                 # delivery, reservation returned.
                 await _refund_import_charge(session, user_id, article_id)
 
 
 async def _refund_import_charge(session, user_id: int, article_id: int) -> None:
-    """Return an import's allowance reservation; a no-op when the import was
-    free (copy-dedup, BYO-less, or never charged this period)."""
+    """Return an import's allowance reservation (callers gate on
+    refund_on_failure, so this only ever removes this import's own charge)."""
     user = await session.get(User, user_id)
     if user is not None:
         await quota.refund(session, user, article_id)
@@ -246,15 +274,20 @@ async def import_url(
         config = await llm.resolve_config(session, user.id)
     except crypto.TokenCryptoError:
         config = None  # a broken stored key must not fail the import itself
+    refund_on_failure = False
     if config is not None and not (article.summary and article.summary_short):
         # Summarizing this import is the qualifying event; a copy-dedup that
         # donated its summary is free (no LLM call). Out of allowance: the
         # import itself still lands, just without AI processing — the
         # article page's summarize button explains (402).
-        if not (await quota.try_charge(session, user, article.id)).allowed:
+        result = await quota.try_charge(session, user, article.id)
+        if not result.allowed:
             config = None
+        # Only a reservation made *here* may be refunded by the background
+        # task; a pre-existing charge (result.charged False) must survive.
+        refund_on_failure = result.charged
         await session.commit()
-    background.add_task(process_import, article.id, user.id, config)
+    background.add_task(process_import, article.id, user.id, config, refund_on_failure)
     return _detail(article, feed)
 
 
