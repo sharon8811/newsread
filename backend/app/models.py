@@ -161,6 +161,26 @@ class ArticleProcessingEvent(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class AdminAuditLog(Base):
+    """One row per administrative action (role/status changes). payload holds
+    minimal before/after metadata ({"from": ..., "to": ...}) — never secrets
+    or private content. FKs SET NULL so the trail survives account deletion.
+    """
+
+    __tablename__ = "admin_audit_log"
+    __table_args__ = (
+        Index("ix_admin_audit_log_created_at", "created_at"),
+        Index("ix_admin_audit_log_target_created", "target_user_id", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    actor_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    target_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    action: Mapped[str] = mapped_column(String(32))  # 'role_change' | 'status_change'
+    payload: Mapped[dict] = mapped_column(JSONB, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class Device(Base):
     """A mobile device registered for push notifications. Tokens are Expo push
     tokens, which cover both iOS and Android; a token that logs into another

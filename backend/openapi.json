@@ -546,6 +546,372 @@
         "title": "AddFeedIn",
         "type": "object"
       },
+      "AdminOverviewOut": {
+        "properties": {
+          "active_30d": {
+            "title": "Active 30D",
+            "type": "integer"
+          },
+          "active_7d": {
+            "title": "Active 7D",
+            "type": "integer"
+          },
+          "active_today": {
+            "title": "Active Today",
+            "type": "integer"
+          },
+          "articles_failed_24h": {
+            "title": "Articles Failed 24H",
+            "type": "integer"
+          },
+          "articles_ingested_24h": {
+            "title": "Articles Ingested 24H",
+            "type": "integer"
+          },
+          "articles_skipped_24h": {
+            "title": "Articles Skipped 24H",
+            "type": "integer"
+          },
+          "articles_summarized_24h": {
+            "title": "Articles Summarized 24H",
+            "type": "integer"
+          },
+          "articles_total": {
+            "title": "Articles Total",
+            "type": "integer"
+          },
+          "llm_calls_7d": {
+            "title": "Llm Calls 7D",
+            "type": "integer"
+          },
+          "llm_errors_7d": {
+            "title": "Llm Errors 7D",
+            "type": "integer"
+          },
+          "llm_tokens_7d": {
+            "title": "Llm Tokens 7D",
+            "type": "integer"
+          },
+          "llm_tokens_7d_system": {
+            "title": "Llm Tokens 7D System",
+            "type": "integer"
+          },
+          "llm_tokens_7d_user": {
+            "title": "Llm Tokens 7D User",
+            "type": "integer"
+          },
+          "subscriptions_total": {
+            "title": "Subscriptions Total",
+            "type": "integer"
+          },
+          "users_new_7d": {
+            "title": "Users New 7D",
+            "type": "integer"
+          },
+          "users_suspended": {
+            "title": "Users Suspended",
+            "type": "integer"
+          },
+          "users_total": {
+            "title": "Users Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "users_total",
+          "users_new_7d",
+          "users_suspended",
+          "active_today",
+          "active_7d",
+          "active_30d",
+          "subscriptions_total",
+          "articles_total",
+          "articles_ingested_24h",
+          "articles_summarized_24h",
+          "articles_skipped_24h",
+          "articles_failed_24h",
+          "llm_calls_7d",
+          "llm_tokens_7d",
+          "llm_errors_7d",
+          "llm_tokens_7d_user",
+          "llm_tokens_7d_system"
+        ],
+        "title": "AdminOverviewOut",
+        "type": "object"
+      },
+      "AdminRoleIn": {
+        "properties": {
+          "role": {
+            "enum": [
+              "owner",
+              "admin",
+              "user"
+            ],
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "role"
+        ],
+        "title": "AdminRoleIn",
+        "type": "object"
+      },
+      "AdminStatusIn": {
+        "properties": {
+          "status": {
+            "enum": [
+              "active",
+              "suspended"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "AdminStatusIn",
+        "type": "object"
+      },
+      "AdminTrendDayOut": {
+        "properties": {
+          "active_users": {
+            "default": 0,
+            "title": "Active Users",
+            "type": "integer"
+          },
+          "articles_failed": {
+            "default": 0,
+            "title": "Articles Failed",
+            "type": "integer"
+          },
+          "articles_ingested": {
+            "default": 0,
+            "title": "Articles Ingested",
+            "type": "integer"
+          },
+          "articles_read": {
+            "default": 0,
+            "title": "Articles Read",
+            "type": "integer"
+          },
+          "articles_skipped": {
+            "default": 0,
+            "title": "Articles Skipped",
+            "type": "integer"
+          },
+          "articles_summarized": {
+            "default": 0,
+            "title": "Articles Summarized",
+            "type": "integer"
+          },
+          "day": {
+            "format": "date",
+            "title": "Day",
+            "type": "string"
+          },
+          "llm_calls": {
+            "default": 0,
+            "title": "Llm Calls",
+            "type": "integer"
+          },
+          "llm_errors": {
+            "default": 0,
+            "title": "Llm Errors",
+            "type": "integer"
+          },
+          "llm_tokens": {
+            "default": 0,
+            "title": "Llm Tokens",
+            "type": "integer"
+          },
+          "new_subscriptions": {
+            "default": 0,
+            "title": "New Subscriptions",
+            "type": "integer"
+          },
+          "new_users": {
+            "default": 0,
+            "title": "New Users",
+            "type": "integer"
+          },
+          "reading_seconds": {
+            "default": 0,
+            "title": "Reading Seconds",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "day"
+        ],
+        "title": "AdminTrendDayOut",
+        "type": "object"
+      },
+      "AdminTrendsOut": {
+        "properties": {
+          "days": {
+            "items": {
+              "$ref": "#/components/schemas/AdminTrendDayOut"
+            },
+            "title": "Days",
+            "type": "array"
+          },
+          "llm_by_feature": {
+            "items": {
+              "$ref": "#/components/schemas/UsageFeatureOut"
+            },
+            "title": "Llm By Feature",
+            "type": "array"
+          },
+          "llm_by_model": {
+            "items": {
+              "$ref": "#/components/schemas/UsageModelOut"
+            },
+            "title": "Llm By Model",
+            "type": "array"
+          },
+          "llm_tokens_system": {
+            "title": "Llm Tokens System",
+            "type": "integer"
+          },
+          "llm_tokens_user": {
+            "title": "Llm Tokens User",
+            "type": "integer"
+          },
+          "range": {
+            "enum": [
+              "week",
+              "month",
+              "year"
+            ],
+            "title": "Range",
+            "type": "string"
+          }
+        },
+        "required": [
+          "range",
+          "days",
+          "llm_by_feature",
+          "llm_by_model",
+          "llm_tokens_user",
+          "llm_tokens_system"
+        ],
+        "title": "AdminTrendsOut",
+        "type": "object"
+      },
+      "AdminUserOut": {
+        "properties": {
+          "articles_read": {
+            "default": 0,
+            "title": "Articles Read",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "email": {
+            "format": "email",
+            "title": "Email",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "last_active_day": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Active Day"
+          },
+          "llm_tokens": {
+            "default": 0,
+            "title": "Llm Tokens",
+            "type": "integer"
+          },
+          "llm_tokens_system": {
+            "default": 0,
+            "title": "Llm Tokens System",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "reading_seconds": {
+            "default": 0,
+            "title": "Reading Seconds",
+            "type": "integer"
+          },
+          "role": {
+            "enum": [
+              "owner",
+              "admin",
+              "user"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "suspended"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "subscription_count": {
+            "default": 0,
+            "title": "Subscription Count",
+            "type": "integer"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "username",
+          "name",
+          "role",
+          "status",
+          "created_at"
+        ],
+        "title": "AdminUserOut",
+        "type": "object"
+      },
+      "AdminUsersPageOut": {
+        "properties": {
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "users": {
+            "items": {
+              "$ref": "#/components/schemas/AdminUserOut"
+            },
+            "title": "Users",
+            "type": "array"
+          }
+        },
+        "required": [
+          "total",
+          "users"
+        ],
+        "title": "AdminUsersPageOut",
+        "type": "object"
+      },
       "AiStatusOut": {
         "properties": {
           "configured": {
@@ -5881,6 +6247,386 @@
         "summary": "Summary",
         "tags": [
           "activity"
+        ]
+      }
+    },
+    "/api/admin/overview": {
+      "get": {
+        "operationId": "overview_api_admin_overview_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminOverviewOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Overview",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/trends": {
+      "get": {
+        "operationId": "trends_api_admin_trends_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "range",
+            "required": false,
+            "schema": {
+              "default": "month",
+              "enum": [
+                "week",
+                "month",
+                "year"
+              ],
+              "title": "Range",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminTrendsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Trends",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/users": {
+      "get": {
+        "operationId": "list_users_api_admin_users_get",
+        "parameters": [
+          {
+            "description": "matches email/username/name",
+            "in": "query",
+            "name": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 120,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "matches email/username/name",
+              "title": "Query"
+            }
+          },
+          {
+            "in": "query",
+            "name": "role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "owner",
+                    "admin",
+                    "user"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Role"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "active",
+                    "suspended"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "default": "-created_at",
+              "enum": [
+                "created_at",
+                "-created_at",
+                "username",
+                "last_active",
+                "-last_active"
+              ],
+              "title": "Sort",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 100000,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUsersPageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Users",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/users/{user_id}": {
+      "get": {
+        "operationId": "get_user_api_admin_users__user_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "title": "User Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUserOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get User",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/users/{user_id}/role": {
+      "patch": {
+        "description": "Owner-only: promoting/demoting administrators is the owner's call.",
+        "operationId": "set_user_role_api_admin_users__user_id__role_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "title": "User Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminRoleIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUserOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Set User Role",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/users/{user_id}/status": {
+      "patch": {
+        "operationId": "set_user_status_api_admin_users__user_id__status_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "title": "User Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminStatusIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUserOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Set User Status",
+        "tags": [
+          "admin"
         ]
       }
     },

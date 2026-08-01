@@ -76,7 +76,7 @@ Reuse transactional tables where possible (`users.created_at`,
    `articles.fetched_at`, `user_article_states.read_at` (partial, WHERE
    read_at IS NOT NULL), `llm_usage.created_at`.
 
-## #116 — Admin APIs, privacy, audit log
+## #116 — Admin APIs, privacy, audit log (implemented in this stack)
 
 - Router `app/routers/admin.py`, all routes under `/api/admin`, `AdminUser`
   dependency; role/status mutations `OwnerUser` where required.

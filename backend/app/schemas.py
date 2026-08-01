@@ -1373,3 +1373,89 @@ class DislikeRulePreviewItem(BaseModel):
 class DislikeRuleCreateOut(BaseModel):
     rule: DislikeRuleOut  # rule.hidden_count doubles as the "also hid N recent" figure
     preview: list[DislikeRulePreviewItem]
+
+
+# --- Instance administration (owner/admin only) ---
+# Explicit allowlists: account metadata and aggregate usage only. Password
+# hashes, API keys, tokens, browser-history content, and LLM error text must
+# never gain a field here.
+
+
+InstanceRole = Literal["owner", "admin", "user"]
+AccountStatus = Literal["active", "suspended"]
+
+
+class AdminUserOut(BaseModel):
+    id: int
+    email: EmailStr
+    username: str
+    name: str
+    role: InstanceRole
+    status: AccountStatus
+    created_at: datetime
+    last_active_day: date | None = None  # from user_activity_days (UTC)
+    subscription_count: int = 0
+    articles_read: int = 0
+    reading_seconds: int = 0
+    llm_tokens: int = 0  # lifetime, both billing sources
+    llm_tokens_system: int = 0  # the operator-funded share of llm_tokens
+
+    model_config = {"from_attributes": True}
+
+
+class AdminUsersPageOut(BaseModel):
+    total: int  # rows matching the filters, not just this page
+    users: list[AdminUserOut]
+
+
+class AdminRoleIn(BaseModel):
+    role: InstanceRole
+
+
+class AdminStatusIn(BaseModel):
+    status: AccountStatus
+
+
+class AdminOverviewOut(BaseModel):
+    users_total: int
+    users_new_7d: int
+    users_suspended: int
+    active_today: int
+    active_7d: int
+    active_30d: int
+    subscriptions_total: int
+    articles_total: int
+    articles_ingested_24h: int
+    articles_summarized_24h: int
+    articles_skipped_24h: int
+    articles_failed_24h: int
+    llm_calls_7d: int
+    llm_tokens_7d: int
+    llm_errors_7d: int
+    llm_tokens_7d_user: int
+    llm_tokens_7d_system: int
+
+
+class AdminTrendDayOut(BaseModel):
+    day: date
+    new_users: int = 0
+    active_users: int = 0
+    new_subscriptions: int = 0
+    articles_ingested: int = 0
+    articles_summarized: int = 0
+    articles_skipped: int = 0
+    articles_failed: int = 0
+    articles_read: int = 0
+    reading_seconds: int = 0
+    llm_calls: int = 0
+    llm_tokens: int = 0
+    llm_errors: int = 0
+
+
+class AdminTrendsOut(BaseModel):
+    range: ActivityRange
+    days: list[AdminTrendDayOut]
+    llm_by_feature: list[UsageFeatureOut]  # range totals
+    llm_by_model: list[UsageModelOut]
+    llm_tokens_user: int
+    llm_tokens_system: int

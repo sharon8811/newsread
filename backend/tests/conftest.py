@@ -298,11 +298,15 @@ class DataFactory:
         await self.session.refresh(article)
         return article
 
-    async def state(self, user, article, *, is_read=False, is_saved=False):
+    async def state(self, user, article, *, is_read=False, is_saved=False, read_at=None):
         from app.models import UserArticleState
 
         st = UserArticleState(
-            user_id=user.id, article_id=article.id, is_read=is_read, is_saved=is_saved
+            user_id=user.id,
+            article_id=article.id,
+            is_read=is_read,
+            is_saved=is_saved,
+            read_at=read_at,
         )
         self.session.add(st)
         await self.session.commit()
