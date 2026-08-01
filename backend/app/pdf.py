@@ -23,8 +23,10 @@ MAGIC = b"%PDF-"
 
 # The file is already in memory by the time we look at it (the fetcher does
 # not stream), so this bounds pypdf's work and the row we store, not the
-# download itself.
-MAX_BYTES = 40 * 1024 * 1024
+# download itself. Sized off a real refusal rather than a round number: the
+# Paged Out zine ships at 42 MB, which a 40 MiB cap turned away — a document
+# worth reading is not pathological just because it is large.
+MAX_BYTES = 64 * 1024 * 1024
 
 # Matches youtube.MAX_TRANSCRIPT_CHARS in spirit: clip_for_llm cuts to 24k
 # before any model sees this, so the cap only keeps a 700-page proceedings

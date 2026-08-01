@@ -140,6 +140,29 @@ ONE_SHOT_MIGRATIONS: dict[str, list[str]] = {
         "UPDATE articles SET full_text_fetched_at = NULL, summary_skipped_reason = NULL "
         "WHERE full_text = '' AND summary = '' AND url ~* '\\.pdf($|\\?)'",
     ],
+    # The sweep above keyed on stored text that *starts* with the PDF
+    # signature, and trafilatura often dropped the header — it began mid-way
+    # into a compressed stream instead, leaving mojibake with no `%PDF-` and
+    # sometimes not even an `endobj` to match on. Those rows were summarized
+    # too; because lingua reads a language off the mojibake, two of them on
+    # this instance were summarized *in Esperanto*.
+    #
+    # The tell that survives every variant is the decode damage itself: text
+    # decoded from binary is roughly half U+FFFD replacement characters, and
+    # real prose has none. Measured on this instance the two groups sit at
+    # 37–50% and 0.0%, so 5% is nowhere near either. Deliberately not keyed on
+    # the URL — this catches a document served from any path.
+    "reprocess_binary_full_text": [
+        "UPDATE articles SET full_text = '', full_text_fetched_at = NULL, summary_short = '', "
+        "summary_medium = '', summary = '', summary_model = NULL, summary_generated_at = NULL, "
+        "summary_language = NULL, summary_skipped_reason = NULL "
+        "WHERE full_text <> '' AND "
+        "(length(full_text) - length(replace(full_text, chr(65533), ''))) * 20 > length(full_text)",
+        # And re-attempt the documents the first sweep left empty: some were
+        # refused by a size cap that has since been raised.
+        "UPDATE articles SET full_text_fetched_at = NULL, summary_skipped_reason = NULL "
+        "WHERE full_text = '' AND summary = '' AND url ~* '\\.pdf($|\\?)'",
+    ],
     # Summaries generated before the UNUSABLE contract sometimes describe the
     # fetch failure itself ("The provided URL leads to a dead end… a standard
     # 404 error screen") instead of the story. Clear the conservative matches
