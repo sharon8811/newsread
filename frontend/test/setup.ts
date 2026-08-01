@@ -35,9 +35,16 @@ Object.defineProperty(globalThis, "localStorage", {
   configurable: true,
 });
 
+// Same story for sessionStorage (lib/backNav's fallback URL).
+Object.defineProperty(globalThis, "sessionStorage", {
+  value: new MemoryStorage(),
+  configurable: true,
+});
+
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
   vi.unstubAllGlobals();
   localStorage.clear();
+  sessionStorage.clear();
 });

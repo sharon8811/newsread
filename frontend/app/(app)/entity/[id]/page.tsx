@@ -1,6 +1,7 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
+import { navigateBack } from "@/lib/backNav";
 import { useEntityPage } from "@/lib/queries";
 import FeedArticleRow from "@/components/FeedArticleRow";
 import { ExternalIcon } from "@/components/icons";
@@ -45,7 +46,7 @@ export default function EntityPage() {
           style={{ color: "var(--ink-faint)" }}
           onMouseEnter={(e) => (e.currentTarget.style.color = "var(--ink)")}
           onMouseLeave={(e) => (e.currentTarget.style.color = "var(--ink-faint)")}
-          onClick={() => router.back()}
+          onClick={() => navigateBack(router)}
         >
           ← back
         </button>

@@ -15,6 +15,7 @@ const { pathnameState, replaceMock } = vi.hoisted(() => ({
 
 vi.mock("next/navigation", () => ({
   usePathname: () => pathnameState.value,
+  useSearchParams: () => new URLSearchParams(),
   useRouter: () => ({ replace: replaceMock }),
 }));
 const { authState } = vi.hoisted(() => ({

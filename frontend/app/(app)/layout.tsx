@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Suspense, useCallback, useEffect, useLayoutEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import BackNavTracker from "@/components/BackNavTracker";
 import Sidebar from "@/components/Sidebar";
 import { MenuIcon } from "@/components/icons";
 import { useAuth } from "@/lib/auth";
@@ -106,6 +107,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <MobileNavContext.Provider value={openNav}>
+    <Suspense fallback={null}>
+      <BackNavTracker />
+    </Suspense>
     <div className="flex">
       {/* Desktop: persistent sidebar */}
       <div className="hidden md:block">
