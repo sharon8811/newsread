@@ -85,7 +85,7 @@ async def generate_summaries(
             # full_text was always empty). Keep the summary — it's the only
             # good copy left — and stamp the reason so the batch worker
             # doesn't pick legacy rows up again every cycle.
-            article.summary_skipped_reason = "unusable_page"
+            _retain_unusable(session, article)
             await session.commit()
             raise SummarySkipped()
         _mark_skipped(session, article, "too_short")
@@ -132,7 +132,7 @@ async def generate_summaries(
             logger.info(
                 "Article %s page is unusable (%s); keeping the existing summary", article.id, exc
             )
-            article.summary_skipped_reason = "unusable_page"
+            _retain_unusable(session, article)
             await session.commit()
             return
         logger.info("Article %s page is unusable (%s); summary skipped", article.id, exc)
@@ -165,7 +165,7 @@ async def stream_summaries(
         if article.summary:
             # Same preservation rule as generate_summaries: the refetch came
             # back a stub, so the stored summary is the only good copy left.
-            article.summary_skipped_reason = "unusable_page"
+            _retain_unusable(session, article)
             await session.commit()
             yield {"type": "error", "detail": SUMMARY_KEPT_DETAIL}
             return
@@ -211,7 +211,7 @@ async def stream_summaries(
             logger.info(
                 "Article %s page is unusable (%s); keeping the existing summary", article.id, exc
             )
-            article.summary_skipped_reason = "unusable_page"
+            _retain_unusable(session, article)
             await session.commit()
             yield {"type": "error", "detail": SUMMARY_KEPT_DETAIL}
             return
@@ -225,6 +225,21 @@ async def stream_summaries(
     _store_summary(article, short, medium, full, config)
     await session.commit()
     yield {"type": "done"}
+
+
+def _retain_unusable(session: AsyncSession, article: Article) -> None:
+    """A (re)generation attempt hit an unusable/stub page while a good
+    summary is already stored: keep the summary, stamp the reason, and still
+    date the attempt — the skipped-processing trend must count these."""
+    article.summary_skipped_reason = "unusable_page"
+    processing_events.add_event(
+        session,
+        stage=processing_events.STAGE_SUMMARIZE,
+        outcome=processing_events.OUTCOME_SKIPPED,
+        article_id=article.id,
+        feed_id=article.feed_id,
+        detail="unusable_page",
+    )
 
 
 def _mark_skipped(session: AsyncSession, article: Article, reason: str) -> None:

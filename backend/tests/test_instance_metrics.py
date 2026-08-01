@@ -42,12 +42,12 @@ async def test_activity_writes_are_throttled(client, users, session, monkeypatch
 
 async def test_activity_day_rollover_writes_again(users, session):
     user = await users.create(username="nightowl")
-    await user_activity.record(user.id)
+    await user_activity.record(session, user.id)
     # Simulate the previous write having happened yesterday, well within the
     # hourly throttle window: the UTC day change must still force a write.
     yesterday = datetime.now(UTC) - timedelta(minutes=5)
     user_activity._recorded[user.id] = (yesterday.date() - timedelta(days=1), yesterday)
-    await user_activity.record(user.id)
+    await user_activity.record(session, user.id)
     days = (await session.scalars(select(UserActivityDay.day))).all()
     assert len(days) == 1  # yesterday's simulated day was never actually inserted
     assert days == [datetime.now(UTC).date()]
@@ -55,22 +55,27 @@ async def test_activity_day_rollover_writes_again(users, session):
 
 async def test_activity_upsert_is_conflict_safe(users, session):
     user = await users.create(username="dupe")
-    await user_activity.record(user.id)
+    await user_activity.record(session, user.id)
     user_activity.reset()
-    await user_activity.record(user.id)  # same (user, day): ON CONFLICT DO NOTHING
+    await user_activity.record(session, user.id)  # same (user, day): ON CONFLICT DO NOTHING
     assert len((await session.scalars(select(UserActivityDay))).all()) == 1
 
 
-async def test_activity_record_never_raises(users, monkeypatch):
+async def test_activity_record_never_raises(users):
     user = await users.create(username="fragile")
+    rolled_back = []
 
-    def explode():
-        raise RuntimeError("db down")
+    class BrokenSession:
+        async def execute(self, *args, **kwargs):
+            raise RuntimeError("db down")
 
-    monkeypatch.setattr(user_activity.db, "SessionLocal", explode)
-    await user_activity.record(user.id)  # no raise
-    # The failed write must not poison the throttle cache: once the DB is
-    # back, the next call writes.
+        async def rollback(self):
+            rolled_back.append(True)
+
+    await user_activity.record(BrokenSession(), user.id)  # no raise
+    # The request session was left usable, and the failed write must not
+    # poison the throttle cache: once the DB is back, the next call writes.
+    assert rolled_back == [True]
     assert user_activity._should_write(user.id, datetime.now(UTC))
 
 
@@ -112,6 +117,68 @@ async def test_summary_skip_writes_dated_event(session, users, data):
     event = (await session.scalars(select(ArticleProcessingEvent))).one()
     assert (event.stage, event.outcome, event.detail) == ("summarize", "skipped", "too_short")
     assert (event.article_id, event.feed_id) == (art.id, feed.id)
+
+
+async def test_retained_summary_regen_attempt_still_evented(session, users, data):
+    # Force-regen hit a rotted/stub page but a good summary exists: the
+    # summary is kept, yet the attempt must still land in the skipped trend.
+    from app.summarizer import generate_summaries
+
+    feed = await data.feed()
+    art = await data.article(
+        feed,
+        full_text="short",
+        full_text_fetched_at=datetime.now(UTC),
+        excerpt="",
+        content_html="",
+        summary="the good stored summary",
+    )
+    try:
+        await generate_summaries(session, art, allow_refetch=False)
+        raise AssertionError("expected SummarySkipped")
+    except SummarySkipped:
+        pass
+    await session.refresh(art)
+    assert art.summary == "the good stored summary"  # retained
+    assert art.summary_skipped_reason == "unusable_page"
+    event = (await session.scalars(select(ArticleProcessingEvent))).one()
+    assert (event.stage, event.outcome, event.detail) == ("summarize", "skipped", "unusable_page")
+
+
+async def test_usage_page_excludes_system_billed_rows(client, users, session):
+    # /usage describes the user's own key; operator-funded calls stay out.
+    user = await users.create(username="spender")
+    session.add(
+        LLMUsage(
+            user_id=user.id,
+            billing_source="user",
+            feature="summary",
+            provider="openai",
+            model="m",
+            prompt_tokens=10,
+            completion_tokens=5,
+        )
+    )
+    session.add(
+        LLMUsage(
+            user_id=user.id,
+            billing_source="system",
+            feature="translation",
+            provider="system",
+            model="m",
+            prompt_tokens=1000,
+            completion_tokens=500,
+        )
+    )
+    await session.commit()
+
+    summary = await client.get("/api/usage/summary", headers=users.auth(user))
+    assert summary.status_code == 200
+    assert summary.json()["total_tokens"] == 15
+    assert [f["feature"] for f in summary.json()["by_feature"]] == ["summary"]
+
+    events_resp = await client.get("/api/usage/events", headers=users.auth(user))
+    assert [e["feature"] for e in events_resp.json()] == ["summary"]
 
 
 async def test_for_each_article_failure_writes_event(session, users, data):

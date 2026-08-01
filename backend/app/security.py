@@ -58,8 +58,10 @@ async def get_current_user(
     if user.status == STATUS_SUSPENDED:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account suspended")
     # Daily-active tracking: a dict lookup on all but ~one request per user
-    # per hour (user_activity.record throttles and never raises).
-    await user_activity.record(user.id)
+    # per hour (user_activity.record throttles and never raises). Runs on
+    # this request's session — a second connection here could starve the
+    # pool when many cold users authenticate at once.
+    await user_activity.record(session, user.id)
     return user
 
 
