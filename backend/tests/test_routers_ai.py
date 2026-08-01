@@ -983,7 +983,9 @@ async def test_summarize_failure_on_user_key_logs_error(client, users, data, ses
     assert "llm down" in row.error
 
 
-async def test_summarize_on_system_key_not_logged(client, users, data, session, monkeypatch):
+async def test_summarize_on_system_key_logged_as_system(client, users, data, session, monkeypatch):
+    # System-key calls are metered too (instance analytics + per-user spend);
+    # the acting user stays attributed, the bill lands on 'system'.
     user, feed, art = await _setup(users, data)
     monkeypatch.setattr(llm, "is_configured", lambda: True)
 
@@ -994,7 +996,10 @@ async def test_summarize_on_system_key_not_logged(client, users, data, session, 
     monkeypatch.setattr(ai_router, "generate_summaries", fake_generate)
     resp = await client.post(f"/api/articles/{art.id}/summarize", headers=users.auth(user))
     assert resp.status_code == 200
-    assert (await session.scalars(select(LLMUsage))).all() == []
+    row = (await session.scalars(select(LLMUsage))).one()
+    assert row.billing_source == "system"
+    assert row.user_id == user.id
+    assert row.provider == "system"
 
 
 async def test_summarize_undecryptable_key_503(client, users, data, session, monkeypatch):

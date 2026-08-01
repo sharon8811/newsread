@@ -52,7 +52,9 @@ class User(Base):
     # translation.LANGUAGES). NULL = never chosen one; the first translate
     # asks and saves it.
     translation_language: Mapped[str | None] = mapped_column(String(16))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
 
 
 class UserAISettings(Base):
@@ -92,18 +94,30 @@ class UserAISettings(Base):
 
 
 class LLMUsage(Base):
-    """One row per LLM call made with a user's own key — the audit trail behind
-    the usage page. Calls on the server-wide default key are deliberately not
-    logged here (that's the operator's bill, not the user's)."""
+    """One row per LLM call, whichever key it ran on. billing_source says
+    whose bill it landed on: 'user' = the user's own key (BYO), 'system' = the
+    operator's server-wide key. System-key calls keep the acting user_id so
+    per-user spend stays attributable; batch/cron work no single user
+    triggered carries NULL. user_id survives account deletion (SET NULL) so
+    instance-level totals keep their history."""
 
     __tablename__ = "llm_usage"
-    __table_args__ = (Index("ix_llm_usage_user_created", "user_id", "created_at"),)
+    __table_args__ = (
+        Index("ix_llm_usage_user_created", "user_id", "created_at"),
+        # Instance-wide date-range scans for the admin dashboard.
+        Index("ix_llm_usage_created_at", "created_at"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), index=True
+    )
+    billing_source: Mapped[str] = mapped_column(
+        String(8), default="user", server_default="user"
+    )  # 'user' | 'system'
     feature: Mapped[str] = mapped_column(
         String(16)
-    )  # 'summary' | 'qa' | 'share' | 'image' | 'topics' | 'synthesis'
+    )  # 'summary' | 'qa' | 'share' | 'image' | 'topics' | 'synthesis' | ...
     provider: Mapped[str] = mapped_column(String(16))
     model: Mapped[str] = mapped_column(String(120))
     prompt_tokens: Mapped[int] = mapped_column(Integer, default=0)
@@ -111,6 +125,39 @@ class LLMUsage(Base):
     duration_ms: Mapped[int] = mapped_column(Integer, default=0)
     status: Mapped[str] = mapped_column(String(8), default="ok")  # 'ok' | 'error'
     error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class UserActivityDay(Base):
+    """One row per user per UTC day with any authenticated API activity —
+    the source for DAU/WAU/MAU trends. Written by user_activity.record(),
+    which throttles in-process so the auth path isn't a write per request."""
+
+    __tablename__ = "user_activity_days"
+    __table_args__ = (Index("ix_user_activity_days_day", "day"),)
+
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    day: Mapped[date] = mapped_column(Date, primary_key=True)
+
+
+class ArticleProcessingEvent(Base):
+    """Pipeline outcomes the article rows can't represent: failures and skips
+    with a timestamp, so processing health can be trended by date (successes
+    are already dated by the articles' own columns). detail is a short code
+    or exception class name — never error text, which may carry page/user
+    content. FKs SET NULL so deleting a feed doesn't erase failure history."""
+
+    __tablename__ = "article_processing_events"
+    __table_args__ = (Index("ix_article_processing_events_stage_created", "stage", "created_at"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    article_id: Mapped[int | None] = mapped_column(ForeignKey("articles.id", ondelete="SET NULL"))
+    feed_id: Mapped[int | None] = mapped_column(ForeignKey("feeds.id", ondelete="SET NULL"))
+    stage: Mapped[str] = mapped_column(String(16))  # 'poll'|'enrich'|'summarize'|'ner'|'import'
+    outcome: Mapped[str] = mapped_column(String(8))  # 'failed' | 'skipped'
+    detail: Mapped[str] = mapped_column(String(120), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -543,7 +590,9 @@ class Subscription(Base):
     sort_order: Mapped[str | None] = mapped_column(String(16))  # 'oldest'; NULL = newest
     retention_days: Mapped[int | None] = mapped_column(Integer)  # NULL = keep forever
     is_muted: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
 
     feed: Mapped[Feed] = relationship()
 
@@ -634,7 +683,9 @@ class Article(Base):
     content_html: Mapped[str] = mapped_column(Text, default="")
     excerpt: Mapped[str] = mapped_column(Text, default="")
     image_url: Mapped[str | None] = mapped_column(String(2048))
-    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    fetched_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
     full_text: Mapped[str] = mapped_column(Text, default="", server_default="")
     full_text_fetched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     summary_short: Mapped[str] = mapped_column(Text, default="", server_default="")
@@ -787,7 +838,16 @@ class ArticleEntity(Base):
 
 class UserArticleState(Base):
     __tablename__ = "user_article_states"
-    __table_args__ = (UniqueConstraint("user_id", "article_id"),)
+    __table_args__ = (
+        UniqueConstraint("user_id", "article_id"),
+        # Partial: "articles read over time" scans; most rows have read_at set
+        # eventually, but the predicate keeps unread rows out of the index.
+        Index(
+            "ix_user_article_states_read_at",
+            "read_at",
+            postgresql_where=text("read_at IS NOT NULL"),
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)

@@ -19,7 +19,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .. import crypto, db, fetcher, llm
+from .. import crypto, db, fetcher, llm, processing_events
 from ..deps import CurrentUser, DbSession
 from ..extractor import fetch_page
 from ..fetcher import FeedParseError, derive_excerpt
@@ -164,6 +164,12 @@ async def process_import(article_id: int, user_id: int, config: llm.LLMConfig | 
             # Background task: nothing upstream catches this, so log and leave
             # the article summariless (the on-demand summarize button remains).
             logger.warning("Import summarization for article %s failed: %s", article_id, exc)
+            await processing_events.record_event(
+                stage=processing_events.STAGE_IMPORT,
+                outcome=processing_events.OUTCOME_FAILED,
+                article_id=article_id,
+                detail=type(exc.__cause__ or exc).__name__,
+            )
 
 
 @router.post("", response_model=ArticleDetail, status_code=201)

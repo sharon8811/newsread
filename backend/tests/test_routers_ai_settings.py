@@ -204,12 +204,16 @@ def test_user_client_builds_from_config():
 # --- usage recording ---
 
 
-async def test_record_usage_skips_system_config(session, users):
+async def test_record_usage_logs_system_configs_as_system(session, users):
     user = await users.create()
     system = llm.LLMConfig(provider="system", api_key="k", base_url=None, model="m")
     await llm.record_usage(session, user_id=user.id, feature="summary", config=system)
-    await llm.record_usage(session, user_id=user.id, feature="summary", config=None)
-    assert (await session.scalars(select(LLMUsage))).all() == []
+    # config=None (server-wide default) with no acting user: batch overhead.
+    await llm.record_usage(session, user_id=None, feature="summary", config=None)
+    rows = (await session.scalars(select(LLMUsage).order_by(LLMUsage.id))).all()
+    assert [row.billing_source for row in rows] == ["system", "system"]
+    assert rows[0].user_id == user.id
+    assert rows[1].user_id is None
 
 
 async def test_record_usage_writes_row_for_user_key(session, users):

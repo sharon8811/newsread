@@ -1,8 +1,9 @@
 """LLM usage for bring-your-own-key users: the audit trail behind /usage.
 
-Only calls made on the user's own key are ever written to llm_usage
-(llm.record_usage), so these endpoints simply read back the user's rows —
-history stays visible even after the key is deleted.
+llm_usage now carries every call (system-key rows power the instance
+analytics), but this page describes spending on the user's *own* key, so
+every query here filters billing_source='user' — history stays visible even
+after the key is deleted, and operator-funded calls stay out of it.
 """
 
 from datetime import UTC, datetime, timedelta
@@ -45,6 +46,7 @@ async def summary(
 
     in_window = (
         LLMUsage.user_id == user.id,
+        LLMUsage.billing_source == "user",
         _day >= start,
         _day <= today,
     )
@@ -62,6 +64,7 @@ async def summary(
         await session.scalar(
             select(func.coalesce(func.sum(_tokens), 0)).where(
                 LLMUsage.user_id == user.id,
+                LLMUsage.billing_source == "user",
                 _day >= prev_start,
                 _day < start,
             )
@@ -118,7 +121,7 @@ async def events(
     """Newest-first call log; page with the last row's id as before_id."""
     query = (
         select(LLMUsage)
-        .where(LLMUsage.user_id == user.id)
+        .where(LLMUsage.user_id == user.id, LLMUsage.billing_source == "user")
         .order_by(LLMUsage.id.desc())
         .limit(limit)
     )
