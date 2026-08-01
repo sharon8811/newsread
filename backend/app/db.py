@@ -110,6 +110,36 @@ ONE_SHOT_MIGRATIONS: dict[str, list[str]] = {
         "UPDATE articles SET image_url = '/api/articles/' || id || '/generated-image' "
         "WHERE image_url LIKE '%/api/articles/%/generated-image' AND image_url NOT LIKE '/api/%'",
     ],
+    # Sources that predate content-type routing were read as HTML pages: a
+    # video kept its watch-page footer ("About Press Copyright Contact us…")
+    # as full text, and a PDF kept its own bytes — which then reached the
+    # model, whose summary duly reports having been handed a binary. Clearing
+    # the text and the fetch stamp returns both to the enrichment queue, where
+    # they now take the transcript and document branches; the summary goes
+    # with them because it was written from the wrong source.
+    "reprocess_video_and_pdf_sources": [
+        # Videos: a transcript runs to thousands of characters, so anything
+        # short and non-empty under a video URL is page furniture. Re-fetching
+        # a genuinely brief transcript costs one caption request.
+        "UPDATE articles SET full_text = '', full_text_fetched_at = NULL, summary_short = '', "
+        "summary_medium = '', summary = '', summary_model = NULL, summary_generated_at = NULL, "
+        "summary_language = NULL, summary_skipped_reason = NULL "
+        "WHERE full_text <> '' AND length(full_text) < 400 AND url ~* "
+        "'^https?://((www\\.|m\\.|music\\.)?(youtube\\.com|youtube-nocookie\\.com)/"
+        "(watch\\?|shorts/|embed/|live/|v/)|youtu\\.be/)'",
+        # Documents: the stored text opens with the file signature. No LIKE
+        # escaping games — the first five characters either are '%PDF-' or
+        # aren't.
+        "UPDATE articles SET full_text = '', full_text_fetched_at = NULL, summary_short = '', "
+        "summary_medium = '', summary = '', summary_model = NULL, summary_generated_at = NULL, "
+        "summary_language = NULL, summary_skipped_reason = NULL "
+        "WHERE left(ltrim(full_text), 5) = '%PDF-'",
+        # Documents whose fetch yielded nothing at all: only the stamp and the
+        # skip reason are cleared, so a summary written from the feed's own
+        # abstract survives.
+        "UPDATE articles SET full_text_fetched_at = NULL, summary_skipped_reason = NULL "
+        "WHERE full_text = '' AND summary = '' AND url ~* '\\.pdf($|\\?)'",
+    ],
     # Summaries generated before the UNUSABLE contract sometimes describe the
     # fetch failure itself ("The provided URL leads to a dead end… a standard
     # 404 error screen") instead of the story. Clear the conservative matches

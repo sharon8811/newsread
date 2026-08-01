@@ -2648,7 +2648,7 @@ export interface components {
              */
             summary_short: string;
             /** Summary Skipped Reason */
-            summary_skipped_reason?: ("too_short" | "needs_full_page" | "unusable_page") | null;
+            summary_skipped_reason?: ("too_short" | "needs_full_page" | "unusable_page" | "no_transcript" | "unreadable_pdf") | null;
             /** Title */
             title: string;
             /** Url */
@@ -4271,7 +4271,7 @@ export interface components {
             /** Model */
             model: string | null;
             /** Skipped Reason */
-            skipped_reason?: ("too_short" | "needs_full_page" | "unusable_page") | null;
+            skipped_reason?: ("too_short" | "needs_full_page" | "unusable_page" | "no_transcript" | "unreadable_pdf") | null;
             /** Summary */
             summary: string;
             /**

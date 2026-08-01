@@ -782,6 +782,10 @@ class Article(Base):
     # paywall, bot check); only an explicit force-regenerate retries it. May
     # coexist with a non-empty summary — a failed regenerate keeps the stored
     # copy and stamps the reason so the batch worker stops re-attempting.
+    # "no_transcript": a video with captions off and no description to fall
+    # back on; "unreadable_pdf": a document that yielded no text (encrypted,
+    # damaged, or scanned page images). Both behave like "unusable_page" — the
+    # batch worker leaves them alone, a force-regenerate may still try.
     summary_skipped_reason: Mapped[str | None] = mapped_column(String(32))
     entities_extracted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # LLM named-entity tagging (see ner.py); separate stamp because it runs

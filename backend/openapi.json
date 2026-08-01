@@ -1188,7 +1188,9 @@
                 "enum": [
                   "too_short",
                   "needs_full_page",
-                  "unusable_page"
+                  "unusable_page",
+                  "no_transcript",
+                  "unreadable_pdf"
                 ],
                 "type": "string"
               },
@@ -5558,7 +5560,9 @@
                 "enum": [
                   "too_short",
                   "needs_full_page",
-                  "unusable_page"
+                  "unusable_page",
+                  "no_transcript",
+                  "unreadable_pdf"
                 ],
                 "type": "string"
               },

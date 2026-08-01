@@ -709,6 +709,13 @@ class EntityPageOut(BaseModel):
     articles: list[ArticleListItem]
 
 
+# Named once: the detail payload and the summarize endpoints must offer the
+# clients the same set, or a reason the API can return has no copy to render.
+SummarySkippedReason = Literal[
+    "too_short", "needs_full_page", "unusable_page", "no_transcript", "unreadable_pdf"
+]
+
+
 class ArticleDetail(ArticleListItem):
     content_html: str
     summary_model: str | None = None
@@ -717,7 +724,9 @@ class ArticleDetail(ArticleListItem):
     # path may still succeed, with a refetch or a rendered screenshot.
     # "unusable_page": the page turned out not to be the article (404,
     # paywall, bot check); only a force-regenerate tries again.
-    summary_skipped_reason: Literal["too_short", "needs_full_page", "unusable_page"] | None = None
+    # "no_transcript": a video with no captions to summarize from.
+    # "unreadable_pdf": a linked document with no extractable text.
+    summary_skipped_reason: SummarySkippedReason | None = None
     entities: list[EntityFull] = []
 
 
@@ -1139,7 +1148,7 @@ class SummaryOut(BaseModel):
     summary_medium: str = ""
     model: str | None
     generated_at: datetime | None
-    skipped_reason: Literal["too_short", "needs_full_page", "unusable_page"] | None = None
+    skipped_reason: SummarySkippedReason | None = None
 
 
 class TranslateIn(BaseModel):

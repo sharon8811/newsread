@@ -93,6 +93,15 @@ export type Article = {
   entities: EntityBadge[];
 };
 
+// Named once: the detail payload and the summarize endpoint offer the same
+// set, and PendingSummary keys its copy off it.
+export type SummarySkippedReason =
+  | "too_short"
+  | "needs_full_page"
+  | "unusable_page"
+  | "no_transcript"
+  | "unreadable_pdf";
+
 // Article-detail entities carry the enricher payload on top of the badge
 // (the web's EntityFull, minus the snapshot history mobile doesn't render).
 export type ArticleEntity = EntityBadge & {
@@ -105,8 +114,10 @@ export type ArticleDetail = Omit<Article, "entities"> & {
   // Why there is no summary: "too_short" (nothing worth summarizing),
   // "needs_full_page" (batch worker had no usable text; on-demand may still
   // succeed), "unusable_page" (the page isn't the article — 404, paywall,
-  // bot check). null while a summary is still possible.
-  summary_skipped_reason: "too_short" | "needs_full_page" | "unusable_page" | null;
+  // bot check), "no_transcript" (a video with captions off), "unreadable_pdf"
+  // (a document with no text to extract). null while a summary is still
+  // possible.
+  summary_skipped_reason: SummarySkippedReason | null;
   entities: ArticleEntity[];
 };
 
@@ -117,7 +128,7 @@ export type SummaryOut = {
   summary_medium: string;
   model: string | null;
   generated_at: string | null;
-  skipped_reason: "too_short" | "needs_full_page" | "unusable_page" | null;
+  skipped_reason: SummarySkippedReason | null;
 };
 
 // The user's hidden "Imported" feed (pasted-URL articles live there).

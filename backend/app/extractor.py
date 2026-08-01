@@ -1,4 +1,11 @@
-"""Original-page enrichment: Scrapling fetches once, we take prose + og:image."""
+"""Original-source enrichment: Scrapling fetches once, we take prose + og:image.
+
+"Source" rather than "page" because a feed item's link is not always an
+article. A YouTube link is a video whose prose lives in its captions, and a
+link ending in .pdf is a document — both are recognized from the URL or the
+fetched bytes and routed away from the HTML path, which would otherwise hand
+the summarizer a watch-page footer or a stream of PDF operators.
+"""
 
 import logging
 from datetime import UTC, datetime, timedelta
@@ -7,7 +14,7 @@ import trafilatura
 from scrapling.fetchers import AsyncFetcher
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from . import youtube
+from . import pdf, youtube
 from .fetcher import strip_html
 from .models import Article
 
@@ -42,8 +49,30 @@ _VISUAL_STUB_PREFIXES = (
 REFETCH_COOLDOWN = timedelta(hours=6)
 
 
+def _response_body(page) -> bytes | None:
+    """The raw bytes behind a fetched response, or None if this backend has
+    only decoded them. `html_content` is useless for a binary — re-encoding a
+    lossily-decoded PDF corrupts its signature along with everything else."""
+    body = getattr(page, "body", None)
+    return body if isinstance(body, bytes) else None
+
+
+def _header(page, name: str) -> str | None:
+    """A response header, looked up case-insensitively: the fetcher backends
+    disagree on whether their header mapping folds case for us."""
+    for key, value in (getattr(page, "headers", None) or {}).items():
+        if key.lower() == name:
+            return str(value)
+    return None
+
+
 async def fetch_page(url: str) -> tuple[str, str | None, str | None]:
-    """Fetch a page; return (extracted prose, lead image URL, page title)."""
+    """Fetch a source; return (extracted prose, lead image URL, title).
+
+    Handles both an HTML page and a PDF document: the branch is taken on what
+    came back, not on what the URL looked like, so a paper served without a
+    .pdf suffix is read as a paper.
+    """
     try:
         page = await AsyncFetcher.get(url, impersonate="chrome")
     except Exception as exc:
@@ -52,6 +81,14 @@ async def fetch_page(url: str) -> tuple[str, str | None, str | None]:
     if page.status != 200:
         logger.warning("Page fetch of %s returned %s", url, page.status)
         return "", None, None
+
+    body = _response_body(page)
+    if pdf.is_pdf(body, _header(page, "content-type")):
+        # No lead image: rendering page one to a thumbnail is a different
+        # feature, and og:image never applies to a document.
+        text, title = await pdf.extract_text(body or b"")
+        logger.info("Read %d characters of text from the PDF at %s", len(text), url)
+        return text, None, title
 
     html = page.html_content
     text = trafilatura.extract(html, include_comments=False) or ""
@@ -107,7 +144,13 @@ async def _enrich_video(article: Article, video: str) -> bool:
 
 
 async def enrich_article(session: AsyncSession, article: Article) -> None:
-    """Fill full_text and image_url from the original page, fetching it at most once."""
+    """Fill full_text and image_url from the original source, fetching it at
+    most once.
+
+    The video branch is taken here, before any fetch, because a watch page
+    has nothing to extract. PDFs need no branch of their own: one fetch
+    serves both, and fetch_page reads whichever came back.
+    """
     if video := youtube.video_id(article.url):
         # A blocked request leaves the stamp NULL so a later pass retries it —
         # the only case where an article stays pending on purpose.
