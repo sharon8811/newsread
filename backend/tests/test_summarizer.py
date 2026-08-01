@@ -211,6 +211,26 @@ async def test_generate_summaries_prefers_a_pdf_feed_description_to_a_status(ses
     assert art.summary_skipped_reason is None
 
 
+async def test_generate_summaries_calls_a_short_real_description_short(session, monkeypatch):
+    # A video with captions off whose entry carries a real — but brief —
+    # description. "This video has no captions and no description" would be a
+    # lie about the second half, so this stays the ordinary short-source skip.
+    art = await _make_article(
+        session,
+        url="https://www.youtube.com/watch?v=RsR6cbovMfI",
+        full_text_fetched_at=datetime.now(UTC),
+    )
+
+    async def fake_ensure(session_, article, allow_refetch=True):
+        return "A short but genuine note about what this video covers."
+
+    monkeypatch.setattr(summarizer, "ensure_full_text", fake_ensure)
+
+    with pytest.raises(SummarySkipped):
+        await generate_summaries(session, art)
+    assert art.summary_skipped_reason == "too_short"
+
+
 def test_unreadable_source_leaves_an_ordinary_thin_page_alone():
     # Only videos and documents get a source-specific status; a bot-blocked
     # HTML page still has a screenshot fallback worth reaching.

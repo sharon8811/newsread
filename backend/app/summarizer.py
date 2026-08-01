@@ -7,7 +7,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import llm, pdf, processing_events, screenshot, youtube
 from .config import settings
-from .extractor import clip_for_llm, ensure_full_text, is_thin, is_too_short_to_summarize
+from .extractor import (
+    clip_for_llm,
+    ensure_full_text,
+    is_thin,
+    is_too_short_to_summarize,
+    is_visual_stub,
+)
 from .models import Article, Feed
 
 logger = logging.getLogger(__name__)
@@ -57,10 +63,12 @@ def unreadable_source(article: Article, text: str) -> str | None:
     """The skip reason for a video or document we fetched and could not read,
     or None when there is still something worth summarizing.
 
-    Only reached when the feed's own body is thin too: a video whose captions
+    Only reached when the feed's own body is empty or a browser shell — the
+    is_visual_stub line, not merely the is_thin one. A video whose captions
     are off but whose entry carries a real description is summarized from that
-    description, and reads like an article — the reader is better served by
-    that than by a status. When there is nothing, saying so beats the
+    description when it's long enough and called "too_short" when it isn't;
+    either way the reader is better served than by a status that claims there
+    was no description. When there is genuinely nothing, saying so beats the
     alternatives, because neither of these sources has a page a screenshot
     could rescue: a watch page is a player, and a PDF renders inside a plugin
     viewer that headless Chrome captures as a blank rectangle.
@@ -69,7 +77,7 @@ def unreadable_source(article: Article, text: str) -> str | None:
     bytes are long gone by now — so a document served without a .pdf suffix
     falls back to the generic thin-source handling.
     """
-    if article.full_text or article.full_text_fetched_at is None or not is_thin(text):
+    if article.full_text or article.full_text_fetched_at is None or not is_visual_stub(text):
         return None
     if youtube.video_id(article.url):
         return "no_transcript"
