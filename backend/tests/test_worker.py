@@ -42,7 +42,9 @@ async def test_for_each_article_missing_article():
     async def fail(s, article):
         raise AssertionError("fn must not be called for a missing article")
 
-    await worker._for_each_article([99999], gate=asyncio.Semaphore(1), label="Enrichment", fn=fail)
+    await worker._for_each_article(
+        [99999], gate=asyncio.Semaphore(1), label="Enrichment", stage="enrich", fn=fail
+    )
 
 
 async def test_history_operations_audit_counts_stale_pipeline_alerts(monkeypatch):
@@ -75,7 +77,7 @@ async def test_for_each_article_calls_fn(session):
         called["id"] = article.id
 
     await worker._for_each_article(
-        [art.id], gate=asyncio.Semaphore(1), label="Enrichment", fn=fake_enrich
+        [art.id], gate=asyncio.Semaphore(1), label="Enrichment", stage="enrich", fn=fake_enrich
     )
     assert called["id"] == art.id
 
@@ -88,7 +90,7 @@ async def test_for_each_article_swallows_errors(session):
         raise RuntimeError("enrich failed")
 
     await worker._for_each_article(
-        [art.id], gate=asyncio.Semaphore(1), label="Enrichment", fn=boom
+        [art.id], gate=asyncio.Semaphore(1), label="Enrichment", stage="enrich", fn=boom
     )  # no raise
 
 
@@ -96,12 +98,16 @@ async def test_summarize_quietly_thin_content(session, monkeypatch):
     feed = await _feed(session)
     art = await _article(session, feed)
 
-    async def raise_thin(s, article, allow_refetch=False):
+    async def raise_thin(s, article, allow_refetch=False, usage=None):
         raise ThinContentError()
 
     monkeypatch.setattr(worker, "generate_summaries", raise_thin)
     await worker._for_each_article(
-        [art.id], gate=asyncio.Semaphore(1), label="Auto-summary", fn=worker._summarize_quietly
+        [art.id],
+        gate=asyncio.Semaphore(1),
+        label="Auto-summary",
+        stage="summarize",
+        fn=worker._summarize_quietly,
     )  # no raise
 
     # Recorded, or the batch retries this article every cycle forever and the
@@ -115,12 +121,16 @@ async def test_summarize_quietly_waits_for_a_deferred_transcript(session, monkey
     feed = await _feed(session)
     art = await _article(session, feed, url="https://www.youtube.com/watch?v=RsR6cbovMfI")
 
-    async def fail(s, article, allow_refetch=False):
+    async def fail(s, article, allow_refetch=False, usage=None):
         raise AssertionError("a video with its transcript still owed must not be summarized")
 
     monkeypatch.setattr(worker, "generate_summaries", fail)
     await worker._for_each_article(
-        [art.id], gate=asyncio.Semaphore(1), label="Auto-summary", fn=worker._summarize_quietly
+        [art.id],
+        gate=asyncio.Semaphore(1),
+        label="Auto-summary",
+        stage="summarize",
+        fn=worker._summarize_quietly,
     )
     # Nothing stamped: the next cycle summarizes it once the captions land.
     await session.refresh(art)
@@ -132,12 +142,16 @@ async def test_summarize_quietly_short_content(session, monkeypatch):
     feed = await _feed(session)
     art = await _article(session, feed)
 
-    async def skip(s, article, allow_refetch=False):
+    async def skip(s, article, allow_refetch=False, usage=None):
         raise SummarySkipped()
 
     monkeypatch.setattr(worker, "generate_summaries", skip)
     await worker._for_each_article(
-        [art.id], gate=asyncio.Semaphore(1), label="Auto-summary", fn=worker._summarize_quietly
+        [art.id],
+        gate=asyncio.Semaphore(1),
+        label="Auto-summary",
+        stage="summarize",
+        fn=worker._summarize_quietly,
     )  # no raise
 
 
@@ -145,12 +159,16 @@ async def test_summarize_quietly_generic_error(session, monkeypatch):
     feed = await _feed(session)
     art = await _article(session, feed)
 
-    async def boom(s, article, allow_refetch=False):
+    async def boom(s, article, allow_refetch=False, usage=None):
         raise RuntimeError("oops")
 
     monkeypatch.setattr(worker, "generate_summaries", boom)
     await worker._for_each_article(
-        [art.id], gate=asyncio.Semaphore(1), label="Auto-summary", fn=worker._summarize_quietly
+        [art.id],
+        gate=asyncio.Semaphore(1),
+        label="Auto-summary",
+        stage="summarize",
+        fn=worker._summarize_quietly,
     )  # swallowed and logged by the batch helper
 
 
@@ -214,7 +232,7 @@ async def test_enrich_and_summarize_full_pipeline(session, monkeypatch):
 
     summarized = []
 
-    async def fake_summarize(s, article, allow_refetch=False):
+    async def fake_summarize(s, article, allow_refetch=False, usage=None):
         summarized.append(article.id)
         article.summary_short = "s"
 
@@ -360,7 +378,7 @@ async def test_enrich_and_summarize_skips_ai_disabled_feed(session, monkeypatch)
 
     summarized = []
 
-    async def fake_summarize(s, article, allow_refetch=False):
+    async def fake_summarize(s, article, allow_refetch=False, usage=None):
         summarized.append(article.id)
 
     async def fake_embed(feed_id=None):
@@ -925,8 +943,8 @@ async def test_for_each_article_gate_is_shared_across_invocations(session):
         inflight -= 1
 
     await asyncio.gather(
-        worker._for_each_article(ids[:3], gate=gate, label="A", fn=track),
-        worker._for_each_article(ids[3:], gate=gate, label="B", fn=track),
+        worker._for_each_article(ids[:3], gate=gate, label="A", stage="test", fn=track),
+        worker._for_each_article(ids[3:], gate=gate, label="B", stage="test", fn=track),
     )
     assert peak == 2, f"gate leaked: {peak} concurrent across two invocations"
 
@@ -944,5 +962,5 @@ async def test_for_each_article_survives_session_acquisition_failure(monkeypatch
         raise AssertionError("fn must not run when the session cannot open")
 
     await worker._for_each_article(
-        [1], gate=asyncio.Semaphore(1), label="Enrichment", fn=never
+        [1], gate=asyncio.Semaphore(1), label="Enrichment", stage="enrich", fn=never
     )  # no raise

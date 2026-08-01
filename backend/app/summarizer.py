@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from . import llm, screenshot, youtube
+from . import llm, processing_events, screenshot, youtube
 from .config import settings
 from .extractor import clip_for_llm, ensure_full_text, is_thin, is_too_short_to_summarize
 from .models import Article, Feed
@@ -85,10 +85,10 @@ async def generate_summaries(
             # full_text was always empty). Keep the summary — it's the only
             # good copy left — and stamp the reason so the batch worker
             # doesn't pick legacy rows up again every cycle.
-            article.summary_skipped_reason = "unusable_page"
+            _retain_unusable(session, article)
             await session.commit()
             raise SummarySkipped()
-        _mark_skipped(article, "too_short")
+        _mark_skipped(session, article, "too_short")
         await session.commit()
         raise SummarySkipped()
     # Read here rather than passed in, so every caller — the batch worker, the
@@ -132,11 +132,11 @@ async def generate_summaries(
             logger.info(
                 "Article %s page is unusable (%s); keeping the existing summary", article.id, exc
             )
-            article.summary_skipped_reason = "unusable_page"
+            _retain_unusable(session, article)
             await session.commit()
             return
         logger.info("Article %s page is unusable (%s); summary skipped", article.id, exc)
-        _mark_skipped(article, "unusable_page")
+        _mark_skipped(session, article, "unusable_page")
         await session.commit()
         return
     if not full:
@@ -165,11 +165,11 @@ async def stream_summaries(
         if article.summary:
             # Same preservation rule as generate_summaries: the refetch came
             # back a stub, so the stored summary is the only good copy left.
-            article.summary_skipped_reason = "unusable_page"
+            _retain_unusable(session, article)
             await session.commit()
             yield {"type": "error", "detail": SUMMARY_KEPT_DETAIL}
             return
-        _mark_skipped(article, "too_short")
+        _mark_skipped(session, article, "too_short")
         await session.commit()
         yield {"type": "skipped", "reason": "too_short"}
         return
@@ -211,12 +211,12 @@ async def stream_summaries(
             logger.info(
                 "Article %s page is unusable (%s); keeping the existing summary", article.id, exc
             )
-            article.summary_skipped_reason = "unusable_page"
+            _retain_unusable(session, article)
             await session.commit()
             yield {"type": "error", "detail": SUMMARY_KEPT_DETAIL}
             return
         logger.info("Article %s page is unusable (%s); summary skipped", article.id, exc)
-        _mark_skipped(article, "unusable_page")
+        _mark_skipped(session, article, "unusable_page")
         await session.commit()
         yield {"type": "skipped", "reason": "unusable_page"}
         return
@@ -227,13 +227,39 @@ async def stream_summaries(
     yield {"type": "done"}
 
 
-def _mark_skipped(article: Article, reason: str) -> None:
+def _retain_unusable(session: AsyncSession, article: Article) -> None:
+    """A (re)generation attempt hit an unusable/stub page while a good
+    summary is already stored: keep the summary, stamp the reason, and still
+    date the attempt — the skipped-processing trend must count these."""
+    article.summary_skipped_reason = "unusable_page"
+    processing_events.add_event(
+        session,
+        stage=processing_events.STAGE_SUMMARIZE,
+        outcome=processing_events.OUTCOME_SKIPPED,
+        article_id=article.id,
+        feed_id=article.feed_id,
+        detail="unusable_page",
+    )
+
+
+def _mark_skipped(session: AsyncSession, article: Article, reason: str) -> None:
     article.summary_short = ""
     article.summary_medium = ""
     article.summary = ""
     article.summary_model = None
     article.summary_generated_at = None
     article.summary_skipped_reason = reason
+    # The reason column says *that* an article was skipped but not when; the
+    # event dates it for the processing-health trends. The caller's commit
+    # (right after every _mark_skipped call) carries both.
+    processing_events.add_event(
+        session,
+        stage=processing_events.STAGE_SUMMARIZE,
+        outcome=processing_events.OUTCOME_SKIPPED,
+        article_id=article.id,
+        feed_id=article.feed_id,
+        detail=reason,
+    )
 
 
 def _store_summary(
