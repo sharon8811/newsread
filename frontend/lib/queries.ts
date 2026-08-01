@@ -5,8 +5,13 @@ import {
   fetcher,
   apiWithHeaders,
   type AISettings,
+  type ActivityRange,
+  type AdminOverview,
+  type AdminTrends,
+  type AdminUsersPage,
   type AiStatus,
   type ActivitySummary,
+  type QuotaStatus,
   type ArticleDetail,
   type ArticleProjectStatus,
   type BrowserConnection,
@@ -94,6 +99,19 @@ export const useArticleProjects = (articleId: number, enabled = true) =>
 
 export const useEntityPage = (id: string | undefined) =>
   useSWR<EntityPage>(id ? keys.entity(id) : null, fetcher);
+
+export const useAdminOverview = () =>
+  useSWR<AdminOverview>(keys.adminOverview, fetcher);
+
+export const useAdminTrends = (range: ActivityRange) =>
+  useSWR<AdminTrends>(keys.adminTrends(range), fetcher);
+
+// keepPreviousData: filter/page changes swap keys constantly; holding the
+// last page avoids a skeleton flash on every keystroke.
+export const useAdminUsers = (qs: string) =>
+  useSWR<AdminUsersPage>(keys.adminUsers(qs), fetcher, { keepPreviousData: true });
+
+export const useQuota = () => useSWR<QuotaStatus>(keys.quota, fetcher);
 
 export const useAiStatus = () => useSWR<AiStatus>(keys.aiStatus, fetcher);
 

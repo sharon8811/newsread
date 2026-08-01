@@ -130,3 +130,29 @@ describe("useAuth", () => {
     expect(result.current.user?.default_view).toBe("cards");
   });
 });
+
+describe("suspended accounts", () => {
+  beforeEach(() => setToken(null));
+
+  it("marks the session suspended when /auth/me answers 403", async () => {
+    setToken("tok");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(okResponse({ detail: "Account suspended" }, 403)),
+    );
+    const { result } = renderHook(() => useAuth(), { wrapper });
+    await waitFor(() => expect(result.current.suspended).toBe(true));
+    expect(result.current.authed).toBe(true); // shell renders the suspended screen
+    expect(getToken()).toBe("tok"); // not logged out: sign-out stays explicit
+  });
+
+  it("markSuspended flips a live session (mid-session 403)", async () => {
+    setToken("tok");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(okResponse(USER)));
+    const { result } = renderHook(() => useAuth(), { wrapper });
+    await waitFor(() => expect(result.current.user).not.toBeNull());
+    expect(result.current.suspended).toBe(false);
+    act(() => result.current.markSuspended());
+    expect(result.current.suspended).toBe(true);
+  });
+});

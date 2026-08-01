@@ -13,7 +13,7 @@ import {
 } from "@/lib/readingSession";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
-  const { authed, ready } = useAuth();
+  const { authed, ready, suspended, logout } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
   const [navOpen, setNavOpen] = useState(false);
@@ -77,6 +77,29 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         <span className="wordmark fade-up text-display-lg">
           NewsRead<span className="dot">.</span>
         </span>
+      </div>
+    );
+  }
+
+  if (suspended) {
+    // The token is valid but the server refuses every request (403
+    // "Account suspended") — a dedicated screen instead of an app whose
+    // every fetch errors.
+    return (
+      <div className="fade-up flex min-h-dvh flex-col items-center justify-center px-8 text-center">
+        <span className="wordmark text-display-lg">
+          NewsRead<span className="dot">.</span>
+        </span>
+        <p className="mt-6 text-lead font-medium" style={{ color: "var(--ink-dim)" }}>
+          Your account is suspended.
+        </p>
+        <p className="mt-1.5 max-w-[420px] text-body" style={{ color: "var(--ink-faint)" }}>
+          Reading and syncing are paused for this account. If you think this is a mistake,
+          contact the administrator of this NewsRead instance.
+        </p>
+        <button className="btn mt-6" onClick={logout}>
+          Sign out
+        </button>
       </div>
     );
   }

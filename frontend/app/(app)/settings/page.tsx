@@ -35,6 +35,7 @@ import {
   XIcon,
 } from "@/components/icons";
 import AISettingsSection from "@/components/AISettingsSection";
+import QuotaSection from "@/components/QuotaSection";
 import BrowserHistorySettingsSection from "@/components/BrowserHistorySettingsSection";
 import NotInterestedSection from "@/components/NotInterestedSection";
 import ReadingSettingsSection from "@/components/ReadingSettingsSection";
@@ -431,6 +432,8 @@ function SettingsContent() {
         <NotInterestedSection />
 
         <AISettingsSection />
+
+        <QuotaSection />
       </div>
     </>
   );

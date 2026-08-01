@@ -14,6 +14,10 @@ type AuthState = {
   user: User | null;
   ready: boolean;
   authed: boolean;
+  // The server answered 403 "Account suspended": the token is valid but
+  // every request is refused. The app shell shows a dedicated screen.
+  suspended: boolean;
+  markSuspended: () => void;
   login: (identifier: string, password: string) => Promise<void>;
   register: (data: {
     email: string;
@@ -29,7 +33,7 @@ const AuthContext = createContext<AuthState | null>(null);
 
 type TokenResponse = { access_token: string; user: User };
 
-type AuthStatus = "checking" | "authed" | "anon";
+type AuthStatus = "checking" | "authed" | "anon" | "suspended";
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -51,6 +55,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (err instanceof ApiError && err.status === 401) {
           setToken(null);
           setStatus("anon");
+        } else if (err instanceof ApiError && err.status === 403) {
+          setStatus("suspended");
         }
       });
   }, []);
@@ -92,12 +98,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setStatus("anon");
   }, []);
 
+  const markSuspended = useCallback(() => setStatus("suspended"), []);
+
   return (
     <AuthContext.Provider
       value={{
         user,
         ready: status !== "checking",
-        authed: status === "authed",
+        authed: status === "authed" || status === "suspended",
+        suspended: status === "suspended",
+        markSuspended,
         login,
         register,
         logout,

@@ -23,6 +23,11 @@ export const keys = {
 
   entity: (id: number | string) => `/entities/${id}`,
 
+  adminOverview: "/admin/overview",
+  adminTrends: (range: string) => `/admin/trends?range=${range}`,
+  adminUsers: (qs: string) => (qs ? `/admin/users?${qs}` : "/admin/users"),
+  quota: "/users/me/quota",
+
   aiStatus: "/ai/status",
   aiSettings: "/ai/settings",
   translationLanguages: "/translation/languages",
