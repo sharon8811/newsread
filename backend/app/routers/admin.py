@@ -37,6 +37,7 @@ from ..schemas import (
     AdminRoleIn,
     AdminStatusIn,
     AdminTierIn,
+    AdminTierOut,
     AdminTrendDayOut,
     AdminTrendsOut,
     AdminUserOut,
@@ -473,6 +474,14 @@ async def set_user_status(user_id: int, body: AdminStatusIn, admin: AdminUser, s
         _audit(session, admin, target, "status_change", before, body.status)
         await session.commit()
     return await _detail(session, target)
+
+
+@router.get("/tiers", response_model=list[AdminTierOut])
+async def list_tiers(admin: AdminUser, session: DbSession):
+    """The configured tiers (rows are operator-editable data), so the
+    management UI's assignment and filter pickers never hard-code keys."""
+    tiers = (await session.scalars(select(Tier).order_by(Tier.id))).all()
+    return [AdminTierOut.model_validate(tier) for tier in tiers]
 
 
 @router.patch("/users/{user_id}/tier", response_model=AdminUserOut)

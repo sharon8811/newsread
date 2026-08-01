@@ -47,10 +47,14 @@ describe("QuotaSection", () => {
     expect(container.querySelector(".h-\\[4px\\]")).toBeNull();
   });
 
-  it("marks administrators as never limited", () => {
-    swrState.data = makeQuota({ exempt: true });
-    render(<QuotaSection />);
+  it("marks administrators as never limited, with no meter to run red", () => {
+    // Even on a finite tier: exempt accounts are never enforced, so no
+    // exhausted-plan presentation may appear.
+    swrState.data = makeQuota({ exempt: true, allowance: 100, used: 100 });
+    const { container } = render(<QuotaSection />);
     expect(screen.getByText(/administrator, never limited/)).toBeInTheDocument();
+    expect(screen.queryByText(/of 100 articles/)).toBeNull();
+    expect(container.querySelector(".h-\\[4px\\]")).toBeNull();
   });
 
   it("turns the meter red at the limit", () => {

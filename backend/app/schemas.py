@@ -1421,6 +1421,18 @@ class AdminStatusIn(BaseModel):
     status: AccountStatus
 
 
+class AdminTierOut(BaseModel):
+    """A configured tier, for the management UI's pickers. Prices stay
+    informational metadata."""
+
+    key: str
+    name: str
+    price_cents: int
+    monthly_article_allowance: int | None
+
+    model_config = {"from_attributes": True}
+
+
 class AdminTierIn(BaseModel):
     # A tiers.key value; null reverts the user to the instance default.
     tier: str | None = Field(default=None, max_length=16)

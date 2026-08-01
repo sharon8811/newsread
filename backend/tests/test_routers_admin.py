@@ -430,3 +430,17 @@ async def test_tier_change_rejects_unknown_tier_and_regular_users(client, users)
     assert resp.status_code == 403
     unknown_filter = await client.get("/api/admin/users?tier=platinum", headers=users.auth(admin))
     assert unknown_filter.status_code == 422
+
+
+async def test_tier_list_reflects_configured_rows(client, users, session):
+    from app.models import Tier
+
+    session.add(Tier(key="team", name="Team", price_cents=900, monthly_article_allowance=5000))
+    await session.commit()
+    admin = await users.create(role="admin")
+    body = (await client.get("/api/admin/tiers", headers=users.auth(admin))).json()
+    assert [t["key"] for t in body] == ["team"]
+    assert body[0]["monthly_article_allowance"] == 5000
+
+    pleb = await users.create(username="pleb")
+    assert (await client.get("/api/admin/tiers", headers=users.auth(pleb))).status_code == 403

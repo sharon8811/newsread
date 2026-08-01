@@ -458,6 +458,7 @@ export type AdminUserRow = Schemas["AdminUserOut"];
 export type AdminUsersPage = Schemas["AdminUsersPageOut"];
 export type InstanceRole = AdminUserRow["role"];
 export type QuotaStatus = Schemas["QuotaOut"];
+export type AdminTier = Schemas["AdminTierOut"];
 
 // Backend types chat messages loosely (role: str, tool_events: list[dict]);
 // keep the narrowings the UI renders from. Tighten server-side eventually.

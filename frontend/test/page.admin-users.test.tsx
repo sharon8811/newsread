@@ -18,6 +18,14 @@ const { swrState, notFoundMock, authState, mutateMock, toastMock } = vi.hoisted(
 vi.mock("swr", () => ({
   default: (key: string) => {
     swrState.keys.push(key);
+    if (key === "/admin/tiers")
+      return {
+        data: [
+          { key: "free", name: "Free", price_cents: 0, monthly_article_allowance: 100 },
+          { key: "paid", name: "Paid", price_cents: 500, monthly_article_allowance: 1000 },
+          { key: "team", name: "Team", price_cents: 900, monthly_article_allowance: 5000 },
+        ],
+      };
     return { data: swrState.page };
   },
   mutate: mutateMock,
@@ -203,5 +211,44 @@ describe("AdminUsersPage", () => {
   it("hides behind notFound for regular users", () => {
     authState.user = makeUser({ id: 5, role: "user" });
     expect(() => render(<AdminUsersPage />)).toThrow("NEXT_NOT_FOUND");
+  });
+});
+
+
+describe("configured tiers feed the pickers", () => {
+  beforeEach(() => {
+    swrState.page = { total: 1, users: [makeRow()] };
+    authState.user = makeUser({ id: 1, username: "boss", role: "owner" });
+  });
+
+  it("offers every configured tier, not a hard-coded list", () => {
+    render(<AdminUsersPage />);
+    const assign = screen.getByLabelText("Tier for reader");
+    expect(Array.from(assign.querySelectorAll("option")).map((o) => o.value)).toEqual([
+      "default",
+      "free",
+      "paid",
+      "team",
+    ]);
+    const filter = screen.getByLabelText("Filter by tier");
+    expect(Array.from(filter.querySelectorAll("option")).map((o) => o.value)).toEqual([
+      "",
+      "free",
+      "paid",
+      "team",
+    ]);
+  });
+
+  it("keeps showing an assigned tier whose row was deleted", () => {
+    swrState.page = {
+      total: 1,
+      users: [makeRow({ tier_key: "legacy", tier_name: "Legacy", tier_assigned: true })],
+    };
+    render(<AdminUsersPage />);
+    const assign = screen.getByLabelText("Tier for reader") as HTMLSelectElement;
+    expect(assign.value).toBe("legacy");
+    expect(Array.from(assign.querySelectorAll("option")).some((o) => o.value === "legacy")).toBe(
+      true,
+    );
   });
 });

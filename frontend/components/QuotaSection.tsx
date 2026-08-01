@@ -8,7 +8,9 @@ import { useQuota } from "@/lib/queries";
 export default function QuotaSection() {
   const { data } = useQuota();
   if (!data) return null;
-  const finite = data.allowance != null;
+  // Exempt (owner/admin) accounts are never limited, whatever tier they
+  // carry — a meter that could run red would contradict that.
+  const finite = data.allowance != null && !data.exempt;
   const pct = finite ? Math.min(100, (data.used / Math.max(1, data.allowance!)) * 100) : 0;
 
   return (
@@ -23,8 +25,9 @@ export default function QuotaSection() {
           <span className="font-mono-nr text-label" style={{ color: "var(--ink-faint)" }}>
             {finite
               ? `${data.used} of ${data.allowance} articles this month`
-              : `${data.used} articles this month · no limit`}
-            {data.exempt && " · administrator, never limited"}
+              : `${data.used} articles this month${
+                  data.exempt ? " · administrator, never limited" : " · no limit"
+                }`}
           </span>
         </div>
         {finite && (

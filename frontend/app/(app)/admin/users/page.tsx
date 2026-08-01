@@ -8,17 +8,15 @@ import { toast } from "sonner";
 import Badge from "@/components/ui/Badge";
 import ConfirmButton from "@/components/ui/ConfirmButton";
 import EmptyState from "@/components/ui/EmptyState";
-import { api, ApiError, type AdminUserRow, type InstanceRole } from "@/lib/api";
+import { api, ApiError, type AdminTier, type AdminUserRow, type InstanceRole } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { humanCount } from "@/lib/format";
 import { keys } from "@/lib/keys";
-import { useAdminUsers } from "@/lib/queries";
+import { useAdminTiers, useAdminUsers } from "@/lib/queries";
 import { useDebouncedValue } from "@/lib/useDebouncedValue";
 
 const PAGE = 25;
 const ROLES: InstanceRole[] = ["user", "admin", "owner"];
-// The seeded tier keys. "default" clears the manual assignment.
-const TIERS = ["default", "free", "paid", "unlimited"];
 
 const SORTS: Array<{ value: string; label: string }> = [
   { value: "-created_at", label: "Newest" },
@@ -56,11 +54,13 @@ function UserRow({
   row,
   meId,
   meRole,
+  tiers,
   onChanged,
 }: {
   row: AdminUserRow;
   meId: number;
   meRole: InstanceRole;
+  tiers: AdminTier[];
   onChanged: () => void;
 }) {
   const [busy, setBusy] = useState(false);
@@ -69,6 +69,10 @@ function UserRow({
   // Status changes on admins/owners are the owner's call (the API enforces
   // it); hiding the control for admins keeps the UI honest.
   const canTouchStatus = !self && (row.role === "user" || meRole === "owner");
+  // "default" clears the manual assignment. An assigned key whose tier row
+  // was since deleted still gets an option, so the select shows the truth.
+  const tierOptions = tiers.map((t) => t.key);
+  if (row.tier_assigned && !tierOptions.includes(row.tier_key)) tierOptions.push(row.tier_key);
 
   async function run(action: () => Promise<unknown>, okNote: string) {
     setBusy(true);
@@ -151,7 +155,8 @@ function UserRow({
               )
             }
           >
-            {TIERS.map((t) => (
+            <option value="default">default</option>
+            {tierOptions.map((t) => (
               <option key={t} value={t}>
                 {t}
               </option>
@@ -213,6 +218,7 @@ export default function AdminUsersPage() {
 
   const qs = buildQuery({ query: debounced, role, status, tier, sort, offset });
   const { data } = useAdminUsers(qs);
+  const { data: tiers } = useAdminTiers();
 
   if (me && me.role !== "owner" && me.role !== "admin") notFound();
 
@@ -291,9 +297,9 @@ export default function AdminUsersPage() {
             onChange={(e) => setFilter(setTier)(e.target.value)}
           >
             <option value="">Any tier</option>
-            {TIERS.filter((t) => t !== "default").map((t) => (
-              <option key={t} value={t}>
-                {t}
+            {(tiers ?? []).map((t) => (
+              <option key={t.key} value={t.key}>
+                {t.key}
               </option>
             ))}
           </select>
@@ -331,6 +337,7 @@ export default function AdminUsersPage() {
                   row={row}
                   meId={me?.id ?? 0}
                   meRole={(me?.role ?? "user") as InstanceRole}
+                  tiers={tiers ?? []}
                   onChanged={refresh}
                 />
               ))}

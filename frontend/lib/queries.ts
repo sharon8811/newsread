@@ -7,6 +7,7 @@ import {
   type AISettings,
   type ActivityRange,
   type AdminOverview,
+  type AdminTier,
   type AdminTrends,
   type AdminUsersPage,
   type AiStatus,
@@ -102,6 +103,10 @@ export const useEntityPage = (id: string | undefined) =>
 
 export const useAdminOverview = () =>
   useSWR<AdminOverview>(keys.adminOverview, fetcher);
+
+// Tier rows are operator-edited data and effectively static per session.
+export const useAdminTiers = () =>
+  useSWR<AdminTier[]>(keys.adminTiers, fetcher, { revalidateOnFocus: false });
 
 export const useAdminTrends = (range: ActivityRange) =>
   useSWR<AdminTrends>(keys.adminTrends(range), fetcher);
