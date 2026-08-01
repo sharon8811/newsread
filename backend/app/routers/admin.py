@@ -144,20 +144,32 @@ async def trends(
     # exception is reading_activity, whose `day` is the client-local date.
     today = datetime.now(UTC).date()
     window, start, _ = window_bounds(today, range_)
-    span = lambda col: (cast(col, SADate) >= start, cast(col, SADate) <= today)  # noqa: E731
+    # Filter on plain timestamp bounds so the created_at/fetched_at/read_at
+    # indexes serve the range scans — wrapping the column in a cast would
+    # force full scans. The UTC day conversion happens only in the grouped
+    # expression, explicitly, so bucketing never depends on the DB session's
+    # time zone.
+    start_ts = datetime.combine(start, datetime.min.time(), tzinfo=UTC)
+    end_ts = datetime.combine(today + timedelta(days=1), datetime.min.time(), tzinfo=UTC)
 
-    new_users = await _per_day(session, cast(User.created_at, SADate), span(User.created_at))
+    def span(col):
+        return (col >= start_ts, col < end_ts)
+
+    def utc_day(col):
+        return cast(func.timezone("UTC", col), SADate)
+
+    new_users = await _per_day(session, utc_day(User.created_at), span(User.created_at))
     actives = await _per_day(
         session, UserActivityDay.day, (UserActivityDay.day >= start, UserActivityDay.day <= today)
     )
     new_subs = await _per_day(
-        session, cast(Subscription.created_at, SADate), span(Subscription.created_at)
+        session, utc_day(Subscription.created_at), span(Subscription.created_at)
     )
-    ingested = await _per_day(session, cast(Article.fetched_at, SADate), span(Article.fetched_at))
+    ingested = await _per_day(session, utc_day(Article.fetched_at), span(Article.fetched_at))
     summarized = await _per_day(
-        session, cast(Article.summary_generated_at, SADate), span(Article.summary_generated_at)
+        session, utc_day(Article.summary_generated_at), span(Article.summary_generated_at)
     )
-    event_day = cast(ArticleProcessingEvent.created_at, SADate)
+    event_day = utc_day(ArticleProcessingEvent.created_at)
     skipped = await _per_day(
         session,
         event_day,
@@ -169,7 +181,7 @@ async def trends(
         (*span(ArticleProcessingEvent.created_at), ArticleProcessingEvent.outcome == "failed"),
     )
     read = await _per_day(
-        session, cast(UserArticleState.read_at, SADate), span(UserArticleState.read_at)
+        session, utc_day(UserArticleState.read_at), span(UserArticleState.read_at)
     )
     reading = await _per_day(
         session,
@@ -177,10 +189,9 @@ async def trends(
         (ReadingActivity.day >= start, ReadingActivity.day <= today),
         func.coalesce(func.sum(ReadingActivity.seconds), 0),
     )
-    llm_day = cast(LLMUsage.created_at, SADate)
     llm = await _per_day(
         session,
-        llm_day,
+        utc_day(LLMUsage.created_at),
         span(LLMUsage.created_at),
         func.coalesce(func.sum(_llm_tokens), 0),
         func.count().filter(LLMUsage.status == "error"),
