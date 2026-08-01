@@ -11,7 +11,7 @@ from sqlalchemy import update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from .models import CatalogEntry
+from .models import CatalogEntry, Tier
 
 CATALOG_SEED_PATH = Path(__file__).parent / "data" / "catalog_seed.json"
 
@@ -65,4 +65,15 @@ async def seed_catalog(conn: AsyncConnection) -> None:
         update(CatalogEntry)
         .where(CatalogEntry.source == "awesome-rss-feeds", CatalogEntry.url.not_in(urls))
         .values(is_active=False)
+    )
+
+
+async def seed_tiers(conn: AsyncConnection) -> None:
+    """Insert the default user tiers (quota.DEFAULT_TIERS) where their key is
+    missing — and nothing else. Names, prices, and allowances are operator
+    data: re-running never overwrites edits, unlike the managed catalog."""
+    from .quota import DEFAULT_TIERS
+
+    await conn.execute(
+        insert(Tier).values(list(DEFAULT_TIERS)).on_conflict_do_nothing(index_elements=["key"])
     )

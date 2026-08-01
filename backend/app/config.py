@@ -45,6 +45,10 @@ class Settings(BaseSettings):
     # Turning it off gates *saving* keys — existing stored keys keep working
     # until removed, so flipping the flag never silently breaks users.
     byo_llm_keys_enabled: bool | None = None  # NEWSREAD_BYO_LLM_KEYS_ENABLED
+    # Tier for accounts with no manual assignment (quota.py): 'unlimited' on
+    # self_hosted (your own box, your own bill), 'free' on hosted modes so
+    # new signups start metered. Any tiers.key value works.
+    default_tier: str | None = None  # NEWSREAD_DEFAULT_TIER
     # Packaged Chrome extension served from Settings → Browser history. Empty
     # means the in-repo default (extension/newsread-history-extension.zip,
     # produced by `npm run build` there); the download link hides when the
@@ -244,6 +248,8 @@ class Settings(BaseSettings):
             self.first_account_owner = is_self_hosted
         if self.byo_llm_keys_enabled is None:
             self.byo_llm_keys_enabled = is_self_hosted
+        if self.default_tier is None:
+            self.default_tier = "unlimited" if is_self_hosted else "free"
         if self.browser_history_content_enabled:
             required = {
                 "NEWSREAD_OBJECT_STORE_ENDPOINT": self.object_store_endpoint,

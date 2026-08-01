@@ -15,7 +15,7 @@ LONG_TEXT = "word " * 200
 def _record_process(monkeypatch):
     calls = []
 
-    async def fake_process(article_id, user_id, config):
+    async def fake_process(article_id, user_id, config, refund_on_failure=False):
         calls.append((article_id, user_id, config))
 
     monkeypatch.setattr(imports_module, "process_import", fake_process)

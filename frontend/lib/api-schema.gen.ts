@@ -147,6 +147,29 @@ export interface paths {
         patch: operations["set_user_status_api_admin_users__user_id__status_patch"];
         trace?: never;
     };
+    "/api/admin/users/{user_id}/tier": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Set User Tier
+         * @description Manually assign a tier (tiers.key), or null to revert to the instance
+         *     default. Takes effect immediately: the next charge uses the new
+         *     allowance; nothing already used this month is clawed back, and a user
+         *     moved below their current usage simply stops accruing new charges.
+         */
+        patch: operations["set_user_tier_api_admin_users__user_id__tier_patch"];
+        trace?: never;
+    };
     "/api/ai/settings": {
         parameters: {
             query?: never;
@@ -2039,6 +2062,27 @@ export interface paths {
         patch: operations["update_me_api_users_me_patch"];
         trace?: never;
     };
+    "/api/users/me/quota": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * My Quota
+         * @description Read-only tier/allowance status: current tier, monthly usage, and the
+         *     reset date. Deliberately no purchase or upgrade path in this phase.
+         */
+        get: operations["my_quota_api_users_me_quota_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/users/search": {
         parameters: {
             query?: never;
@@ -2309,6 +2353,11 @@ export interface components {
              */
             status: "active" | "suspended";
         };
+        /** AdminTierIn */
+        AdminTierIn: {
+            /** Tier */
+            tier?: string | null;
+        };
         /** AdminTrendDayOut */
         AdminTrendDayOut: {
             /**
@@ -2428,6 +2477,13 @@ export interface components {
             llm_tokens_system: number;
             /** Name */
             name: string;
+            /** Quota Allowance */
+            quota_allowance?: number | null;
+            /**
+             * Quota Used
+             * @default 0
+             */
+            quota_used: number;
             /**
              * Reading Seconds
              * @default 0
@@ -2448,6 +2504,21 @@ export interface components {
              * @default 0
              */
             subscription_count: number;
+            /**
+             * Tier Assigned
+             * @default false
+             */
+            tier_assigned: boolean;
+            /**
+             * Tier Key
+             * @default unlimited
+             */
+            tier_key: string;
+            /**
+             * Tier Name
+             * @default Unlimited
+             */
+            tier_name: string;
             /** Username */
             username: string;
         };
@@ -3924,6 +3995,33 @@ export interface components {
             /** Name */
             name?: string | null;
         };
+        /**
+         * QuotaOut
+         * @description A user's own read-only tier/allowance view — no purchase or upgrade
+         *     controls exist in this phase.
+         */
+        QuotaOut: {
+            /** Allowance */
+            allowance: number | null;
+            /** Exempt */
+            exempt: boolean;
+            /**
+             * Period Start
+             * Format: date
+             */
+            period_start: string;
+            /**
+             * Resets On
+             * Format: date
+             */
+            resets_on: string;
+            /** Tier Key */
+            tier_key: string;
+            /** Tier Name */
+            tier_name: string;
+            /** Used */
+            used: number;
+        };
         /** RegisterIn */
         RegisterIn: {
             /**
@@ -4534,6 +4632,8 @@ export interface operations {
                 query?: string | null;
                 role?: ("owner" | "admin" | "user") | null;
                 status?: ("active" | "suspended") | null;
+                /** @description effective tiers.key */
+                tier?: string | null;
                 sort?: "created_at" | "-created_at" | "username" | "last_active" | "-last_active";
                 limit?: number;
                 offset?: number;
@@ -4642,6 +4742,41 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["AdminStatusIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUserOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_user_tier_api_admin_users__user_id__tier_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminTierIn"];
             };
         };
         responses: {
@@ -8141,6 +8276,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    my_quota_api_users_me_quota_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuotaOut"];
                 };
             };
         };

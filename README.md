@@ -147,6 +147,15 @@ The final active owner can never be demoted or suspended (the API and the
 script both refuse). Suspended accounts are rejected on every request, even
 with a previously issued, still-valid JWT.
 
+Owners/admins can also assign **user tiers** with monthly article
+allowances (defaults: Free 100/mo, Paid 1,000/mo, Unlimited — editable rows
+in the `tiers` table; prices are informational, there is no billing).
+Unassigned accounts ride `NEWSREAD_DEFAULT_TIER` (self-hosted: unlimited;
+hosted: free). An article counts against an allowance only when AI
+processing actually runs for that user — cached, copied, and shared
+summaries are free, nothing is ever charged twice, and owners/admins are
+never blocked by a quota.
+
 </details>
 
 <details>

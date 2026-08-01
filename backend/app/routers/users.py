@@ -1,12 +1,29 @@
 from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import or_, select
 
+from .. import quota
 from ..deps import CurrentUser, DbSession
 from ..models import User
-from ..schemas import UserOut, UserPublic, UserUpdateIn
+from ..schemas import QuotaOut, UserOut, UserPublic, UserUpdateIn
 from ..translation import language_for
 
 router = APIRouter(prefix="/users", tags=["users"])
+
+
+@router.get("/me/quota", response_model=QuotaOut)
+async def my_quota(user: CurrentUser, session: DbSession):
+    """Read-only tier/allowance status: current tier, monthly usage, and the
+    reset date. Deliberately no purchase or upgrade path in this phase."""
+    status = await quota.status_for(session, user)
+    return QuotaOut(
+        tier_key=status.tier_key,
+        tier_name=status.tier_name,
+        allowance=status.allowance,
+        used=status.used,
+        period_start=status.period_start,
+        resets_on=status.resets_on,
+        exempt=status.exempt,
+    )
 
 
 @router.patch("/me", response_model=UserOut)

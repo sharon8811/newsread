@@ -103,7 +103,7 @@ Reuse transactional tables where possible (`users.created_at`,
   renders not-found (history-page precedent). API stays authoritative.
 - Web only; no mobile surface initially.
 
-## #119 — Tiers and monthly article allowances
+## #119 — Tiers and monthly article allowances (implemented in this stack)
 
 - `tiers` table seeded with Free ($0, 100/mo), Paid ($5, 1000/mo),
   Unlimited ($20, ∞); names/prices/limits editable data, not code. Prices are
@@ -151,8 +151,10 @@ Reuse transactional tables where possible (`users.created_at`,
 
 ## Open decisions
 
-1. **#119 qualifying event, final shape** — direction locked: charge only
-   work actually performed for the user, never cached/shared results. To pin
-   down in the #119 PR: attribution when the batch worker summarizes an
-   article whose feed has several subscribers (charge subscribers on first
-   delivery of the fresh summary vs. charge the processing trigger only).
+1. **#119 qualifying event — decided in the #119 PR**: charges happen at
+   processing time only. The batch worker charges the feed's *active*
+   subscribers when it stores a fresh summary (each at most once per
+   article, ever); on-demand summarize/import reserve before spending and
+   refund on any no-delivery outcome; cached/copied/shared results and
+   later subscriptions are free by construction. Feeds where no subscriber
+   can pay are skipped by the worker until an allowance resets.

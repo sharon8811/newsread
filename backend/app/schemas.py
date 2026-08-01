@@ -1393,6 +1393,11 @@ class AdminUserOut(BaseModel):
     role: InstanceRole
     status: AccountStatus
     created_at: datetime
+    tier_key: str = "unlimited"  # effective tier (assigned or instance default)
+    tier_name: str = "Unlimited"
+    tier_assigned: bool = False  # False = riding the instance default
+    quota_allowance: int | None = None  # None = unlimited
+    quota_used: int = 0  # current UTC month
     last_active_day: date | None = None  # from user_activity_days (UTC)
     subscription_count: int = 0
     articles_read: int = 0
@@ -1414,6 +1419,24 @@ class AdminRoleIn(BaseModel):
 
 class AdminStatusIn(BaseModel):
     status: AccountStatus
+
+
+class AdminTierIn(BaseModel):
+    # A tiers.key value; null reverts the user to the instance default.
+    tier: str | None = Field(default=None, max_length=16)
+
+
+class QuotaOut(BaseModel):
+    """A user's own read-only tier/allowance view — no purchase or upgrade
+    controls exist in this phase."""
+
+    tier_key: str
+    tier_name: str
+    allowance: int | None  # None = unlimited
+    used: int
+    period_start: date
+    resets_on: date
+    exempt: bool  # owners/admins: usage recorded but never enforced
 
 
 class AdminOverviewOut(BaseModel):

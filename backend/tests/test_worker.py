@@ -3,7 +3,7 @@ from datetime import UTC, datetime, timedelta
 
 from app import worker
 from app.history_operations import HistoryOperatorMetrics
-from app.models import Article, ArticleEmbedding, Feed
+from app.models import Article, ArticleEmbedding, Feed, Subscription, User
 from app.summarizer import SummarySkipped, ThinContentError
 
 
@@ -213,6 +213,13 @@ async def test_enrich_and_summarize_extract_failure(session, monkeypatch):
 
 async def test_enrich_and_summarize_full_pipeline(session, monkeypatch):
     feed = await _feed(session)
+    # The quota gate only summarizes feeds someone (with allowance) reads;
+    # tests run with an unlimited default tier, so any subscriber passes.
+    subscriber = User(email="reader@example.com", username="reader", name="R", password_hash="x")
+    session.add(subscriber)
+    await session.commit()
+    session.add(Subscription(user_id=subscriber.id, feed_id=feed.id))
+    await session.commit()
     # Article needing enrich + summary.
     art = await _article(session, feed, full_text="", image_url=None, summary_short="")
     skipped = await _article(
