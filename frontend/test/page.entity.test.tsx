@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import EntityPage from "@/app/(app)/entity/[id]/page";
+import { resetBackNav, trackBackNav } from "@/lib/backNav";
 import { makeArticle } from "./fixtures";
 import type { EntityPage as EntityPageData } from "@/lib/api";
 
@@ -34,6 +35,7 @@ describe("<EntityPage>", () => {
     swrMock.mockReset();
     routerMock.push.mockClear();
     paramsMock.value = { id: "7" };
+    resetBackNav();
   });
 
   it("renders nothing while loading and passes the id-keyed SWR key", () => {
@@ -66,10 +68,22 @@ describe("<EntityPage>", () => {
   });
 
   it("navigates back via the back button", async () => {
+    trackBackNav("/article/3", "");
+    trackBackNav("/entity/7", "");
     swrMock.mockReturnValue({ data: makeEntityPage() });
     render(<EntityPage />);
     await userEvent.click(screen.getByText("← back"));
     expect(routerMock.back).toHaveBeenCalled();
+  });
+
+  it("falls back to the last list when history is unusable", async () => {
+    trackBackNav("/saved", "");
+    resetBackNav(); // the JS context died with the discarded tab
+    swrMock.mockReturnValue({ data: makeEntityPage() });
+    render(<EntityPage />);
+    await userEvent.click(screen.getByText("← back"));
+    expect(routerMock.back).not.toHaveBeenCalled();
+    expect(routerMock.push).toHaveBeenCalledWith("/saved");
   });
 
   it("falls back to the raw kind for unknown kinds and links the source url", () => {

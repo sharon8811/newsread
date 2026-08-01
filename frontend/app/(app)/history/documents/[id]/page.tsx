@@ -10,6 +10,7 @@ import { CommentIcon, ExternalIcon } from "@/components/icons";
 import ErrorText from "@/components/ui/ErrorText";
 import Skeleton from "@/components/ui/Skeleton";
 import { streamHistoryQA } from "@/lib/api";
+import { navigateBack } from "@/lib/backNav";
 import { timeAgo } from "@/lib/format";
 import {
   useHistoryDocument,
@@ -91,7 +92,7 @@ export default function HistoryDocumentPage() {
       <button
         className="font-mono-nr text-label"
         style={{ color: "var(--ink-faint)" }}
-        onClick={() => router.back()}
+        onClick={() => navigateBack(router, "/history")}
       >
         ← back
       </button>

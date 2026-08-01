@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import ArticlePage from "@/app/(app)/article/[id]/page";
+import { resetBackNav, trackBackNav } from "@/lib/backNav";
 import { makeArticleDetail } from "./fixtures";
 
 const { swrMock, mutateMock, routerMock, mutateListsMock, patchCachesMock, paramsState } =
@@ -74,6 +75,11 @@ describe("ArticlePage", () => {
     mutateListsMock.mockClear();
     patchCachesMock.mockClear();
     paramsState.id = "1";
+    resetBackNav();
+    // Most tests model the ordinary flow: the list navigated here in-app,
+    // so the back control uses real history.
+    trackBackNav("/", "");
+    trackBackNav("/article/1", "");
     vi.stubGlobal("fetch", okFetch());
   });
 
@@ -258,6 +264,28 @@ describe("ArticlePage", () => {
     expect(back).toHaveStyle({ color: "var(--ink-faint)" });
     await userEvent.click(back);
     expect(routerMock.back).toHaveBeenCalled();
+  });
+
+  it("falls back to the originating list when the tab was restored without history", async () => {
+    // A discarded iOS tab restored straight onto the detail URL: sessionStorage
+    // survived with the origin, the in-memory navigation record did not.
+    resetBackNav();
+    trackBackNav("/", "feed=3");
+    resetBackNav();
+    swrMock.mockReturnValue({ data: makeArticleDetail({ is_read: true }), error: undefined });
+    render(<ArticlePage />);
+    await userEvent.click(screen.getByText("← back"));
+    expect(routerMock.back).not.toHaveBeenCalled();
+    expect(routerMock.push).toHaveBeenCalledWith("/?feed=3");
+  });
+
+  it("falls back to the inbox when even the stored origin is gone", async () => {
+    resetBackNav();
+    swrMock.mockReturnValue({ data: undefined, error: undefined });
+    render(<ArticlePage />);
+    await userEvent.click(screen.getByRole("button", { name: "Back" }));
+    expect(routerMock.back).not.toHaveBeenCalled();
+    expect(routerMock.push).toHaveBeenCalledWith("/");
   });
 
   it("renders a placeholder when there is no content_html", () => {

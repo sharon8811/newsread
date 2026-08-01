@@ -2,10 +2,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import HistoryDocumentPage from "@/app/(app)/history/documents/[id]/page";
+import { resetBackNav, trackBackNav } from "@/lib/backNav";
 
 const { swrMock, routerMock } = vi.hoisted(() => ({
   swrMock: vi.fn(),
-  routerMock: { back: vi.fn() },
+  routerMock: { back: vi.fn(), push: vi.fn() },
 }));
 const { navigationState } = vi.hoisted(() => ({
   navigationState: { id: "12" },
@@ -73,6 +74,7 @@ let contentResult: {
 
 describe("HistoryDocumentPage", () => {
   beforeEach(() => {
+    resetBackNav();
     navigationState.id = "12";
     documentResult = { data: detail };
     contentResult = { data: content };
@@ -96,8 +98,18 @@ describe("HistoryDocumentPage", () => {
     expect(screen.getByTestId("history-summary")).toBeInTheDocument();
     expect(screen.getAllByTestId("private-image")).toHaveLength(2);
 
+    trackBackNav("/history", "");
+    trackBackNav("/history/documents/12", "");
     await userEvent.click(screen.getByRole("button", { name: "← back" }));
     expect(routerMock.back).toHaveBeenCalled();
+  });
+
+  it("falls back to the history list when there is no usable history", async () => {
+    render(<HistoryDocumentPage />);
+
+    await userEvent.click(screen.getByRole("button", { name: "← back" }));
+    expect(routerMock.back).not.toHaveBeenCalled();
+    expect(routerMock.push).toHaveBeenCalledWith("/history");
   });
 
   it("does not mount Q&A until the user explicitly enables it", async () => {

@@ -40,6 +40,7 @@ import { useArticleDetail } from "@/lib/queries";
 import { domainOf, timeAgo } from "@/lib/format";
 import { discussionRefFor } from "@/lib/discussions";
 import { isYouTubeVideoUrl } from "@/lib/youtube";
+import { navigateBack } from "@/lib/backNav";
 import { markArticleReadInReadingSessions } from "@/lib/readingSession";
 import { useReadingTimer } from "@/lib/useReadingTimer";
 
@@ -91,6 +92,10 @@ export default function ArticlePage() {
       : { articleId: id, open: false, scope: "article" as const, draft: null };
   const markedRef = useRef(false);
   const hadImageRef = useRef<boolean | null>(null);
+  // History-back when a previous in-app entry is known to exist, else a push
+  // to the originating list — a restored iOS tab has neither history nor the
+  // in-memory reading session, and bare router.back() dies there (issue #128).
+  const goBack = () => navigateBack(router);
 
   useReadingTimer(article?.id);
 
@@ -165,7 +170,7 @@ export default function ArticlePage() {
   if (!article) {
     return (
       <div className="mx-auto max-w-[680px] px-8 py-14 max-md:pt-16">
-        <BackChip onBack={() => router.back()} />
+        <BackChip onBack={goBack} />
         <div className="h-9 w-3/4 rounded-md" style={{ background: "var(--bg-hover)" }} />
         <div className="mt-4 h-4 w-1/3 rounded" style={{ background: "var(--bg-hover)" }} />
       </div>
@@ -194,12 +199,12 @@ export default function ArticlePage() {
         style={{ color: "var(--ink-faint)" }}
         onMouseEnter={(e) => (e.currentTarget.style.color = "var(--ink)")}
         onMouseLeave={(e) => (e.currentTarget.style.color = "var(--ink-faint)")}
-        onClick={() => router.back()}
+        onClick={goBack}
       >
         ← back
       </button>
 
-      <BackChip onBack={() => router.back()} />
+      <BackChip onBack={goBack} />
 
       <p className="mono-label mt-7">{article.feed_title}</p>
       <h1
