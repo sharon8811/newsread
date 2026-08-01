@@ -43,6 +43,10 @@ def test_video_id_forms():
     assert youtube.video_id("https://youtu.be/RsR6cbovMfI?t=30") == "RsR6cbovMfI"
     assert youtube.video_id("https://www.youtube.com/shorts/RsR6cbovMfI") == "RsR6cbovMfI"
     assert youtube.video_id("https://m.youtube.com/embed/RsR6cbovMfI") == "RsR6cbovMfI"
+    assert youtube.video_id("https://www.youtube.com/live/RsR6cbovMfI") == "RsR6cbovMfI"
+    # Same video, same id: only the front end differs.
+    assert youtube.video_id("https://music.youtube.com/watch?v=RsR6cbovMfI") == "RsR6cbovMfI"
+    assert youtube.video_id("https://www.youtube-nocookie.com/embed/RsR6cbovMfI") == "RsR6cbovMfI"
     assert youtube.video_id("https://www.youtube.com/@mkbhd") is None
     assert youtube.video_id("https://example.com/watch?v=RsR6cbovMfI") is None
     assert youtube.video_id("https://www.youtube.com/watch?v=too-short") is None

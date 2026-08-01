@@ -188,6 +188,27 @@ describe("<AiSummary>", () => {
     expect(String(fetchMock.mock.calls[0][0])).toContain("force=true");
   });
 
+  it.each([
+    ["no_transcript", /video has no captions/i],
+    ["unreadable_pdf", /couldn’t read any text out of this PDF/i],
+  ] as const)("says in its own words why a %s source could not be read", async (reason, copy) => {
+    // The whole point of the dedicated reasons: "this post is already short"
+    // is a lie about a 90-minute video, and so is "its page is unavailable".
+    stubStatus(true);
+    const fetchMock = streamFetch();
+    vi.stubGlobal("fetch", fetchMock);
+    render(
+      <AiSummary article={makeArticleDetail({ summary: "", summary_skipped_reason: reason })} />,
+    );
+    expect(screen.getByText(copy)).toBeInTheDocument();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByText("Try again"));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    expect(String(fetchMock.mock.calls[0][0])).toContain("force=true");
+  });
+
   it("explains a too-short source without requesting a summary", async () => {
     stubStatus(true);
     const fetchMock = okFetch();

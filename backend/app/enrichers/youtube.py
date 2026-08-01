@@ -1,30 +1,24 @@
-import re
 from datetime import timedelta
 
 import httpx
 
+from .. import youtube
 from .base import CleanUrl, Enricher, EnrichError
-
-_VIDEO_ID = re.compile(r"^[A-Za-z0-9_-]{11}$")
 
 
 class YouTubeEnricher(Enricher):
     kind = "youtube"
     ttl = timedelta(days=30)
-    hosts = frozenset({"youtube.com", "youtu.be"})
+    # music. is not stripped by clean_url the way www./m. are, so it needs its
+    # own dispatch entry; youtube.video_id normalizes it away afterwards.
+    hosts = frozenset({"youtube.com", "youtu.be", "music.youtube.com", "youtube-nocookie.com"})
 
     def matches(self, url: CleanUrl) -> str | None:
-        candidate: str | None = None
-        segments = [s for s in url.path.split("/") if s]
-        if url.host == "youtu.be":
-            candidate = segments[0] if segments else None
-        elif url.path == "/watch":
-            candidate = url.query.get("v")
-        elif len(segments) == 2 and segments[0] in ("shorts", "embed"):
-            candidate = segments[1]
-        if candidate and _VIDEO_ID.match(candidate):
-            return candidate
-        return None
+        # Delegated rather than reimplemented: the extractor decides from the
+        # same function whether to read captions instead of the page, and a
+        # link recognized by only one of the two would be badged as a video
+        # while being summarized as an article (or the reverse).
+        return youtube.video_id(url.raw)
 
     def entity_url(self, key: str) -> str:
         return f"https://www.youtube.com/watch?v={key}"

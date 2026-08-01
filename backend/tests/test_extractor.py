@@ -1,6 +1,8 @@
 import types
 from datetime import UTC, datetime, timedelta
 
+import pytest
+
 from app import extractor
 from app.extractor import (
     _recently_attempted,
@@ -36,10 +38,12 @@ def test_clip_for_llm():
     assert clipped.endswith("[article truncated]")
 
 
-def _fake_page(status=200, html="<html></html>", css_result=None):
+def _fake_page(status=200, html="<html></html>", css_result=None, body=None, headers=None):
     return types.SimpleNamespace(
         status=status,
         html_content=html,
+        body=body,
+        headers=headers or {},
         css=lambda selector: css_result or [],
     )
 
@@ -77,6 +81,59 @@ async def test_fetch_page_non_200(monkeypatch):
 
     monkeypatch.setattr(extractor.AsyncFetcher, "get", staticmethod(fake_get))
     assert await fetch_page("https://x/a") == ("", None, None)
+
+
+async def test_fetch_page_reads_a_pdf_instead_of_its_bytes(monkeypatch):
+    # The regression this exists for: trafilatura happily "extracts" a PDF's
+    # operators, and 24k characters of %PDF-1.7 /FlateDecode used to reach the
+    # model, which answered that it had been handed a binary.
+    page = _fake_page(body=b"%PDF-1.7 ...", headers={"Content-Type": "application/pdf"})
+
+    async def fake_get(url, **kwargs):
+        return page
+
+    async def fake_extract(body):
+        assert body == b"%PDF-1.7 ..."
+        return "the paper's prose", "A Paper"
+
+    monkeypatch.setattr(extractor.AsyncFetcher, "get", staticmethod(fake_get))
+    monkeypatch.setattr(extractor.pdf, "extract_text", fake_extract)
+    monkeypatch.setattr(
+        extractor.trafilatura, "extract", lambda *a, **k: pytest.fail("PDFs are not HTML")
+    )
+    # No lead image: og:image never applies to a document.
+    assert await fetch_page("https://x/paper.pdf") == ("the paper's prose", None, "A Paper")
+
+
+async def test_fetch_page_recognizes_a_pdf_with_no_suffix_or_content_type(monkeypatch):
+    # arxiv serves /pdf/1706.03762 with no extension; the signature decides.
+    page = _fake_page(body=b"%PDF-1.4 ...", headers={"content-type": "application/octet-stream"})
+
+    async def fake_get(url, **kwargs):
+        return page
+
+    async def fake_extract(body):
+        return "prose", None
+
+    monkeypatch.setattr(extractor.AsyncFetcher, "get", staticmethod(fake_get))
+    monkeypatch.setattr(extractor.pdf, "extract_text", fake_extract)
+    text, image, title = await fetch_page("https://arxiv.org/pdf/1706.03762")
+    assert (text, image, title) == ("prose", None, None)
+
+
+async def test_fetch_page_ignores_a_body_it_cannot_read_as_bytes(monkeypatch):
+    # Some fetcher backends hand back only decoded text; re-encoding a lossily
+    # decoded PDF would corrupt its signature, so those stay on the HTML path.
+    page = _fake_page(body="%PDF-1.7 as a string", html="<html><body>x</body></html>")
+
+    async def fake_get(url, **kwargs):
+        return page
+
+    monkeypatch.setattr(extractor.AsyncFetcher, "get", staticmethod(fake_get))
+    monkeypatch.setattr(extractor.trafilatura, "extract", lambda html, **k: "html prose")
+    monkeypatch.setattr(extractor.trafilatura, "extract_metadata", lambda html: None)
+    text, _, _ = await fetch_page("https://x/a")
+    assert text == "html prose"
 
 
 async def test_fetch_page_image_from_css_fallback(monkeypatch):

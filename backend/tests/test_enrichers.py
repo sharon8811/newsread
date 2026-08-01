@@ -528,6 +528,25 @@ def test_youtube_entity_url():
     assert YouTubeEnricher().entity_url("abc") == "https://www.youtube.com/watch?v=abc"
 
 
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        "https://youtu.be/dQw4w9WgXcQ",
+        "https://www.youtube.com/live/dQw4w9WgXcQ",
+        "https://music.youtube.com/watch?v=dQw4w9WgXcQ",
+        "https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ",
+    ],
+)
+def test_youtube_badges_every_link_the_extractor_reads_as_a_video(url):
+    # The two used to have their own matchers, so a /live/ link was summarized
+    # from its captions while being badged as an ordinary article link.
+    matched = match_url(url)
+    assert matched is not None, url
+    enricher, key = matched
+    assert (enricher.kind, key) == ("youtube", "dQw4w9WgXcQ")
+
+
 # --- registry dispatch ---
 
 

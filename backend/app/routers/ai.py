@@ -178,12 +178,15 @@ async def _refund_if_charged(session: AsyncSession, user_id: int, article_id: in
 def _summary_settled(article: Article) -> bool:
     """Nothing for a non-force request to do: a summary is stored, or the
     article was skipped for a reason retrying wouldn't change ("too_short"
-    forever; "unusable_page" until someone explicitly forces a retry).
+    forever; the rest until someone explicitly forces a retry).
     "needs_full_page" stays eligible — the on-demand path may still succeed
-    with a refetch or a rendered screenshot."""
+    with a refetch or a rendered screenshot, which neither a caption-less
+    video nor an unreadable document has any use for."""
     return bool(article.summary and article.summary_short) or article.summary_skipped_reason in (
         "too_short",
         "unusable_page",
+        "no_transcript",
+        "unreadable_pdf",
     )
 
 

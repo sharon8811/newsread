@@ -105,15 +105,33 @@ def channel_feed_url(channel_id: str) -> str:
     return f"{CHANNEL_FEED_PREFIX}{channel_id}"
 
 
+def _video_host(raw_host: str | None) -> str:
+    """A YouTube hostname without the subdomain that only picks a front end.
+
+    www/m/music all serve the same videos under the same ids, and a link
+    pasted from a phone or from YouTube Music must reach the same transcript
+    as one copied from a desktop.
+    """
+    host = (raw_host or "").lower()
+    for prefix in ("www.", "m.", "music."):
+        host = host.removeprefix(prefix)
+    return host
+
+
 def video_id(url: str) -> str | None:
-    """The video id in a watch/shorts/embed/youtu.be URL, or None."""
+    """The video id in a watch/shorts/embed/live/youtu.be URL, or None.
+
+    The single definition of "this link is a video" — the enricher that
+    badges videos and the extractor that reads their captions both ask here,
+    so a link can never be a video to one and an article to the other.
+    """
     if not url:
         return None
     try:
         parsed = urlsplit(url)
     except ValueError:
         return None
-    host = (parsed.hostname or "").lower().removeprefix("www.").removeprefix("m.")
+    host = _video_host(parsed.hostname)
     segments = [segment for segment in parsed.path.split("/") if segment]
     candidate: str | None = None
     if host == "youtu.be":
@@ -179,12 +197,8 @@ def _channel_id_from(raw: str) -> str | None:
 def _looks_like_youtube_url(raw: str) -> bool:
     if "://" not in raw and "/" not in raw:
         return False
-    host = urlsplit(raw if "://" in raw else f"https://{raw}").hostname or ""
-    return host.lower().removeprefix("www.").removeprefix("m.") in (
-        "youtube.com",
-        "youtube-nocookie.com",
-        "youtu.be",
-    )
+    host = urlsplit(raw if "://" in raw else f"https://{raw}").hostname
+    return _video_host(host) in ("youtube.com", "youtube-nocookie.com", "youtu.be")
 
 
 async def _scrape_channel_page(url: str) -> ChannelMatch:

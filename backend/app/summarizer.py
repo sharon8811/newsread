@@ -5,9 +5,15 @@ from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from . import llm, processing_events, screenshot, youtube
+from . import llm, pdf, processing_events, screenshot, youtube
 from .config import settings
-from .extractor import clip_for_llm, ensure_full_text, is_thin, is_too_short_to_summarize
+from .extractor import (
+    clip_for_llm,
+    ensure_full_text,
+    is_thin,
+    is_too_short_to_summarize,
+    is_visual_stub,
+)
 from .models import Article, Feed
 
 logger = logging.getLogger(__name__)
@@ -53,6 +59,33 @@ def transcript_still_owed(article: Article) -> bool:
     )
 
 
+def unreadable_source(article: Article, text: str) -> str | None:
+    """The skip reason for a video or document we fetched and could not read,
+    or None when there is still something worth summarizing.
+
+    Only reached when the feed's own body is empty or a browser shell — the
+    is_visual_stub line, not merely the is_thin one. A video whose captions
+    are off but whose entry carries a real description is summarized from that
+    description when it's long enough and called "too_short" when it isn't;
+    either way the reader is better served than by a status that claims there
+    was no description. When there is genuinely nothing, saying so beats the
+    alternatives, because neither of these sources has a page a screenshot
+    could rescue: a watch page is a player, and a PDF renders inside a plugin
+    viewer that headless Chrome captures as a blank rectangle.
+
+    A PDF is recognized from its URL rather than from what was fetched — the
+    bytes are long gone by now — so a document served without a .pdf suffix
+    falls back to the generic thin-source handling.
+    """
+    if article.full_text or article.full_text_fetched_at is None or not is_visual_stub(text):
+        return None
+    if youtube.video_id(article.url):
+        return "no_transcript"
+    if pdf.looks_like_pdf(article.url):
+        return "unreadable_pdf"
+    return None
+
+
 async def generate_summaries(
     session: AsyncSession,
     article: Article,
@@ -78,7 +111,8 @@ async def generate_summaries(
         # a "too_short" stamp blocks even a manual retry — so the video would be
         # stuck with its description long after the captions became available.
         raise ThinContentError(_CAPTIONS_THROTTLED_DETAIL)
-    if is_too_short_to_summarize(text):
+    unreadable = unreadable_source(article, text)
+    if unreadable or is_too_short_to_summarize(text):
         if article.summary:
             # The page rotted to a stub under a stored summary (typically a
             # force-regenerate of a screenshot-summarized article, whose
@@ -88,7 +122,7 @@ async def generate_summaries(
             _retain_unusable(session, article)
             await session.commit()
             raise SummarySkipped()
-        _mark_skipped(session, article, "too_short")
+        _mark_skipped(session, article, unreadable or "too_short")
         await session.commit()
         raise SummarySkipped()
     # Read here rather than passed in, so every caller — the batch worker, the
@@ -161,7 +195,8 @@ async def stream_summaries(
     text = await ensure_full_text(session, article, allow_refetch=True)
     if transcript_still_owed(article):
         raise ThinContentError(_CAPTIONS_THROTTLED_DETAIL)
-    if is_too_short_to_summarize(text):
+    unreadable = unreadable_source(article, text)
+    if unreadable or is_too_short_to_summarize(text):
         if article.summary:
             # Same preservation rule as generate_summaries: the refetch came
             # back a stub, so the stored summary is the only good copy left.
@@ -169,9 +204,10 @@ async def stream_summaries(
             await session.commit()
             yield {"type": "error", "detail": SUMMARY_KEPT_DETAIL}
             return
-        _mark_skipped(session, article, "too_short")
+        reason = unreadable or "too_short"
+        _mark_skipped(session, article, reason)
         await session.commit()
-        yield {"type": "skipped", "reason": "too_short"}
+        yield {"type": "skipped", "reason": reason}
         return
     feed = await session.get(Feed, article.feed_id)
     instructions = feed.summary_instructions if feed is not None else None

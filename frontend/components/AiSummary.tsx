@@ -33,6 +33,20 @@ const STAGE_LABELS = {
   summarizing: "Summarizing…",
 } as const;
 
+// Skip reasons that mean "we reached the source and could not read it".
+// Absent from this map: "too_short" (its own panel, with nothing to retry)
+// and "needs_full_page", which the on-demand path is still allowed to try.
+const UNREADABLE_SOURCE: Partial<
+  Record<NonNullable<ArticleDetail["summary_skipped_reason"]>, string>
+> = {
+  unusable_page:
+    "We couldn’t summarize this article — its page appears to be unavailable (a missing page, paywall, or bot check). Use “Read original” above.",
+  no_transcript:
+    "This video has no captions to summarize from, and its feed entry carries no description. Use “Read original” above to watch it.",
+  unreadable_pdf:
+    "We couldn’t read any text out of this PDF — it may be a scan, encrypted, or damaged. Use “Read original” above to open the document.",
+};
+
 export default function AiSummary({ article }: { article: ArticleDetail }) {
   const { data: status } = useSWR<AiStatus>(keys.aiStatus, fetcher);
   const [generating, setGenerating] = useState(false);
@@ -41,11 +55,16 @@ export default function AiSummary({ article }: { article: ArticleDetail }) {
   const [error, setError] = useState<string | null>(null);
   const requestedRef = useRef(false);
   const skippedAsTooShort = article.summary_skipped_reason === "too_short";
-  // The page turned out not to be the article (404, paywall, bot check).
-  // Never auto-retried — only the explicit button forces another attempt.
-  // A kept summary can carry the stamp too (a failed regenerate preserves
-  // the stored copy); showing that summary beats showing a failure box.
-  const failedAsUnusable = article.summary_skipped_reason === "unusable_page" && !article.summary;
+  // Reasons the source itself defeated us, each said in its own words: a
+  // reader who is told "this post is already short" about a 90-minute video
+  // learns nothing true. Never auto-retried — only the explicit button forces
+  // another attempt. A kept summary can carry the stamp too (a failed
+  // regenerate preserves the stored copy); showing that summary beats showing
+  // a failure box.
+  const unreadable =
+    !article.summary && article.summary_skipped_reason
+      ? UNREADABLE_SOURCE[article.summary_skipped_reason]
+      : undefined;
   // A server can have a translation model but no summarizing one. Stored
   // summaries — and their translate action — still belong on screen there;
   // only generating and regenerating need the summarizing model.
@@ -78,14 +97,14 @@ export default function AiSummary({ article }: { article: ArticleDetail }) {
       !status?.configured ||
       article.summary ||
       skippedAsTooShort ||
-      failedAsUnusable ||
+      unreadable ||
       requestedRef.current
     )
       return;
     requestedRef.current = true;
     generate(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status?.configured, article.id, skippedAsTooShort, failedAsUnusable]);
+  }, [status?.configured, article.id, skippedAsTooShort, unreadable]);
 
   if (skippedAsTooShort) {
     return (
@@ -106,7 +125,7 @@ export default function AiSummary({ article }: { article: ArticleDetail }) {
     );
   }
 
-  if (failedAsUnusable && !generating && !error) {
+  if (unreadable && !generating && !error) {
     return (
       <section
         className="fade-up mt-7 rounded-md border p-5"
@@ -119,8 +138,7 @@ export default function AiSummary({ article }: { article: ArticleDetail }) {
           </span>
         </div>
         <p className="mt-3 text-body" style={{ color: "var(--ink-dim)" }}>
-          We couldn’t summarize this article — its page appears to be unavailable (a missing
-          page, paywall, or bot check). Use “Read original” above.
+          {unreadable}
         </p>
         {canGenerate && (
           <button className="btn mt-3" onClick={() => generate(true)}>

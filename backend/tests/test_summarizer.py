@@ -145,6 +145,102 @@ async def test_generate_summaries_treats_a_captionless_video_as_an_article(sessi
     assert captured["instructions"] is None
 
 
+async def test_generate_summaries_says_a_video_has_no_captions(session, monkeypatch):
+    # Captions off and the entry carries no description either. "too_short"
+    # would tell the reader the post is short, and the screenshot fallback
+    # would render a video player — so the status names what happened.
+    art = await _make_article(
+        session,
+        url="https://www.youtube.com/watch?v=RsR6cbovMfI",
+        full_text_fetched_at=datetime.now(UTC),
+    )
+
+    async def fake_ensure(session_, article, allow_refetch=True):
+        return ""
+
+    async def fail(*args, **kwargs):  # pragma: no cover - must not be reached
+        raise AssertionError("a caption-less video attempted an LLM or screenshot call")
+
+    monkeypatch.setattr(summarizer, "ensure_full_text", fake_ensure)
+    monkeypatch.setattr(summarizer.llm, "summarize", fail)
+    monkeypatch.setattr(summarizer.screenshot, "capture", fail)
+
+    with pytest.raises(SummarySkipped):
+        await generate_summaries(session, art, config=_vision_config(), allow_vision=True)
+    assert art.summary_skipped_reason == "no_transcript"
+
+
+async def test_generate_summaries_says_a_pdf_could_not_be_read(session, monkeypatch):
+    art = await _make_article(
+        session, url="https://x/paper.pdf", full_text_fetched_at=datetime.now(UTC)
+    )
+
+    async def fake_ensure(session_, article, allow_refetch=True):
+        return ""
+
+    async def fail(*args, **kwargs):  # pragma: no cover - must not be reached
+        raise AssertionError("an unreadable document attempted an LLM or screenshot call")
+
+    monkeypatch.setattr(summarizer, "ensure_full_text", fake_ensure)
+    monkeypatch.setattr(summarizer.llm, "summarize", fail)
+    monkeypatch.setattr(summarizer.screenshot, "capture", fail)
+
+    with pytest.raises(SummarySkipped):
+        await generate_summaries(session, art, config=_vision_config(), allow_vision=True)
+    assert art.summary_skipped_reason == "unreadable_pdf"
+
+
+async def test_generate_summaries_prefers_a_pdf_feed_description_to_a_status(session, monkeypatch):
+    # A document we couldn't read whose entry carries a real abstract: the
+    # abstract is a better answer than "this PDF has no readable text".
+    art = await _make_article(
+        session, url="https://x/paper.pdf", full_text_fetched_at=datetime.now(UTC)
+    )
+
+    async def fake_ensure(session_, article, allow_refetch=True):
+        return "x" * 500
+
+    async def fake_summarize(title, text, **kwargs):
+        return ("s", "m", "f")
+
+    monkeypatch.setattr(summarizer, "ensure_full_text", fake_ensure)
+    monkeypatch.setattr(summarizer.llm, "summarize", fake_summarize)
+
+    await generate_summaries(session, art)
+    assert art.summary == "f"
+    assert art.summary_skipped_reason is None
+
+
+async def test_generate_summaries_calls_a_short_real_description_short(session, monkeypatch):
+    # A video with captions off whose entry carries a real — but brief —
+    # description. "This video has no captions and no description" would be a
+    # lie about the second half, so this stays the ordinary short-source skip.
+    art = await _make_article(
+        session,
+        url="https://www.youtube.com/watch?v=RsR6cbovMfI",
+        full_text_fetched_at=datetime.now(UTC),
+    )
+
+    async def fake_ensure(session_, article, allow_refetch=True):
+        return "A short but genuine note about what this video covers."
+
+    monkeypatch.setattr(summarizer, "ensure_full_text", fake_ensure)
+
+    with pytest.raises(SummarySkipped):
+        await generate_summaries(session, art)
+    assert art.summary_skipped_reason == "too_short"
+
+
+def test_unreadable_source_leaves_an_ordinary_thin_page_alone():
+    # Only videos and documents get a source-specific status; a bot-blocked
+    # HTML page still has a screenshot fallback worth reaching.
+    art = Article(url="https://x/a", full_text="", full_text_fetched_at=datetime.now(UTC))
+    assert summarizer.unreadable_source(art, "") is None
+    # And nothing is stamped before the fetch has actually been attempted.
+    unfetched = Article(url="https://x/paper.pdf", full_text="", full_text_fetched_at=None)
+    assert summarizer.unreadable_source(unfetched, "") is None
+
+
 async def test_generate_summaries_skips_real_short_source_without_llm_or_vision(
     session, monkeypatch
 ):
@@ -449,6 +545,21 @@ async def test_stream_summaries_too_short_yields_skipped(session, monkeypatch):
     events = await _collect(summarizer.stream_summaries(session, art))
     assert events[-1] == {"type": "skipped", "reason": "too_short"}
     assert art.summary_skipped_reason == "too_short"
+
+
+async def test_stream_summaries_yields_the_source_specific_skip(session, monkeypatch):
+    art = await _make_article(
+        session, url="https://x/paper.pdf", full_text_fetched_at=datetime.now(UTC)
+    )
+
+    async def fake_ensure(session_, article, allow_refetch=True):
+        return ""
+
+    monkeypatch.setattr(summarizer, "ensure_full_text", fake_ensure)
+
+    events = await _collect(summarizer.stream_summaries(session, art))
+    assert events[-1] == {"type": "skipped", "reason": "unreadable_pdf"}
+    assert art.summary_skipped_reason == "unreadable_pdf"
 
 
 async def test_stream_summaries_unusable_yields_skipped(session, monkeypatch):
