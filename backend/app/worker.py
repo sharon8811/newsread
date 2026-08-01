@@ -28,6 +28,7 @@ from . import (
     processing_events,
     push,
     queue,
+    quota,
     suppressions,
 )
 from .config import settings
@@ -143,6 +144,11 @@ async def _summarize_quietly(session, article) -> None:
             passthrough=(SummarySkipped, ThinContentError),
         ) as usage:
             await generate_summaries(session, article, allow_refetch=False, usage=usage)
+        if article.summary_short and article.summary_skipped_reason is None:
+            # A summary was stored: charge the feed's subscribers (the
+            # qualifying event — once per user per article, exhausted
+            # subscribers uncharged; quota.charge_subscribers).
+            await quota.charge_subscribers(session, article)
     except SummarySkipped:
         pass  # already stamped summary_skipped_reason (+ processing event)
     except ThinContentError:
@@ -212,12 +218,17 @@ async def enrich_and_summarize(ctx: dict | None = None, feed_id: int | None = No
         return len(enrich_ids) >= ENRICH_BATCH
 
     async with db.SessionLocal() as session:
+        default_tier = await quota.default_tier(session)
         summarize_query = (
             select(Article.id)
             .join(Feed, Feed.id == Article.feed_id)
             .where(Feed.ai_enabled.is_(True))
             .where(Article.summary_short == "")
             .where(Article.summary_skipped_reason.is_(None))
+            # Spend nothing on articles no subscriber can pay for; the
+            # article stays eligible and processes when an allowance resets
+            # or someone with quota subscribes.
+            .where(quota.subscriber_with_quota_exists(default_tier, quota.current_period()))
             # Skip articles whose page fetch already failed and whose feed
             # content is a stub — they'd be ThinContent-skipped every cycle.
             .where(

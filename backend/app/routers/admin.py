@@ -14,6 +14,8 @@ from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import Date as SADate
 from sqlalchemy import cast, desc, func, or_, select
 
+from .. import quota
+from ..config import settings
 from ..deps import AdminUser, DbSession, OwnerUser
 from ..models import (
     AdminAuditLog,
@@ -22,9 +24,11 @@ from ..models import (
     LLMUsage,
     ReadingActivity,
     Subscription,
+    Tier,
     User,
     UserActivityDay,
     UserArticleState,
+    UserQuotaPeriod,
 )
 from ..roles import ROLE_OWNER, ROLE_USER, FinalOwnerError, change_role, change_status
 from ..schemas import (
@@ -32,6 +36,7 @@ from ..schemas import (
     AdminOverviewOut,
     AdminRoleIn,
     AdminStatusIn,
+    AdminTierIn,
     AdminTrendDayOut,
     AdminTrendsOut,
     AdminUserOut,
@@ -291,6 +296,13 @@ async def _user_aggregates(session, user_ids: list[int]) -> dict[int, dict]:
         .group_by(ReadingActivity.user_id),
         "reading_seconds",
     )
+    await fold(
+        select(UserQuotaPeriod.user_id, UserQuotaPeriod.used).where(
+            UserQuotaPeriod.user_id.in_(user_ids),
+            UserQuotaPeriod.period == quota.current_period(),
+        ),
+        "quota_used",
+    )
     llm_rows = await session.execute(
         select(
             LLMUsage.user_id,
@@ -306,7 +318,17 @@ async def _user_aggregates(session, user_ids: list[int]) -> dict[int, dict]:
     return aggregates
 
 
-def _user_out(user: User, aggregates: dict) -> AdminUserOut:
+async def _tier_context(session) -> tuple[dict[int, Tier], Tier | None]:
+    tiers = (await session.scalars(select(Tier))).all()
+    by_id = {tier.id: tier for tier in tiers}
+    default = next((t for t in tiers if t.key == settings.default_tier), None)
+    return by_id, default
+
+
+def _user_out(
+    user: User, aggregates: dict, tiers_by_id: dict[int, Tier], default: Tier | None
+) -> AdminUserOut:
+    effective = tiers_by_id.get(user.tier_id) if user.tier_id is not None else default
     return AdminUserOut(
         id=user.id,
         email=user.email,
@@ -315,6 +337,10 @@ def _user_out(user: User, aggregates: dict) -> AdminUserOut:
         role=user.role,
         status=user.status,
         created_at=user.created_at,
+        tier_key=effective.key if effective else "unlimited",
+        tier_name=effective.name if effective else "Unlimited",
+        tier_assigned=user.tier_id is not None,
+        quota_allowance=effective.monthly_article_allowance if effective else None,
         **aggregates,
     )
 
@@ -329,6 +355,7 @@ async def list_users(
     query: str | None = Query(None, max_length=120, description="matches email/username/name"),
     role: Literal["owner", "admin", "user"] | None = None,
     account_status: Literal["active", "suspended"] | None = Query(None, alias="status"),
+    tier: str | None = Query(None, max_length=16, description="effective tiers.key"),
     sort: UserSort = "-created_at",
     limit: int = Query(25, ge=1, le=USERS_PAGE_MAX),
     offset: int = Query(0, ge=0, le=USERS_OFFSET_MAX),
@@ -347,6 +374,16 @@ async def list_users(
         filters.append(User.role == role)
     if account_status is not None:
         filters.append(User.status == account_status)
+    tiers_by_id, default = await _tier_context(session)
+    if tier is not None:
+        row = next((t for t in tiers_by_id.values() if t.key == tier), None)
+        if row is None:
+            raise HTTPException(status_code=422, detail="Unknown tier")
+        # Effective tier: an unassigned user rides the instance default.
+        if default is not None and row.id == default.id:
+            filters.append(or_(User.tier_id == row.id, User.tier_id.is_(None)))
+        else:
+            filters.append(User.tier_id == row.id)
 
     total = await _scalar(session, _count(User).where(*filters))
 
@@ -367,7 +404,8 @@ async def list_users(
 
     aggregates = await _user_aggregates(session, [u.id for u in users])
     return AdminUsersPageOut(
-        total=total, users=[_user_out(u, aggregates.get(u.id, {})) for u in users]
+        total=total,
+        users=[_user_out(u, aggregates.get(u.id, {}), tiers_by_id, default) for u in users],
     )
 
 
@@ -380,7 +418,8 @@ async def _target_user(session, user_id: int) -> User:
 
 async def _detail(session, user: User) -> AdminUserOut:
     aggregates = await _user_aggregates(session, [user.id])
-    return _user_out(user, aggregates.get(user.id, {}))
+    tiers_by_id, default = await _tier_context(session)
+    return _user_out(user, aggregates.get(user.id, {}), tiers_by_id, default)
 
 
 @router.get("/users/{user_id}", response_model=AdminUserOut)
@@ -432,5 +471,35 @@ async def set_user_status(user_id: int, body: AdminStatusIn, admin: AdminUser, s
         except FinalOwnerError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from None
         _audit(session, admin, target, "status_change", before, body.status)
+        await session.commit()
+    return await _detail(session, target)
+
+
+@router.patch("/users/{user_id}/tier", response_model=AdminUserOut)
+async def set_user_tier(user_id: int, body: AdminTierIn, admin: AdminUser, session: DbSession):
+    """Manually assign a tier (tiers.key), or null to revert to the instance
+    default. Takes effect immediately: the next charge uses the new
+    allowance; nothing already used this month is clawed back, and a user
+    moved below their current usage simply stops accruing new charges."""
+    target = await _target_user(session, user_id)
+    new_tier = None
+    if body.tier is not None:
+        new_tier = await session.scalar(select(Tier).where(Tier.key == body.tier))
+        if new_tier is None:
+            raise HTTPException(status_code=422, detail="Unknown tier")
+    before_id = target.tier_id
+    after_id = new_tier.id if new_tier else None
+    if before_id != after_id:
+        tiers_by_id, _ = await _tier_context(session)
+        before_key = tiers_by_id[before_id].key if before_id in tiers_by_id else "default"
+        _audit(
+            session,
+            admin,
+            target,
+            "tier_change",
+            before_key,
+            new_tier.key if new_tier else "default",
+        )
+        target.tier_id = after_id
         await session.commit()
     return await _detail(session, target)

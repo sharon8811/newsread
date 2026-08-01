@@ -39,6 +39,9 @@ class User(Base):
     # Account status: 'active' or 'suspended'. Suspended accounts are rejected
     # by get_current_user even with a still-valid JWT.
     status: Mapped[str] = mapped_column(String(12), default="active", server_default="active")
+    # Manually assigned tier (quota.py). NULL = the instance default
+    # (settings.default_tier: 'unlimited' for self_hosted, 'free' hosted).
+    tier_id: Mapped[int | None] = mapped_column(ForeignKey("tiers.id", ondelete="SET NULL"))
     default_view: Mapped[str] = mapped_column(String(16), default="cards", server_default="cards")
     # Assisted scrolling in the cards reading view: one gesture moves one
     # article and the viewport snaps to it. On by default; opt out per user.
@@ -158,6 +161,60 @@ class ArticleProcessingEvent(Base):
     stage: Mapped[str] = mapped_column(String(16))  # 'poll'|'enrich'|'summarize'|'ner'|'import'
     outcome: Mapped[str] = mapped_column(String(8))  # 'failed' | 'skipped'
     detail: Mapped[str] = mapped_column(String(120), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class Tier(Base):
+    """A configurable user tier. Rows are data, not code: seeds.py inserts
+    the three defaults (free/paid/unlimited) only when their key is missing,
+    so an operator can retune names, prices, and allowances without a
+    deploy. price_cents is informational — no billing exists in this phase.
+    """
+
+    __tablename__ = "tiers"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    key: Mapped[str] = mapped_column(String(16), unique=True)
+    name: Mapped[str] = mapped_column(String(40))
+    price_cents: Mapped[int] = mapped_column(Integer, default=0)
+    # Qualifying articles per calendar month (UTC); NULL = unlimited.
+    monthly_article_allowance: Mapped[int | None] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class UserQuotaPeriod(Base):
+    """One user's article-allowance counter for one UTC calendar month.
+    Increments run under SELECT ... FOR UPDATE on this row, so concurrent
+    workers can't race a finite allowance past its limit. The tier/allowance
+    in force is snapshotted here so historic months stay queryable after the
+    tier configuration changes."""
+
+    __tablename__ = "user_quota_periods"
+
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    period: Mapped[date] = mapped_column(Date, primary_key=True)  # first of the UTC month
+    used: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    tier_key_snapshot: Mapped[str] = mapped_column(String(16), default="")
+    allowance_snapshot: Mapped[int | None] = mapped_column(Integer)
+
+
+class UserArticleCharge(Base):
+    """One qualifying article charged to one user, at most once ever — the
+    unique key is what makes duplicate jobs, retries, regenerations, and
+    cached deliveries free by construction (quota.py.try_charge)."""
+
+    __tablename__ = "user_article_charges"
+    __table_args__ = (
+        UniqueConstraint("user_id", "article_id"),
+        Index("ix_user_article_charges_user_period", "user_id", "period"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    article_id: Mapped[int] = mapped_column(ForeignKey("articles.id", ondelete="CASCADE"))
+    period: Mapped[date] = mapped_column(Date)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

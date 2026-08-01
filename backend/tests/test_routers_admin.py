@@ -205,6 +205,11 @@ async def test_users_list_aggregates_and_privacy(client, users, data, session):
         "role",
         "status",
         "created_at",
+        "tier_key",
+        "tier_name",
+        "tier_assigned",
+        "quota_allowance",
+        "quota_used",
         "last_active_day",
         "subscription_count",
         "articles_read",
@@ -369,3 +374,59 @@ async def test_cannot_suspend_yourself(client, users):
     )
     assert resp.status_code == 409
     assert "your own" in resp.json()["detail"]
+
+
+# --- Tier management ---
+
+
+async def test_admin_assigns_tier_and_audit_logged(client, users, session):
+    from app.models import Tier
+
+    session.add(Tier(key="paid", name="Paid", price_cents=500, monthly_article_allowance=1000))
+    await session.commit()
+    admin = await users.create(username="boss", role="admin")
+    target = await users.create(username="customer")
+    headers = users.auth(admin)
+
+    resp = await client.patch(
+        f"/api/admin/users/{target.id}/tier", json={"tier": "paid"}, headers=headers
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert (body["tier_key"], body["tier_assigned"], body["quota_allowance"]) == (
+        "paid",
+        True,
+        1000,
+    )
+
+    entry = (await session.scalars(select(AdminAuditLog))).one()
+    assert entry.action == "tier_change"
+    assert entry.payload == {"from": "default", "to": "paid"}
+
+    # The list filters by effective tier.
+    filtered = (await client.get("/api/admin/users?tier=paid", headers=headers)).json()
+    assert [u["username"] for u in filtered["users"]] == ["customer"]
+
+    # Revert to the instance default; audited with the sentinel.
+    resp = await client.patch(
+        f"/api/admin/users/{target.id}/tier", json={"tier": None}, headers=headers
+    )
+    assert resp.status_code == 200
+    assert resp.json()["tier_assigned"] is False
+    entries = (await session.scalars(select(AdminAuditLog).order_by(AdminAuditLog.id))).all()
+    assert entries[-1].payload == {"from": "paid", "to": "default"}
+
+
+async def test_tier_change_rejects_unknown_tier_and_regular_users(client, users):
+    admin = await users.create(username="boss", role="admin")
+    target = await users.create(username="customer")
+    resp = await client.patch(
+        f"/api/admin/users/{target.id}/tier", json={"tier": "platinum"}, headers=users.auth(admin)
+    )
+    assert resp.status_code == 422
+    resp = await client.patch(
+        f"/api/admin/users/{admin.id}/tier", json={"tier": "paid"}, headers=users.auth(target)
+    )
+    assert resp.status_code == 403
+    unknown_filter = await client.get("/api/admin/users?tier=platinum", headers=users.auth(admin))
+    assert unknown_filter.status_code == 422

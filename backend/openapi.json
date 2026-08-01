@@ -674,6 +674,24 @@
         "title": "AdminStatusIn",
         "type": "object"
       },
+      "AdminTierIn": {
+        "properties": {
+          "tier": {
+            "anyOf": [
+              {
+                "maxLength": 16,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tier"
+          }
+        },
+        "title": "AdminTierIn",
+        "type": "object"
+      },
       "AdminTrendDayOut": {
         "properties": {
           "active_users": {
@@ -847,6 +865,22 @@
             "title": "Name",
             "type": "string"
           },
+          "quota_allowance": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quota Allowance"
+          },
+          "quota_used": {
+            "default": 0,
+            "title": "Quota Used",
+            "type": "integer"
+          },
           "reading_seconds": {
             "default": 0,
             "title": "Reading Seconds",
@@ -873,6 +907,21 @@
             "default": 0,
             "title": "Subscription Count",
             "type": "integer"
+          },
+          "tier_assigned": {
+            "default": false,
+            "title": "Tier Assigned",
+            "type": "boolean"
+          },
+          "tier_key": {
+            "default": "unlimited",
+            "title": "Tier Key",
+            "type": "string"
+          },
+          "tier_name": {
+            "default": "Unlimited",
+            "title": "Tier Name",
+            "type": "string"
           },
           "username": {
             "title": "Username",
@@ -4889,6 +4938,59 @@
         "title": "ProjectUpdateIn",
         "type": "object"
       },
+      "QuotaOut": {
+        "description": "A user's own read-only tier/allowance view \u2014 no purchase or upgrade\ncontrols exist in this phase.",
+        "properties": {
+          "allowance": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Allowance"
+          },
+          "exempt": {
+            "title": "Exempt",
+            "type": "boolean"
+          },
+          "period_start": {
+            "format": "date",
+            "title": "Period Start",
+            "type": "string"
+          },
+          "resets_on": {
+            "format": "date",
+            "title": "Resets On",
+            "type": "string"
+          },
+          "tier_key": {
+            "title": "Tier Key",
+            "type": "string"
+          },
+          "tier_name": {
+            "title": "Tier Name",
+            "type": "string"
+          },
+          "used": {
+            "title": "Used",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "tier_key",
+          "tier_name",
+          "allowance",
+          "used",
+          "period_start",
+          "resets_on",
+          "exempt"
+        ],
+        "title": "QuotaOut",
+        "type": "object"
+      },
       "RegisterIn": {
         "properties": {
           "email": {
@@ -6394,6 +6496,25 @@
             }
           },
           {
+            "description": "effective tiers.key",
+            "in": "query",
+            "name": "tier",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 16,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "effective tiers.key",
+              "title": "Tier"
+            }
+          },
+          {
             "in": "query",
             "name": "sort",
             "required": false,
@@ -6625,6 +6746,64 @@
           }
         ],
         "summary": "Set User Status",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/users/{user_id}/tier": {
+      "patch": {
+        "description": "Manually assign a tier (tiers.key), or null to revert to the instance\ndefault. Takes effect immediately: the next charge uses the new\nallowance; nothing already used this month is clawed back, and a user\nmoved below their current usage simply stops accruing new charges.",
+        "operationId": "set_user_tier_api_admin_users__user_id__tier_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "title": "User Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminTierIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUserOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Set User Tier",
         "tags": [
           "admin"
         ]
@@ -12192,6 +12371,33 @@
           }
         ],
         "summary": "Update Me",
+        "tags": [
+          "users"
+        ]
+      }
+    },
+    "/api/users/me/quota": {
+      "get": {
+        "description": "Read-only tier/allowance status: current tier, monthly usage, and the\nreset date. Deliberately no purchase or upgrade path in this phase.",
+        "operationId": "my_quota_api_users_me_quota_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuotaOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "My Quota",
         "tags": [
           "users"
         ]

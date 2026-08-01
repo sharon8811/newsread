@@ -19,11 +19,11 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .. import crypto, db, fetcher, llm, processing_events
+from .. import crypto, db, fetcher, llm, processing_events, quota
 from ..deps import CurrentUser, DbSession
 from ..extractor import fetch_page
 from ..fetcher import FeedParseError, derive_excerpt
-from ..models import Article, Feed, Subscription
+from ..models import Article, Feed, Subscription, User
 from ..schemas import ArticleDetail, ImportFeedOut, ImportIn
 from ..summarizer import SummarySkipped, ThinContentError, generate_summaries
 from .articles import to_list_item
@@ -159,7 +159,9 @@ async def process_import(article_id: int, user_id: int, config: llm.LLMConfig | 
                     allow_vision=True,
                 )
         except (ThinContentError, SummarySkipped):
-            pass  # expected terminal states — the page falls back to the source
+            # Expected terminal states — the page falls back to the source,
+            # and the import's reservation is returned (nothing delivered).
+            await _refund_import_charge(session, user_id, article_id)
         except Exception as exc:
             # Background task: nothing upstream catches this, so log and leave
             # the article summariless (the on-demand summarize button remains).
@@ -170,6 +172,20 @@ async def process_import(article_id: int, user_id: int, config: llm.LLMConfig | 
                 article_id=article_id,
                 detail=type(exc.__cause__ or exc).__name__,
             )
+            await _refund_import_charge(session, user_id, article_id)
+        else:
+            if article.summary_skipped_reason is not None:
+                # Unusable page stamped inside generate_summaries: no
+                # delivery, reservation returned.
+                await _refund_import_charge(session, user_id, article_id)
+
+
+async def _refund_import_charge(session, user_id: int, article_id: int) -> None:
+    """Return an import's allowance reservation; a no-op when the import was
+    free (copy-dedup, BYO-less, or never charged this period)."""
+    user = await session.get(User, user_id)
+    if user is not None:
+        await quota.refund(session, user, article_id)
 
 
 @router.post("", response_model=ArticleDetail, status_code=201)
@@ -230,6 +246,14 @@ async def import_url(
         config = await llm.resolve_config(session, user.id)
     except crypto.TokenCryptoError:
         config = None  # a broken stored key must not fail the import itself
+    if config is not None and not (article.summary and article.summary_short):
+        # Summarizing this import is the qualifying event; a copy-dedup that
+        # donated its summary is free (no LLM call). Out of allowance: the
+        # import itself still lands, just without AI processing — the
+        # article page's summarize button explains (402).
+        if not (await quota.try_charge(session, user, article.id)).allowed:
+            config = None
+        await session.commit()
     background.add_task(process_import, article.id, user.id, config)
     return _detail(article, feed)
 

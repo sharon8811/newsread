@@ -8,7 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from .. import crypto, llm, qa_agent, translation
+from .. import crypto, llm, qa_agent, quota, translation
 from ..access import accessible_article
 from ..deps import CurrentUser, DbSession
 from ..enrichers import badge_for
@@ -108,7 +108,9 @@ async def summarize_article(
     article = await accessible_article(session, user.id, article_id)
     if not force and _summary_settled(article):
         return _summary_out(article)
+    charge = await _reserve_quota(session, user, article)
     config = await _resolve_llm(session, user)
+    user_id = user.id  # by value: refunds may run after a rollback expired the ORM row
 
     # Both domain exits pass through unrecorded because no LLM call happened.
     # ThinContentError remains a 422; SummarySkipped is an intentional 200.
@@ -125,8 +127,50 @@ async def summarize_article(
                 session, article, config=config, usage=usage, allow_vision=True
             )
     except SummarySkipped:
-        pass
+        await _refund_if_charged(session, user_id, article_id, charge)
+    except Exception:
+        # Nothing was delivered (ThinContentError's 422 domain refusal, or
+        # the tracker's LLMRequestFailed 502): the reservation is returned
+        # before the error propagates.
+        await _refund_if_charged(session, user_id, article_id, charge)
+        raise
+    else:
+        if article.summary_skipped_reason is not None:
+            # UnusableContentError path: generate_summaries returned normally
+            # after stamping the skip; that reservation comes back too.
+            await _refund_if_charged(session, user_id, article_id, charge)
     return _summary_out(article)
+
+
+# Answered as 402 when a finite monthly article allowance is used up. The
+# admin area manages tiers; there is deliberately no purchase flow to point
+# at in this phase.
+QUOTA_EXHAUSTED_DETAIL = (
+    "Your monthly article allowance is used up. It resets at the start of "
+    "next month (UTC), or an administrator can move you to a larger tier."
+)
+
+
+async def _reserve_quota(session: AsyncSession, user, article) -> quota.ChargeResult:
+    """Reserve one allowance unit before spending LLM tokens, committing
+    immediately so the period-row lock never spans the LLM call. Every
+    no-delivery path refunds via _refund_if_charged — users are only charged
+    for articles actually processed for them."""
+    charge = await quota.try_charge(session, user, article.id)
+    if not charge.allowed:
+        raise HTTPException(status_code=402, detail=QUOTA_EXHAUSTED_DETAIL)
+    await session.commit()
+    return charge
+
+
+async def _refund_if_charged(session: AsyncSession, user_id: int, article_id: int, charge) -> None:
+    if not charge.charged:
+        return
+    # Re-fetched by id: refund paths can run right after a rollback expired
+    # every ORM instance, and touching an expired attribute would blow up.
+    user = await session.get(User, user_id)
+    if user is not None:
+        await quota.refund(session, user, article_id)
 
 
 def _summary_settled(article: Article) -> bool:
@@ -178,6 +222,7 @@ async def summarize_article_stream(
 
         return _stream_response(replay())
 
+    charge = await _reserve_quota(session, user, article)
     config = await _resolve_llm(session, user)
     user_id = user.id  # by value: error paths roll the session back
 
@@ -189,17 +234,20 @@ async def summarize_article_stream(
         # usage — token counts can't, because not every OpenAI-compatible
         # server reports them on a stream (see _stream_create's fallback).
         called_llm = False
+        delivered = False
         try:
             async for event in stream_summaries(session, article, config=config, usage=usage):
                 if event["type"] == "status" and event.get("stage") != "reading":
                     called_llm = True
                 if event["type"] == "done":
+                    delivered = True
                     event = {"type": "done", "summary": _summary_dump(article)}
                 yield _sse(event)
         except ThinContentError as exc:
             # A domain refusal, not an LLM failure — mirror the 422 the
             # non-streaming endpoint answers, and record nothing: no LLM
             # call produced tokens.
+            await _refund_if_charged(session, user_id, article_id, charge)
             yield _sse({"type": "error", "detail": str(exc) or THIN_CONTENT_DETAIL})
         except Exception as exc:
             logger.warning("Streamed summarization of article %s failed: %s", article_id, exc)
@@ -214,6 +262,7 @@ async def summarize_article_stream(
                 status="error",
                 error=str(exc),
             )
+            await _refund_if_charged(session, user_id, article_id, charge)
             yield _sse({"type": "error", "detail": "The AI summary failed. Try again."})
             return
         else:
@@ -226,6 +275,10 @@ async def summarize_article_stream(
                     usage=usage,
                     duration_ms=llm.ms_since(started),
                 )
+            if not delivered:
+                # skipped / kept-existing-summary endings: nothing new was
+                # processed for the user, so the reservation is returned.
+                await _refund_if_charged(session, user_id, article_id, charge)
 
     return _stream_response(event_source())
 

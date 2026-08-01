@@ -250,7 +250,7 @@ async def init_db(max_attempts: int = 30) -> None:
     global vector_enabled
 
     from . import models  # noqa: F401  (register mappings)
-    from .seeds import seed_catalog
+    from .seeds import seed_catalog, seed_tiers
 
     for attempt in range(1, max_attempts + 1):
         try:
@@ -322,3 +322,4 @@ async def init_db(max_attempts: int = 30) -> None:
             if claimed.rowcount:
                 await repair(conn)
         await seed_catalog(conn)
+        await seed_tiers(conn)
