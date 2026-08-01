@@ -92,7 +92,7 @@ Reuse transactional tables where possible (`users.created_at`,
 - Bounded date ranges; pagination follows the existing keyset pattern
   (`routers/usage.py` events).
 
-## #117 — Admin web UI
+## #117 — Admin web UI (implemented in this stack)
 
 - `app/(app)/admin/page.tsx` (overview + range switcher) and
   `app/(app)/admin/users/page.tsx`. Reuses `StatTile`/`Delta`/range patterns

@@ -59,6 +59,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/tiers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Tiers
+         * @description The configured tiers (rows are operator-editable data), so the
+         *     management UI's assignment and filter pickers never hard-code keys.
+         */
+        get: operations["list_tiers_api_admin_tiers_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/trends": {
         parameters: {
             query?: never;
@@ -2358,6 +2379,21 @@ export interface components {
             /** Tier */
             tier?: string | null;
         };
+        /**
+         * AdminTierOut
+         * @description A configured tier, for the management UI's pickers. Prices stay
+         *     informational metadata.
+         */
+        AdminTierOut: {
+            /** Key */
+            key: string;
+            /** Monthly Article Allowance */
+            monthly_article_allowance: number | null;
+            /** Name */
+            name: string;
+            /** Price Cents */
+            price_cents: number;
+        };
         /** AdminTrendDayOut */
         AdminTrendDayOut: {
             /**
@@ -4590,6 +4626,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminOverviewOut"];
+                };
+            };
+        };
+    };
+    list_tiers_api_admin_tiers_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminTierOut"][];
                 };
             };
         };

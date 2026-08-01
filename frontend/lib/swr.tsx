@@ -11,7 +11,7 @@ import { useAuth } from "./auth";
 // 401 while a token is present means it expired or was revoked, so log out
 // and return to login instead of leaving every request in silent error state.
 export function SWRProvider({ children }: { children: React.ReactNode }) {
-  const { logout } = useAuth();
+  const { logout, markSuspended } = useAuth();
   const router = useRouter();
 
   const onError = useCallback(
@@ -20,9 +20,18 @@ export function SWRProvider({ children }: { children: React.ReactNode }) {
         logout();
         toast.error("Your session expired — sign in again.");
         router.replace("/login");
+      } else if (
+        err instanceof ApiError &&
+        err.status === 403 &&
+        err.message === "Account suspended" &&
+        getToken()
+      ) {
+        // Mid-session suspension: swap the app for the suspended screen
+        // instead of leaving every request in silent error state.
+        markSuspended();
       }
     },
-    [logout, router],
+    [logout, markSuspended, router],
   );
 
   return <SWRConfig value={{ fetcher, onError }}>{children}</SWRConfig>;

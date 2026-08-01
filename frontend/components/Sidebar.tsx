@@ -333,6 +333,14 @@ export default function Sidebar() {
             label="AI usage"
           />
         )}
+        {(user?.role === "owner" || user?.role === "admin") && (
+          <NavLink
+            href="/admin"
+            active={pathname.startsWith("/admin")}
+            icon={<UsersIcon />}
+            label="Admin"
+          />
+        )}
       </nav>
 
       <div className="mt-7 flex items-center justify-between px-5">

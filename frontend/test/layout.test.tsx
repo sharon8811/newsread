@@ -17,9 +17,16 @@ vi.mock("next/navigation", () => ({
   usePathname: () => pathnameState.value,
   useRouter: () => ({ replace: replaceMock }),
 }));
-vi.mock("@/lib/auth", () => ({
-  useAuth: () => ({ user: { id: 1, username: "reader" }, ready: true, authed: true }),
+const { authState } = vi.hoisted(() => ({
+  authState: {
+    user: { id: 1, username: "reader" } as unknown,
+    ready: true,
+    authed: true,
+    suspended: false,
+    logout: vi.fn(),
+  },
 }));
+vi.mock("@/lib/auth", () => ({ useAuth: () => authState }));
 vi.mock("@/components/Sidebar", () => ({ default: () => <aside>Sidebar</aside> }));
 
 describe("AppLayout reading return restoration", () => {
@@ -132,5 +139,30 @@ describe("AppLayout mobile bar", () => {
     expect(drawer).toHaveStyle({ transform: "translateX(-100%)" });
     await userEvent.click(screen.getByRole("button", { name: "Open navigation" }));
     expect(drawer).toHaveStyle({ transform: "translateX(0)" });
+  });
+});
+
+
+describe("AppLayout suspended account", () => {
+  beforeEach(() => {
+    pathnameState.value = "/";
+    authState.suspended = true;
+  });
+  afterEach(() => {
+    authState.suspended = false;
+  });
+
+  it("replaces the app with the suspended screen", () => {
+    render(<AppLayout>body</AppLayout>);
+    expect(screen.getByText("Your account is suspended.")).toBeInTheDocument();
+    expect(screen.queryByText("Sidebar")).not.toBeInTheDocument();
+    expect(screen.queryByText("body")).not.toBeInTheDocument();
+  });
+
+  it("offers sign out", async () => {
+    const userEvent = (await import("@testing-library/user-event")).default;
+    render(<AppLayout>body</AppLayout>);
+    await userEvent.click(screen.getByRole("button", { name: "Sign out" }));
+    expect(authState.logout).toHaveBeenCalled();
   });
 });

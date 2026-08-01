@@ -479,3 +479,19 @@ describe("<Sidebar> AI usage link", () => {
     expect(link).toHaveAttribute("href", "/usage");
   });
 });
+
+describe("admin navigation", () => {
+  it("shows the Admin link for owners and admins", () => {
+    setSwr({ feeds: [] });
+    authState.user = makeUser({ role: "admin" });
+    render(<Sidebar />);
+    expect(screen.getByRole("link", { name: /Admin/ })).toHaveAttribute("href", "/admin");
+  });
+
+  it("hides the Admin link from regular users", () => {
+    setSwr({ feeds: [] });
+    authState.user = makeUser({ role: "user" });
+    render(<Sidebar />);
+    expect(screen.queryByRole("link", { name: /Admin/ })).toBeNull();
+  });
+});

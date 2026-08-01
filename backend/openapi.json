@@ -692,6 +692,42 @@
         "title": "AdminTierIn",
         "type": "object"
       },
+      "AdminTierOut": {
+        "description": "A configured tier, for the management UI's pickers. Prices stay\ninformational metadata.",
+        "properties": {
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "monthly_article_allowance": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Monthly Article Allowance"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "price_cents": {
+            "title": "Price Cents",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "key",
+          "name",
+          "price_cents",
+          "monthly_article_allowance"
+        ],
+        "title": "AdminTierOut",
+        "type": "object"
+      },
       "AdminTrendDayOut": {
         "properties": {
           "active_users": {
@@ -6373,6 +6409,37 @@
           }
         ],
         "summary": "Overview",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/tiers": {
+      "get": {
+        "description": "The configured tiers (rows are operator-editable data), so the\nmanagement UI's assignment and filter pickers never hard-code keys.",
+        "operationId": "list_tiers_api_admin_tiers_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AdminTierOut"
+                  },
+                  "title": "Response List Tiers Api Admin Tiers Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Tiers",
         "tags": [
           "admin"
         ]
