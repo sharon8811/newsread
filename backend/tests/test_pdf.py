@@ -139,3 +139,37 @@ async def test_extract_text_survives_one_damaged_page(monkeypatch):
     monkeypatch.setattr("pypdf.PdfReader", _Reader)
     text, _ = await pdf.extract_text(b"%PDF-1.7 stand-in")
     assert text == "first\nthird"
+
+
+async def test_extract_text_strips_what_postgres_cannot_store(monkeypatch):
+    """The regression that took the live worker down: pypdf hands back a text
+    layer containing NUL, Postgres rejects the whole UPDATE ("invalid byte
+    sequence for encoding UTF8: 0x00"), and the article stays unstamped — so
+    the worker re-fetched the same document every cycle, forever."""
+
+    class _Reader:
+        is_encrypted = False
+        metadata = None
+        pages = [type("P", (), {"extract_text": lambda self: "cdc\x00proof\x07 report"})()]
+
+        def __init__(self, *args, **kwargs):
+            pass
+
+    monkeypatch.setattr("pypdf.PdfReader", _Reader)
+    text, _ = await pdf.extract_text(b"%PDF-1.7 stand-in")
+    assert text == "cdcproof report"
+    assert "\x00" not in text
+
+
+async def test_extract_text_strips_unstorable_characters_from_the_title(monkeypatch):
+    class _Reader:
+        is_encrypted = False
+        metadata = type("M", (), {"title": "A Paper\x00"})()
+        pages = []
+
+        def __init__(self, *args, **kwargs):
+            pass
+
+    monkeypatch.setattr("pypdf.PdfReader", _Reader)
+    _, title = await pdf.extract_text(b"%PDF-1.7 stand-in")
+    assert title == "A Paper"

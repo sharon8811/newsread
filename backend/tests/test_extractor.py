@@ -368,3 +368,27 @@ async def test_ensure_full_text_no_refetch_when_recent(session, monkeypatch):
     monkeypatch.setattr(extractor, "fetch_page", fake_fetch_page)
     out = await ensure_full_text(session, art, allow_refetch=False)
     assert out == "thin"  # thin content fallback, no refetch
+
+
+async def test_enrich_article_stores_pdf_text_postgres_would_reject(session, monkeypatch):
+    """End to end against the real database, because that is where this broke:
+    a unit test on the extractor passes on a string Postgres refuses to store,
+    and the failed UPDATE leaves the article unstamped and re-fetched forever."""
+    art = await _make_article(session, url="https://cdn.openai.com/pdf/cdc_proof.pdf")
+
+    async def fake_get(url, **kwargs):
+        return _fake_page(body=b"%PDF-1.7 ...", headers={"Content-Type": "application/pdf"})
+
+    class _Reader:
+        is_encrypted = False
+        metadata = None
+        pages = [type("P", (), {"extract_text": lambda self: "the proof\x00 continues"})()]
+
+        def __init__(self, *args, **kwargs):
+            pass
+
+    monkeypatch.setattr(extractor.AsyncFetcher, "get", staticmethod(fake_get))
+    monkeypatch.setattr("pypdf.PdfReader", _Reader)
+    await enrich_article(session, art)
+    assert art.full_text == "the proof continues"
+    assert art.full_text_fetched_at is not None
