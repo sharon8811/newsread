@@ -22,6 +22,7 @@ const USER = {
   email: "a@b.c",
   username: "alice",
   name: "Alice",
+  role: "user" as const,
   default_view: "list",
   assisted_scroll: true,
 };

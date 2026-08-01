@@ -26,6 +26,7 @@ export function makeUser(over: Partial<User> = {}): User {
     email: "a@b.c",
     username: "alice",
     name: "Alice",
+    role: "user",
     default_view: "list",
     assisted_scroll: true,
     ...over,
