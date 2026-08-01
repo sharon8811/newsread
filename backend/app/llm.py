@@ -49,11 +49,17 @@ class LLMConfig:
 
 
 class TokenUsage:
-    """Accumulates token counts across the call(s) behind one logical request."""
+    """Accumulates token counts across the call(s) behind one logical request.
+
+    `llm_call_made` starts True and is cleared by blocks that turn out to be
+    served without a model call (a cached translation, a same-language
+    no-op): usage_tracker then records nothing, so cache hits never inflate
+    call counts or per-user spend."""
 
     def __init__(self) -> None:
         self.prompt_tokens = 0
         self.completion_tokens = 0
+        self.llm_call_made = True
 
     def add(self, prompt_tokens: int | None, completion_tokens: int | None) -> None:
         self.prompt_tokens += prompt_tokens or 0
@@ -279,14 +285,15 @@ async def usage_tracker(
         if not swallow_errors:
             raise LLMRequestFailed("The LLM request failed") from exc
     else:
-        await record_usage(
-            session,
-            user_id=user_id,
-            feature=feature,
-            config=config,
-            usage=usage,
-            duration_ms=ms_since(started),
-        )
+        if usage.llm_call_made:
+            await record_usage(
+                session,
+                user_id=user_id,
+                feature=feature,
+                config=config,
+                usage=usage,
+                duration_ms=ms_since(started),
+            )
 
 
 def get_client() -> AsyncOpenAI:

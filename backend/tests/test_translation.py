@@ -692,3 +692,52 @@ def test_translation_unconfigured_when_nothing_is_set(monkeypatch):
     monkeypatch.setattr(llm.settings, "translation_model", "")
     monkeypatch.setattr(llm.settings, "openai_api_key", "")
     assert llm.translation_config() is None
+
+
+async def test_cache_and_same_language_hits_record_no_usage(client, users, data, monkeypatch):
+    """Since system-key metering landed, every /translate ran through
+    usage_tracker — a cache hit or same-language no-op must not mint a
+    system-billed llm_usage row (it made no model call and costs nothing)."""
+    from sqlalchemy import select
+
+    from app.models import LLMUsage
+
+    feed = await data.feed()
+    art = await data.article(feed, summary="The vote was delayed.", summary_language="English")
+    user = await users.create()
+    await data.subscribe(user, feed)
+    translate = _Recorder()
+    monkeypatch.setattr(llm, "translate", translate)
+    monkeypatch.setattr(llm, "translation_config", lambda: llm.LLMConfig("custom", "k", None, "m"))
+
+    async def rows():
+        return (await data.session.scalars(select(LLMUsage))).all()
+
+    # Fresh translation: exactly one system-billed row, attributed to the user.
+    first = await client.post(
+        f"/api/articles/{art.id}/translate", json={"language": "he"}, headers=users.auth(user)
+    )
+    assert first.status_code == 200
+    recorded = await rows()
+    assert len(recorded) == 1
+    assert (recorded[0].billing_source, recorded[0].user_id, recorded[0].feature) == (
+        "system",
+        user.id,
+        "translation",
+    )
+
+    # Cache hit: no new row.
+    again = await client.post(
+        f"/api/articles/{art.id}/translate", json={"language": "he"}, headers=users.auth(user)
+    )
+    assert again.json()["cached"] is True
+    assert len(await rows()) == 1
+
+    # Same-language no-op: no new row either.
+    noop = await client.post(
+        f"/api/articles/{art.id}/translate", json={"language": "en"}, headers=users.auth(user)
+    )
+    assert noop.status_code == 200
+    assert noop.json()["translated"] is False
+    assert len(await rows()) == 1
+    assert len(translate.calls) == 1  # the model ran exactly once throughout
