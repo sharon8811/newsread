@@ -105,7 +105,10 @@ individually. Clients read the effective flags at runtime from
 Overrides: `NEWSREAD_ALLOW_SIGNUP` (with signups closed, registration still
 works while the server has zero accounts, so the owner can sign up normally),
 `NEWSREAD_MESSAGING_ENABLED` (integrations additionally need the Slack or Teams
-credentials from `.env.example`), and `NEWSREAD_BROWSER_HISTORY_ENABLED`
+credentials from `.env.example`), `NEWSREAD_BYO_LLM_KEYS_ENABLED` (personal
+LLM API keys: on for self_hosted, off for hosted modes so all usage runs on
+the operator's metered key; existing saved keys keep working until removed),
+and `NEWSREAD_BROWSER_HISTORY_ENABLED`
 (privacy-sensitive: defaults on for prod/staging and off for self_hosted; the
 env var overrides either way — see
 [docs/browser-history-privacy.md](docs/browser-history-privacy.md) for what is

@@ -12,6 +12,7 @@ from fastapi import APIRouter, HTTPException
 from openai import AsyncOpenAI
 
 from .. import crypto, image_gen, llm
+from ..config import settings
 from ..deps import CurrentUser, DbSession
 from ..models import User, UserAISettings
 from ..schemas import (
@@ -40,6 +41,15 @@ def _require_crypto() -> None:
             status_code=503,
             detail="The server cannot store API keys: NEWSREAD_TOKEN_ENCRYPTION_KEY is not set.",
         )
+
+
+def _require_byo_enabled() -> None:
+    """Saving/testing personal keys is gated on hosted deployments so all
+    usage runs on the metered system key. GET stays open (the page still
+    shows image-prompt settings and any legacy key), and DELETE stays open
+    so users can always drop a legacy key."""
+    if not settings.byo_llm_keys_enabled:
+        raise HTTPException(status_code=403, detail="Personal API keys are disabled on this server")
 
 
 def _out(row: UserAISettings | None, user: User, generations_this_month: int = 0) -> AISettingsOut:
@@ -95,6 +105,7 @@ async def put_ai_settings(
     user: CurrentUser,
     session: DbSession,
 ):
+    _require_byo_enabled()
     _require_crypto()
     row = await session.get(UserAISettings, user.id)
 
@@ -188,6 +199,7 @@ async def test_ai_settings(
     honoring a caller-supplied endpoint with the stored key would let anyone
     holding a session token exfiltrate the otherwise write-only key.
     """
+    _require_byo_enabled()
     if body.api_key:
         provider, model, base_url = body.provider, body.model, body.base_url or ""
         if not provider or not model:

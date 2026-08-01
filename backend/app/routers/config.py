@@ -20,4 +20,5 @@ async def server_config(session: DbSession):
         allow_signup=await signup_open(session),
         messaging_enabled=settings.messaging_enabled,
         browser_history_enabled=settings.browser_history_enabled,
+        byo_llm_keys_enabled=settings.byo_llm_keys_enabled,
     )

@@ -9,7 +9,7 @@ import {
   type AISettingsSave,
   type AITestResult,
 } from "@/lib/api";
-import { mutateAiConfig, useAiSettings } from "@/lib/queries";
+import { mutateAiConfig, useAiSettings, useServerConfig } from "@/lib/queries";
 import Toggle from "./ui/Toggle";
 import ErrorText from "./ui/ErrorText";
 
@@ -50,13 +50,26 @@ function Field({
 
 export default function AISettingsSection() {
   const { data: settings } = useAiSettings();
+  const { data: config } = useServerConfig();
   // The form initializes its state from the stored settings, so it only
-  // mounts once they're known; afterwards the user's edits win until save.
-  if (!settings) return null;
-  return <AISettingsForm settings={settings} />;
+  // mounts once both are known. Waiting for config matters: rendering
+  // before it loads would default to the BYO-enabled form on a hosted
+  // server, where "System default" + Save deletes a stored legacy key the
+  // disabled state deliberately keeps behind an explicit "Remove key".
+  if (!settings || !config) return null;
+  // Only a loaded response lacking the field (an older server) or an
+  // explicit true enables the key form; the server enforces either way.
+  const byoEnabled = config.byo_llm_keys_enabled !== false;
+  return <AISettingsForm settings={settings} byoEnabled={byoEnabled} />;
 }
 
-function AISettingsForm({ settings }: { settings: AISettings }) {
+function AISettingsForm({
+  settings,
+  byoEnabled,
+}: {
+  settings: AISettings;
+  byoEnabled: boolean;
+}) {
   const stored = settings.configured && settings.provider ? settings : null;
   const [choice, setChoice] = useState<ProviderChoice>(stored?.provider ?? "system");
   const [model, setModel] = useState(stored?.model ?? "");
@@ -81,7 +94,8 @@ function AISettingsForm({ settings }: { settings: AISettings }) {
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
 
-  const ownKey = choice !== "system";
+  // With BYO disabled the stored provider must not resurrect the key form.
+  const ownKey = byoEnabled && choice !== "system";
   // The backend never reuses a stored key for a different provider.
   const keyRequired =
     ownKey && (!settings?.configured || settings.provider !== choice || !settings.key_hint);
@@ -133,7 +147,11 @@ function AISettingsForm({ settings }: { settings: AISettings }) {
     setBusy(true);
     setNote(null);
     try {
-      if (!ownKey) {
+      // With BYO disabled the key row is read-only here (removal has its own
+      // button): saving must never silently delete a still-working legacy key.
+      if (!byoEnabled) {
+        setNote({ kind: "ok", text: "Settings saved." });
+      } else if (!ownKey) {
         if (settings?.configured) await api("/ai/settings", { method: "DELETE" });
         setApiKey("");
         setImageApiKey("");
@@ -198,6 +216,23 @@ function AISettingsForm({ settings }: { settings: AISettings }) {
     }
   }
 
+  async function removeKey() {
+    setBusy(true);
+    setNote(null);
+    try {
+      await api("/ai/settings", { method: "DELETE" });
+      mutateAiConfig();
+      setNote({ kind: "ok", text: "Your saved key was removed." });
+    } catch (err) {
+      setNote({
+        kind: "error",
+        text: err instanceof Error ? err.message : "Could not remove the key",
+      });
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const canSubmit =
     !busy &&
     (!ownKey ||
@@ -209,10 +244,11 @@ function AISettingsForm({ settings }: { settings: AISettings }) {
     <section className="mt-9">
       <p className="mono-label">AI model</p>
       <p className="mt-1.5 text-body" style={{ color: "var(--ink-faint)" }}>
-        Summaries, article Q&amp;A and share messages run on the system default model for now —
-        it will become a paid tier. Bring your own API key to keep AI usage on your account.
+        {byoEnabled
+          ? "Summaries, article Q&A and share messages run on the system default model for now — it will become a paid tier. Bring your own API key to keep AI usage on your account."
+          : "Summaries, article Q&A and share messages run on this server's model, and usage is tracked on your account. Personal API keys are disabled on this server."}
       </p>
-      {settings && !settings.system_available && !settings.configured && (
+      {byoEnabled && settings && !settings.system_available && !settings.configured && (
         <ErrorText className="mt-2">
           No system default is configured on this server — AI features need your own key.
         </ErrorText>
@@ -222,24 +258,38 @@ function AISettingsForm({ settings }: { settings: AISettings }) {
         className="mt-3.5 flex flex-col gap-3.5 rounded-lg border p-4"
         style={{ background: "var(--bg-raised)", borderColor: "var(--line)" }}
       >
-        <Field label="Model provider">
-          <select
-            className="input"
-            style={{ fontSize: 13.5 }}
-            aria-label="Model provider"
-            value={choice}
-            onChange={(e) => setChoice(e.target.value as ProviderChoice)}
-          >
-            <option value="system">
-              System default{settings?.system_available === false ? " (not available)" : ""}
-            </option>
-            {PROVIDERS.map((p) => (
-              <option key={p} value={p}>
-                {AI_PROVIDER_LABELS[p]}
+        {!byoEnabled && settings.configured && (
+          <div className="flex items-center justify-between gap-3 text-body">
+            <span style={{ color: "var(--ink-dim)" }}>
+              Your previously saved key
+              {settings.key_hint ? ` (ends in …${settings.key_hint})` : ""} is still used for
+              your requests until you remove it.
+            </span>
+            <button className="btn" disabled={busy} onClick={removeKey}>
+              Remove key
+            </button>
+          </div>
+        )}
+        {byoEnabled && (
+          <Field label="Model provider">
+            <select
+              className="input"
+              style={{ fontSize: 13.5 }}
+              aria-label="Model provider"
+              value={choice}
+              onChange={(e) => setChoice(e.target.value as ProviderChoice)}
+            >
+              <option value="system">
+                System default{settings?.system_available === false ? " (not available)" : ""}
               </option>
-            ))}
-          </select>
-        </Field>
+              {PROVIDERS.map((p) => (
+                <option key={p} value={p}>
+                  {AI_PROVIDER_LABELS[p]}
+                </option>
+              ))}
+            </select>
+          </Field>
+        )}
 
         {ownKey && (
           <>

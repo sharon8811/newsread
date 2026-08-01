@@ -453,3 +453,59 @@ describe("<AISettingsSection> monthly image budget", () => {
     });
   });
 });
+
+describe("BYO keys disabled (hosted)", () => {
+  function withConfigDisabled(settings: AISettings) {
+    swrMock.mockImplementation((key: unknown) =>
+      key === "/config"
+        ? { data: { byo_llm_keys_enabled: false } }
+        : { data: settings },
+    );
+  }
+
+  it("hides the provider form and explains keys are disabled", () => {
+    withConfigDisabled(UNCONFIGURED);
+    render(<AISettingsSection />);
+    expect(screen.queryByLabelText("Model provider")).toBeNull();
+    expect(screen.queryByLabelText("API key")).toBeNull();
+    expect(screen.getByText(/Personal API keys are disabled/)).toBeInTheDocument();
+    expect(screen.queryByText(/Remove key/)).toBeNull();
+  });
+
+  it("offers removal of a legacy key and never resurrects the key form", async () => {
+    withConfigDisabled(CONFIGURED);
+    const fetchMock = okFetch();
+    render(<AISettingsSection />);
+    // The stored provider must not re-open the BYO fields.
+    expect(screen.queryByLabelText("Model provider")).toBeNull();
+    expect(screen.getByText(/ends in …5678/)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Remove key" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toContain("/ai/settings");
+    expect((init as RequestInit).method).toBe("DELETE");
+    await screen.findByText("Your saved key was removed.");
+  });
+
+  it("saving never deletes a legacy key", async () => {
+    withConfigDisabled(CONFIGURED);
+    const fetchMock = okFetch();
+    render(<AISettingsSection />);
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await screen.findByText("Settings saved.");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("server config loading", () => {
+  it("renders nothing until the config is known", () => {
+    // A hosted server must never flash the BYO form (whose "System default"
+    // + Save deletes a stored key) while /config is still in flight.
+    swrMock.mockImplementation((key: unknown) =>
+      key === "/config" ? { data: undefined } : { data: CONFIGURED },
+    );
+    const { container } = render(<AISettingsSection />);
+    expect(container).toBeEmptyDOMElement();
+  });
+});
