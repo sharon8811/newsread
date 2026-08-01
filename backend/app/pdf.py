@@ -39,6 +39,14 @@ MAX_PAGES = 500
 
 _PDF_PATH = re.compile(r"\.pdf$", re.IGNORECASE)
 
+# Characters a document's text layer can carry that a Postgres text column
+# cannot: NUL is rejected outright ("invalid byte sequence for encoding UTF8:
+# 0x00") and takes the whole transaction with it, which left the article
+# unstamped and re-fetched on every worker cycle. The rest of the C0 range and
+# lone surrogates are stripped in the same pass — none of them is prose, and a
+# surrogate would fail to encode on the way out.
+_UNSTORABLE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\ud800-\udfff]")
+
 # A PDF's /Title is whatever produced it, and half the time that is the
 # authoring tool talking to itself — "Microsoft Word - draft3.docx", the
 # InDesign file name, LaTeX's "untitled". Those must not become the article's
@@ -94,7 +102,7 @@ def _extract(body: bytes) -> tuple[str, str | None]:
     try:
         meta = reader.metadata
         if meta and meta.title:
-            candidate = str(meta.title).strip()
+            candidate = _UNSTORABLE.sub("", str(meta.title)).strip()
             if candidate and not _PRODUCER_TITLE.search(candidate):
                 title = candidate
     except Exception:  # pypdf raises a variety of things on damaged metadata
@@ -116,7 +124,7 @@ def _extract(body: bytes) -> tuple[str, str | None]:
         if total >= MAX_CHARS:
             break
 
-    joined = re.sub(r"[ \t]+", " ", "\n".join(parts))
+    joined = re.sub(r"[ \t]+", " ", _UNSTORABLE.sub("", "\n".join(parts)))
     return re.sub(r"\n{3,}", "\n\n", joined).strip()[:MAX_CHARS], title
 
 
