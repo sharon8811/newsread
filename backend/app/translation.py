@@ -154,7 +154,10 @@ async def translate_summary(
     source = await summary_language(session, article)
     if source is not None and source == language.name:
         # Nothing to do, and saying so is more honest than paying a model to
-        # rewrite a Hebrew summary into Hebrew.
+        # rewrite a Hebrew summary into Hebrew. No model ran: nothing may
+        # land in llm_usage.
+        if usage is not None:
+            usage.llm_call_made = False
         return TranslationResult(
             language=language.code,
             text=article.summary,
@@ -168,6 +171,10 @@ async def translate_summary(
     digest = source_hash(article.summary)
     cached = await _cached(session, article.id, language.code, digest)
     if cached is not None:
+        # Shared-cache hit: served for free, so it must never count as a
+        # call or as this user's spend.
+        if usage is not None:
+            usage.llm_call_made = False
         return TranslationResult(
             language=language.code,
             text=cached.text,
