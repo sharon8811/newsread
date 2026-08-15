@@ -1,5 +1,6 @@
 from datetime import UTC, datetime, timedelta
 
+import pytest
 from sqlalchemy import select
 
 from app import history_embeddings, worker
@@ -41,7 +42,8 @@ def _document(user_id: int, content_hash: str) -> BrowserHistoryDocument:
     )
 
 
-def test_history_document_chunks_preserve_block_anchors():
+def test_history_document_chunks_preserve_block_anchors(monkeypatch):
+    monkeypatch.setattr(history_embeddings.settings, "embedding_input_max_chars", 6000)
     canonical = canonicalize_history_document_value(
         {
             "schema_version": 1,
@@ -60,10 +62,32 @@ def test_history_document_chunks_preserve_block_anchors():
     chunks = history_embeddings.document_chunks(document, canonical.canonical_bytes)
 
     assert len(chunks) == 2
-    assert all(len(chunk.text) <= history_embeddings.DOCUMENT_CHUNK_MAX_CHARS for chunk in chunks)
+    assert all(len(chunk.text) <= history_embeddings.document_chunk_max_chars() for chunk in chunks)
     assert (chunks[0].block_start_id, chunks[0].block_end_id) == ("b0001", "b0002")
     assert (chunks[1].block_start_id, chunks[1].block_end_id) == ("b0002", "b0003")
     assert {chunk.input_hash for chunk in chunks} == {canonical.content_hash}
+
+
+def test_history_document_chunks_follow_the_context_budget(monkeypatch):
+    """Chunks are sized to what one embedding request carries: a chunk the
+    provider would only see the head of would cite blocks its vector missed."""
+    monkeypatch.setattr(history_embeddings.settings, "embedding_input_max_chars", 500)
+    canonical = canonicalize_history_document_value(
+        {
+            "schema_version": 1,
+            "extraction_version": "history-dom-v2",
+            "content_type": "article",
+            "language": "en",
+            "blocks": [{"id": "b0001", "kind": "paragraph", "text": "x" * 1600}],
+        }
+    )
+
+    chunks = history_embeddings.document_chunks(
+        _document(1, canonical.content_hash), canonical.canonical_bytes
+    )
+
+    assert len(chunks) == 4
+    assert all(len(chunk.text) <= 500 for chunk in chunks)
 
 
 async def test_history_document_embedding_replaces_current_model_chunks(
@@ -96,7 +120,7 @@ async def test_history_document_embedding_replaces_current_model_chunks(
     async def fake_load(*args, **kwargs):
         return chunks
 
-    async def fake_embed_texts(texts):
+    async def fake_embed_texts(texts, **_):
         assert texts in (["first chunk", "second chunk"], ["first chunk"])
         return [[1.0, 0.0] for _ in texts]
 
@@ -120,6 +144,93 @@ async def test_history_document_embedding_replaces_current_model_chunks(
     chunks.pop()
     assert await history_embeddings.embed_documents(session, [document]) == 1
     assert await session.scalar(select(BrowserHistoryDocumentEmbedding.chunk_index)) == 0
+
+
+async def test_history_document_embedding_rechunks_when_the_provider_says_too_long(
+    session,
+    users,
+    monkeypatch,
+):
+    """A shortened payload alone would leave a chunk holding the block range of
+    text its vector never saw, so search could cite what it never read. The
+    document is cut into smaller chunks and embedded again instead."""
+    user = await users.create()
+    document = _document(user.id, "a" * 64)
+    session.add(document)
+    await session.commit()
+    await session.refresh(document)
+    monkeypatch.setattr(history_embeddings.settings, "embedding_input_max_chars", 1000)
+
+    async def fake_load(active_session, doc, *, storage=None, max_chars=None):
+        return [
+            history_embeddings.HistoryDocumentChunk(
+                index=index,
+                text="x" * max_chars,
+                input_hash=doc.content_hash,
+                block_start_id=f"b{index:04d}",
+                block_end_id=f"b{index:04d}",
+            )
+            for index in range(1000 // max_chars)
+        ]
+
+    embedded_lengths = []
+
+    async def fake_embed_texts(texts, *, shrink=True):
+        assert shrink is False
+        embedded_lengths.append([len(text) for text in texts])
+        if any(len(text) > 500 for text in texts):
+            raise RuntimeError("Error code: 400 - the input length exceeds the context length")
+        return [[1.0, 0.0] for _ in texts]
+
+    monkeypatch.setattr(history_embeddings, "load_document_chunks", fake_load)
+    monkeypatch.setattr(history_embeddings.embeddings, "embed_texts", fake_embed_texts)
+
+    assert await history_embeddings.embed_documents(session, [document]) == 1
+    assert embedded_lengths == [[1000], [500, 500]]
+    rows = list(
+        await session.scalars(
+            select(BrowserHistoryDocumentEmbedding).order_by(
+                BrowserHistoryDocumentEmbedding.chunk_index
+            )
+        )
+    )
+    # Two rows, each anchored to the block range its own vector covers.
+    assert [(row.chunk_index, row.block_start_id) for row in rows] == [(0, "b0000"), (1, "b0001")]
+
+
+async def test_history_document_embedding_reraises_a_transient_failure(
+    session,
+    users,
+    monkeypatch,
+):
+    user = await users.create()
+    document = _document(user.id, "a" * 64)
+    session.add(document)
+    await session.commit()
+    await session.refresh(document)
+    attempts = []
+
+    async def fake_load(*args, **kwargs):
+        return [
+            history_embeddings.HistoryDocumentChunk(
+                index=0,
+                text="chunk",
+                input_hash=document.content_hash,
+                block_start_id="b0001",
+                block_end_id="b0001",
+            )
+        ]
+
+    async def fake_embed_texts(texts, **_):
+        attempts.append(texts)
+        raise RuntimeError("Error code: 429 - rate limit exceeded")
+
+    monkeypatch.setattr(history_embeddings, "load_document_chunks", fake_load)
+    monkeypatch.setattr(history_embeddings.embeddings, "embed_texts", fake_embed_texts)
+
+    with pytest.raises(RuntimeError):
+        await history_embeddings.embed_documents(session, [document])
+    assert len(attempts) == 1
 
 
 async def test_history_document_worker_only_catches_up_linked_v2_documents(
