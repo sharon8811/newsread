@@ -22,8 +22,14 @@ from .models import (
 logger = logging.getLogger(__name__)
 
 DOCUMENT_EXTRACTION_VERSION = "history-dom-v2"
-DOCUMENT_CHUNK_MAX_CHARS = embeddings.MAX_CHARS
 DOCUMENT_EMBED_REQUEST_BATCH = 32
+
+
+def document_chunk_max_chars() -> int:
+    """Size chunks to what one embedding request actually carries. A chunk
+    longer than the context budget keeps its full block range while its vector
+    only covers the head, so search would cite text the vector never saw."""
+    return settings.embedding_input_max_chars
 
 
 @dataclass(frozen=True)
@@ -59,6 +65,7 @@ def document_chunks(document: BrowserHistoryDocument, payload: bytes) -> list[Hi
     if canonical.extraction_version != DOCUMENT_EXTRACTION_VERSION:
         return []
 
+    chunk_max_chars = document_chunk_max_chars()
     chunks: list[HistoryDocumentChunk] = []
     pending: list[tuple[str, str]] = []
     pending_chars = 0
@@ -87,10 +94,10 @@ def document_chunks(document: BrowserHistoryDocument, payload: bytes) -> list[Hi
         block_id = block["id"]
         remaining = block["text"]
         while remaining:
-            room = DOCUMENT_CHUNK_MAX_CHARS - pending_chars - (1 if pending else 0)
+            room = chunk_max_chars - pending_chars - (1 if pending else 0)
             if room <= 0:
                 emit()
-                room = DOCUMENT_CHUNK_MAX_CHARS
+                room = chunk_max_chars
             segment = remaining[:room]
             pending.append((block_id, segment))
             pending_chars += len(segment) + (1 if len(pending) > 1 else 0)

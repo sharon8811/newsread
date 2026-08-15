@@ -139,6 +139,18 @@ class Settings(BaseSettings):
         default="",
         validation_alias=AliasChoices("NEWSREAD_OPENAI_EMBEDDING_MODEL", "OPENAI_EMBEDDING_MODEL"),
     )
+    # How much text an embedding request may carry. Embedding models have far
+    # smaller windows than chat models — nomic-embed-text-v2-moe, the local
+    # default, holds 512 tokens — and over-long input is a hard 400 from
+    # Ollama, not a silent trim. The default leaves headroom for scripts that
+    # tokenize worse than English prose; raise it for an 8k-token model such
+    # as text-embedding-3-small.
+    embedding_input_max_chars: int = Field(
+        default=1800,
+        validation_alias=AliasChoices(
+            "NEWSREAD_EMBEDDING_INPUT_MAX_CHARS", "EMBEDDING_INPUT_MAX_CHARS"
+        ),
+    )
 
     # Server-wide default for generating images for articles that have none
     # (users with their own image model override it). Any OpenAI-compatible
@@ -295,6 +307,8 @@ class Settings(BaseSettings):
             or not 0 < self.history_storage_alert_ratio <= 1
         ):
             raise ValueError("history quota and operations limits are invalid")
+        if self.embedding_input_max_chars < 200:
+            raise ValueError("NEWSREAD_EMBEDDING_INPUT_MAX_CHARS must be at least 200")
         if not is_self_hosted and self.jwt_secret == "dev-secret-change-me":
             raise ValueError(
                 f"NEWSREAD_DEPLOYMENT={self.deployment.value} requires a real "

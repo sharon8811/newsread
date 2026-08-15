@@ -41,7 +41,8 @@ def _document(user_id: int, content_hash: str) -> BrowserHistoryDocument:
     )
 
 
-def test_history_document_chunks_preserve_block_anchors():
+def test_history_document_chunks_preserve_block_anchors(monkeypatch):
+    monkeypatch.setattr(history_embeddings.settings, "embedding_input_max_chars", 6000)
     canonical = canonicalize_history_document_value(
         {
             "schema_version": 1,
@@ -60,10 +61,32 @@ def test_history_document_chunks_preserve_block_anchors():
     chunks = history_embeddings.document_chunks(document, canonical.canonical_bytes)
 
     assert len(chunks) == 2
-    assert all(len(chunk.text) <= history_embeddings.DOCUMENT_CHUNK_MAX_CHARS for chunk in chunks)
+    assert all(len(chunk.text) <= history_embeddings.document_chunk_max_chars() for chunk in chunks)
     assert (chunks[0].block_start_id, chunks[0].block_end_id) == ("b0001", "b0002")
     assert (chunks[1].block_start_id, chunks[1].block_end_id) == ("b0002", "b0003")
     assert {chunk.input_hash for chunk in chunks} == {canonical.content_hash}
+
+
+def test_history_document_chunks_follow_the_context_budget(monkeypatch):
+    """Chunks are sized to what one embedding request carries: a chunk the
+    provider would only see the head of would cite blocks its vector missed."""
+    monkeypatch.setattr(history_embeddings.settings, "embedding_input_max_chars", 500)
+    canonical = canonicalize_history_document_value(
+        {
+            "schema_version": 1,
+            "extraction_version": "history-dom-v2",
+            "content_type": "article",
+            "language": "en",
+            "blocks": [{"id": "b0001", "kind": "paragraph", "text": "x" * 1600}],
+        }
+    )
+
+    chunks = history_embeddings.document_chunks(
+        _document(1, canonical.content_hash), canonical.canonical_bytes
+    )
+
+    assert len(chunks) == 4
+    assert all(len(chunk.text) <= 500 for chunk in chunks)
 
 
 async def test_history_document_embedding_replaces_current_model_chunks(

@@ -19,8 +19,16 @@ from .models import Article, ArticleEmbedding
 
 logger = logging.getLogger(__name__)
 
-# Keep inputs comfortably under typical 8k-token embedding model limits.
+# How much text an embedding is *identified* by: text_for() builds it and
+# input_hash/stale_input() hash it. What actually reaches the provider is
+# capped separately by settings.embedding_input_max_chars, which tracks the
+# model's context window; keeping the two apart means a context-budget change
+# does not restate every stored hash and re-embed the whole archive.
 MAX_CHARS = 6000
+# Floor for the halving retry in embed_texts: below this, a "too long" reply
+# is not about length any more and the error belongs to the caller.
+MIN_INPUT_CHARS = 200
+_OVER_CONTEXT_RE = re.compile(r"context length|context window|too long|too many tokens", re.I)
 # fetcher.derive_excerpt collapses hnrss items to this metadata line. It is
 # fine as a list-view excerpt but poison as embedding input: shared verbatim
 # across every HN article, it dominates a short title and turns the vector
@@ -76,12 +84,41 @@ def stale_input():
     )
 
 
-async def embed_texts(texts: list[str]) -> list[list[float]]:
-    response = await llm.get_client().embeddings.create(
-        model=settings.openai_embedding_model,
-        input=texts,
-    )
-    return [item.embedding for item in response.data]
+def _over_context(exc: Exception) -> bool:
+    """Whether the provider rejected the request for length alone. Ollama says
+    "the input length exceeds the context length"; OpenAI, "maximum context
+    length is N tokens". Both are retryable with less text — every other 400
+    is not."""
+    return bool(_OVER_CONTEXT_RE.search(str(exc)))
+
+
+async def embed_texts(texts: list[str], *, shrink: bool = True) -> list[list[float]]:
+    """Embed texts, halving the payload while the provider says it is too long.
+
+    The char budget only approximates a token window, and how badly it
+    approximates depends on the text: code, markdown, and dense scripts pack
+    far more tokens per character than the prose it was sized for. Retrying
+    smaller costs one round trip and keeps a shortened vector where giving up
+    would leave the text unsearchable.
+
+    A shrink applies to the whole request, so callers that can retry their
+    items separately pass shrink=False and let only the offending item lose
+    text, rather than every item that happened to share the request."""
+    budget = settings.embedding_input_max_chars
+    while True:
+        payload = [text[:budget] for text in texts]
+        try:
+            response = await llm.get_client().embeddings.create(
+                model=settings.openai_embedding_model,
+                input=payload,
+            )
+        except Exception as exc:
+            if not shrink or budget <= MIN_INPUT_CHARS or not _over_context(exc):
+                raise
+            budget //= 2
+            logger.warning("Embedding input over context; retrying at %d chars", budget)
+            continue
+        return [item.embedding for item in response.data]
 
 
 async def embed_query(text: str) -> list[float]:
@@ -101,12 +138,38 @@ async def embed_query(text: str) -> list[float]:
     return vector
 
 
+async def _embed_one_by_one(
+    articles: list[Article], texts: list[str]
+) -> list[tuple[Article, str, list[float]]]:
+    """Re-embed a failed batch article by article, dropping the ones that keep
+    failing. The batch is picked newest-first and re-picked every refresh, so
+    an article the provider will never accept otherwise sits at the head of it
+    forever, costing every article behind it its vector too."""
+    embedded: list[tuple[Article, str, list[float]]] = []
+    for article, text in zip(articles, texts, strict=True):
+        try:
+            [vector] = await embed_texts([text])
+        except Exception as exc:
+            logger.warning("Skipping article %s: embedding failed: %s", article.id, exc)
+            continue
+        embedded.append((article, text, vector))
+    return embedded
+
+
 async def embed_articles(session: AsyncSession, articles: list[Article]) -> int:
     """Upsert embeddings for the given articles; returns how many were written."""
     if not articles:
         return 0
     texts = [text_for(article) for article in articles]
-    vectors = await embed_texts(texts)
+    try:
+        vectors = await embed_texts(texts, shrink=False)
+    except Exception as exc:
+        logger.warning("Batch embedding of %d articles failed: %s", len(articles), exc)
+        embedded = await _embed_one_by_one(articles, texts)
+    else:
+        embedded = list(zip(articles, texts, vectors, strict=False))
+    if not embedded:
+        return 0
     stmt = pg_insert(ArticleEmbedding).values(
         [
             {
@@ -115,7 +178,7 @@ async def embed_articles(session: AsyncSession, articles: list[Article]) -> int:
                 "embedding": vector,
                 "input_hash": hashlib.md5(text.encode("utf-8")).hexdigest(),
             }
-            for article, text, vector in zip(articles, texts, vectors, strict=False)
+            for article, text, vector in embedded
         ]
     )
     stmt = stmt.on_conflict_do_update(
@@ -129,4 +192,4 @@ async def embed_articles(session: AsyncSession, articles: list[Article]) -> int:
     )
     await session.execute(stmt)
     await session.commit()
-    return len(articles)
+    return len(embedded)
