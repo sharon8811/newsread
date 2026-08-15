@@ -84,7 +84,7 @@ def stale_input():
     )
 
 
-def _over_context(exc: Exception) -> bool:
+def over_context(exc: Exception) -> bool:
     """Whether the provider rejected the request for length alone. Ollama says
     "the input length exceeds the context length"; OpenAI, "maximum context
     length is N tokens". Both are retryable with less text — every other 400
@@ -113,7 +113,7 @@ async def embed_texts(texts: list[str], *, shrink: bool = True) -> list[list[flo
                 input=payload,
             )
         except Exception as exc:
-            if not shrink or budget <= MIN_INPUT_CHARS or not _over_context(exc):
+            if not shrink or budget <= MIN_INPUT_CHARS or not over_context(exc):
                 raise
             budget //= 2
             logger.warning("Embedding input over context; retrying at %d chars", budget)
@@ -164,7 +164,13 @@ async def embed_articles(session: AsyncSession, articles: list[Article]) -> int:
     try:
         vectors = await embed_texts(texts, shrink=False)
     except Exception as exc:
-        logger.warning("Batch embedding of %d articles failed: %s", len(articles), exc)
+        # Only length is an article's own fault. A 401, a 429, or an outage
+        # fails the same way one article at a time, so splitting the batch
+        # would just multiply a bad moment by fifty — leave those to the
+        # caller's retry.
+        if not over_context(exc):
+            raise
+        logger.warning("Batch embedding of %d articles is over context: %s", len(articles), exc)
         embedded = await _embed_one_by_one(articles, texts)
     else:
         embedded = list(zip(articles, texts, vectors, strict=False))

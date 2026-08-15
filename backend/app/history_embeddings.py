@@ -58,14 +58,19 @@ def document_is_eligible(document: BrowserHistoryDocument) -> bool:
     )
 
 
-def document_chunks(document: BrowserHistoryDocument, payload: bytes) -> list[HistoryDocumentChunk]:
+def document_chunks(
+    document: BrowserHistoryDocument,
+    payload: bytes,
+    *,
+    max_chars: int | None = None,
+) -> list[HistoryDocumentChunk]:
     canonical = canonicalize_history_document(payload)
     if canonical.content_hash != document.content_hash:
         raise ValueError("stored history document hash does not match its database row")
     if canonical.extraction_version != DOCUMENT_EXTRACTION_VERSION:
         return []
 
-    chunk_max_chars = document_chunk_max_chars()
+    chunk_max_chars = max_chars or document_chunk_max_chars()
     chunks: list[HistoryDocumentChunk] = []
     pending: list[tuple[str, str]] = []
     pending_chars = 0
@@ -113,6 +118,7 @@ async def load_document_chunks(
     document: BrowserHistoryDocument,
     *,
     storage: EncryptedHistoryStorage | None = None,
+    max_chars: int | None = None,
 ) -> list[HistoryDocumentChunk]:
     if not document_is_eligible(document):
         return []
@@ -128,7 +134,7 @@ async def load_document_chunks(
         compressed,
         max_bytes=settings.history_object_max_bytes,
     )
-    return document_chunks(document, payload)
+    return document_chunks(document, payload, max_chars=max_chars)
 
 
 async def embed_documents(
@@ -147,22 +153,42 @@ async def embed_documents(
     if not eligible:
         return 0
 
-    chunks_by_document: list[tuple[BrowserHistoryDocument, list[HistoryDocumentChunk]]] = []
-    all_chunks: list[HistoryDocumentChunk] = []
-    for document in eligible:
-        chunks = await load_document_chunks(session, document, storage=storage)
-        if chunks:
-            chunks_by_document.append((document, chunks))
-            all_chunks.extend(chunks)
-    if not all_chunks:
-        return 0
+    chunk_max_chars = document_chunk_max_chars()
+    while True:
+        chunks_by_document: list[tuple[BrowserHistoryDocument, list[HistoryDocumentChunk]]] = []
+        all_chunks: list[HistoryDocumentChunk] = []
+        for document in eligible:
+            chunks = await load_document_chunks(
+                session, document, storage=storage, max_chars=chunk_max_chars
+            )
+            if chunks:
+                chunks_by_document.append((document, chunks))
+                all_chunks.extend(chunks)
+        if not all_chunks:
+            return 0
 
-    vectors: list[list[float]] = []
-    texts = [chunk.text for chunk in all_chunks]
-    for offset in range(0, len(texts), DOCUMENT_EMBED_REQUEST_BATCH):
-        vectors.extend(
-            await embeddings.embed_texts(texts[offset : offset + DOCUMENT_EMBED_REQUEST_BATCH])
-        )
+        texts = [chunk.text for chunk in all_chunks]
+        try:
+            vectors: list[list[float]] = []
+            for offset in range(0, len(texts), DOCUMENT_EMBED_REQUEST_BATCH):
+                vectors.extend(
+                    await embeddings.embed_texts(
+                        texts[offset : offset + DOCUMENT_EMBED_REQUEST_BATCH],
+                        # Shortening the payload alone would leave a chunk
+                        # holding the block range of text its vector never
+                        # saw, so search could cite what it did not read.
+                        # Cut the chunks smaller instead and start over.
+                        shrink=False,
+                    )
+                )
+        except Exception as exc:
+            if chunk_max_chars <= embeddings.MIN_INPUT_CHARS or not embeddings.over_context(exc):
+                raise
+            chunk_max_chars //= 2
+            logger.warning("History chunk over context; re-chunking at %d chars", chunk_max_chars)
+            continue
+        break
+
     if len(vectors) != len(all_chunks):
         raise RuntimeError("embedding provider returned an incomplete history batch")
     vector_index = 0

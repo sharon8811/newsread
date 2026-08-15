@@ -253,6 +253,23 @@ async def test_embed_articles_writes_nothing_when_every_article_fails(session, m
     )
 
 
+async def test_embed_articles_does_not_split_a_batch_over_a_transient_failure(session, monkeypatch):
+    """Only length is an article's own fault. Splitting a batch over a 401 or a
+    429 would turn one bad moment into fifty more requests."""
+    art = await _make_article(session)
+    monkeypatch.setattr(embeddings.settings, "openai_embedding_model", "emb-model")
+    calls = []
+
+    async def boom(texts, **_):
+        calls.append(len(texts))
+        raise RuntimeError("Error code: 429 - rate limit exceeded")
+
+    monkeypatch.setattr(embeddings, "embed_texts", boom)
+    with pytest.raises(RuntimeError):
+        await embeddings.embed_articles(session, [art])
+    assert calls == [1]
+
+
 async def test_embed_articles_stores_input_hash(session, monkeypatch):
     art = await _make_article(session)
     monkeypatch.setattr(embeddings.settings, "openai_embedding_model", "emb-model")
