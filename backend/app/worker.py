@@ -10,7 +10,7 @@ from datetime import UTC, datetime, timedelta
 
 from arq import cron
 from arq.connections import RedisSettings
-from sqlalchemy import and_, delete, func, or_, select
+from sqlalchemy import and_, delete, func, or_, select, update
 from sqlalchemy.orm import selectinload
 
 from . import (
@@ -34,7 +34,12 @@ from . import (
 from .config import settings
 from .db import init_db
 from .enrichers.pipeline import extract_entities, refresh_stale_entities
-from .extractor import SUMMARIZABLE_FEED_HTML_CHARS, enrich_article
+from .extractor import (
+    MAX_TEXT_ATTEMPTS,
+    REFETCH_COOLDOWN,
+    SUMMARIZABLE_FEED_HTML_CHARS,
+    enrich_article,
+)
 from .fetcher import refresh_feed
 from .history_ingest import get_history_ingest_service
 from .models import (
@@ -169,6 +174,78 @@ async def _summarize_quietly(session, article) -> None:
         await session.commit()
 
 
+def _blocked_and_worth_retrying(cutoff: datetime):
+    """Articles whose page was fetched but gave up no prose, and that still
+    have attempts left.
+
+    A site refusing one request is not a site refusing every request — the
+    fetch-once rule stranded roughly one article in four that a later attempt
+    reads fine. The cooldown keeps the retry from being a hot loop against a
+    host that really is blocking us, and MAX_TEXT_ATTEMPTS makes it terminate:
+    enrich_article stamps the last failure unusable_page, which this excludes.
+
+    `full_text_attempts > 0` is what says "we went and got nothing", and it is
+    durable state rather than a re-derivation — an article whose feed body is
+    the article never had a page fetched for its text, so it never gets a
+    count, and never enters this leg to be re-fetched forever.
+    """
+    return and_(
+        Article.full_text == "",
+        Article.full_text_attempts > 0,
+        Article.full_text_attempts < MAX_TEXT_ATTEMPTS,
+        Article.summary_skipped_reason.is_(None),
+        Article.full_text_fetched_at < cutoff,
+    )
+
+
+async def _claim_enrich_ids(session, feed_id: int | None) -> list[int]:
+    """Select the enrich batch, claiming the retry rows as we take them.
+
+    poll_feeds runs on a cron while enrich_feed jobs run from the queue, and
+    arq runs both in one event loop — so two overlapping passes can select the
+    same cooldown-expired article before either has finished with it. Left
+    alone that spends the same 15-second browser render twice and, worse,
+    burns two of the three attempts inside one cooldown, writing off an
+    intermittently blocked page far sooner than the spacing intends.
+
+    The claim is a conditional UPDATE: Postgres serializes the writers, and
+    the loser re-evaluates `full_text_fetched_at < cutoff` against the winner's
+    committed row, matches nothing, and takes no rows. Rows still awaiting
+    their first fetch keep their NULL stamp and are not claimed — that stamp
+    is load-bearing for videos, where a refused caption request deliberately
+    stays NULL so a later pass retries it.
+    """
+    now = datetime.now(UTC)
+    cutoff = now - REFETCH_COOLDOWN
+    candidates = (
+        select(Article.id, Article.full_text_fetched_at)
+        .where(or_(Article.full_text == "", Article.image_url.is_(None)))
+        .where(or_(Article.full_text_fetched_at.is_(None), _blocked_and_worth_retrying(cutoff)))
+        .order_by(Article.id.desc())
+        .limit(ENRICH_BATCH)
+    )
+    if feed_id is not None:
+        candidates = candidates.where(Article.feed_id == feed_id)
+    rows = (await session.execute(candidates)).all()
+    if not rows:
+        return []
+    retry_ids = [row.id for row in rows if row.full_text_fetched_at is not None]
+    claimed: set[int] = set()
+    if retry_ids:
+        claimed = set(
+            await session.scalars(
+                update(Article)
+                .where(Article.id.in_(retry_ids), Article.full_text_fetched_at < cutoff)
+                .values(full_text_fetched_at=now)
+                .returning(Article.id)
+            )
+        )
+        await session.commit()
+    # Order preserved (newest first); a retry row a concurrent pass claimed
+    # first simply drops out of this batch.
+    return [row.id for row in rows if row.full_text_fetched_at is None or row.id in claimed]
+
+
 async def enrich_and_summarize(ctx: dict | None = None, feed_id: int | None = None) -> bool:
     """Fill missing full text / images, then summaries, newest articles first.
 
@@ -176,16 +253,7 @@ async def enrich_and_summarize(ctx: dict | None = None, feed_id: int | None = No
     this feed still to do.
     """
     async with db.SessionLocal() as session:
-        enrich_query = (
-            select(Article.id)
-            .where(or_(Article.full_text == "", Article.image_url.is_(None)))
-            .where(Article.full_text_fetched_at.is_(None))
-            .order_by(Article.id.desc())
-            .limit(ENRICH_BATCH)
-        )
-        if feed_id is not None:
-            enrich_query = enrich_query.where(Article.feed_id == feed_id)
-        enrich_ids = list(await session.scalars(enrich_query))
+        enrich_ids = await _claim_enrich_ids(session, feed_id)
 
     await _for_each_article(
         enrich_ids,

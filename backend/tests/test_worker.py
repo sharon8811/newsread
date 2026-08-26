@@ -1,7 +1,7 @@
 import asyncio
 from datetime import UTC, datetime, timedelta
 
-from app import worker
+from app import db, worker
 from app.history_operations import HistoryOperatorMetrics
 from app.models import Article, ArticleEmbedding, Feed, Subscription, User
 from app.summarizer import SummarySkipped, ThinContentError
@@ -971,3 +971,159 @@ async def test_for_each_article_survives_session_acquisition_failure(monkeypatch
     await worker._for_each_article(
         [1], gate=asyncio.Semaphore(1), label="Enrichment", stage="enrich", fn=never
     )  # no raise
+
+
+# --- retrying pages that were only intermittently blocked ---
+
+
+async def _blocked_article(session, feed, *, attempts, fetched_ago):
+    art = await _article(session, feed, content_html="<p>thin</p>", image_url="https://x/i.png")
+    art.full_text_attempts = attempts
+    art.full_text_fetched_at = datetime.now(UTC) - fetched_ago
+    await session.commit()
+    await session.refresh(art)
+    return art
+
+
+async def _run_enrich_only(monkeypatch, feed_id, fetch_page):
+    from app import extractor
+
+    async def fake_extract(feed_id=None):
+        return 0
+
+    monkeypatch.setattr(extractor, "fetch_page", fetch_page)
+    monkeypatch.setattr(worker, "extract_entities", fake_extract)
+    monkeypatch.setattr(worker.llm, "is_configured", lambda: False)
+    await worker.enrich_and_summarize(feed_id=feed_id)
+
+
+async def test_enrich_retries_a_page_that_gave_up_no_text(session, monkeypatch):
+    # The bug this exists for: enrich_article stamped full_text_fetched_at
+    # even when the fetch came back empty, and the query treated any stamp as
+    # done — so one 403 from an intermittently blocking site stranded the
+    # article for good, with no text, no summary and no skip reason.
+    feed = await _feed(session, url="retry")
+    art = await _blocked_article(
+        session, feed, attempts=1, fetched_ago=worker.REFETCH_COOLDOWN + timedelta(minutes=1)
+    )
+
+    async def now_it_works(url):
+        return "the article, on the second ask", None, None
+
+    await _run_enrich_only(monkeypatch, feed.id, now_it_works)
+
+    await session.refresh(art)
+    assert art.full_text == "the article, on the second ask"
+
+
+async def test_enrich_leaves_a_recent_attempt_alone(session, monkeypatch):
+    feed = await _feed(session, url="cooldown")
+    await _blocked_article(session, feed, attempts=1, fetched_ago=timedelta(minutes=5))
+
+    async def no_fetch(url):
+        raise AssertionError("still inside the refetch cooldown")
+
+    await _run_enrich_only(monkeypatch, feed.id, no_fetch)
+
+
+async def test_enrich_stops_retrying_once_the_attempts_are_spent(session, monkeypatch):
+    feed = await _feed(session, url="spent")
+    await _blocked_article(
+        session,
+        feed,
+        attempts=worker.MAX_TEXT_ATTEMPTS,
+        fetched_ago=worker.REFETCH_COOLDOWN + timedelta(days=30),
+    )
+
+    async def no_fetch(url):
+        raise AssertionError("the retry budget is spent")
+
+    await _run_enrich_only(monkeypatch, feed.id, no_fetch)
+
+
+async def test_enrich_stops_retrying_an_article_already_written_off(session, monkeypatch):
+    feed = await _feed(session, url="stamped")
+    art = await _blocked_article(
+        session, feed, attempts=1, fetched_ago=worker.REFETCH_COOLDOWN + timedelta(hours=1)
+    )
+    art.summary_skipped_reason = "unusable_page"
+    await session.commit()
+
+    async def no_fetch(url):
+        raise AssertionError("this article has already been written off")
+
+    await _run_enrich_only(monkeypatch, feed.id, no_fetch)
+
+
+async def test_enrich_does_not_retry_when_the_feed_body_is_summarizable(session, monkeypatch):
+    # full_text stays empty for these on purpose — the feed already carries the
+    # article — so they must not look like a blocked page. No page was ever
+    # fetched for their text, so full_text_attempts stays 0 and the retry leg
+    # (which requires a count) never admits them.
+    feed = await _feed(session, url="richbody")
+    art = await _article(
+        session,
+        feed,
+        content_html="<p>" + ("word " * 900) + "</p>",
+        image_url="https://x/i.png",
+    )
+    art.full_text_fetched_at = datetime.now(UTC) - worker.REFETCH_COOLDOWN - timedelta(hours=1)
+    await session.commit()
+
+    async def no_fetch(url):
+        raise AssertionError("the feed body is the article")
+
+    await _run_enrich_only(monkeypatch, feed.id, no_fetch)
+
+
+async def test_enrich_retries_a_markup_heavy_entry_with_no_visible_text(session, monkeypatch):
+    # Raw HTML length excluded these from the retry leg even though their
+    # visible text is thin enough that we did go and fetch the page. The
+    # attempt count records what actually happened instead.
+    feed = await _feed(session, url="markup")
+    markup = "<div>" + ("<i></i>" * 400) + "Two words.</div>"
+    art = await _article(session, feed, content_html=markup, image_url="https://x/i.png")
+    art.full_text_attempts = 1
+    art.full_text_fetched_at = datetime.now(UTC) - worker.REFETCH_COOLDOWN - timedelta(minutes=1)
+    await session.commit()
+
+    async def now_it_works(url):
+        return "the article, on the second ask", None, None
+
+    await _run_enrich_only(monkeypatch, feed.id, now_it_works)
+
+    await session.refresh(art)
+    assert art.full_text == "the article, on the second ask"
+
+
+async def test_overlapping_passes_claim_a_retry_row_only_once(session, monkeypatch):
+    # poll_feeds and a queued enrich_feed run in one event loop, so both can
+    # select the same cooldown-expired article. Unclaimed, they spend the same
+    # 15-second browser render twice and burn two of three attempts inside one
+    # cooldown — writing off an intermittently blocked page far too early.
+    feed = await _feed(session, url="claimrace")
+    art = await _blocked_article(
+        session, feed, attempts=1, fetched_ago=worker.REFETCH_COOLDOWN + timedelta(minutes=1)
+    )
+
+    async def claim():
+        async with db.SessionLocal() as claim_session:
+            return await worker._claim_enrich_ids(claim_session, feed.id)
+
+    first, second = await asyncio.gather(claim(), claim())
+    assert sorted(first + second) == [art.id]
+
+
+async def test_claiming_leaves_a_first_fetch_unstamped(session, monkeypatch):
+    # A NULL stamp is load-bearing: enrich_article leaves it NULL when YouTube
+    # refuses a caption request, so a later pass retries the transcript. The
+    # claim must not stamp those rows on its way past them.
+    feed = await _feed(session, url="firstfetch")
+    art = await _article(session, feed, content_html="<p>thin</p>")
+
+    async with db.SessionLocal() as claim_session:
+        claimed = await worker._claim_enrich_ids(claim_session, feed.id)
+
+    assert claimed == [art.id]
+    await session.refresh(art)
+    assert art.full_text_fetched_at is None
