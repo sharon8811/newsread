@@ -34,7 +34,12 @@ from . import (
 from .config import settings
 from .db import init_db
 from .enrichers.pipeline import extract_entities, refresh_stale_entities
-from .extractor import SUMMARIZABLE_FEED_HTML_CHARS, enrich_article
+from .extractor import (
+    MAX_TEXT_ATTEMPTS,
+    REFETCH_COOLDOWN,
+    SUMMARIZABLE_FEED_HTML_CHARS,
+    enrich_article,
+)
 from .fetcher import refresh_feed
 from .history_ingest import get_history_ingest_service
 from .models import (
@@ -169,6 +174,25 @@ async def _summarize_quietly(session, article) -> None:
         await session.commit()
 
 
+def _blocked_and_worth_retrying():
+    """Articles whose page was fetched but gave up no prose, and that still
+    have attempts left.
+
+    A site refusing one request is not a site refusing every request — the
+    fetch-once rule stranded roughly one article in four that a later attempt
+    reads fine. The cooldown keeps the retry from being a hot loop against a
+    host that really is blocking us, and MAX_TEXT_ATTEMPTS makes it terminate:
+    enrich_article stamps the last failure unusable_page, which this excludes.
+    """
+    return and_(
+        Article.full_text == "",
+        func.length(Article.content_html) <= SUMMARIZABLE_FEED_HTML_CHARS,
+        Article.full_text_attempts < MAX_TEXT_ATTEMPTS,
+        Article.summary_skipped_reason.is_(None),
+        Article.full_text_fetched_at < datetime.now(UTC) - REFETCH_COOLDOWN,
+    )
+
+
 async def enrich_and_summarize(ctx: dict | None = None, feed_id: int | None = None) -> bool:
     """Fill missing full text / images, then summaries, newest articles first.
 
@@ -179,7 +203,7 @@ async def enrich_and_summarize(ctx: dict | None = None, feed_id: int | None = No
         enrich_query = (
             select(Article.id)
             .where(or_(Article.full_text == "", Article.image_url.is_(None)))
-            .where(Article.full_text_fetched_at.is_(None))
+            .where(or_(Article.full_text_fetched_at.is_(None), _blocked_and_worth_retrying()))
             .order_by(Article.id.desc())
             .limit(ENRICH_BATCH)
         )

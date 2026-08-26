@@ -765,6 +765,15 @@ class Article(Base):
     )
     full_text: Mapped[str] = mapped_column(Text, default="", server_default="")
     full_text_fetched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # How many times the original page has been fetched without yielding any
+    # prose. Blocking is often intermittent, so the stamp above cannot mean
+    # "done" on its own — it would strand an article whose site happened to
+    # refuse the one request we made. Counted rather than inferred because the
+    # retry has to terminate: at MAX_TEXT_ATTEMPTS the article is stamped
+    # unusable_page and leaves every queue for good.
+    full_text_attempts: Mapped[int] = mapped_column(
+        Integer, default=0, server_default=text("0"), nullable=False
+    )
     summary_short: Mapped[str] = mapped_column(Text, default="", server_default="")
     summary_medium: Mapped[str] = mapped_column(Text, default="", server_default="")
     summary: Mapped[str] = mapped_column(Text, default="", server_default="")

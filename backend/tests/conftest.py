@@ -329,3 +329,20 @@ def _no_enqueue(monkeypatch):
             return None
 
     monkeypatch.setattr("app.queue._pool", _NullPool())
+
+
+@pytest.fixture(autouse=True)
+def _no_browser_renders(monkeypatch):
+    """The extractor falls back to a real Chromium render when a plain fetch
+    yields no prose; unstubbed, that launches a browser from the unit suite
+    (and only passes because the launch eventually fails). Stub the browser
+    itself rather than the fallback, so the extractor's own error handling
+    still runs and tests of the fallback can override the same seam."""
+    import scrapling.fetchers
+
+    async def no_browser_here(url, **kwargs):
+        raise RuntimeError("browser rendering is disabled in tests")
+
+    monkeypatch.setattr(
+        scrapling.fetchers.DynamicFetcher, "async_fetch", staticmethod(no_browser_here)
+    )

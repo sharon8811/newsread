@@ -392,3 +392,266 @@ async def test_enrich_article_stores_pdf_text_postgres_would_reject(session, mon
     await enrich_article(session, art)
     assert art.full_text == "the proof continues"
     assert art.full_text_fetched_at is not None
+
+
+def _rendered_page(html="<html></html>", status=200):
+    return _fake_page(status=status, html=html)
+
+
+async def test_fetch_page_renders_a_page_that_refuses_a_plain_fetch(monkeypatch):
+    # The regression this exists for: a growing share of sites answer a plain
+    # request with a bot check and hand the same article to a browser that
+    # runs their JavaScript. Fetch-once left those articles with no text at
+    # all, and the summarizer then mistook a long essay for an image-only page.
+    async def fake_get(url, **kwargs):
+        return _fake_page(status=403, html="<html>Checking your browser</html>")
+
+    async def fake_render(url):
+        assert url == "https://blocked/a"
+        return _rendered_page(html="<html><body>the real article</body></html>")
+
+    monkeypatch.setattr(extractor.AsyncFetcher, "get", staticmethod(fake_get))
+    monkeypatch.setattr(extractor, "_render_page", fake_render)
+    monkeypatch.setattr(
+        extractor.trafilatura,
+        "extract",
+        lambda html, **k: (
+            "the article's prose" if "real article" in html else "Checking your browser"
+        ),
+    )
+    monkeypatch.setattr(
+        extractor.trafilatura,
+        "extract_metadata",
+        lambda html: types.SimpleNamespace(image="https://x/og.png", title="Real Title"),
+    )
+    text, image, title = await fetch_page("https://blocked/a")
+    assert text == "the article's prose"
+    assert image == "https://x/og.png"
+    assert title == "Real Title"
+
+
+async def test_fetch_page_renders_a_page_that_returns_200_with_no_prose(monkeypatch):
+    # Not every empty extraction is a block: a client-rendered page answers 200
+    # with an empty shell. Same fallback, same recovery.
+    async def fake_get(url, **kwargs):
+        return _fake_page(html="<html><div id='root'></div></html>")
+
+    async def fake_render(url):
+        return _rendered_page(html="<html><body>hydrated</body></html>")
+
+    monkeypatch.setattr(extractor.AsyncFetcher, "get", staticmethod(fake_get))
+    monkeypatch.setattr(extractor, "_render_page", fake_render)
+    monkeypatch.setattr(
+        extractor.trafilatura,
+        "extract",
+        lambda html, **k: "hydrated prose" if "hydrated" in html else "",
+    )
+    monkeypatch.setattr(extractor.trafilatura, "extract_metadata", lambda html: None)
+    text, _, _ = await fetch_page("https://spa/a")
+    assert text == "hydrated prose"
+
+
+async def test_fetch_page_never_renders_a_pdf(monkeypatch):
+    # A browser renders a PDF into a plugin viewer with no text in the DOM, so
+    # the render must stay a fallback for the HTML path only — the plain fetch
+    # is the one that reads documents.
+    page = _fake_page(body=b"%PDF-1.7 ...", headers={"Content-Type": "application/pdf"})
+
+    async def fake_get(url, **kwargs):
+        return page
+
+    async def fake_extract(body):
+        return "the paper's prose", "A Paper"
+
+    async def fake_render(url):
+        raise AssertionError("PDFs must not be rendered")
+
+    monkeypatch.setattr(extractor.AsyncFetcher, "get", staticmethod(fake_get))
+    monkeypatch.setattr(extractor.pdf, "extract_text", fake_extract)
+    monkeypatch.setattr(extractor, "_render_page", fake_render)
+    assert await fetch_page("https://x/paper.pdf") == ("the paper's prose", None, "A Paper")
+
+
+async def test_fetch_page_keeps_the_plain_image_when_the_render_finds_no_prose(monkeypatch):
+    async def fake_get(url, **kwargs):
+        return _fake_page(status=403, html="<html>Just a moment</html>")
+
+    async def fake_render(url):
+        return _rendered_page(status=403, html="<html>Just a moment</html>")
+
+    monkeypatch.setattr(extractor.AsyncFetcher, "get", staticmethod(fake_get))
+    monkeypatch.setattr(extractor, "_render_page", fake_render)
+    monkeypatch.setattr(extractor.trafilatura, "extract", lambda html, **k: "Just a moment")
+    monkeypatch.setattr(
+        extractor.trafilatura,
+        "extract_metadata",
+        lambda html: types.SimpleNamespace(image="https://x/og.png", title=None),
+    )
+    text, image, _ = await fetch_page("https://blocked/a")
+    # The bot check itself is not returned: a few hundred characters of "Just a
+    # moment" reads to the summarizer as a real page that happens to be short,
+    # and earns a terminal "too_short" stamp. Empty means "no source", which
+    # routes to the screenshot fallback instead.
+    assert text == ""
+    assert image == "https://x/og.png"
+
+
+async def test_fetch_page_survives_an_unavailable_renderer(monkeypatch):
+    async def fake_get(url, **kwargs):
+        return _fake_page(status=403)
+
+    monkeypatch.setattr(extractor.AsyncFetcher, "get", staticmethod(fake_get))
+    # The autouse conftest fixture makes the browser unavailable; the caller
+    # still gets a clean empty result rather than an exception.
+    assert await fetch_page("https://x/a") == ("", None, None)
+
+
+async def test_enrich_article_counts_a_fetch_that_yielded_nothing(session, monkeypatch):
+    art = await _make_article(session, content_html="<p>thin</p>")
+
+    async def fake_fetch_page(url):
+        return "", None, None
+
+    monkeypatch.setattr(extractor, "fetch_page", fake_fetch_page)
+    await enrich_article(session, art)
+    assert art.full_text_attempts == 1
+    # Not written off yet: sites block intermittently and a later attempt often
+    # reads the same page fine.
+    assert art.summary_skipped_reason is None
+
+
+async def test_enrich_article_does_not_count_a_fetch_that_worked(session, monkeypatch):
+    art = await _make_article(session, content_html="<p>thin</p>")
+
+    async def fake_fetch_page(url):
+        return "the full text", None, None
+
+    monkeypatch.setattr(extractor, "fetch_page", fake_fetch_page)
+    await enrich_article(session, art)
+    assert art.full_text_attempts == 0
+
+
+async def test_enrich_article_gives_up_after_the_last_attempt(session, monkeypatch):
+    # Without this stamp the article sits in limbo forever: no text, so the
+    # summarize query skips it; no skip reason, so the clients show a summary
+    # that is perpetually on the way.
+    art = await _make_article(session, content_html="<p>thin</p>")
+    art.full_text_attempts = extractor.MAX_TEXT_ATTEMPTS - 1
+    await session.commit()
+
+    async def fake_fetch_page(url):
+        return "", None, None
+
+    monkeypatch.setattr(extractor, "fetch_page", fake_fetch_page)
+    await enrich_article(session, art)
+    assert art.full_text_attempts == extractor.MAX_TEXT_ATTEMPTS
+    assert art.summary_skipped_reason == "unusable_page"
+
+
+async def test_enrich_article_keeps_going_when_the_feed_body_is_summarizable(session, monkeypatch):
+    # A rich feed body is enough to summarize from, so a page we cannot read
+    # is not a dead end and must not be stamped unusable.
+    body = "<p>" + ("word " * 900) + "</p>"
+    art = await _make_article(session, content_html=body, image_url="https://x/i.png")
+    art.full_text_attempts = extractor.MAX_TEXT_ATTEMPTS
+    await session.commit()
+
+    async def fake_fetch_page(url):
+        raise AssertionError("a rich feed body needs no page fetch")
+
+    monkeypatch.setattr(extractor, "fetch_page", fake_fetch_page)
+    await enrich_article(session, art)
+    assert art.summary_skipped_reason is None
+
+
+async def test_enrich_article_leaves_an_existing_summary_alone(session, monkeypatch):
+    art = await _make_article(session, content_html="<p>thin</p>")
+    art.full_text_attempts = extractor.MAX_TEXT_ATTEMPTS - 1
+    art.summary = "a summary generated from a screenshot"
+    await session.commit()
+
+    async def fake_fetch_page(url):
+        return "", None, None
+
+    monkeypatch.setattr(extractor, "fetch_page", fake_fetch_page)
+    await enrich_article(session, art)
+    assert art.summary_skipped_reason is None
+    assert art.summary == "a summary generated from a screenshot"
+
+
+async def test_render_page_runs_the_challenge_wait_and_returns_the_page(monkeypatch):
+    import scrapling.fetchers
+
+    waited: list[int] = []
+    page = _rendered_page(html="<html>rendered</html>")
+
+    class FakePage:
+        async def wait_for_timeout(self, ms):
+            waited.append(ms)
+
+    async def fake_async_fetch(url, **kwargs):
+        # The wait is the whole point: an interstitial only clears after its
+        # own JavaScript has run.
+        assert await kwargs["page_action"](FakePage()) is not None
+        assert "--no-sandbox" in kwargs["extra_flags"]
+        return page
+
+    monkeypatch.setattr(
+        scrapling.fetchers.DynamicFetcher, "async_fetch", staticmethod(fake_async_fetch)
+    )
+    assert await extractor._render_page("https://x/a") is page
+    assert waited == [extractor.RENDER_CHALLENGE_WAIT_MS]
+
+
+async def test_render_page_returns_none_when_the_browser_fails(monkeypatch):
+    import scrapling.fetchers
+
+    async def boom(url, **kwargs):
+        raise RuntimeError("no browser here")
+
+    monkeypatch.setattr(scrapling.fetchers.DynamicFetcher, "async_fetch", staticmethod(boom))
+    assert await extractor._render_page("https://x/a") is None
+
+
+async def test_fetch_page_never_returns_a_refusal_as_the_article(monkeypatch):
+    # Regression from the live run: Cloudflare's interstitial extracts to
+    # "current.org Performing security verification ..." — the host name comes
+    # first, so a prefix test misses it, and 326 characters of boilerplate
+    # looked like a short article. The response status settles it instead.
+    async def fake_get(url, **kwargs):
+        return _fake_page(status=403, html="<html>verification</html>")
+
+    async def fake_render(url):
+        return _rendered_page(status=403, html="<html>verification</html>")
+
+    monkeypatch.setattr(extractor.AsyncFetcher, "get", staticmethod(fake_get))
+    monkeypatch.setattr(extractor, "_render_page", fake_render)
+    monkeypatch.setattr(
+        extractor.trafilatura,
+        "extract",
+        lambda html, **k: (
+            "current.org Performing security verification This website uses a security "
+            "service to protect itself from online attacks."
+        ),
+    )
+    monkeypatch.setattr(extractor.trafilatura, "extract_metadata", lambda html: None)
+    assert await fetch_page("https://current.org/a") == ("", None, None)
+
+
+async def test_fetch_page_keeps_a_genuinely_short_200_page(monkeypatch):
+    # The status gate must not swallow real content: a short post served with a
+    # 200 is the article, and summarizing (or skipping) it is the caller's call.
+    async def fake_get(url, **kwargs):
+        return _fake_page(html="<html>short</html>")
+
+    async def fake_render(url):
+        raise AssertionError("a 200 with prose needs no render")
+
+    monkeypatch.setattr(extractor.AsyncFetcher, "get", staticmethod(fake_get))
+    monkeypatch.setattr(extractor, "_render_page", fake_render)
+    monkeypatch.setattr(
+        extractor.trafilatura, "extract", lambda html, **k: "Seed7 is a GPL-licensed language."
+    )
+    monkeypatch.setattr(extractor.trafilatura, "extract_metadata", lambda html: None)
+    text, _, _ = await fetch_page("https://x/short")
+    assert text == "Seed7 is a GPL-licensed language."
