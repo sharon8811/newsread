@@ -50,8 +50,26 @@ _VISUAL_STUB_PREFIXES = (
     "just a moment",
     "checking your browser",
     "please verify you are human",
-    "performing security verification",
 )
+
+# The same interstitials, matched anywhere in a short extraction rather than
+# only at its start. Cloudflare's page extracts as "current.org Performing
+# security verification ..." — the host name comes first, so a prefix test
+# misses the very thing it was added for. Bounded by length because a real
+# article may well mention a bot check in passing; a page that says this and
+# little else is one.
+_VISUAL_STUB_MARKERS = (
+    "performing security verification",
+    "checking your browser",
+    "just a moment",
+    "please verify you are human",
+    "enable javascript and cookies to continue",
+    "attention required",
+    # Cloudflare's JS challenge, verbatim from reuters.com's 401 body. Served
+    # with a 200 elsewhere, where the status gate would not catch it.
+    "please enable js and disable any ad blocker",
+)
+_STUB_SCAN_CHARS = 1_000
 
 # Don't re-hit a page that recently failed to yield text (site likely blocks bots).
 REFETCH_COOLDOWN = timedelta(hours=6)
@@ -253,11 +271,13 @@ async def _enrich_video(article: Article, video: str) -> bool:
 def _has_no_usable_text(article: Article) -> bool:
     """True when neither the page nor the feed gave us anything to summarize.
 
-    Mirrors the condition the worker's summarize query excludes on (and the
-    one its retry leg selects on) — the same rule expressed in Python here and
-    in SQL there, because one runs per article and the other runs as a batch.
+    Measured on visible text, not on markup: the same `is_thin(strip_html(...))`
+    test that decided to fetch the page in the first place. Raw HTML length
+    would disagree with that decision for a markup-heavy entry carrying only a
+    line or two of prose — fetched because its text is thin, then never
+    written off because its markup is long.
     """
-    return not article.full_text and len(article.content_html) <= SUMMARIZABLE_FEED_HTML_CHARS
+    return not article.full_text and is_thin(strip_html(article.content_html))
 
 
 async def enrich_article(session: AsyncSession, article: Article) -> None:
@@ -371,7 +391,11 @@ def is_visual_stub(text: str) -> bool:
     unlike a real 200-character post that is already shorter than a summary.
     """
     normalized = " ".join(text.casefold().split())
-    return not normalized or normalized.startswith(_VISUAL_STUB_PREFIXES)
+    if not normalized or normalized.startswith(_VISUAL_STUB_PREFIXES):
+        return True
+    return len(normalized) <= _STUB_SCAN_CHARS and any(
+        marker in normalized for marker in _VISUAL_STUB_MARKERS
+    )
 
 
 def is_too_short_to_summarize(text: str) -> bool:

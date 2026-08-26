@@ -29,6 +29,18 @@ def test_short_source_classification_preserves_visual_fallbacks():
     assert is_visual_stub("You need to enable JavaScript to run this app.")
     assert is_visual_stub("  Checking   your browser before accessing the site ")
     assert not is_visual_stub("A concise but meaningful post.")
+    # The marker rarely leads: Cloudflare's page extracts with the host first.
+    assert is_visual_stub("current.org Performing security verification ... please wait.")
+    assert is_visual_stub("www.hpcwire.com Attention Required! Just a moment...")
+    assert is_visual_stub("reuters.com Please enable JS and disable any ad blocker")
+    # ...but a real article is allowed to mention one in passing.
+    long_post = (
+        "Bot checks are the subject of this post. "
+        + ("Some genuine analysis follows. " * 60)
+        + "Sites now say Checking your browser before letting anyone read."
+    )
+    assert len(long_post) > extractor._STUB_SCAN_CHARS
+    assert not is_visual_stub(long_post)
 
 
 def test_clip_for_llm():
@@ -655,3 +667,23 @@ async def test_fetch_page_keeps_a_genuinely_short_200_page(monkeypatch):
     monkeypatch.setattr(extractor.trafilatura, "extract_metadata", lambda html: None)
     text, _, _ = await fetch_page("https://x/short")
     assert text == "Seed7 is a GPL-licensed language."
+
+
+async def test_enrich_article_writes_off_a_markup_heavy_entry_with_no_visible_text(
+    session, monkeypatch
+):
+    # Raw HTML length would call this feed body "summarizable" and never write
+    # the article off, even though is_thin(strip_html(...)) is what sent us to
+    # fetch the page in the first place. Both decisions read visible text.
+    markup = "<div class='wrapper'><span>" + ("<i></i>" * 400) + "</span>Two words.</div>"
+    assert len(markup) > extractor.SUMMARIZABLE_FEED_HTML_CHARS
+    art = await _make_article(session, content_html=markup)
+    art.full_text_attempts = extractor.MAX_TEXT_ATTEMPTS - 1
+    await session.commit()
+
+    async def fake_fetch_page(url):
+        return "", None, None
+
+    monkeypatch.setattr(extractor, "fetch_page", fake_fetch_page)
+    await enrich_article(session, art)
+    assert art.summary_skipped_reason == "unusable_page"
